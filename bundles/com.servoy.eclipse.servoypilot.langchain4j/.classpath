@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-1.10.0.jar" sourcepath="libs/langchain4j-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-core-1.10.0.jar" sourcepath="libs/langchain4j-core-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-google-ai-gemini-1.10.0.jar" sourcepath="libs/langchain4j-google-ai-gemini-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-http-client-1.10.0.jar" sourcepath="libs/langchain4j-http-client-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-http-client-jdk-1.10.0.jar" sourcepath="libs/langchain4j-http-client-jdk-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/langchain4j-open-ai-1.10.0.jar" sourcepath="libs/langchain4j-open-ai-1.10.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="libs/opennlp-tools-2.5.4.jar" sourcepath="libs/opennlp-tools-2.5.4-sources.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-21"/>
+	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

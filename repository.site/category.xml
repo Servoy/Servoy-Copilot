@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="com.servoy.eclipse.servoypilot.feature">
+      <category name="servoy.pilot"/>
+   </feature>
+   <bundle id="com.fasterxml.jackson.core.jackson-annotations">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.fasterxml.jackson.core.jackson-core">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.fasterxml.jackson.core.jackson-databind">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.fasterxml.jackson.dataformat.jackson-dataformat-yaml">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.yaml.snakeyaml">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.pdfbox.fontbox">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.pdfbox">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.pdfbox.io">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.tika.core">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.tika.parser-text-module">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.google.guava">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.google.guava.failureaccess">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.commons.lang3">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.apache.commons.text">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <category-def name="servoy.pilot" label="Servoy AI Pilot"/>
+   <category-def name="servoy.pilot.depdencies" label="Servoy AI Pilot dependencies"/>
+</site>
