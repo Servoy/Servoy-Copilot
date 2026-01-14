@@ -16,6 +16,7 @@ public class ServoyAiModel
 	{
 		String apiKey = conf.getApiKey();
 		String model = conf.getModel();
+		// create the models if there is an api key and model name
 		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty())
 		{
 			assistant = switch (conf.getSelectedModel())
