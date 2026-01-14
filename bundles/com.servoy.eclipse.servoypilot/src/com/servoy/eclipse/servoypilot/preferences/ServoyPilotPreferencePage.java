@@ -120,7 +120,7 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		if (event.getSource() != defaultModelEditor) {
 			updateDefaultModelOptions();
 		}
-		Activator.getDefault().clearModels();
+		Activator.getDefault().clearChatModel();
 	}
 
 	@Override
@@ -132,6 +132,15 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 			geminiKeyEditor.setPropertyChangeListener(null);
 		}
 		super.dispose();
+	}
+	
+
+	@Override
+	public boolean performOk() {
+		boolean returnValue = super.performOk();
+		Activator.getDefault().clearChatModel();
+		return returnValue;
+		
 	}
 
 	private void refreshOpenAiModels(String apiKey) {
@@ -198,7 +207,6 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 			defaultModelEditor.updateOptions(options.toArray(new String[0][0]));
 		} else {
 			defaultModelEditor.updateOptions(KEY_REQUIRED_PLACEHOLDER);
-			getPreferenceStore().setValue(PreferenceConstants.DEFAULT_MODEL, "");
 		}
 		defaultModelEditor.load();
 	}

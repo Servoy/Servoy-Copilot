@@ -1,5 +1,8 @@
 package com.servoy.eclipse.servoypilot;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.ui.preferences.ScopedPreferenceStore;
@@ -19,7 +22,7 @@ public class Activator implements BundleActivator {
 
     private ScopedPreferenceStore preferenceStore;
     private ServoyAiModel chatModel;
-
+    private final List<Runnable> chatModelChangeListeners = new ArrayList<>();
     
     public static Activator getDefault() {
 		return bundle;
@@ -40,7 +43,7 @@ public class Activator implements BundleActivator {
 
     public void stop(BundleContext bundleContext) throws Exception {
         preferenceStore = null;
-        clearModels();
+        clearChatModel();
     }
     
 	public Assistant getChatModel() {
@@ -50,8 +53,21 @@ public class Activator implements BundleActivator {
 		return chatModel.getAssistant();
 	}
 	
-	public void clearModels() {
+	public void clearChatModel() {
 		chatModel = null;
+		fireChatModelChanged();
+	}
+
+	public void addChatModelChangeListener(Runnable listener) {
+		chatModelChangeListeners.add(listener);
+	}
+
+	public void removeChatModelChangeListener(Runnable listener) {
+		chatModelChangeListeners.remove(listener);
+	}
+
+	private void fireChatModelChanged() {
+		chatModelChangeListeners.forEach(Runnable::run);
 	}
 
 }
