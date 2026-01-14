@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
@@ -38,7 +37,6 @@ import org.eclipse.ui.dialogs.WizardNewFileCreationPage;
 import com.servoy.eclipse.servoypilot.Activator;
 
 import dev.langchain4j.data.message.Content;
-import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
 import jakarta.inject.Inject;
 

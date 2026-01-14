@@ -2,7 +2,6 @@ package com.servoy.eclipse.servoypilot.chatview.parts;
 
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.runtime.ILog;

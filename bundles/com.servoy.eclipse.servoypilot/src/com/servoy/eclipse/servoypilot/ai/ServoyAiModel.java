@@ -12,11 +12,13 @@ public class ServoyAiModel {
 	private final Assistant assistant;
 
 	public ServoyAiModel(AiConfiguration conf) {
-		if (conf.getApiKey() != null && !conf.getApiKey().isEmpty()
-				|| conf.getModel() != null && !conf.getModel().isEmpty()) {
+		String apiKey = conf.getApiKey();
+		String model = conf.getModel();
+		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty()) {
 			assistant = switch (conf.getSelectedModel()) {
 			case OPENAI -> createAiServices(createOpenAIModel(conf));
 			case GEMINI -> createAiServices(createGeminiModel(conf));
+			case NONE -> null;
 			};
 		} else {
 			assistant = null;

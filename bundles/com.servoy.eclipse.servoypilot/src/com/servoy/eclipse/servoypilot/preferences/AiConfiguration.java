@@ -6,8 +6,11 @@ import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants.ModelKind;
 public class AiConfiguration {
 
 	public ModelKind getSelectedModel() {
-		return ModelKind.valueOf(
-			Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.DEFAULT_MODEL));
+		String model = Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.DEFAULT_MODEL);
+		if (model == null || model.isEmpty()) {
+			return ModelKind.NONE;
+		}
+		return ModelKind.valueOf(model);
 	}
 	
 	public String getApiKey() {
@@ -17,7 +20,7 @@ public class AiConfiguration {
 		case GEMINI:
 			return Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.GEMINI_API_KEY);
 		default:
-			return "";
+			return null;
 		}
 	}
 	
@@ -28,7 +31,7 @@ public class AiConfiguration {
 		case GEMINI:
 			return Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.GEMINI_MODEL);
 		default:
-			return "";
+			return null;
 		}
 	}
 	

@@ -5,7 +5,7 @@ import org.eclipse.jface.preference.IPreferenceStore;
 public final class PreferenceConstants {
 
 	public enum ModelKind {
-		OPENAI("OpenAI"), GEMINI("Gemini");
+		NONE("None"), OPENAI("OpenAI"), GEMINI("Gemini");
 
 		private final String displayName;
 
