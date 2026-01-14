@@ -6,7 +6,8 @@ import dev.langchain4j.data.message.Content;
  * Represents a chat message with an ID, role, number of tokens, and the message
  * content.
  */
-public class ChatMessage {
+public class ChatMessage
+{
 
 	private final String id;
 
@@ -21,7 +22,8 @@ public class ChatMessage {
 	 * @param role The role associated with the chat message (e.g., "user",
 	 *             "assistant")
 	 */
-	public ChatMessage(String id, String role, Content content) {
+	public ChatMessage(String id, String role, Content content)
+	{
 		this.id = id;
 		this.role = role;
 		this.content = content;
@@ -32,17 +34,19 @@ public class ChatMessage {
 	 * 
 	 * @return The message content
 	 */
-	public Content getContent() {
+	public Content getContent()
+	{
 		return content;
 	}
-	
+
 
 	/**
 	 * Retrieves the unique identifier.
 	 * 
 	 * @return The ID of the chat message
 	 */
-	public String getId() {
+	public String getId()
+	{
 		return id;
 	}
 
@@ -51,11 +55,13 @@ public class ChatMessage {
 	 * 
 	 * @return The role of the chat message
 	 */
-	public String getRole() {
+	public String getRole()
+	{
 		return role;
 	}
-	
-	protected void setContent(Content content) {
+
+	protected void setContent(Content content)
+	{
 		this.content = content;
 	}
 

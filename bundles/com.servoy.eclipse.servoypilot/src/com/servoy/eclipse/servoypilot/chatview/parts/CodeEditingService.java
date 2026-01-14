@@ -32,7 +32,8 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import jakarta.inject.Inject;
 
 @Creatable
-public class CodeEditingService {
+public class CodeEditingService
+{
 	@Inject
 	ILog logger;
 
@@ -48,44 +49,53 @@ public class CodeEditingService {
 	 * @param contextLines Number of context lines to include in the diff
 	 * @return A formatted string containing the diff and a summary of changes
 	 */
-	public String generateCodeDiff(String projectName, String filePath, String proposedCode, Integer contextLines) {
+	public String generateCodeDiff(String projectName, String filePath, String proposedCode, Integer contextLines)
+	{
 		Objects.requireNonNull(projectName);
 		Objects.requireNonNull(filePath);
 
-		if (projectName.isEmpty()) {
+		if (projectName.isEmpty())
+		{
 			throw new IllegalArgumentException("Error: Project name cannot be empty.");
 		}
-		if (filePath.isEmpty()) {
+		if (filePath.isEmpty())
+		{
 			throw new IllegalArgumentException("Error: File path cannot be empty.");
 		}
 
-		if (contextLines == null || contextLines < 0) {
+		if (contextLines == null || contextLines < 0)
+		{
 			contextLines = 3; // Default context lines
 		}
-		try {
+		try
+		{
 			// Get the project
 			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
-			if (!project.exists()) {
+			if (!project.exists())
+			{
 				throw new RuntimeException("Error: Project '" + projectName + "' not found.");
 			}
 
-			if (!project.isOpen()) {
+			if (!project.isOpen())
+			{
 				throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
 			}
 
 			// Get the file
 			IResource resource = project.findMember(filePath);
-			if (resource == null || !resource.exists()) {
+			if (resource == null || !resource.exists())
+			{
 				throw new RuntimeException(
-						"Error: File '" + filePath + "' not found in project '" + projectName + "'.");
+					"Error: File '" + filePath + "' not found in project '" + projectName + "'.");
 			}
 
 			// Check if the resource is a file
-			if (!(resource instanceof IFile)) {
+			if (!(resource instanceof IFile))
+			{
 				throw new RuntimeException("Error: Resource '" + filePath + "' is not a file.");
 			}
 
-			IFile file = (IFile) resource;
+			IFile file = (IFile)resource;
 
 			// Try to refresh the editor if the file is open
 			sync.syncExec(() -> {
@@ -100,7 +110,8 @@ public class CodeEditingService {
 			Path originalFile = Files.createTempFile("original-", ".tmp");
 			Path proposedFile = Files.createTempFile("proposed-", ".tmp");
 
-			try {
+			try
+			{
 				// Write contents to temp files
 				Files.writeString(originalFile, originalContent);
 				Files.writeString(proposedFile, proposedCode);
@@ -128,18 +139,23 @@ public class CodeEditingService {
 				formatter.close();
 
 				// If there are no changes, inform the user
-				if (diffResult.trim().isEmpty() || !diffResult.contains("@@")) {
+				if (diffResult.trim().isEmpty() || !diffResult.contains("@@"))
+				{
 					// No changes detected. The proposed code is identical to the existing file.
 					return "";
 				}
 
 				return diffResult;
-			} finally {
+			}
+			finally
+			{
 				// Clean up temporary files
 				Files.deleteIfExists(originalFile);
 				Files.deleteIfExists(proposedFile);
 			}
-		} catch (Exception e) {
+		}
+		catch (Exception e)
+		{
 			logger.error(e.getMessage(), e);
 			throw new RuntimeException("Error generating diff: " + ExceptionUtils.getRootCauseMessage(e));
 		}
@@ -151,51 +167,63 @@ public class CodeEditingService {
 	 * 
 	 * @param file The file to open
 	 */
-	private void safeOpenEditor(IFile file) {
+	private void safeOpenEditor(IFile file)
+	{
 		Optional.ofNullable(PlatformUI.getWorkbench()).map(IWorkbench::getActiveWorkbenchWindow)
-				.map(IWorkbenchWindow::getActivePage).ifPresent(page -> {
-					try {
-						// Open the editor and get the editor reference
-						var editor = IDE.openEditor(page, file);
-						// Set focus to the editor
-						if (editor != null) {
-							editor.setFocus();
-						}
-					} catch (PartInitException e) {
-						// Log but don't propagate
-						logger.error(e.getMessage(), e);
+			.map(IWorkbenchWindow::getActivePage).ifPresent(page -> {
+				try
+				{
+					// Open the editor and get the editor reference
+					var editor = IDE.openEditor(page, file);
+					// Set focus to the editor
+					if (editor != null)
+					{
+						editor.setFocus();
 					}
-				});
+				}
+				catch (PartInitException e)
+				{
+					// Log but don't propagate
+					logger.error(e.getMessage(), e);
+				}
+			});
 	}
 
 	/**
 	 * Does the actual work of refreshing an editor.
 	 */
-	private void refreshEditor(IFile file) {
-		try {
+	private void refreshEditor(IFile file)
+	{
+		try
+		{
 			file.getParent().refreshLocal(IResource.DEPTH_ONE, null);
 
 			Optional.ofNullable(PlatformUI.getWorkbench()).map(IWorkbench::getActiveWorkbenchWindow)
-					.map(IWorkbenchWindow::getActivePage).ifPresent(page -> {
-						// Try to find an editor for this file
-						Arrays.stream(page.getEditorReferences()).map(ref -> ref.getEditor(false))
-								.filter(Objects::nonNull).filter(editor -> {
-									IEditorInput input = editor.getEditorInput();
-									return input instanceof IFileEditorInput
-											&& file.equals(((IFileEditorInput) input).getFile());
-								}).findFirst().ifPresent(editor -> {
-									try {
-										// Found the editor, now refresh it
-										IEditorInput input = editor.getEditorInput();
-										if (editor instanceof ITextEditor) {
-											((ITextEditor) editor).getDocumentProvider().resetDocument(input);
-										}
-									} catch (Exception e) {
-										throw new RuntimeException(e);
-									}
-								});
-					});
-		} catch (Exception e) {
+				.map(IWorkbenchWindow::getActivePage).ifPresent(page -> {
+					// Try to find an editor for this file
+					Arrays.stream(page.getEditorReferences()).map(ref -> ref.getEditor(false))
+						.filter(Objects::nonNull).filter(editor -> {
+							IEditorInput input = editor.getEditorInput();
+							return input instanceof IFileEditorInput && file.equals(((IFileEditorInput)input).getFile());
+						}).findFirst().ifPresent(editor -> {
+							try
+							{
+								// Found the editor, now refresh it
+								IEditorInput input = editor.getEditorInput();
+								if (editor instanceof ITextEditor)
+								{
+									((ITextEditor)editor).getDocumentProvider().resetDocument(input);
+								}
+							}
+							catch (Exception e)
+							{
+								throw new RuntimeException(e);
+							}
+						});
+				});
+		}
+		catch (Exception e)
+		{
 			logger.error("Error refreshing editor: " + e.getMessage());
 		}
 	}

@@ -27,7 +27,8 @@ import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants.ModelKind;
 
 import dev.langchain4j.model.catalog.ModelDescription;
 
-public class ServoyPilotPreferencePage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
+public class ServoyPilotPreferencePage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage
+{
 
 	private static final String[][] KEY_REQUIRED_PLACEHOLDER = { { "Enter API key to load models", "" } };
 	private static final String[][] LOADING_PLACEHOLDER = { { "Loading models...", "" } };
@@ -45,21 +46,24 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 	private List<ModelDescription> geminiModels = List.of();
 	private Group modelsGroup;
 
-	public ServoyPilotPreferencePage() {
+	public ServoyPilotPreferencePage()
+	{
 		super(GRID);
 		setDescription("Configure the API keys and models used by the Servoy AI Pilot.");
 	}
 
 	@Override
-	public void init(IWorkbench workbench) {
+	public void init(IWorkbench workbench)
+	{
 		IPreferenceStore store = Activator.getDefault().getPreferenceStore();
 		setPreferenceStore(store);
 	}
 
 	@Override
-	protected void createFieldEditors() {
+	protected void createFieldEditors()
+	{
 		defaultModelEditor = new DynamicComboFieldEditor(PreferenceConstants.DEFAULT_MODEL, "Default Model:",
-				KEY_REQUIRED_PLACEHOLDER, getFieldEditorParent());
+			KEY_REQUIRED_PLACEHOLDER, getFieldEditorParent());
 		addField(defaultModelEditor);
 		constrainFieldEditor(defaultModelEditor, getFieldEditorParent());
 
@@ -79,7 +83,7 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		addField(openAiKeyEditor);
 		constrainFieldEditor(openAiKeyEditor, modelsGroup);
 		openAiModelEditor = new DynamicComboFieldEditor(PreferenceConstants.OPENAI_MODEL, "OpenAI Model:",
-				KEY_REQUIRED_PLACEHOLDER, modelsGroup);
+			KEY_REQUIRED_PLACEHOLDER, modelsGroup);
 		addField(openAiModelEditor);
 		constrainFieldEditor(openAiModelEditor, modelsGroup);
 
@@ -87,19 +91,19 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		addField(geminiKeyEditor);
 		constrainFieldEditor(geminiKeyEditor, modelsGroup);
 		geminiModelEditor = new DynamicComboFieldEditor(PreferenceConstants.GEMINI_MODEL, "Gemini Model:",
-				KEY_REQUIRED_PLACEHOLDER, modelsGroup);
+			KEY_REQUIRED_PLACEHOLDER, modelsGroup);
 		addField(geminiModelEditor);
 		constrainFieldEditor(geminiModelEditor, modelsGroup);
 
-		GridLayout groupLayout = modelsGroup.getLayout() instanceof GridLayout ? (GridLayout) modelsGroup.getLayout()
-				: new GridLayout(2, false);
+		GridLayout groupLayout = modelsGroup.getLayout() instanceof GridLayout ? (GridLayout)modelsGroup.getLayout()
+			: new GridLayout(2, false);
 		groupLayout.marginWidth = 10;
 		groupLayout.marginHeight = 10;
 		modelsGroup.setLayout(groupLayout);
 
 		GridLayout parentLayout = getFieldEditorParent().getLayout() instanceof GridLayout
-				? (GridLayout) getFieldEditorParent().getLayout()
-				: new GridLayout(2, false);
+			? (GridLayout)getFieldEditorParent().getLayout()
+			: new GridLayout(2, false);
 		parentLayout.marginWidth = 10;
 		parentLayout.marginHeight = 10;
 
@@ -110,54 +114,67 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 	}
 
 	@Override
-	public void propertyChange(PropertyChangeEvent event) {
+	public void propertyChange(PropertyChangeEvent event)
+	{
 		super.propertyChange(event);
-		if (event.getSource() == geminiKeyEditor) {
-			refreshGeminiModels((String) event.getNewValue());
-		} else if (event.getSource() == openAiKeyEditor) {
-			refreshOpenAiModels((String) event.getNewValue());
+		if (event.getSource() == geminiKeyEditor)
+		{
+			refreshGeminiModels((String)event.getNewValue());
 		}
-		if (event.getSource() != defaultModelEditor) {
+		else if (event.getSource() == openAiKeyEditor)
+		{
+			refreshOpenAiModels((String)event.getNewValue());
+		}
+		if (event.getSource() != defaultModelEditor)
+		{
 			updateDefaultModelOptions();
 		}
 		Activator.getDefault().clearChatModel();
 	}
 
 	@Override
-	public void dispose() {
-		if (openAiKeyEditor != null) {
+	public void dispose()
+	{
+		if (openAiKeyEditor != null)
+		{
 			openAiKeyEditor.setPropertyChangeListener(null);
 		}
-		if (geminiKeyEditor != null) {
+		if (geminiKeyEditor != null)
+		{
 			geminiKeyEditor.setPropertyChangeListener(null);
 		}
 		super.dispose();
 	}
-	
+
 
 	@Override
-	public boolean performOk() {
+	public boolean performOk()
+	{
 		boolean returnValue = super.performOk();
 		Activator.getDefault().clearChatModel();
 		return returnValue;
-		
+
 	}
 
-	private void refreshOpenAiModels(String apiKey) {
+	private void refreshOpenAiModels(String apiKey)
+	{
 		updateModelEditor(openAiModelEditor, PreferenceConstants.OPENAI_MODEL, apiKey, AIModelTools::getOpenAIModels,
-				ModelKind.OPENAI);
+			ModelKind.OPENAI);
 	}
 
-	private void refreshGeminiModels(String apiKey) {
+	private void refreshGeminiModels(String apiKey)
+	{
 		updateModelEditor(geminiModelEditor, PreferenceConstants.GEMINI_MODEL, apiKey, AIModelTools::getGeminiModels,
-				ModelKind.GEMINI);
+			ModelKind.GEMINI);
 	}
 
 	private void updateModelEditor(DynamicComboFieldEditor editor, String preferenceKey, String apiKey,
-			Function<String, List<ModelDescription>> loader, ModelKind source) {
+		Function<String, List<ModelDescription>> loader, ModelKind source)
+	{
 		boolean hasApiKey = hasApiKey(apiKey);
 		editor.setEnabled(hasApiKey, modelsGroup);
-		if (!hasApiKey) {
+		if (!hasApiKey)
+		{
 			editor.updateOptions(KEY_REQUIRED_PLACEHOLDER);
 			getPreferenceStore().setValue(preferenceKey, "");
 			editor.load();
@@ -168,17 +185,22 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		editor.updateOptions(LOADING_PLACEHOLDER);
 		editor.load();
 		List<ModelDescription> models = loader.apply(apiKey);
-		if (source == ModelKind.OPENAI) {
+		if (source == ModelKind.OPENAI)
+		{
 			openAiModels = models;
-		} else {
+		}
+		else
+		{
 			geminiModels = models;
 		}
 		Display.getDefault().asyncExec(() -> applyModelEntries(editor, preferenceKey, models));
 	}
 
 	private void applyModelEntries(DynamicComboFieldEditor editor, String preferenceKey,
-			List<ModelDescription> models) {
-		if (editor.isDisposed()) {
+		List<ModelDescription> models)
+	{
+		if (editor.isDisposed())
+		{
 			return;
 		}
 
@@ -187,7 +209,8 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 
 		IPreferenceStore store = getPreferenceStore();
 		String storedValue = store.getString(preferenceKey);
-		if (!contains(entries, storedValue)) {
+		if (!contains(entries, storedValue))
+		{
 			String fallback = models.isEmpty() ? "" : models.get(0).name();
 			store.setValue(preferenceKey, fallback);
 		}
@@ -196,30 +219,38 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		updateDefaultModelOptions();
 	}
 
-	private void updateDefaultModelOptions() {
+	private void updateDefaultModelOptions()
+	{
 		List<String[]> options = new ArrayList<>();
 		addConfiguredModel(options, ModelKind.OPENAI, openAiModelEditor.getValue(), openAiModels);
 		addConfiguredModel(options, ModelKind.GEMINI, geminiModelEditor.getValue(), geminiModels);
 
 		boolean hasOptions = !options.isEmpty();
 		defaultModelEditor.setEnabled(hasOptions, getFieldEditorParent());
-		if (hasOptions) {
+		if (hasOptions)
+		{
 			defaultModelEditor.updateOptions(options.toArray(new String[0][0]));
-		} else {
+		}
+		else
+		{
 			defaultModelEditor.updateOptions(KEY_REQUIRED_PLACEHOLDER);
 		}
 		defaultModelEditor.load();
 	}
 
 	private void addConfiguredModel(List<String[]> options, ModelKind source, String currentValue,
-			List<ModelDescription> models) {
-		if (currentValue == null || currentValue.isBlank()) {
+		List<ModelDescription> models)
+	{
+		if (currentValue == null || currentValue.isBlank())
+		{
 			return;
 		}
 
 		String displayName = currentValue;
-		for (ModelDescription model : models) {
-			if (currentValue.equals(model.name())) {
+		for (ModelDescription model : models)
+		{
+			if (currentValue.equals(model.name()))
+			{
 				displayName = model.displayName();
 				break;
 			}
@@ -230,36 +261,47 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		options.add(new String[] { label, value });
 	}
 
-	private static String[][] toEntries(List<ModelDescription> models) {
+	private static String[][] toEntries(List<ModelDescription> models)
+	{
 		return models.stream().sorted(Comparator.comparing(ModelDescription::displayName))
-				.map(model -> new String[] { model.displayName(), model.name() }).toArray(String[][]::new);
+			.map(model -> new String[] { model.displayName(), model.name() }).toArray(String[][]::new);
 	}
 
-	private static boolean contains(String[][] entries, String value) {
-		if (value == null) {
+	private static boolean contains(String[][] entries, String value)
+	{
+		if (value == null)
+		{
 			return false;
 		}
-		for (String[] entry : entries) {
-			if (entry.length >= 2 && value.equals(entry[1])) {
+		for (String[] entry : entries)
+		{
+			if (entry.length >= 2 && value.equals(entry[1]))
+			{
 				return true;
 			}
 		}
 		return false;
 	}
 
-	private static boolean hasApiKey(String apiKey) {
+	private static boolean hasApiKey(String apiKey)
+	{
 		return apiKey != null && !apiKey.isBlank();
 	}
 
-	private void constrainFieldEditor(FieldEditor editor, Composite controlParent) {
+	private void constrainFieldEditor(FieldEditor editor, Composite controlParent)
+	{
 		Control control = null;
-		if (editor instanceof StringFieldEditor textEditor) {
+		if (editor instanceof StringFieldEditor textEditor)
+		{
 			control = textEditor.getTextControl(controlParent);
-		} else if (editor instanceof DynamicComboFieldEditor comboEditor) {
+		}
+		else if (editor instanceof DynamicComboFieldEditor comboEditor)
+		{
 			control = comboEditor.getComboControl();
 		}
 
-		if (control == null) {
+		if (control == null)
+		{
 			return;
 		}
 

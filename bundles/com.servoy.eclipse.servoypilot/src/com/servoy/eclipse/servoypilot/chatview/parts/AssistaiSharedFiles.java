@@ -16,57 +16,58 @@ import jakarta.inject.Singleton;
 @Singleton
 public class AssistaiSharedFiles
 {
-    private static final String baseURI = "platform:/plugin/com.servoy.eclipse.servoypilot/";
-    
-    private final Map<String, String> cache = new HashMap<String, String>();
-    
-    public AssistaiSharedFiles()
-    {
-    }
-    public String readFile( String platformRelativePath )
-    {
-        return cache.computeIfAbsent(platformRelativePath, this::readResourceString );
-    }
-    
-    private URI createURI( String platformRelativePath )
-    {
-        var path =  platformRelativePath.startsWith( "/" ) ? platformRelativePath.substring( 1 ) : platformRelativePath;
-        return URI.create( baseURI + path );
-        
-    }
-    
-    private String readResourceString( String platformRelativePath )
-    {
-        return new String( readResourceBytes( platformRelativePath ), StandardCharsets.UTF_8 );
-    }
+	private static final String baseURI = "platform:/plugin/com.servoy.eclipse.servoypilot/";
 
-    private String readResourceBase64( String platformRelativePath )
-    {
-        
-        return Base64.getEncoder().encodeToString(readResourceBytes(platformRelativePath));
-    }
+	private final Map<String, String> cache = new HashMap<String, String>();
 
-    
-    public byte[] readResourceBytes( String platformRelativePath )
-    {
-        try
-        {
-            var uri = createURI(platformRelativePath).toURL();
-            try ( InputStream in = FileLocator.toFileURL( uri ).openStream() )
-            {
-                var bytes = in.readAllBytes();
-                return bytes;
-            }
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( "Cannot read resource file: " + platformRelativePath + ":" + e.getMessage(), e );
-        }
-        
-    }
-    
-    public String readFileBase64( String platformRelativePath)
-    {
-        return cache.computeIfAbsent(platformRelativePath, this::readResourceBase64 );
-    }
+	public AssistaiSharedFiles()
+	{
+	}
+
+	public String readFile(String platformRelativePath)
+	{
+		return cache.computeIfAbsent(platformRelativePath, this::readResourceString);
+	}
+
+	private URI createURI(String platformRelativePath)
+	{
+		var path = platformRelativePath.startsWith("/") ? platformRelativePath.substring(1) : platformRelativePath;
+		return URI.create(baseURI + path);
+
+	}
+
+	private String readResourceString(String platformRelativePath)
+	{
+		return new String(readResourceBytes(platformRelativePath), StandardCharsets.UTF_8);
+	}
+
+	private String readResourceBase64(String platformRelativePath)
+	{
+
+		return Base64.getEncoder().encodeToString(readResourceBytes(platformRelativePath));
+	}
+
+
+	public byte[] readResourceBytes(String platformRelativePath)
+	{
+		try
+		{
+			var uri = createURI(platformRelativePath).toURL();
+			try (InputStream in = FileLocator.toFileURL(uri).openStream())
+			{
+				var bytes = in.readAllBytes();
+				return bytes;
+			}
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Cannot read resource file: " + platformRelativePath + ":" + e.getMessage(), e);
+		}
+
+	}
+
+	public String readFileBase64(String platformRelativePath)
+	{
+		return cache.computeIfAbsent(platformRelativePath, this::readResourceBase64);
+	}
 }

@@ -7,33 +7,42 @@ import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
 
-public class ServoyAiModel {
+public class ServoyAiModel
+{
 
 	private final Assistant assistant;
 
-	public ServoyAiModel(AiConfiguration conf) {
+	public ServoyAiModel(AiConfiguration conf)
+	{
 		String apiKey = conf.getApiKey();
 		String model = conf.getModel();
-		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty()) {
-			assistant = switch (conf.getSelectedModel()) {
-			case OPENAI -> createAiServices(createOpenAIModel(conf));
-			case GEMINI -> createAiServices(createGeminiModel(conf));
-			case NONE -> null;
+		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty())
+		{
+			assistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createAiServices(createOpenAIModel(conf));
+				case GEMINI -> createAiServices(createGeminiModel(conf));
+				case NONE -> null;
 			};
-		} else {
+		}
+		else
+		{
 			assistant = null;
 		}
 	}
 
-	private OpenAiStreamingChatModel createOpenAIModel(AiConfiguration conf) {
+	private OpenAiStreamingChatModel createOpenAIModel(AiConfiguration conf)
+	{
 		return OpenAiStreamingChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
 	}
 
-	private GoogleAiGeminiStreamingChatModel createGeminiModel(AiConfiguration conf) {
+	private GoogleAiGeminiStreamingChatModel createGeminiModel(AiConfiguration conf)
+	{
 		return GoogleAiGeminiStreamingChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).build();
 	}
 
-	private Assistant createAiServices(StreamingChatModel model) {
+	private Assistant createAiServices(StreamingChatModel model)
+	{
 		AiServices<Assistant> builder = AiServices.builder(Assistant.class);
 		builder.streamingChatModel(model);
 //		builder.tools(null); // TODO add tools
@@ -41,7 +50,8 @@ public class ServoyAiModel {
 		return builder.build();
 	}
 
-	public Assistant getAssistant() {
+	public Assistant getAssistant()
+	{
 		return assistant;
 	}
 }

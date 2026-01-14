@@ -41,7 +41,8 @@ import dev.langchain4j.data.message.UserMessage;
 import jakarta.inject.Inject;
 
 @Creatable
-public class ChatViewPresenter {
+public class ChatViewPresenter
+{
 
 	@Inject
 	private ILog logger;
@@ -63,7 +64,8 @@ public class ChatViewPresenter {
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
 
-	public void onClear() {
+	public void onClear()
+	{
 		// TODO stop/clear any ongoing operations
 		onStop();
 		applyToView(view -> {
@@ -73,11 +75,13 @@ public class ChatViewPresenter {
 		});
 	}
 
-	public void applyToView(Consumer<? super ChatView> consumer) {
+	public void applyToView(Consumer< ? super ChatView> consumer)
+	{
 		consumer.accept(chatView);
 	}
 
-	public void onStop() {
+	public void onStop()
+	{
 		contents.clear();
 		var jobs = jobManager.find(null);
 		Arrays.stream(jobs).filter(job -> job.getName().startsWith(JOB_PREFIX)).forEach(Job::cancel);
@@ -88,7 +92,8 @@ public class ChatViewPresenter {
 
 	}
 
-	public void onSendUserMessage(String text) {
+	public void onSendUserMessage(String text)
+	{
 		ChatMessage message = new TextChatMessage(UUID.randomUUID().toString(), "user", text);
 		contents.add(message);
 		TextChatMessage assistantMessage = new TextChatMessage(UUID.randomUUID().toString(), "assistant");
@@ -109,7 +114,7 @@ public class ChatViewPresenter {
 			assistantMessage.appendContent(partial);
 			applyToView(part -> {
 				part.setMessageHtml(assistantMessage.getId(),
-						assistantMessage.getContent().text() + partial.toString());
+					assistantMessage.getContent().text() + partial.toString());
 			});
 		}).onCompleteResponse(fullResponse -> {
 			assistantMessage.setContent(fullResponse.aiMessage().text());
@@ -125,12 +130,14 @@ public class ChatViewPresenter {
 
 	}
 
-	public void onAttachmentAdded(ImageData imageData) {
+	public void onAttachmentAdded(ImageData imageData)
+	{
 		// TODO Auto-generated method stub
 
 	}
 
-	public void onCopyCode(String codeBlock) {
+	public void onCopyCode(String codeBlock)
+	{
 		var clipboard = new Clipboard(PlatformUI.getWorkbench().getDisplay());
 		var textTransfer = TextTransfer.getInstance();
 		clipboard.setContents(new Object[] { codeBlock }, new Transfer[] { textTransfer });
@@ -138,129 +145,165 @@ public class ChatViewPresenter {
 
 	}
 
-	public void onApplyPatch(String codeBlock) {
+	public void onApplyPatch(String codeBlock)
+	{
 		applyPatchWizzardHelper.showApplyPatchWizardDialog(codeBlock, null);
 	}
 
-	public void onInsertCode(String codeBlock) {
+	public void onInsertCode(String codeBlock)
+	{
 		uiSync.asyncExec(() -> {
-			try {
+			try
+			{
 				Optional.ofNullable(PlatformUI.getWorkbench()).map(workbench -> workbench.getActiveWorkbenchWindow())
-						.map(window -> window.getActivePage()).map(page -> page.getActiveEditor())
-						.flatMap(editor -> Optional
-								.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
-						.ifPresent(textEditor -> {
-							var selectionProvider = textEditor.getSelectionProvider();
-							var document = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
+					.map(window -> window.getActivePage()).map(page -> page.getActiveEditor())
+					.flatMap(editor -> Optional
+						.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
+					.ifPresent(textEditor -> {
+						var selectionProvider = textEditor.getSelectionProvider();
+						var document = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
 
-							if (selectionProvider != null && document != null) {
-								var selection = (org.eclipse.jface.text.ITextSelection) selectionProvider
-										.getSelection();
-								try {
-									// Replace selection or insert at cursor position
-									if (selection.getLength() > 0) {
-										// Replace selected text
-										document.replace(selection.getOffset(), selection.getLength(), codeBlock);
-									} else {
-										// Insert at cursor position
-										document.replace(selection.getOffset(), 0, codeBlock);
-									}
-								} catch (org.eclipse.jface.text.BadLocationException e) {
-									logger.error("Error inserting code at location", e);
+						if (selectionProvider != null && document != null)
+						{
+							var selection = (org.eclipse.jface.text.ITextSelection)selectionProvider
+								.getSelection();
+							try
+							{
+								// Replace selection or insert at cursor position
+								if (selection.getLength() > 0)
+								{
+									// Replace selected text
+									document.replace(selection.getOffset(), selection.getLength(), codeBlock);
 								}
-							} else {
-								logger.error("Selection provider or document is null");
+								else
+								{
+									// Insert at cursor position
+									document.replace(selection.getOffset(), 0, codeBlock);
+								}
 							}
-						});
-			} catch (Exception e) {
+							catch (org.eclipse.jface.text.BadLocationException e)
+							{
+								logger.error("Error inserting code at location", e);
+							}
+						}
+						else
+						{
+							logger.error("Selection provider or document is null");
+						}
+					});
+			}
+			catch (Exception e)
+			{
 				logger.error("Error inserting code", e);
 			}
 		});
 	}
 
-	public void onDiffCode(String codeBlock) {
+	public void onDiffCode(String codeBlock)
+	{
 		uiSync.asyncExec(() -> {
-			try {
+			try
+			{
 				Optional.ofNullable(PlatformUI.getWorkbench()).map(workbench -> workbench.getActiveWorkbenchWindow())
-						.map(window -> window.getActivePage()).map(page -> page.getActiveEditor())
-						.flatMap(editor -> Optional
-								.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
-						.ifPresent(textEditor -> {
-							// Get the file information
-							if (textEditor.getEditorInput() instanceof org.eclipse.ui.part.FileEditorInput) {
-								org.eclipse.ui.part.FileEditorInput fileInput = (org.eclipse.ui.part.FileEditorInput) textEditor
-										.getEditorInput();
+					.map(window -> window.getActivePage()).map(page -> page.getActiveEditor())
+					.flatMap(editor -> Optional
+						.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
+					.ifPresent(textEditor -> {
+						// Get the file information
+						if (textEditor.getEditorInput() instanceof org.eclipse.ui.part.FileEditorInput)
+						{
+							org.eclipse.ui.part.FileEditorInput fileInput = (org.eclipse.ui.part.FileEditorInput)textEditor
+								.getEditorInput();
 
-								// Get project name and file path
-								String projectName = fileInput.getFile().getProject().getName();
-								String filePath = fileInput.getFile().getProjectRelativePath().toString();
+							// Get project name and file path
+							String projectName = fileInput.getFile().getProject().getName();
+							String filePath = fileInput.getFile().getProjectRelativePath().toString();
 
-								// Generate diff using the CodeEditingService
-								String diff = codeEditingService.generateCodeDiff(projectName, filePath, codeBlock, 3 // Default
-																														// context
-																														// lines
-								);
+							// Generate diff using the CodeEditingService
+							String diff = codeEditingService.generateCodeDiff(projectName, filePath, codeBlock, 3 // Default
+																													// context
+																													// lines
+							);
 
-								if (diff != null && !diff.isBlank()) {
-									// Show the apply patch wizard with the generated diff and preselected project
-									applyPatchWizzardHelper.showApplyPatchWizardDialog(diff, projectName);
-								} else {
-									logger.info("No differences found between current code and provided code block");
-								}
-							} else {
-								logger.error("Cannot get file information from editor");
+							if (diff != null && !diff.isBlank())
+							{
+								// Show the apply patch wizard with the generated diff and preselected project
+								applyPatchWizzardHelper.showApplyPatchWizardDialog(diff, projectName);
 							}
-						});
-			} catch (Exception e) {
+							else
+							{
+								logger.info("No differences found between current code and provided code block");
+							}
+						}
+						else
+						{
+							logger.error("Cannot get file information from editor");
+						}
+					});
+			}
+			catch (Exception e)
+			{
 				logger.error("Error generating diff for code", e);
 			}
 		});
 	}
 
-	public void onNewFile(String codeBlock, String lang) {
+	public void onNewFile(String codeBlock, String lang)
+	{
 		uiSync.asyncExec(() -> {
-			try {
+			try
+			{
 				IProject project = Optional.ofNullable(PlatformUI.getWorkbench())
-						.map(IWorkbench::getActiveWorkbenchWindow).map(IWorkbenchWindow::getActivePage)
-						.map(IWorkbenchPage::getActiveEditor).map(editor -> editor.getEditorInput())
-						.filter(input -> input instanceof org.eclipse.ui.part.FileEditorInput)
-						.map(input -> ((org.eclipse.ui.part.FileEditorInput) input).getFile().getProject())
-						.orElse(null);
+					.map(IWorkbench::getActiveWorkbenchWindow).map(IWorkbenchWindow::getActivePage)
+					.map(IWorkbenchPage::getActiveEditor).map(editor -> editor.getEditorInput())
+					.filter(input -> input instanceof org.eclipse.ui.part.FileEditorInput)
+					.map(input -> ((org.eclipse.ui.part.FileEditorInput)input).getFile().getProject())
+					.orElse(null);
 
-				if (project != null) {
+				if (project != null)
+				{
 					// Create suggested file name and path based on language
 					String suggestedFileName = ResourceUtilities.getSuggestedFileName(lang, codeBlock);
 					IPath suggestedPath = ResourceUtilities.getSuggestedPath(project, lang, codeBlock);
 					WizardNewFileCreationPage newFilePage = new WizardNewFileCreationPage("NewFilePage",
-							new StructuredSelection(project));
+						new StructuredSelection(project));
 					newFilePage.setTitle("New File");
 					newFilePage.setDescription(String.format("Create a new %s file in the project",
-							ResourceUtilities.getFileExtensionForLang(lang)));
+						ResourceUtilities.getFileExtensionForLang(lang)));
 
 					// Set suggested file name and path
-					if (suggestedPath != null) {
+					if (suggestedPath != null)
+					{
 						newFilePage.setContainerFullPath(suggestedPath);
 					}
-					if (suggestedFileName != null && !suggestedFileName.isBlank()) {
+					if (suggestedFileName != null && !suggestedFileName.isBlank())
+					{
 						newFilePage.setFileName(suggestedFileName);
 					}
 
-					Wizard wizard = new Wizard() {
+					Wizard wizard = new Wizard()
+					{
 						@Override
-						public void addPages() {
+						public void addPages()
+						{
 							addPage(newFilePage);
 						}
 
 						@Override
-						public boolean performFinish() {
+						public boolean performFinish()
+						{
 							IFile newFile = newFilePage.createNewFile();
-							if (newFile != null) {
+							if (newFile != null)
+							{
 								try (InputStream stream = new ByteArrayInputStream(
-										codeBlock.getBytes(StandardCharsets.UTF_8))) {
+									codeBlock.getBytes(StandardCharsets.UTF_8)))
+								{
 									newFile.setContents(stream, true, true, null);
 									logger.info("New file created at: " + newFile.getFullPath().toString());
 									return true;
-								} catch (CoreException | IOException e) {
+								}
+								catch (CoreException | IOException e)
+								{
 									logger.error("Error creating new file", e);
 								}
 							}
@@ -269,26 +312,32 @@ public class ChatViewPresenter {
 					};
 
 					WizardDialog dialog = new WizardDialog(
-							PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), wizard);
+						PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), wizard);
 					dialog.open();
-				} else {
+				}
+				else
+				{
 					logger.error("No active project found");
 				}
-			} catch (Exception e) {
+			}
+			catch (Exception e)
+			{
 				logger.error("Error opening new file wizard", e);
 			}
 		});
 	}
 
-	public void onRemoveMessage(String messageId) {
+	public void onRemoveMessage(String messageId)
+	{
 		contents.stream().filter(message -> messageId.equals(message.getId())).findFirst()
-				.ifPresent(messageToRemove -> contents.remove(messageToRemove));
+			.ifPresent(messageToRemove -> contents.remove(messageToRemove));
 		applyToView(view -> {
 			view.removeMessage(messageId);
 		});
 	}
 
-	public void setChatView(ChatView chatView) {
+	public void setChatView(ChatView chatView)
+	{
 		this.chatView = chatView;
 	}
 }

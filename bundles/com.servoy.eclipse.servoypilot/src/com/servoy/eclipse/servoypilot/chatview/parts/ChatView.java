@@ -46,8 +46,10 @@ import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
-public class ChatView {
-	public enum NotificationType {
+public class ChatView
+{
+	public enum NotificationType
+	{
 		INFO, WARNING, ERROR
 	}
 
@@ -71,21 +73,25 @@ public class ChatView {
 	private boolean autoScrollEnabled = true;
 	private int notificationIdCounter = 0;
 	private ToolBar actionToolBar;
-	
+
 	private Runnable chatModelListener = () -> {
 		uiSync.asyncExec(() -> {
 			boolean hasModel = Activator.getDefault().getChatModel() != null;
 			inputArea.setEditable(hasModel);
-			if (!hasModel) {
+			if (!hasModel)
+			{
 				inputArea.setText("No chat model configured. Please set up an AI model in preferences. (Window -> Preferences -> Servoy-> Servoy AI Pilot)");
-			} else {
+			}
+			else
+			{
 				inputArea.setText("");
 			}
 		});
-	};	
+	};
 
 	@PostConstruct
-	public void createPartControl(Composite parent) {
+	public void createPartControl(Composite parent)
+	{
 		presenter.setChatView(this);
 		// Create a SashForm to act as the split pane
 		SashForm sashForm = new SashForm(parent, SWT.VERTICAL);
@@ -147,38 +153,44 @@ public class ChatView {
 
 		// Adjust the weights of the SashForm to allocate space
 		sashForm.setWeights(new int[] { 3, 1 }); // 3:1 ratio for browser and input field
-		
+
 		Activator.getDefault().addChatModelChangeListener(chatModelListener);
 	}
 
 	@Focus
-	public void setFocus() {
+	public void setFocus()
+	{
 		inputArea.setFocus();
 	}
-	
+
 	@PreDestroy
-	public void dispose() {
+	public void dispose()
+	{
 		Activator.getDefault().removeChatModelChangeListener(chatModelListener);
 	}
 
-	public void clearChatView() {
+	public void clearChatView()
+	{
 		uiSync.asyncExec(() -> initializeChatView(browser));
 	}
 
-	public void clearUserInput() {
+	public void clearUserInput()
+	{
 		uiSync.asyncExec(() -> inputArea.setText(""));
 	}
-	
-	
 
-	public void setInputEnabled(boolean enabled) {
+
+	public void setInputEnabled(boolean enabled)
+	{
 		uiSync.asyncExec(() -> {
 			boolean realEnabled = Activator.getDefault().getChatModel() != null && enabled;
 			inputArea.setEnabled(realEnabled);
-			if (realEnabled) {
+			if (realEnabled)
+			{
 				// Restore focus after a small delay to ensure browser operations complete
 				Display.getCurrent().timerExec(100, () -> {
-					if (!inputArea.isDisposed()) {
+					if (!inputArea.isDisposed())
+					{
 						inputArea.setFocus();
 					}
 				});
@@ -192,19 +204,25 @@ public class ChatView {
 	 * @param toolbar The parent toolbar
 	 * @return The created toolbar item
 	 */
-	private ToolItem createClearChatToolItem(ToolBar toolbar) {
+	private ToolItem createClearChatToolItem(ToolBar toolbar)
+	{
 		ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-		try {
+		try
+		{
 			// Use the erase/clear icon
 			Image clearIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ETOOL_CLEAR);
 			item.setImage(clearIcon);
-		} catch (Exception e) {
+		}
+		catch (Exception e)
+		{
 			logger.error(e.getMessage(), e);
 		}
 		item.setToolTipText("Clear conversation");
-		item.addSelectionListener(new SelectionAdapter() {
+		item.addSelectionListener(new SelectionAdapter()
+		{
 			@Override
-			public void widgetSelected(SelectionEvent e) {
+			public void widgetSelected(SelectionEvent e)
+			{
 				presenter.onClear();
 			}
 		});
@@ -217,7 +235,8 @@ public class ChatView {
 	 * @param toolbar The parent toolbar
 	 * @return The created toolbar item
 	 */
-	private ToolItem createStopToolItem(ToolBar toolbar) {
+	private ToolItem createStopToolItem(ToolBar toolbar)
+	{
 		ToolItem item = new ToolItem(toolbar, SWT.PUSH);
 
 		// Use the built-in 'IMG_ELCL_STOP' icon
@@ -225,9 +244,11 @@ public class ChatView {
 		item.setImage(stopIcon);
 		item.setToolTipText("Stop generation");
 
-		item.addSelectionListener(new SelectionAdapter() {
+		item.addSelectionListener(new SelectionAdapter()
+		{
 			@Override
-			public void widgetSelected(SelectionEvent e) {
+			public void widgetSelected(SelectionEvent e)
+			{
 				presenter.onStop();
 			}
 		});
@@ -240,24 +261,31 @@ public class ChatView {
 	 * @param toolbar The parent toolbar
 	 * @return The created toolbar item
 	 */
-	private ToolItem createSendToolItem(ToolBar toolbar) {
+	private ToolItem createSendToolItem(ToolBar toolbar)
+	{
 		ToolItem item = new ToolItem(toolbar, SWT.PUSH);
 
-		try {
+		try
+		{
 			// Use the forward/send icon
 			Image sendIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD);
 			item.setImage(sendIcon);
-		} catch (Exception e) {
+		}
+		catch (Exception e)
+		{
 			logger.error(e.getMessage(), e);
 		}
 
 		item.setToolTipText("Send message (Ctrl+Enter)");
 
-		item.addSelectionListener(new SelectionAdapter() {
+		item.addSelectionListener(new SelectionAdapter()
+		{
 			@Override
-			public void widgetSelected(SelectionEvent e) {
+			public void widgetSelected(SelectionEvent e)
+			{
 				String text = inputArea.getText().trim();
-				if (!text.isEmpty()) {
+				if (!text.isEmpty())
+				{
 					presenter.onSendUserMessage(text);
 				}
 			}
@@ -266,21 +294,26 @@ public class ChatView {
 		return item;
 	}
 
-	private Text createUserInput(Composite parent) {
+	private Text createUserInput(Composite parent)
+	{
 		Text inputArea = new Text(parent, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
 
 		// Set a prompt message
 		inputArea.setMessage("Type a message or question here... (Press Ctrl+Enter to send)");
 
 		// Add a key listener to handle Ctrl+Enter to send the message
-		inputArea.addKeyListener(new KeyAdapter() {
+		inputArea.addKeyListener(new KeyAdapter()
+		{
 			@Override
-			public void keyPressed(KeyEvent e) {
-				if (e.keyCode == SWT.CR && (e.stateMask & SWT.CTRL) != 0) {
+			public void keyPressed(KeyEvent e)
+			{
+				if (e.keyCode == SWT.CR && (e.stateMask & SWT.CTRL) != 0)
+				{
 					e.doit = false; // Prevent default behavior
 					// Only send if there's actual text to send
 					String text = inputArea.getText().trim();
-					if (!text.isEmpty()) {
+					if (!text.isEmpty())
+					{
 						presenter.onSendUserMessage(text);
 					}
 				}
@@ -304,15 +337,19 @@ public class ChatView {
 	 * @param inputArea The Text widget to which the custom context menu will be
 	 *                  attached.
 	 */
-	private void createCustomMenu(Text inputArea) {
+	private void createCustomMenu(Text inputArea)
+	{
 		Menu menu = new Menu(inputArea);
 		inputArea.setMenu(menu);
-		menu.addMenuListener(new MenuAdapter() {
+		menu.addMenuListener(new MenuAdapter()
+		{
 			@Override
-			public void menuShown(MenuEvent e) {
+			public void menuShown(MenuEvent e)
+			{
 				// Dynamically adjust the context menu
 				MenuItem[] items = menu.getItems();
-				for (MenuItem item : items) {
+				for (MenuItem item : items)
+				{
 					item.dispose();
 				}
 				// Add Cut, Copy, Paste items
@@ -321,30 +358,35 @@ public class ChatView {
 				MenuItem pasteItem = addMenuItem(menu, "Paste", () -> handlePasteOperation());
 				// Enable or disable paste based on clipboard content
 				Clipboard clipboard = new Clipboard(Display.getCurrent());
-				boolean enablePaste = clipboard.getContents(TextTransfer.getInstance()) != null
-						|| clipboard.getContents(ImageTransfer.getInstance()) != null;
+				boolean enablePaste = clipboard.getContents(TextTransfer.getInstance()) != null || clipboard.getContents(ImageTransfer.getInstance()) != null;
 				pasteItem.setEnabled(enablePaste);
 				clipboard.dispose();
 			}
 		});
 	}
 
-	private MenuItem addMenuItem(Menu parent, String text, Runnable action) {
+	private MenuItem addMenuItem(Menu parent, String text, Runnable action)
+	{
 		MenuItem item = new MenuItem(parent, SWT.NONE);
 		item.setText(text);
 		item.addListener(SWT.Selection, e -> action.run());
 		return item;
 	}
 
-	private void handlePasteOperation() {
+	private void handlePasteOperation()
+	{
 		Clipboard clipboard = new Clipboard(Display.getCurrent());
 
-		if (clipboard.getContents(ImageTransfer.getInstance()) != null) {
-			ImageData imageData = (ImageData) clipboard.getContents(ImageTransfer.getInstance());
+		if (clipboard.getContents(ImageTransfer.getInstance()) != null)
+		{
+			ImageData imageData = (ImageData)clipboard.getContents(ImageTransfer.getInstance());
 			presenter.onAttachmentAdded(imageData);
-		} else {
-			String textData = (String) clipboard.getContents(TextTransfer.getInstance());
-			if (textData != null) {
+		}
+		else
+		{
+			String textData = (String)clipboard.getContents(TextTransfer.getInstance());
+			if (textData != null)
+			{
 				inputArea.insert(textData); // Manually insert text at the
 											// current caret position
 			}
@@ -352,7 +394,8 @@ public class ChatView {
 		}
 	}
 
-	private Browser createChatView(Composite parent) {
+	private Browser createChatView(Composite parent)
+	{
 		Browser browser = new Browser(parent, SWT.NONE);
 //		browser.setData("AUTOSCALE_DISABLED", Boolean.TRUE); 
 		initializeChatView(browser);
@@ -360,7 +403,8 @@ public class ChatView {
 		return browser;
 	}
 
-	private void initializeFunctions(Browser browser) {
+	private void initializeFunctions(Browser browser)
+	{
 		new CopyCodeFunction(browser, "eclipseCopyCode");
 		new ApplyPatchFunction(browser, "eclipseApplyPatch");
 		new DiffCodeFunction(browser, "eclipseDiffCode");
@@ -370,20 +414,21 @@ public class ChatView {
 		new RemoveMessageFunction(browser, "eclipseRemoveMessage");
 	}
 
-	private void initializeChatView(Browser browser) {
+	private void initializeChatView(Browser browser)
+	{
 		String htmlTemplate = """
-				<!DOCTYPE html>
-				<html>
-				    <style>${css}</style>
-				    <style>${fonts}</style>
-				    <script>${js}</script>
-				    <body>
-				            <div id="notification-container"></div>
-				            <div id="content">
-				            </div>
-				    </body>
-				</html>
-				""";
+			<!DOCTYPE html>
+			<html>
+			    <style>${css}</style>
+			    <style>${fonts}</style>
+			    <script>${js}</script>
+			    <body>
+			            <div id="notification-container"></div>
+			            <div id="content">
+			            </div>
+			    </body>
+			</html>
+			""";
 
 		String js = loadJavaScripts();
 		String css = loadCss();
@@ -394,7 +439,8 @@ public class ChatView {
 		browser.setText(htmlTemplate);
 	}
 
-	private String loadFonts() {
+	private String loadFonts()
+	{
 		return sharedFonts.loadFontsCss();
 	}
 
@@ -403,13 +449,15 @@ public class ChatView {
 	 *
 	 * @return A concatenated string containing the content of the loaded CSS files.
 	 */
-	private String loadCss() {
+	private String loadCss()
+	{
 		String[] cssFiles = { "textview_dark.css", "dark.min.css", "fa6.all.min.css", "katex.min.css" };
-		if (true) {
+		if (true)
+		{
 			cssFiles = new String[] { "textview_light.css", "fa6.all.min.css", "katex.min.css" };
 		}
 		var cssContent = Arrays.stream(cssFiles).map(file -> "css/" + file).map(sharedFiles::readFile)
-				.collect(Collectors.joining("\n"));
+			.collect(Collectors.joining("\n"));
 		return cssContent;
 	}
 
@@ -419,25 +467,27 @@ public class ChatView {
 	 * @return A concatenated string containing the content of the loaded JavaScript
 	 *         files.
 	 */
-	private String loadJavaScripts() {
+	private String loadJavaScripts()
+	{
 		String[] jsFiles = { "highlight.min.js", "textview.js", "katex.min.js" };
 
 		var jsContent = Arrays.stream(jsFiles).map(file -> "js/" + file).map(sharedFiles::readFile)
-				.collect(Collectors.joining("\n\n"));
+			.collect(Collectors.joining("\n\n"));
 		return jsContent;
 	}
 
-	public void setMessageHtml(String messageId, String messageBody) {
+	public void setMessageHtml(String messageId, String messageBody)
+	{
 		uiSync.asyncExec(() -> {
 			MarkdownParser parser = new MarkdownParser(messageBody);
 
 			String fixedHtml = escapeHtmlQuotes(fixLineBreaks(parser.parseToHtml()));
 			// inject and highlight html message
-			browser.execute("var target = document.getElementById(\"message-content-" + messageId
-					+ "\") || document.getElementById(\"message-" + messageId
-					+ "\"); if (target) { target.innerHTML = '" + fixedHtml + "'; } renderCode();");
+			browser.execute("var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId +
+				"\"); if (target) { target.innerHTML = '" + fixedHtml + "'; } renderCode();");
 			// Scroll down only if auto-scroll is enabled
-			if (autoScrollEnabled) {
+			if (autoScrollEnabled)
+			{
 				browser.execute("window.scrollTo(0, document.body.scrollHeight);");
 			}
 		});
@@ -451,7 +501,8 @@ public class ChatView {
 	 * @return A string with newline characters replaced by line break escape
 	 *         sequences.
 	 */
-	private String fixLineBreaks(String html) {
+	private String fixLineBreaks(String html)
+	{
 		return html.replace("\n", "\\n").replace("\r", "");
 	}
 
@@ -461,62 +512,67 @@ public class ChatView {
 	 * @param html The input string containing HTML.
 	 * @return A string with escaped quotation marks for proper HTML handling.
 	 */
-	private String escapeHtmlQuotes(String html) {
+	private String escapeHtmlQuotes(String html)
+	{
 		return html.replace("\"", "\\\"").replace("'", "\\'");
 	}
 
-	public void addMessage(String messageId, String role) {
+	public void addMessage(String messageId, String role)
+	{
 		String cssClass = "user".equals(role) ? "chat-bubble me" : "chat-bubble you";
 		uiSync.asyncExec(() -> {
 			browser.execute("""
-					var node = document.createElement("div");
-					node.setAttribute("id", "message-${id}");
-					node.setAttribute("class", "${cssClass}");
+				var node = document.createElement("div");
+				node.setAttribute("id", "message-${id}");
+				node.setAttribute("class", "${cssClass}");
 
-					var toolbar = document.createElement('div');
-					toolbar.setAttribute('class', 'message-toolbar');
+				var toolbar = document.createElement('div');
+				toolbar.setAttribute('class', 'message-toolbar');
 
-					var trash = document.createElement('i');
-					trash.setAttribute('class', 'fa-solid fa-trash');
-					trash.onclick = function() { window.eclipseRemoveMessage('${id}'); };
+				var trash = document.createElement('i');
+				trash.setAttribute('class', 'fa-solid fa-trash');
+				trash.onclick = function() { window.eclipseRemoveMessage('${id}'); };
 
-					toolbar.appendChild(trash);
+				toolbar.appendChild(trash);
 
-					var content = document.createElement('div');
-					content.setAttribute('id', 'message-content-${id}');
+				var content = document.createElement('div');
+				content.setAttribute('id', 'message-content-${id}');
 
-					node.appendChild(toolbar);
-					node.appendChild(content);
+				node.appendChild(toolbar);
+				node.appendChild(content);
 
-					document.getElementById("content").appendChild(node);
-						""".replace("${id}", messageId).replace("${cssClass}", cssClass));
+				document.getElementById("content").appendChild(node);
+					""".replace("${id}", messageId).replace("${cssClass}", cssClass));
 			// Scroll down only if auto-scroll is enabled
-			if (autoScrollEnabled) {
+			if (autoScrollEnabled)
+			{
 				browser.execute("window.scrollTo(0, document.body.scrollHeight);");
 			}
 		});
 	}
 
 	// Add a method to hide the tool use message
-	public void hideMessage(String messageId) {
+	public void hideMessage(String messageId)
+	{
 		uiSync.asyncExec(() -> {
 			browser.execute("""
-					var node = document.getElementById("message-${id}");
-					if(node) {
-					    node.classList.add("hidden");
-					}
-					""".replace("${id}", messageId));
+				var node = document.getElementById("message-${id}");
+				if(node) {
+				    node.classList.add("hidden");
+				}
+				""".replace("${id}", messageId));
 		});
 	}
 
-	public void removeMessage(String messageId) {
+	public void removeMessage(String messageId)
+	{
 		uiSync.asyncExec(() -> {
 			browser.execute("""
-					var node = document.getElementById("message-${id}");
-					if(node) {
-					    node.remove();
-					}
-					""".replace("${id}", messageId));
+				var node = document.getElementById("message-${id}");
+				if(node) {
+				    node.remove();
+				}
+				""".replace("${id}", messageId));
 		});
 	}
 
@@ -542,32 +598,34 @@ public class ChatView {
 	 * @param duration The duration to show the notification
 	 * @param type     The type of notification (INFO, WARNING, ERROR)
 	 */
-	public void showNotification(String message, Duration duration, NotificationType type) {
+	public void showNotification(String message, Duration duration, NotificationType type)
+	{
 		uiSync.asyncExec(() -> {
 			String notificationId = "notification-" + (notificationIdCounter++);
 
 			// Determine icon and color based on type
 			String icon, bgColor, textColor;
-			switch (type) {
-			case INFO:
-				icon = "fa-solid fa-circle-info";
-				bgColor = "#1f6feb";
-				textColor = "#ffffff";
-				break;
-			case WARNING:
-				icon = "fa-solid fa-triangle-exclamation";
-				bgColor = "#d29922";
-				textColor = "#000000";
-				break;
-			case ERROR:
-				icon = "fa-solid fa-circle-xmark";
-				bgColor = "#da3633";
-				textColor = "#ffffff";
-				break;
-			default:
-				icon = "fa-solid fa-circle-info";
-				bgColor = "#1f6feb";
-				textColor = "#ffffff";
+			switch (type)
+			{
+				case INFO :
+					icon = "fa-solid fa-circle-info";
+					bgColor = "#1f6feb";
+					textColor = "#ffffff";
+					break;
+				case WARNING :
+					icon = "fa-solid fa-triangle-exclamation";
+					bgColor = "#d29922";
+					textColor = "#000000";
+					break;
+				case ERROR :
+					icon = "fa-solid fa-circle-xmark";
+					bgColor = "#da3633";
+					textColor = "#ffffff";
+					break;
+				default :
+					icon = "fa-solid fa-circle-info";
+					bgColor = "#1f6feb";
+					textColor = "#ffffff";
 			}
 
 			// Escape message for JavaScript
@@ -575,11 +633,12 @@ public class ChatView {
 
 			// Call JavaScript function to create notification
 			browser.execute(String.format("showNotification('%s', '%s', '%s', '%s', '%s');", notificationId, icon,
-					bgColor, textColor, escapedMessage));
+				bgColor, textColor, escapedMessage));
 
 			// Schedule removal after duration
-			if (duration.toMillis() > 0) {
-				Display.getDefault().timerExec((int) duration.toMillis(), () -> {
+			if (duration.toMillis() > 0)
+			{
+				Display.getDefault().timerExec((int)duration.toMillis(), () -> {
 					uiSync.asyncExec(() -> {
 						browser.execute(String.format("removeNotification('%s');", notificationId));
 					});
@@ -594,9 +653,10 @@ public class ChatView {
 	 * @param text The text to escape
 	 * @return The escaped text safe for JavaScript strings
 	 */
-	private String escapeJavaScript(String text) {
+	private String escapeJavaScript(String text)
+	{
 		return text.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\n", "\\n")
-				.replace("\r", "\\r").replace("\t", "\\t");
+			.replace("\r", "\\r").replace("\t", "\\t");
 	}
 
 	/**
@@ -609,12 +669,14 @@ public class ChatView {
 	 */
 	@Inject
 	@Optional
-	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) ISelection s) {
+	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) ISelection s)
+	{
 		if (s == null || s.isEmpty())
 			return;
 
-		if (s instanceof IStructuredSelection) {
-			IStructuredSelection iss = (IStructuredSelection) s;
+		if (s instanceof IStructuredSelection)
+		{
+			IStructuredSelection iss = (IStructuredSelection)s;
 			if (iss.size() == 1)
 				setSelection(iss.getFirstElement());
 			else
@@ -632,7 +694,8 @@ public class ChatView {
 	 */
 	@Inject
 	@Optional
-	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) Object[] selectedObjects) {
+	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) Object[] selectedObjects)
+	{
 	}
 
 	/**
@@ -646,7 +709,8 @@ public class ChatView {
 	 */
 	@Inject
 	@Optional
-	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) Object o) {
+	public void setSelection(@Named(IServiceConstants.ACTIVE_SELECTION) Object o)
+	{
 
 		// Remove the 2 following lines in pure E4 mode, keep them in mixed mode
 		if (o instanceof ISelection) // Already captured
@@ -658,15 +722,19 @@ public class ChatView {
 	 * allowing the IDE to copy code. It is invoked from JavaScript when the user
 	 * interacts with the chat view to copy a code block.
 	 */
-	private class CopyCodeFunction extends BrowserFunction {
-		public CopyCodeFunction(Browser browser, String name) {
+	private class CopyCodeFunction extends BrowserFunction
+	{
+		public CopyCodeFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof String) {
-				String codeBlock = (String) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String)
+			{
+				String codeBlock = (String)arguments[0];
 				presenter.onCopyCode(codeBlock);
 			}
 			return null;
@@ -678,61 +746,77 @@ public class ChatView {
 	 * allowing the IDE to copy code. It is invoked from JavaScript when the user
 	 * interacts with the chat view to copy a code block.
 	 */
-	private class ApplyPatchFunction extends BrowserFunction {
-		public ApplyPatchFunction(Browser browser, String name) {
+	private class ApplyPatchFunction extends BrowserFunction
+	{
+		public ApplyPatchFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof String) {
-				String codeBlock = (String) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String)
+			{
+				String codeBlock = (String)arguments[0];
 				presenter.onApplyPatch(codeBlock);
 			}
 			return null;
 		}
 	}
 
-	private class InsertCodeFunction extends BrowserFunction {
-		public InsertCodeFunction(Browser browser, String name) {
+	private class InsertCodeFunction extends BrowserFunction
+	{
+		public InsertCodeFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof String) {
-				String codeBlock = (String) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String)
+			{
+				String codeBlock = (String)arguments[0];
 				presenter.onInsertCode(codeBlock);
 			}
 			return null;
 		}
 	}
 
-	private class DiffCodeFunction extends BrowserFunction {
-		public DiffCodeFunction(Browser browser, String name) {
+	private class DiffCodeFunction extends BrowserFunction
+	{
+		public DiffCodeFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof String) {
-				String codeBlock = (String) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String)
+			{
+				String codeBlock = (String)arguments[0];
 				presenter.onDiffCode(codeBlock);
 			}
 			return null;
 		}
 	}
 
-	private class NewFileFunction extends BrowserFunction {
-		public NewFileFunction(Browser browser, String name) {
+	private class NewFileFunction extends BrowserFunction
+	{
+		public NewFileFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && Arrays.stream(arguments).allMatch(s -> s instanceof String)) {
-				String codeBlock = (String) arguments[0];
-				String lang = (String) arguments[1];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && Arrays.stream(arguments).allMatch(s -> s instanceof String))
+			{
+				String codeBlock = (String)arguments[0];
+				String lang = (String)arguments[1];
 				presenter.onNewFile(codeBlock, lang);
 			}
 			return null;
@@ -744,30 +828,38 @@ public class ChatView {
 	 * allowing the browser to notify Java when the user scrolls. It is invoked from
 	 * JavaScript when the scroll position changes.
 	 */
-	private class RemoveMessageFunction extends BrowserFunction {
-		public RemoveMessageFunction(Browser browser, String name) {
+	private class RemoveMessageFunction extends BrowserFunction
+	{
+		public RemoveMessageFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof String) {
-				String messageId = (String) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String)
+			{
+				String messageId = (String)arguments[0];
 				presenter.onRemoveMessage(messageId);
 			}
 			return null;
 		}
 	}
 
-	private class ScrollInteractionFunction extends BrowserFunction {
-		public ScrollInteractionFunction(Browser browser, String name) {
+	private class ScrollInteractionFunction extends BrowserFunction
+	{
+		public ScrollInteractionFunction(Browser browser, String name)
+		{
 			super(browser, name);
 		}
 
 		@Override
-		public Object function(Object[] arguments) {
-			if (arguments.length > 0 && arguments[0] instanceof Boolean) {
-				autoScrollEnabled = (Boolean) arguments[0];
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof Boolean)
+			{
+				autoScrollEnabled = (Boolean)arguments[0];
 			}
 			return null;
 		}

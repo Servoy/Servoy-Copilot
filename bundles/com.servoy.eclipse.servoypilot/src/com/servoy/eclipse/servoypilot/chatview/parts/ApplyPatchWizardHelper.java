@@ -33,91 +33,93 @@ import jakarta.inject.Singleton;
 @Singleton
 public class ApplyPatchWizardHelper
 {
-    @Inject
-    private ILog logger;
-    
-    /**
-     * Displays the apply patch wizard dialog to the user, allowing them to apply a patch to a specified target path.
-     *
-     * @param patch The patch content as a string.
-     * @param targetPath The target path where the patch will be applied.
-     */
-    public void showApplyPatchWizardDialog(String patch, String targetPath) 
-    {
-        // Create an IStorage object to wrap the InputStream
-        var patchStorage = new PatchStorage( patch );
-        var window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-        var part = window.getActivePage().getActivePart();
-        
-        // TODO: for the moment assume the target is associated with the project of currently opened editor
-        // which may not be true
-        var target = getProjectOfCurrentlyOpenedEditor().get();
-        
-        if ( Objects.isNull( target ) )
-        {
-            logger.error( "No project available." );
-            return;
-        }
-        
-        ApplyPatchOperation operation = new ApplyPatchOperation( part, patchStorage, target, new CompareConfiguration() );
-        // Create and open the WizardDialog
-        operation.openWizard();
-    }
-    
+	@Inject
+	private ILog logger;
 
-    /**
-     * Returns the {@link IProject} of the project associated with the currently opened file in the text editor.
-     *
-     * @return The {@link IProject} of the project, or null if the active editor is not a text editor.
-     */
-    private Optional<IProject> getProjectOfCurrentlyOpenedEditor() 
-    {
-        return Optional.ofNullable( PlatformUI.getWorkbench() )
-                       .map( IWorkbench::getActiveWorkbenchWindow )
-                       .map( IWorkbenchWindow::getActivePage )
-                       .map( IWorkbenchPage::getActiveEditor )
-                       .map( IEditorPart::getEditorInput )
-                       .map( editorInput -> editorInput.getAdapter(IFile.class))
-                       .map( IFile::getProject);
-    }
-    
-    private static class PatchStorage implements IStorage
-    {
-        private final String patch;
-        public PatchStorage(String patch)
-        {
-            this.patch = patch;
-        }
-        @Override
-        public <T> T getAdapter( Class<T> arg0 )
-        {
-            return null;
-        }
+	/**
+	 * Displays the apply patch wizard dialog to the user, allowing them to apply a patch to a specified target path.
+	 *
+	 * @param patch The patch content as a string.
+	 * @param targetPath The target path where the patch will be applied.
+	 */
+	public void showApplyPatchWizardDialog(String patch, String targetPath)
+	{
+		// Create an IStorage object to wrap the InputStream
+		var patchStorage = new PatchStorage(patch);
+		var window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+		var part = window.getActivePage().getActivePart();
 
-        @Override
-        public InputStream getContents() throws CoreException
-        {
-            return new ByteArrayInputStream(patch.getBytes(StandardCharsets.UTF_8));
-        }
+		// TODO: for the moment assume the target is associated with the project of currently opened editor
+		// which may not be true
+		var target = getProjectOfCurrentlyOpenedEditor().get();
 
-        @Override
-        public IPath getFullPath()
-        {
-            return null;
-        }
+		if (Objects.isNull(target))
+		{
+			logger.error("No project available.");
+			return;
+		}
 
-        @Override
-        public String getName()
-        {
-            return "patch";
-        }
+		ApplyPatchOperation operation = new ApplyPatchOperation(part, patchStorage, target, new CompareConfiguration());
+		// Create and open the WizardDialog
+		operation.openWizard();
+	}
 
-        @Override
-        public boolean isReadOnly()
-        {
-            return true;
-        }
-        
-    }
-    
+
+	/**
+	 * Returns the {@link IProject} of the project associated with the currently opened file in the text editor.
+	 *
+	 * @return The {@link IProject} of the project, or null if the active editor is not a text editor.
+	 */
+	private Optional<IProject> getProjectOfCurrentlyOpenedEditor()
+	{
+		return Optional.ofNullable(PlatformUI.getWorkbench())
+			.map(IWorkbench::getActiveWorkbenchWindow)
+			.map(IWorkbenchWindow::getActivePage)
+			.map(IWorkbenchPage::getActiveEditor)
+			.map(IEditorPart::getEditorInput)
+			.map(editorInput -> editorInput.getAdapter(IFile.class))
+			.map(IFile::getProject);
+	}
+
+	private static class PatchStorage implements IStorage
+	{
+		private final String patch;
+
+		public PatchStorage(String patch)
+		{
+			this.patch = patch;
+		}
+
+		@Override
+		public <T> T getAdapter(Class<T> arg0)
+		{
+			return null;
+		}
+
+		@Override
+		public InputStream getContents() throws CoreException
+		{
+			return new ByteArrayInputStream(patch.getBytes(StandardCharsets.UTF_8));
+		}
+
+		@Override
+		public IPath getFullPath()
+		{
+			return null;
+		}
+
+		@Override
+		public String getName()
+		{
+			return "patch";
+		}
+
+		@Override
+		public boolean isReadOnly()
+		{
+			return true;
+		}
+
+	}
+
 }
