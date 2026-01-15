@@ -35,6 +35,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.WizardNewFileCreationPage;
 
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
 import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.UserMessage;

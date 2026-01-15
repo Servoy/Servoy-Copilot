@@ -1,6 +1,7 @@
 package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
+import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
@@ -46,7 +47,7 @@ public class ServoyAiModel
 	{
 		AiServices<Assistant> builder = AiServices.builder(Assistant.class);
 		builder.streamingChatModel(model);
-//		builder.tools(null); // TODO add tools
+		builder.tools(new EclipseTools()); // TODO add tools
 //		builder.systemMessageProvider(null); // TODO add system message provider
 		return builder.build();
 	}

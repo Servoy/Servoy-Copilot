@@ -1,4 +1,4 @@
-package com.servoy.eclipse.servoypilot.chatview.parts;
+package com.servoy.eclipse.servoypilot.tools;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
