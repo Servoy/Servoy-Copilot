@@ -1,11 +1,9 @@
 package com.servoy.eclipse.servoypilot.tools;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.langchain4j.agent.tool.P;
