@@ -2,6 +2,9 @@ package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
+import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
+import com.servoy.eclipse.servoypilot.tools.core.ValueListTools;
+import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
@@ -46,8 +49,14 @@ public class ServoyAiModel
 	private Assistant createAiServices(StreamingChatModel model)
 	{
 		AiServices<Assistant> builder = AiServices.builder(Assistant.class);
-		builder.streamingChatModel(model);
-		builder.tools(new EclipseTools()); // TODO add tools
+		builder.streamingChatModel(model);		
+		builder.tools(
+			new EclipseTools(),           // General Eclipse/workspace operations
+			new ValueListTools(),          // core/ - ValueList operations (getValueLists)
+			new DatabaseTools(),           // utility/ - Database schema (listTables)
+			new ButtonComponentTools()     // component/ - Bootstrap buttons (listButtons)
+		);
+		
 //		builder.systemMessageProvider(null); // TODO add system message provider
 		return builder.build();
 	}
