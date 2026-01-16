@@ -1,9 +1,13 @@
 package com.servoy.eclipse.servoypilot.services;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.persistence.IServerManagerInternal;
 import com.servoy.j2db.persistence.ITable;
@@ -14,16 +18,13 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * Service for accessing database schema metadata.
  * Migrated from knowledgebase.mcp DatabaseSchemaService.
  * 
- * PILOT: Minimal implementation with core methods.
+ * Complete implementation with core methods.
  * Provides reusable methods for querying tables, columns, primary keys, and foreign key relationships.
  */
 public class DatabaseSchemaService
 {
 	/**
 	 * Get a database server by name.
-	 *
-	 * @param serverName the database server name
-	 * @return IServerInternal instance or null if not found
 	 */
 	public static IServerInternal getServer(String serverName)
 	{
@@ -46,9 +47,6 @@ public class DatabaseSchemaService
 
 	/**
 	 * Get list of all table names in a server.
-	 *
-	 * @param server the database server
-	 * @return list of table names (empty list if none found)
 	 */
 	public static List<String> getTableNames(IServerInternal server)
 	{
@@ -70,10 +68,6 @@ public class DatabaseSchemaService
 
 	/**
 	 * Get a specific table from a server.
-	 *
-	 * @param server the database server
-	 * @param tableName the table name
-	 * @return ITable instance or null if not found
 	 */
 	public static ITable getTable(IServerInternal server, String tableName)
 	{
@@ -91,5 +85,57 @@ public class DatabaseSchemaService
 			ServoyLog.logError("[DatabaseSchemaService] Failed to get table '" + tableName + "': " + e.getMessage(), e);
 			return null;
 		}
+	}
+
+	/**
+	 * Get all columns for a table.
+	 */
+	public static Collection<Column> getColumns(ITable table)
+	{
+		if (table == null)
+		{
+			return new ArrayList<>();
+		}
+
+		try
+		{
+			return table.getColumns();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[DatabaseSchemaService] Failed to get columns: " + e.getMessage(), e);
+			return new ArrayList<>();
+		}
+	}
+
+	/**
+	 * Get primary key column names for a table.
+	 */
+	public static Set<String> getPrimaryKeyNames(ITable table)
+	{
+		Set<String> pkNames = new HashSet<>();
+
+		if (table == null)
+		{
+			return pkNames;
+		}
+
+		try
+		{
+			List<Column> pkColumns = table.getRowIdentColumns();
+			if (pkColumns != null)
+			{
+				for (Column col : pkColumns)
+				{
+					pkNames.add(col.getName());
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[DatabaseSchemaService] Failed to get primary keys: " + e.getMessage(), e);
+		}
+
+		return pkNames;
 	}
 }
