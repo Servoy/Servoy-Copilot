@@ -156,13 +156,14 @@ public class FormService
 						}
 						break;
 
-					case "navigatorID":
-					case "navigator":
-						if (propValue != null)
-						{
-							form.setNavigatorID(propValue.toString());
-						}
-						break;
+// navigator id property is kind of deprecated, also for 24 and 25 LTS this is a id not a string/uuid
+//					case "navigatorID":
+//					case "navigator":
+//						if (propValue != null)
+//						{
+//							form.setNavigatorID(propValue.toString());
+//						}
+//						break;
 
 					case "initialSort":
 						if (propValue != null)
