@@ -1,12 +1,15 @@
 package com.servoy.eclipse.servoypilot.services;
 
 import java.awt.Dimension;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.IPersist;
@@ -197,6 +200,24 @@ public class FormService
 			throw new RepositoryException("Parent form '" + parentFormName + "' not found");
 		}
 
-		form.setExtendsID(parentForm.getUUID().toString());
+		try
+		{
+			if (ClientVersion.getMajorVersion() >= 2025 && ClientVersion.getMiddleVersion() >= 12)
+			{
+				Method setExtendsID = Form.class.getMethod("setExtendsID", String.class);
+				setExtendsID.invoke(form, parentForm.getUUID().toString());
+			}
+			else
+			{
+				Method setExtendsID = Form.class.getMethod("setExtendsID", int.class);
+				Method getID = Form.class.getMethod("getID");
+				setExtendsID.invoke(form, getID.invoke(parentForm));
+			}
+			servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
+		}
+		catch (NoSuchMethodException | SecurityException | IllegalAccessException | InvocationTargetException e)
+		{
+			ServoyLog.logError("Error setExtendsID on solution of form " + form  , e);
+		}
 	}
 }

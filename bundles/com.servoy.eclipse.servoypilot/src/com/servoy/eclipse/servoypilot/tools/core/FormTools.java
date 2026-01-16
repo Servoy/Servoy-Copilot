@@ -1,5 +1,7 @@
 package com.servoy.eclipse.servoypilot.tools.core;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -16,6 +18,7 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ContextService;
 import com.servoy.eclipse.servoypilot.services.FormService;
 import com.servoy.eclipse.ui.util.EditorUtil;
+import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRootObject;
@@ -199,14 +202,18 @@ public class FormTools
 			return "No forms found" + ("current".equals(scope) ? " in '" + contextName + "'" : " in the active solution");
 		}
 
+// for now disabled this main form marking thing for the AI, why does it need this? most of the time the main form says nothing (just some form with some tabpanels)
+// the biggest problem is that for 2024 and 2025 LTS this first form is still a id not a uuid.
+// so to support both we could use reflection?
+// also this uses the servoyProject is this really a normal main solution?  Modules don't have a first form..		
 		// Get main form if set
-		String mainFormUUID = servoyProject.getEditingSolution().getFirstFormID();
-		String mainFormName = null;
-		if (mainFormUUID != null)
-		{
-			Form mainForm = servoyProject.getEditingSolution().getForm(mainFormUUID);
-			if (mainForm != null) mainFormName = mainForm.getName();
-		}
+//		String mainFormUUID = servoyProject.getEditingSolution().getFirstFormID();
+//		String mainFormName = null;
+//		if (mainFormUUID != null)
+//		{
+//			Form mainForm = servoyProject.getEditingSolution().getForm(mainFormUUID);
+//			if (mainForm != null) mainFormName = mainForm.getName();
+//		}
 
 		StringBuilder result = new StringBuilder();
 
@@ -227,10 +234,10 @@ public class FormTools
 
 			result.append(count).append(". ").append(form.getName());
 
-			if (mainFormName != null && form.getName().equals(mainFormName))
-			{
-				result.append(" [MAIN FORM]");
-			}
+//			if (mainFormName != null && form.getName().equals(mainFormName))
+//			{
+//				result.append(" [MAIN FORM]");
+//			}
 
 			result.append(originInfo);
 
@@ -354,8 +361,25 @@ public class FormTools
 		// Set as main form if specified
 		if (setAsMainForm != null && setAsMainForm)
 		{
-			servoyProject.getEditingSolution().setFirstFormID(form.getUUID().toString());
-			servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
+			try
+			{
+				if (ClientVersion.getMajorVersion() >= 2025 && ClientVersion.getMiddleVersion() >= 12)
+				{
+					Method setFirstFormID = Solution.class.getMethod("setFirstFormID", String.class);
+					setFirstFormID.invoke(servoyProject.getEditingSolution(), form.getUUID().toString());
+				}
+				else
+				{
+					Method setFirstFormID = Solution.class.getMethod("setFirstFormID", int.class);
+					Method getID = Form.class.getMethod("getID");
+					setFirstFormID.invoke(servoyProject.getEditingSolution(), getID.invoke(form));
+				}
+				servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
+			}
+			catch (NoSuchMethodException | SecurityException | IllegalAccessException | InvocationTargetException e)
+			{
+				ServoyLog.logError("Error setFirstFormID on solution of form " + form  , e);
+			}
 		}
 
 		// Open form in editor

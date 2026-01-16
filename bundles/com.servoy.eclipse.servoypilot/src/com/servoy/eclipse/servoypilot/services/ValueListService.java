@@ -274,10 +274,13 @@ public class ValueListService
 							valueList.setAddEmptyValue("always".equals(strVal) || "true".equals(strVal) ? 1 : 2);
 						}
 						break;
-					case "fallbackValueListID":
-					case "fallbackValueList":
-						if (propValue != null && !propValue.toString().trim().isEmpty()) valueList.setFallbackValueListID(propValue.toString());
-						break;
+// for now disable this, how does the AI know what the property needs to be of the valuelist? shouldn't it just give a fallback valuelist name
+// where we then lookup the id/uuid from?
+// also in the LTS releases of 2024 and 2025 this is a integer id an in the latest releaes this is a uuid..
+//					case "fallbackValueListID":
+//					case "fallbackValueList":
+//						if (propValue != null && !propValue.toString().trim().isEmpty()) valueList.setFallbackValueListID(propValue.toString());
+//						break;
 					case "deprecated":
 						if (propValue != null && !propValue.toString().trim().isEmpty()) valueList.setDeprecated(propValue.toString());
 						break;
