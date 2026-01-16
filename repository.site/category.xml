@@ -45,6 +45,9 @@
    <bundle id="org.apache.commons.text">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
+   <bundle id="org.apache.commons.commons-logging">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
    <category-def name="servoy.pilot" label="Servoy AI Pilot"/>
    <category-def name="servoy.pilot.depdencies" label="Servoy AI Pilot dependencies"/>
 </site>
