@@ -301,6 +301,16 @@ version(s), and exceptions or additional permissions here}.&quot;
   You may add additional accurate notices of copyright ownership.
    </license>
 
+   <requires>
+      <import plugin="onnx-models-bge-small-en"/>
+      <import plugin="onnxruntime-extensions.linux.x86_64"/>
+      <import plugin="onnxruntime-extensions.macosx.aarch64"/>
+      <import plugin="onnxruntime-extensions.macosx.x86_64"/>
+      <import plugin="onnxruntime-extensions.win32.aarch64"/>
+      <import plugin="onnxruntime-extensions.win32.x86_64"/>
+      <import plugin="wrapped.com.microsoft.onnxruntime.onnxruntime"/>
+   </requires>
+
    <plugin
          id="com.servoy.eclipse.servoypilot.langchain4j"
          version="0.0.0"/>
