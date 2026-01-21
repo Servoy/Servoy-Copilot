@@ -48,6 +48,27 @@
    <bundle id="org.apache.commons.commons-logging">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
+   <bundle id="onnx-models-bge-small-en">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="onnxruntime-extensions.linux.x86_64">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="onnxruntime-extensions.macosx.aarch64">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="onnxruntime-extensions.macosx.x86_64">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="onnxruntime-extensions.win32.aarch64">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="onnxruntime-extensions.win32.x86_64">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="wrapped.com.microsoft.onnxruntime.onnxruntime">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
    <category-def name="servoy.pilot" label="Servoy AI Pilot"/>
    <category-def name="servoy.pilot.depdencies" label="Servoy AI Pilot dependencies"/>
 </site>

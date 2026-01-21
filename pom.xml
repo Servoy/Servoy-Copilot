@@ -89,11 +89,11 @@
     </build>
 
     <modules>
-        <module>launch_target</module>
+        <module>launch_target_aiplugin</module>
         <module>bundles/com.servoy.eclipse.servoypilot</module>
         <module>bundles/com.servoy.eclipse.servoypilot.langchain4j</module>
         <module>bundles/com.servoy.eclipse.servoypilot.knowledgebase</module>
         <module>features/com.servoy.eclipse.servoypilot.feature</module>
-        <module>repository.site</module>
+        <module>repository.site_aiplugin</module>
     </modules>
 </project>
