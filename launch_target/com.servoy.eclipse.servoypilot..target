@@ -73,8 +73,54 @@
                     <version>2.5</version>
                     <type>jar</type>
                 </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime-extensions.linux.x86_64</artifactId>
+                    <version>0.15.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime-extensions.macosx.aarch64</artifactId>
+                    <version>0.15.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime-extensions.macosx.x86_64</artifactId>
+                    <version>0.15.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime-extensions.win32.aarch64</artifactId>
+                    <version>0.15.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime-extensions.win32.x86_64</artifactId>
+                    <version>0.15.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime</artifactId>
+                    <version>1.23.2</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>com.servoy</groupId>
+                    <artifactId>onnx-models-bge-small-en</artifactId>
+                    <version>1.5.0</version>
+                    <type>jar</type>
+                </dependency>
             </dependencies>
             <repositories>
+                <repository>
+                    <id>servoy</id>
+                    <url>https://developer.servoy.com/mvn_repository/</url>
+                </repository>
                 <repository>
                     <id>central</id>
                     <url>https://repo.maven.apache.org/maven2</url>

@@ -309,4 +309,8 @@ version(s), and exceptions or additional permissions here}.&quot;
          id="com.servoy.eclipse.servoypilot"
          version="0.0.0"/>
 
+   <plugin
+         id="com.servoy.eclipse.servoypilot.knowledgebase"
+         version="0.0.0"/>
+
 </feature>

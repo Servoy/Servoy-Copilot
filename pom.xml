@@ -92,6 +92,7 @@
         <module>launch_target</module>
         <module>bundles/com.servoy.eclipse.servoypilot</module>
         <module>bundles/com.servoy.eclipse.servoypilot.langchain4j</module>
+        <module>bundles/com.servoy.eclipse.servoypilot.knowledgebase</module>
         <module>features/com.servoy.eclipse.servoypilot.feature</module>
         <module>repository.site</module>
     </modules>
