@@ -3,7 +3,9 @@
       id="com.servoy.eclipse.servoypilot.feature"
       label="Servoy AI Copilot feature"
       version="2026.3.0.qualifier"
-      provider-name="Servoy">
+      provider-name="Servoy"
+      os="linux,macosx,win32"
+      arch="aarch64,x86_64">
 
    <description url="https://servoy.com">
       This is the Servoy AI Copilot plugin 
@@ -301,16 +303,6 @@ version(s), and exceptions or additional permissions here}.&quot;
   You may add additional accurate notices of copyright ownership.
    </license>
 
-   <requires>
-      <import plugin="onnx-models-bge-small-en"/>
-      <import plugin="onnxruntime-extensions.linux.x86_64"/>
-      <import plugin="onnxruntime-extensions.macosx.aarch64"/>
-      <import plugin="onnxruntime-extensions.macosx.x86_64"/>
-      <import plugin="onnxruntime-extensions.win32.aarch64"/>
-      <import plugin="onnxruntime-extensions.win32.x86_64"/>
-      <import plugin="wrapped.com.microsoft.onnxruntime.onnxruntime"/>
-   </requires>
-
    <plugin
          id="com.servoy.eclipse.servoypilot.langchain4j"
          version="0.0.0"/>
@@ -321,6 +313,44 @@ version(s), and exceptions or additional permissions here}.&quot;
 
    <plugin
          id="com.servoy.eclipse.servoypilot.knowledgebase"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnx-models-bge-small-en"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnxruntime-extensions.linux.x86_64"
+         os="linux"
+         arch="x86_64"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnxruntime-extensions.macosx.aarch64"
+         os="macosx"
+         arch="aarch64"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnxruntime-extensions.macosx.x86_64"
+         os="macosx"
+         arch="x86_64"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnxruntime-extensions.win32.aarch64"
+         os="win32"
+         arch="aarch64"
+         version="0.0.0"/>
+
+   <plugin
+         id="onnxruntime-extensions.win32.x86_64"
+         os="win32"
+         arch="x86_64"
+         version="0.0.0"/>
+
+   <plugin
+         id="wrapped.com.microsoft.onnxruntime.onnxruntime"
          version="0.0.0"/>
 
 </feature>
