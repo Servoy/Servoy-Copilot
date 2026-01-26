@@ -60,6 +60,15 @@ public class Activator implements BundleActivator
 		}
 		return chatModel.getAssistant();
 	}
+	
+	public ServoyAiModel getServoyAiModel()
+	{
+		if (chatModel == null)
+		{
+			chatModel = new ServoyAiModel(new AiConfiguration());
+		}
+		return chatModel;
+	}
 
 	public void clearChatModel()
 	{

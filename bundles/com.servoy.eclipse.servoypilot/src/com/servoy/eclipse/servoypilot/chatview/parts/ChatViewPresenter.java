@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -34,11 +33,14 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.WizardNewFileCreationPage;
 
+import com.servoy.eclipse.model.ServoyModelFinder;
+import com.servoy.eclipse.model.extensions.IServoyModel;
+import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
-import dev.langchain4j.data.message.Content;
-import dev.langchain4j.data.message.UserMessage;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 
 @Creatable
@@ -62,8 +64,80 @@ public class ChatViewPresenter
 
 	private ChatView chatView;
 	private final List<ChatMessage> contents = new ArrayList<>();
+	private String currentMemoryId = "default"; // Memory ID for conversation isolation
+	private Object activeProjectListener; // IActiveProjectListener proxy
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
+	
+	@PostConstruct
+	public void init()
+	{
+		// Register solution activation listener
+		try
+		{
+			IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
+			if (servoyModel != null)
+			{
+				// Use reflection to avoid compile-time dependency on IActiveProjectListener
+				Class<?> listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
+				
+				Object listener = java.lang.reflect.Proxy.newProxyInstance(
+					listenerClass.getClassLoader(),
+					new Class<?>[] { listenerClass },
+					(proxy, method, args) -> {
+						if ("activeProjectChanged".equals(method.getName()) && args != null && args.length > 0)
+						{
+							ServoyProject project = (ServoyProject)args[0];
+							if (project != null)
+							{
+								String projectName = project.getProject().getName();
+								onSolutionActivated(projectName);
+							}
+						}
+						else if ("activeProjectWillChange".equals(method.getName()))
+						{
+							return Boolean.TRUE;
+						}
+						return null;
+					}
+				);
+				
+				activeProjectListener = listener;
+				
+				// Add listener using reflection
+				servoyModel.getClass().getMethod("addActiveProjectListener", listenerClass)
+					.invoke(servoyModel, listener);
+			}
+		}
+		catch (Exception e)
+		{
+			logger.error("Failed to register solution activation listener", e);
+		}
+	}
+	
+	@PreDestroy
+	public void dispose()
+	{
+		// Remove solution activation listener
+		if (activeProjectListener != null)
+		{
+			try
+			{
+				IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
+				if (servoyModel != null)
+				{
+					Class<?> listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
+					servoyModel.getClass().getMethod("removeActiveProjectListener", listenerClass)
+						.invoke(servoyModel, activeProjectListener);
+				}
+			}
+			catch (Exception e)
+			{
+				logger.error("Failed to remove solution activation listener", e);
+			}
+			activeProjectListener = null;
+		}
+	}
 
 	public void onClear()
 	{
@@ -109,9 +183,17 @@ public class ChatViewPresenter
 //	            attachments.clear();
 		});
 
-		List<Content> content = contents.stream().map(cm -> cm.getContent()).collect(Collectors.toList());
 		contents.add(assistantMessage);
-		Activator.getDefault().getChatModel().chat(UserMessage.userMessage(content)).onPartialResponse(partial -> {
+		
+		// DEBUG: Log what we're sending
+		System.out.println("=== SENDING MESSAGE ===");
+		System.out.println("MemoryId: " + currentMemoryId);
+		System.out.println("User message: " + text);
+		System.out.println("UI contents count: " + contents.size());
+		System.out.println("=======================");
+		
+		// CHANGED: Use new API with memoryId - ChatMemory handles history automatically
+		Activator.getDefault().getChatModel().chat(currentMemoryId, text).onPartialResponse(partial -> {
 			assistantMessage.appendContent(partial);
 			applyToView(part -> {
 				part.setMessageHtml(assistantMessage.getId(),
@@ -122,11 +204,17 @@ public class ChatViewPresenter
 			applyToView(part -> {
 				part.setMessageHtml(assistantMessage.getId(), assistantMessage.getContent().text());
 			});
+			System.out.println("=== RESPONSE RECEIVED ===");
+			System.out.println("Response length: " + fullResponse.aiMessage().text().length() + " chars");
+			System.out.println("=========================");
 		}).onError(error -> {
 			applyToView(part -> {
 				part.setMessageHtml(assistantMessage.getId(), "Error: " + error.getMessage());
 			});
 			logger.error("Error getting assistant response", error);
+			System.out.println("=== ERROR ===");
+			System.out.println("Error: " + error.getMessage());
+			System.out.println("=============");
 		}).start();
 
 	}
@@ -340,5 +428,35 @@ public class ChatViewPresenter
 	public void setChatView(ChatView chatView)
 	{
 		this.chatView = chatView;
+	}
+	
+	/**
+	 * Called when a Servoy solution is activated
+	 * @param projectName the name of the activated project
+	 */
+	public void onSolutionActivated(String projectName)
+	{
+		// Clear LangChain4j chat memory for the old solution
+		Activator.getDefault().getServoyAiModel().clearMemory(currentMemoryId);
+		
+		// Update memory ID to new solution
+		currentMemoryId = projectName != null ? projectName : "default";
+		
+		// Clear UI conversation history
+		contents.clear();
+		
+		applyToView(view -> {
+			view.clearChatView();
+			
+			// Add a system notification message
+			String notificationId = UUID.randomUUID().toString();
+			view.addMessage(notificationId, "system");
+			view.setMessageHtml(notificationId, 
+				"<div style='padding: 10px; background-color: #e8f5e9; border-left: 4px solid #4caf50; margin: 10px 0;'>" +
+				"<strong>New session started</strong><br/>" +
+				"Solution: <strong>" + projectName + "</strong><br/>" +
+				"Conversation history has been reset." +
+				"</div>");
+		});
 	}
 }
