@@ -10,6 +10,7 @@ import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 
 import com.servoy.eclipse.servoypilot.ai.Assistant;
+import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants;
@@ -54,13 +55,10 @@ public class Activator implements BundleActivator
 
 	public Assistant getChatModel()
 	{
-		if (chatModel == null)
-		{
-			chatModel = new ServoyAiModel(new AiConfiguration());
-		}
-		return chatModel.getAssistant();
+		return getServoyAiModel().getAssistant();
 	}
-	
+
+
 	public ServoyAiModel getServoyAiModel()
 	{
 		if (chatModel == null)
@@ -91,4 +89,9 @@ public class Activator implements BundleActivator
 		chatModelChangeListeners.forEach(Runnable::run);
 	}
 
+
+	public CompletionAssistent getCompletionChatModel()
+	{
+		return getServoyAiModel().getCompletionAssistant();
+	}
 }

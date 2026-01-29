@@ -20,5 +20,24 @@
             name="Servoy AI Pilot">
       </page>
    </extension>
+   <extension
+         id="AICompletionProposalComputer"
+         name="AI Proposals"
+         point="org.eclipse.dltk.ui.scriptCompletionProposalComputer">
+      <scriptCompletionProposalComputer
+            categoryId="com.servoy.eclipse.servoypilot.aiProposalCategory"
+            class="com.servoy.eclipse.servoypilot.completion.AICompletionProposalComputer"
+            toolkitId="org.eclipse.dltk.javascript.core.nature">
+         <partition
+               type="__dftl_partition_content_type">
+         </partition>
+      </scriptCompletionProposalComputer>
+   </extension>
 
+<extension
+      id="aiProposalCategory"
+      name="Servoy AI Proposals"
+      point="org.eclipse.dltk.ui.scriptCompletionProposalComputer">
+   <proposalCategory></proposalCategory>
+</extension>
 </plugin>

@@ -18,8 +18,11 @@ import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
 
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
@@ -27,9 +30,9 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 
 public class ServoyAiModel
 {
-
 	private final Assistant assistant;
 	private final ChatMemoryStore chatMemoryStore;
+	private final CompletionAssistent completionAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -43,16 +46,38 @@ public class ServoyAiModel
 		{
 			assistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createAiServices(createOpenAIModel(conf));
-				case GEMINI -> createAiServices(createGeminiModel(conf));
+				case OPENAI -> createChatServices(createOpenAIModel(conf));
+				case GEMINI -> createChatServices(createGeminiModel(conf));
 				case NONE -> null;
 			};
+			completionAssistant = switch (conf.getSelectedModel())
+				{
+					case OPENAI -> createCompletionServices(createOpenAICompletionModel(conf));
+					case GEMINI -> createCompletionServices(createGeminiCompletionModel(conf));
+					case NONE -> null;
+				};
 		}
 		else
 		{
 			assistant = null;
+			completionAssistant = null;
 		}
 	}
+	
+
+	
+	
+
+	public Assistant getAssistant()
+	{
+		return assistant;
+	}
+
+	public CompletionAssistent getCompletionAssistant()
+	{
+		return completionAssistant;
+	}
+
 
 	private OpenAiStreamingChatModel createOpenAIModel(AiConfiguration conf)
 	{
@@ -64,7 +89,7 @@ public class ServoyAiModel
 		return GoogleAiGeminiStreamingChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).build();
 	}
 
-	private Assistant createAiServices(StreamingChatModel model)
+	private Assistant createChatServices(StreamingChatModel model)
 	{
 		// Load system prompt
 		String systemPrompt = loadSystemPrompt();
@@ -128,9 +153,25 @@ public class ServoyAiModel
 		}
 	}
 
-	public Assistant getAssistant()
+	
+	private OpenAiChatModel createOpenAICompletionModel(AiConfiguration conf)
 	{
-		return assistant;
+		return OpenAiChatModel.builder().modelName("gpt-4o-mini").apiKey(conf.getApiKey()).build(); // hard coded once per chat model, completion must be fast
+	}
+
+	private GoogleAiGeminiChatModel createGeminiCompletionModel(AiConfiguration conf)
+	{
+		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName("gemini-2.0-flash").build(); // hard coded once per chat model, completion must be fast
+	}
+	
+	private CompletionAssistent createCompletionServices(ChatModel model) {
+		AiServices<CompletionAssistent> builder = AiServices.builder(CompletionAssistent.class);
+		builder.chatModel(model);
+		builder.systemMessageProvider(object ->  "You are a code completion engine for Servoy JavaScript. " +
+            "Complete the following code. Return ONLY the code snippet to insert at the cursor. " +
+            "Do not include markdown formatting or explanations.\n\nCode:\n");
+		return builder.build();
+		
 	}
 
 	/**

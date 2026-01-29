@@ -14,7 +14,7 @@ Require-Bundle: org.eclipse.core.runtime,
  com.servoy.eclipse.model,
  servoy_shared,
  onnx-models-bge-small-en;bundle-version="1.5.0"
-Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot.knowledgebase
 Bundle-ActivationPolicy: lazy
 Export-Package: com.servoy.eclipse.knowledgebase,
