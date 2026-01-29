@@ -76,7 +76,7 @@ public class Activator implements BundleActivator
 			ServoyEmbeddingService.getInstance();
 			ServoyLog.logInfo("[KnowledgeBase] Embedding service initialized successfully");
 		}
-		catch (Exception e)
+		catch (Throwable e)
 		{
 			ServoyLog.logError("[KnowledgeBase] Failed to initialize embedding service: " + e.getMessage(), e);
 		}
