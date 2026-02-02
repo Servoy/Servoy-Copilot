@@ -40,4 +40,11 @@
       point="org.eclipse.dltk.ui.scriptCompletionProposalComputer">
    <proposalCategory></proposalCategory>
 </extension>
+<extension
+      point="com.servoy.eclipse.core.aiprovider">
+   <aiprovider
+         class="com.servoy.eclipse.servoypilot.ai.AIModelProvider"
+         id="com.servoy.eclipse.servoypilot.aiprovider1">
+   </aiprovider>
+</extension>
 </plugin>
