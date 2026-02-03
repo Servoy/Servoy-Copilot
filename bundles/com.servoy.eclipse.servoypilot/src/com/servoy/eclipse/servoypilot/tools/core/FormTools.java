@@ -17,6 +17,7 @@ import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ContextService;
 import com.servoy.eclipse.servoypilot.services.FormService;
+import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
 import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.persistence.Form;
@@ -43,27 +44,8 @@ public class FormTools
 	public String getForms(
 		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = listFormsImpl(scope != null ? scope : "all");
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error listing forms", exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		return UIThreadHelper.syncExec("getForms",
+			() -> listFormsImpl(scope != null ? scope : "all"));
 	}
 
 	/**
@@ -81,35 +63,19 @@ public class FormTools
 		@P(value = "Set as main form (default: false)", required = false) Boolean setAsMainForm,
 		@P(value = "Additional properties map", required = false) Map<String, Object> properties)
 	{
-		if (name == null || name.trim().isEmpty()) return "Error: name parameter is required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				boolean shouldCreate = create != null && create;
-				int formWidth = width != null ? width : 640;
-				int formHeight = height != null ? height : 480;
-				String formStyle = style != null ? style : "css";
-
-				result[0] = openOrCreateForm(name, shouldCreate, formWidth, formHeight, formStyle,
-					dataSource, extendsForm, setAsMainForm, properties);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (name != null && !name.trim().isEmpty())
 		{
-			ServoyLog.logError("Error opening/creating form: " + name, exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
+			boolean shouldCreate = create != null && create;
+			int formWidth = width != null ? width : 640;
+			int formHeight = height != null ? height : 480;
+			String formStyle = style != null ? style : "css";
 
-		return result[0];
+			return UIThreadHelper.syncExec("openForm",
+				() -> openOrCreateForm(name, shouldCreate, formWidth, formHeight, formStyle,
+					dataSource, extendsForm, setAsMainForm, properties));
+		}
+		
+		return "Error: name parameter is required";
 	}
 
 	/**
@@ -119,29 +85,13 @@ public class FormTools
 	public String deleteForms(
 		@P(value = "Array of form names to delete", required = true) List<String> names)
 	{
-		if (names == null || names.isEmpty()) return "Error: names parameter is required (array of form names)";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = deleteFormsImpl(names);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (names != null && !names.isEmpty())
 		{
-			ServoyLog.logError("Error deleting forms", exception[0]);
-			return "Error: " + exception[0].getMessage();
+			return UIThreadHelper.syncExec("deleteForms",
+				() -> deleteFormsImpl(names));
 		}
-
-		return result[0];
+		
+		return "Error: names parameter is required (array of form names)";
 	}
 
 	// =============================================
@@ -153,12 +103,9 @@ public class FormTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
-
-		String activeSolutionName = servoyProject.getEditingSolution().getName();
+			String activeSolutionName = servoyProject.getEditingSolution().getName();
 		String contextName = null;
 
 		List<Form> forms = new ArrayList<>();
@@ -254,6 +201,9 @@ public class FormTools
 		}
 
 		return result.toString();
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -268,25 +218,20 @@ public class FormTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
+			// Validate style
+			if (!style.equals("css") && !style.equals("responsive"))
+			{
+				throw new RepositoryException("Invalid style value: " + style + ". Must be 'css' or 'responsive'.");
+			}
 
-		// Validate style
-		if (!style.equals("css") && !style.equals("responsive"))
-		{
-			throw new RepositoryException("Invalid style value: " + style + ". Must be 'css' or 'responsive'.");
-		}
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			String targetContext = ContextService.getInstance().getCurrentContext();
+			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
-
-		if (targetProject == null || targetProject.getEditingSolution() == null)
-		{
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
-		}
+			if (targetProject != null && targetProject.getEditingSolution() != null)
+			{
 
 		// Search for existing forms
 		List<Form> allMatchingForms = new ArrayList<>();
@@ -386,13 +331,17 @@ public class FormTools
 		if (isNewForm)
 		{
 			final Form formToOpen = form;
-			Display.getDefault().asyncExec(() -> EditorUtil.openFormDesignEditor(formToOpen));
+			UIThreadHelper.asyncExec("openFormEditor",
+				() -> EditorUtil.openFormDesignEditor(formToOpen));
 		}
 		else if (!allMatchingForms.isEmpty())
 		{
 			final List<Form> formsToOpen = new ArrayList<>(allMatchingForms);
-			Display.getDefault().asyncExec(() -> {
-				for (Form f : formsToOpen) EditorUtil.openFormDesignEditor(f);
+			UIThreadHelper.asyncExec("openFormEditors", () -> {
+				for (Form f : formsToOpen)
+				{
+					EditorUtil.openFormDesignEditor(f);
+				}
 			});
 		}
 
@@ -424,6 +373,12 @@ public class FormTools
 		}
 
 		return result.toString();
+			}
+			
+			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -435,12 +390,9 @@ public class FormTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
-
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
 		String targetContext = ContextService.getInstance().getCurrentContext();
 		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
@@ -594,6 +546,9 @@ public class FormTools
 		}
 
 		return result.toString();
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================

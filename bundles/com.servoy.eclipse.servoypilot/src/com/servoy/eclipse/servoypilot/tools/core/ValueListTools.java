@@ -15,6 +15,7 @@ import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ContextService;
 import com.servoy.eclipse.servoypilot.services.ValueListService;
+import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRootObject;
@@ -27,9 +28,6 @@ import dev.langchain4j.agent.tool.Tool;
 
 /**
  * Tools for Servoy ValueList operations.
- * Migrated from knowledgebase.mcp ValueListToolHandler.
- * 
- * Complete migration: All 3 tools implemented.
  */
 public class ValueListTools
 {
@@ -50,33 +48,14 @@ public class ValueListTools
 		@P(value = "Return column name", required = false) String returnColumn,
 		@P(value = "Additional properties map", required = false) Map<String, Object> properties)
 	{
-		if (name == null || name.trim().isEmpty())
+		if (name != null && !name.trim().isEmpty())
 		{
-			return "Error: name parameter is required";
+			return UIThreadHelper.syncExec("openValueList",
+				() -> openOrCreateValueList(name, customValues, dataSource, relationName,
+					globalMethod, displayColumn, returnColumn, properties));
 		}
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = openOrCreateValueList(name, customValues, dataSource, relationName,
-					globalMethod, displayColumn, returnColumn, properties);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error opening/creating valuelist: " + name, exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		
+		return "Error: name parameter is required";
 	}
 
 	/**
@@ -86,32 +65,13 @@ public class ValueListTools
 	public String deleteValueLists(
 		@P(value = "Array of valuelist names to delete", required = true) List<String> names)
 	{
-		if (names == null || names.isEmpty())
+		if (names != null && !names.isEmpty())
 		{
-			return "Error: names parameter is required (array of valuelist names)";
+			return UIThreadHelper.syncExec("deleteValueLists",
+				() -> deleteValueListsImpl(names));
 		}
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = deleteValueListsImpl(names);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error deleting valuelists", exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		
+		return "Error: names parameter is required (array of valuelist names)";
 	}
 
 	/**
@@ -126,26 +86,8 @@ public class ValueListTools
 	public String getValueLists(
 		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = listValueLists(scope);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			return "Error listing valuelists: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		return UIThreadHelper.syncExec("getValueLists",
+			() -> listValueLists(scope));
 	}
 
 	/**
@@ -154,100 +96,98 @@ public class ValueListTools
 	private String listValueLists(String scope)
 	{
 		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-		if (activeProject == null)
+		if (activeProject != null)
 		{
-			return "Error: No active Servoy project";
-		}
+			Solution activeSolution = activeProject.getEditingSolution();
+			if (activeSolution != null) {
+				StringBuilder result = new StringBuilder();
+				result.append("ValueLists:\n\n");
 
-		Solution activeSolution = activeProject.getEditingSolution();
-		if (activeSolution == null)
-		{
+				// Determine scope
+				boolean currentOnly = "current".equalsIgnoreCase(scope);
+				int totalCount = 0;
+
+				if (currentOnly)
+				{
+					// Current context only
+					ServoyProject contextProject = ContextService.getCurrentContextProject();
+					if (contextProject != null)
+					{
+						Solution contextSolution = contextProject.getEditingSolution();
+						if (contextSolution != null)
+						{
+							String solutionName = contextSolution.getName();
+							Iterator<ValueList> valuelists = contextSolution.getValueLists(false);
+							int count = 0;
+
+							while (valuelists.hasNext())
+							{
+								ValueList vl = valuelists.next();
+								result.append(formatValueListInfo(vl, solutionName));
+								count++;
+								totalCount++;
+							}
+
+							if (count == 0)
+							{
+								result.append("  (No valuelists in ").append(solutionName).append(")\n\n");
+							}
+						}
+					}
+					else
+					{
+						return "Error: No current context set";
+					}
+				}
+				else
+				{
+					// All scope: active solution + modules
+					List<Solution> solutions = new java.util.ArrayList<>();
+					solutions.add(activeSolution);
+
+					// Add modules
+					if (activeSolution.getModulesNames() != null)
+					{
+						String[] moduleNames = activeSolution.getModulesNames().split(",");
+						ServoyProject[] modules = ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
+						for (ServoyProject module : modules)
+						{
+							if (module != null && module.getEditingSolution() != null)
+							{
+								solutions.add(module.getEditingSolution());
+							}
+						}
+					}
+
+					// List valuelists from each solution
+					for (Solution solution : solutions)
+					{
+						String solutionName = solution.getName();
+						Iterator<ValueList> valuelists = solution.getValueLists(false);
+						int count = 0;
+
+						while (valuelists.hasNext())
+						{
+							ValueList vl = valuelists.next();
+							result.append(formatValueListInfo(vl, solutionName));
+							count++;
+							totalCount++;
+						}
+
+						if (count == 0)
+						{
+							result.append("  (No valuelists in ").append(solutionName).append(")\n\n");
+						}
+					}
+				}
+
+				result.insert(0, "Total: " + totalCount + " valuelist(s)\n\n");
+				return result.toString();
+				
+			}
 			return "Error: No active solution";
 		}
-
-		StringBuilder result = new StringBuilder();
-		result.append("ValueLists:\n\n");
-
-		// Determine scope
-		boolean currentOnly = "current".equalsIgnoreCase(scope);
-		int totalCount = 0;
-
-		if (currentOnly)
-		{
-			// Current context only
-			ServoyProject contextProject = ContextService.getCurrentContextProject();
-			if (contextProject != null)
-			{
-				Solution contextSolution = contextProject.getEditingSolution();
-				if (contextSolution != null)
-				{
-					String solutionName = contextSolution.getName();
-					Iterator<ValueList> valuelists = contextSolution.getValueLists(false);
-					int count = 0;
-
-					while (valuelists.hasNext())
-					{
-						ValueList vl = valuelists.next();
-						result.append(formatValueListInfo(vl, solutionName));
-						count++;
-						totalCount++;
-					}
-
-					if (count == 0)
-					{
-						result.append("  (No valuelists in ").append(solutionName).append(")\n\n");
-					}
-				}
-			}
-			else
-			{
-				return "Error: No current context set";
-			}
-		}
-		else
-		{
-			// All scope: active solution + modules
-			List<Solution> solutions = new java.util.ArrayList<>();
-			solutions.add(activeSolution);
-
-			// Add modules
-			if (activeSolution.getModulesNames() != null)
-			{
-				String[] moduleNames = activeSolution.getModulesNames().split(",");
-				ServoyProject[] modules = ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
-				for (ServoyProject module : modules)
-				{
-					if (module != null && module.getEditingSolution() != null)
-					{
-						solutions.add(module.getEditingSolution());
-					}
-				}
-			}
-
-			// List valuelists from each solution
-			for (Solution solution : solutions)
-			{
-				String solutionName = solution.getName();
-				Iterator<ValueList> valuelists = solution.getValueLists(false);
-				int count = 0;
-
-				while (valuelists.hasNext())
-				{
-					ValueList vl = valuelists.next();
-					result.append(formatValueListInfo(vl, solutionName));
-					count++;
-					totalCount++;
-				}
-
-				if (count == 0)
-				{
-					result.append("  (No valuelists in ").append(solutionName).append(")\n\n");
-				}
-			}
-		}
-
-		result.insert(0, "Total: " + totalCount + " valuelist(s)\n\n");
-		return result.toString();
+		return "Error: No active Servoy project";
 	}
 
 	/**
@@ -297,20 +237,15 @@ public class ValueListTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
+			// Resolve target project based on current context
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			String targetContext = ContextService.getInstance().getCurrentContext();
+			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
-		// Resolve target project based on current context
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
-
-		if (targetProject == null || targetProject.getEditingSolution() == null)
-		{
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
-		}
+			if (targetProject != null && targetProject.getEditingSolution() != null)
+			{
 
 		// Determine if this is a READ or CREATE operation
 		boolean hasCustom = (customValues != null && !customValues.isEmpty());
@@ -439,13 +374,17 @@ public class ValueListTools
 		if (isNewValueList)
 		{
 			final ValueList valueListToOpen = valueList;
-			Display.getDefault().asyncExec(() -> EditorUtil.openValueListEditor(valueListToOpen, true));
+			UIThreadHelper.asyncExec("openValueListEditor", 
+				() -> EditorUtil.openValueListEditor(valueListToOpen, true));
 		}
 		else if (!allMatchingValueLists.isEmpty())
 		{
 			final List<ValueList> valueListsToOpen = new ArrayList<>(allMatchingValueLists);
-			Display.getDefault().asyncExec(() -> {
-				for (ValueList vlToOpen : valueListsToOpen) EditorUtil.openValueListEditor(vlToOpen, true);
+			UIThreadHelper.asyncExec("openValueListEditors", () -> {
+				for (ValueList vlToOpen : valueListsToOpen)
+				{
+					EditorUtil.openValueListEditor(vlToOpen, true);
+				}
 			});
 		}
 
@@ -480,6 +419,12 @@ public class ValueListTools
 		}
 
 		return result.toString();
+			}
+			
+			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -491,165 +436,165 @@ public class ValueListTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
+			// Get current context
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			String targetContext = ContextService.getInstance().getCurrentContext();
+			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
-		// Get current context
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			List<String> deletedValueLists = new ArrayList<>();
+			List<String> notFoundValueLists = new ArrayList<>();
+			List<String> needsApproval = new ArrayList<>();
+			Map<String, String> approvalLocations = new HashMap<>();
+			List<ValueList> valueListsToDelete = new ArrayList<>();
 
-		List<String> deletedValueLists = new ArrayList<>();
-		List<String> notFoundValueLists = new ArrayList<>();
-		List<String> needsApproval = new ArrayList<>();
-		Map<String, String> approvalLocations = new HashMap<>();
-		List<ValueList> valueListsToDelete = new ArrayList<>();
-
-		// Find valuelists and check if they're in current context
-		for (String name : names)
-		{
-			if (name == null || name.trim().isEmpty()) continue;
-
-			ValueList valueList = targetProject.getEditingSolution().getValueList(name);
-			String foundInContext = null;
-
-			if (valueList != null)
+			// Find valuelists and check if they're in current context
+			for (String name : names)
 			{
-				foundInContext = targetContext;
-				valueListsToDelete.add(valueList);
-			}
-			else
-			{
-				// Search other locations
-				if (!targetProject.equals(servoyProject))
-				{
-					valueList = servoyProject.getEditingSolution().getValueList(name);
-					if (valueList != null) foundInContext = "active";
-				}
+				if (name == null || name.trim().isEmpty()) continue;
 
-				if (valueList == null)
-				{
-					ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
-					for (ServoyProject module : modules)
-					{
-						if (module != null && module.getEditingSolution() != null && !module.equals(targetProject))
-						{
-							valueList = module.getEditingSolution().getValueList(name);
-							if (valueList != null)
-							{
-								foundInContext = module.getProject().getName();
-								break;
-							}
-						}
-					}
-				}
+				ValueList valueList = targetProject.getEditingSolution().getValueList(name);
+				String foundInContext = null;
 
 				if (valueList != null)
 				{
-					needsApproval.add(name);
-					approvalLocations.put(name, foundInContext);
+					foundInContext = targetContext;
+					valueListsToDelete.add(valueList);
 				}
 				else
 				{
-					notFoundValueLists.add(name);
+					// Search other locations
+					if (!targetProject.equals(servoyProject))
+					{
+						valueList = servoyProject.getEditingSolution().getValueList(name);
+						if (valueList != null) foundInContext = "active";
+					}
+
+					if (valueList == null)
+					{
+						ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
+						for (ServoyProject module : modules)
+						{
+							if (module != null && module.getEditingSolution() != null && !module.equals(targetProject))
+							{
+								valueList = module.getEditingSolution().getValueList(name);
+								if (valueList != null)
+								{
+									foundInContext = module.getProject().getName();
+									break;
+								}
+							}
+						}
+					}
+
+					if (valueList != null)
+					{
+						needsApproval.add(name);
+						approvalLocations.put(name, foundInContext);
+					}
+					else
+					{
+						notFoundValueLists.add(name);
+					}
 				}
 			}
-		}
 
-		// If any items need approval, return approval request message
-		if (!needsApproval.isEmpty())
-		{
-			StringBuilder approvalMsg = new StringBuilder();
-			approvalMsg.append("Current context: ").append(contextDisplay).append("\n\n");
-
-			if (needsApproval.size() == 1)
+			// If any items need approval, return approval request message
+			if (!needsApproval.isEmpty())
 			{
-				String valueListName = needsApproval.get(0);
-				String location = approvalLocations.get(valueListName);
-				String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
+				StringBuilder approvalMsg = new StringBuilder();
+				approvalMsg.append("Current context: ").append(contextDisplay).append("\n\n");
 
-				approvalMsg.append("ValueList '").append(valueListName).append("' found in ").append(locationDisplay).append(".\n");
-				approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
-				approvalMsg.append("To delete this valuelist, I need to switch to ").append(locationDisplay).append(".\n");
-				approvalMsg.append("Do you want to proceed?\n\n");
-				approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
-			}
-			else
-			{
-				approvalMsg.append("Multiple valuelists found in different locations:\n");
-				for (String valueListName : needsApproval)
+				if (needsApproval.size() == 1)
 				{
+					String valueListName = needsApproval.get(0);
 					String location = approvalLocations.get(valueListName);
 					String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
-					approvalMsg.append("  - ").append(valueListName).append(" (in ").append(locationDisplay).append(")\n");
+
+					approvalMsg.append("ValueList '").append(valueListName).append("' found in ").append(locationDisplay).append(".\n");
+					approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
+					approvalMsg.append("To delete this valuelist, I need to switch to ").append(locationDisplay).append(".\n");
+					approvalMsg.append("Do you want to proceed?\n\n");
+					approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
 				}
-				approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
-				approvalMsg.append("Please switch context explicitly using setContext({context: \"module_name\"})");
+				else
+				{
+					approvalMsg.append("Multiple valuelists found in different locations:\n");
+					for (String valueListName : needsApproval)
+					{
+						String location = approvalLocations.get(valueListName);
+						String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
+						approvalMsg.append("  - ").append(valueListName).append(" (in ").append(locationDisplay).append(")\n");
+					}
+					approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
+					approvalMsg.append("Please switch context explicitly using setContext({context: \"module_name\"})");
+				}
+
+				if (!valueListsToDelete.isEmpty())
+				{
+					approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
+					approvalMsg.append(String.join(", ", valueListsToDelete.stream().map(vl -> vl.getName()).toArray(String[]::new)));
+				}
+
+				return approvalMsg.toString();
 			}
 
+			// Delete valuelists (all are in current context)
 			if (!valueListsToDelete.isEmpty())
 			{
-				approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
-				approvalMsg.append(String.join(", ", valueListsToDelete.stream().map(vl -> vl.getName()).toArray(String[]::new)));
-			}
+				EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
 
-			return approvalMsg.toString();
-		}
-
-		// Delete valuelists (all are in current context)
-		if (!valueListsToDelete.isEmpty())
-		{
-			EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
-
-			try
-			{
-				for (ValueList valueList : valueListsToDelete)
+				try
 				{
-					IPersist editingNode = servoyProject.getEditingPersist(valueList.getUUID());
-					if (editingNode == null) editingNode = valueList;
-					repository.deleteObject(editingNode);
-					ServoyLog.logInfo("[ValueListTools] Called deleteObject for valuelist: " + valueList.getName());
+					for (ValueList valueList : valueListsToDelete)
+					{
+						IPersist editingNode = servoyProject.getEditingPersist(valueList.getUUID());
+						if (editingNode == null) editingNode = valueList;
+						repository.deleteObject(editingNode);
+						ServoyLog.logInfo("[ValueListTools] Called deleteObject for valuelist: " + valueList.getName());
+					}
+
+					for (ValueList valueList : valueListsToDelete)
+					{
+						IPersist editingNode = servoyProject.getEditingPersist(valueList.getUUID());
+						if (editingNode == null) editingNode = valueList;
+						servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
+						deletedValueLists.add(valueList.getName());
+						ServoyLog.logInfo("[ValueListTools] Successfully deleted valuelist: " + valueList.getName());
+					}
 				}
-
-				for (ValueList valueList : valueListsToDelete)
+				catch (Exception e)
 				{
-					IPersist editingNode = servoyProject.getEditingPersist(valueList.getUUID());
-					if (editingNode == null) editingNode = valueList;
-					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
-					deletedValueLists.add(valueList.getName());
-					ServoyLog.logInfo("[ValueListTools] Successfully deleted valuelist: " + valueList.getName());
+					ServoyLog.logError("[ValueListTools] FAILED to delete valuelists", e);
+					throw new RepositoryException("Failed to delete valuelists. Error: " + e.getMessage(), e);
 				}
 			}
-			catch (Exception e)
+
+			// Build result message
+			StringBuilder result = new StringBuilder();
+
+			if (!deletedValueLists.isEmpty())
 			{
-				ServoyLog.logError("[ValueListTools] FAILED to delete valuelists", e);
-				throw new RepositoryException("Failed to delete valuelists. Error: " + e.getMessage(), e);
+				result.append("Successfully deleted ").append(deletedValueLists.size()).append(" valuelist(s): ");
+				result.append(String.join(", ", deletedValueLists));
 			}
-		}
 
-		// Build result message
-		StringBuilder result = new StringBuilder();
+			if (!notFoundValueLists.isEmpty())
+			{
+				if (result.length() > 0) result.append("\n\n");
+				result.append("ValueLists not found (").append(notFoundValueLists.size()).append("): ");
+				result.append(String.join(", ", notFoundValueLists));
+			}
 
-		if (!deletedValueLists.isEmpty())
-		{
-			result.append("Successfully deleted ").append(deletedValueLists.size()).append(" valuelist(s): ");
-			result.append(String.join(", ", deletedValueLists));
-		}
-
-		if (!notFoundValueLists.isEmpty())
-		{
-			if (result.length() > 0) result.append("\n\n");
-			result.append("ValueLists not found (").append(notFoundValueLists.size()).append("): ");
-			result.append(String.join(", ", notFoundValueLists));
-		}
-
-		if (deletedValueLists.isEmpty() && notFoundValueLists.isEmpty())
-		{
+			if (deletedValueLists.isEmpty() && notFoundValueLists.isEmpty())
+			{
 			result.append("No valuelists specified for deletion");
 		}
 		return result.toString();
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================

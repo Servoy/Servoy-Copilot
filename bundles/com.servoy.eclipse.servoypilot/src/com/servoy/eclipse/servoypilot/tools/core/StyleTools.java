@@ -8,6 +8,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ContextService;
 import com.servoy.eclipse.servoypilot.services.StyleService;
+import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -28,27 +29,8 @@ public class StyleTools
 		@P(value = "LESS file name (defaults to <solution-name>.less)", required = false) String lessFileName,
 		@P(value = "Scope: 'current' or 'all' (default 'current')", required = false) String scope)
 	{
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = listStylesImpl(lessFileName, scope != null ? scope : "current");
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error listing styles", exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		return UIThreadHelper.syncExec("getStyles",
+			() -> listStylesImpl(lessFileName, scope != null ? scope : "current"));
 	}
 
 	/**
@@ -60,30 +42,18 @@ public class StyleTools
 		@P(value = "CSS content (rules)", required = true) String cssContent,
 		@P(value = "LESS file name (defaults to <solution-name>.less)", required = false) String lessFileName)
 	{
-		if (className == null || className.trim().isEmpty()) return "Error: className parameter is required";
-		if (cssContent == null || cssContent.trim().isEmpty()) return "Error: cssContent parameter is required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = addOrUpdateStyleImpl(className, cssContent, lessFileName);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (className != null && !className.trim().isEmpty() && cssContent != null && !cssContent.trim().isEmpty())
 		{
-			ServoyLog.logError("Error adding/updating style: " + className, exception[0]);
-			return "Error: " + exception[0].getMessage();
+			return UIThreadHelper.syncExec("openStyle",
+				() -> addOrUpdateStyleImpl(className, cssContent, lessFileName));
 		}
-
-		return result[0];
+		
+		if (className == null || className.trim().isEmpty())
+		{
+			return "Error: className parameter is required";
+		}
+		
+		return "Error: cssContent parameter is required";
 	}
 
 	/**
@@ -94,29 +64,13 @@ public class StyleTools
 		@P(value = "CSS class name (without dot)", required = true) String className,
 		@P(value = "LESS file name (defaults to <solution-name>.less)", required = false) String lessFileName)
 	{
-		if (className == null || className.trim().isEmpty()) return "Error: className parameter is required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = deleteStyleImpl(className, lessFileName);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (className != null && !className.trim().isEmpty())
 		{
-			ServoyLog.logError("Error deleting style: " + className, exception[0]);
-			return "Error: " + exception[0].getMessage();
+			return UIThreadHelper.syncExec("deleteStyle",
+				() -> deleteStyleImpl(className, lessFileName));
 		}
-
-		return result[0];
+		
+		return "Error: className parameter is required";
 	}
 
 	// =============================================
@@ -128,12 +82,9 @@ public class StyleTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null)
+		if (servoyProject != null)
 		{
-			throw new Exception("No active Servoy solution project found");
-		}
-
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
 		String targetContext = ContextService.getInstance().getCurrentContext();
 		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
@@ -197,6 +148,9 @@ public class StyleTools
 
 			return result.toString();
 		}
+		}
+		
+		throw new Exception("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -208,12 +162,9 @@ public class StyleTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null)
+		if (servoyProject != null)
 		{
-			throw new Exception("No active Servoy solution project found");
-		}
-
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
 		String targetContext = ContextService.getInstance().getCurrentContext();
 		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
@@ -319,6 +270,9 @@ public class StyleTools
 		{
 			return "Successfully created style class '" + className + "' in " + contextDisplay + " (file: " + targetFile + ")";
 		}
+		}
+		
+		throw new Exception("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -330,12 +284,9 @@ public class StyleTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null)
+		if (servoyProject != null)
 		{
-			throw new Exception("No active Servoy solution project found");
-		}
-
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
 		String targetContext = ContextService.getInstance().getCurrentContext();
 		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
@@ -376,6 +327,9 @@ public class StyleTools
 			: solutionName + ".less";
 
 		return "Successfully deleted style class '" + className + "' from " + contextDisplay + " (file: " + targetFile + ")";
+		}
+		
+		throw new Exception("No active Servoy solution project found");
 	}
 
 	// =============================================

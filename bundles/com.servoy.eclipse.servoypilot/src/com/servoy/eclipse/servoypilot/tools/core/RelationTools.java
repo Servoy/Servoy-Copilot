@@ -15,6 +15,7 @@ import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ContextService;
 import com.servoy.eclipse.servoypilot.services.RelationService;
+import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRootObject;
@@ -40,27 +41,8 @@ public class RelationTools
 	public String getRelations(
 		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = listRelationsImpl(scope != null ? scope : "all");
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error listing relations", exception[0]);
-			return "Error: " + exception[0].getMessage();
-		}
-
-		return result[0];
+		return UIThreadHelper.syncExec("getRelations",
+			() -> listRelationsImpl(scope != null ? scope : "all"));
 	}
 
 	/**
@@ -75,30 +57,14 @@ public class RelationTools
 		@P(value = "Foreign column name", required = false) String foreignColumn,
 		@P(value = "Additional properties map", required = false) Map<String, Object> properties)
 	{
-		if (name == null || name.trim().isEmpty()) return "Error: name parameter is required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = openOrCreateRelation(name, primaryDataSource, foreignDataSource,
-					primaryColumn, foreignColumn, properties);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (name != null && !name.trim().isEmpty())
 		{
-			ServoyLog.logError("Error opening/creating relation: " + name, exception[0]);
-			return "Error: " + exception[0].getMessage();
+			return UIThreadHelper.syncExec("openRelation",
+				() -> openOrCreateRelation(name, primaryDataSource, foreignDataSource,
+					primaryColumn, foreignColumn, properties));
 		}
-
-		return result[0];
+		
+		return "Error: name parameter is required";
 	}
 
 	/**
@@ -108,29 +74,13 @@ public class RelationTools
 	public String deleteRelations(
 		@P(value = "Array of relation names to delete", required = true) List<String> names)
 	{
-		if (names == null || names.isEmpty()) return "Error: names parameter is required (array of relation names)";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
-				result[0] = deleteRelationsImpl(names);
-			}
-			catch (Exception e)
-			{
-				exception[0] = e;
-			}
-		});
-
-		if (exception[0] != null)
+		if (names != null && !names.isEmpty())
 		{
-			ServoyLog.logError("Error deleting relations", exception[0]);
-			return "Error: " + exception[0].getMessage();
+			return UIThreadHelper.syncExec("deleteRelations",
+				() -> deleteRelationsImpl(names));
 		}
-
-		return result[0];
+		
+		return "Error: names parameter is required (array of relation names)";
 	}
 
 	// =============================================
@@ -142,12 +92,9 @@ public class RelationTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
-
-		String activeSolutionName = servoyProject.getEditingSolution().getName();
+			String activeSolutionName = servoyProject.getEditingSolution().getName();
 		String contextName = null;
 
 		List<Relation> relations = new ArrayList<>();
@@ -220,6 +167,9 @@ public class RelationTools
 		}
 
 		return result.toString();
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -234,19 +184,14 @@ public class RelationTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			String targetContext = ContextService.getInstance().getCurrentContext();
+			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
-
-		if (targetProject == null || targetProject.getEditingSolution() == null)
-		{
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
-		}
+			if (targetProject != null && targetProject.getEditingSolution() != null)
+			{
 
 		// Determine if this is a READ or CREATE operation
 		boolean hasDataSources = (primaryDataSource != null && !primaryDataSource.trim().isEmpty()) &&
@@ -342,13 +287,17 @@ public class RelationTools
 		if (isNewRelation)
 		{
 			final Relation relationToOpen = relation;
-			Display.getDefault().asyncExec(() -> EditorUtil.openRelationEditor(relationToOpen));
+			UIThreadHelper.asyncExec("openRelationEditor",
+				() -> EditorUtil.openRelationEditor(relationToOpen));
 		}
 		else if (!allMatchingRelations.isEmpty())
 		{
 			final List<Relation> relationsToOpen = new ArrayList<>(allMatchingRelations);
-			Display.getDefault().asyncExec(() -> {
-				for (Relation r : relationsToOpen) EditorUtil.openRelationEditor(r);
+			UIThreadHelper.asyncExec("openRelationEditors", () -> {
+				for (Relation r : relationsToOpen)
+				{
+					EditorUtil.openRelationEditor(r);
+				}
 			});
 		}
 
@@ -384,6 +333,12 @@ public class RelationTools
 		}
 
 		return result.toString();
+			}
+			
+			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================
@@ -395,12 +350,9 @@ public class RelationTools
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
-		if (servoyProject == null || servoyProject.getEditingSolution() == null)
+		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			throw new RepositoryException("No active Servoy solution project found");
-		}
-
-		ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = resolveTargetProject(servoyModel);
 		String targetContext = ContextService.getInstance().getCurrentContext();
 		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
@@ -554,6 +506,9 @@ public class RelationTools
 		}
 
 		return result.toString();
+		}
+		
+		throw new RepositoryException("No active Servoy solution project found");
 	}
 
 	// =============================================

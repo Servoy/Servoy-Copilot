@@ -14,6 +14,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.BootstrapComponentService;
 import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.RepositoryException;
@@ -45,16 +46,11 @@ public class ButtonComponentTools
 		@P(value = "Visible", required = false) Boolean visible,
 		@P(value = "Tooltip", required = false) String toolTipText)
 	{
-		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
-		if (name == null || name.trim().isEmpty()) return "Error: name required";
-		if (cssPosition == null || cssPosition.trim().isEmpty()) return "Error: cssPosition required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
+		if (formName != null && !formName.trim().isEmpty() && 
+		    name != null && !name.trim().isEmpty() && 
+		    cssPosition != null && !cssPosition.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("addButton", () -> {
 				Map<String, Object> properties = new HashMap<>();
 				properties.put("text", text != null ? text : "Button");
 				if (styleClass != null) properties.put("styleClass", styleClass);
@@ -70,17 +66,13 @@ public class ButtonComponentTools
 				String error = BootstrapComponentService.addComponentToForm(
 					projectPath, formName, name, "bootstrapcomponents-button", cssPosition, properties);
 
-				result[0] = error != null ? "Error: " + error : "Successfully added button '" + name + "' to form '" + formName + "'";
-			}
-			catch (Exception e) { exception[0] = e; }
-		});
-
-		if (exception[0] != null)
-		{
-			ServoyLog.logError("Error adding button", exception[0]);
-			return "Error: " + exception[0].getMessage();
+				return error != null ? "Error: " + error : "Successfully added button '" + name + "' to form '" + formName + "'";
+			});
 		}
-		return result[0];
+		
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
+		if (name == null || name.trim().isEmpty()) return "Error: name required";
+		return "Error: cssPosition required";
 	}
 
 	@Tool("Updates an existing button component.")
@@ -98,15 +90,9 @@ public class ButtonComponentTools
 		@P(value = "Visible", required = false) Boolean visible,
 		@P(value = "Tooltip", required = false) String toolTipText)
 	{
-		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
-		if (name == null || name.trim().isEmpty()) return "Error: name required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
+		if (formName != null && !formName.trim().isEmpty() && name != null && !name.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("updateButton", () -> {
 				Map<String, Object> updates = new HashMap<>();
 				if (text != null) updates.put("text", text);
 				if (cssPosition != null) updates.put("cssPosition", cssPosition);
@@ -121,19 +107,17 @@ public class ButtonComponentTools
 
 				if (updates.isEmpty())
 				{
-					result[0] = "Error: No properties to update";
-					return;
+					return "Error: No properties to update";
 				}
 
 				String projectPath = getProjectPath();
 				String error = BootstrapComponentService.updateComponent(projectPath, formName, name, updates);
-				result[0] = error != null ? "Error: " + error : "Successfully updated button '" + name + "'";
-			}
-			catch (Exception e) { exception[0] = e; }
-		});
-
-		if (exception[0] != null) return "Error: " + exception[0].getMessage();
-		return result[0];
+				return error != null ? "Error: " + error : "Successfully updated button '" + name + "'";
+			});
+		}
+		
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
+		return "Error: name required";
 	}
 
 	@Tool("Deletes a button component from a form.")
@@ -141,24 +125,17 @@ public class ButtonComponentTools
 		@P(value = "Form name", required = true) String formName,
 		@P(value = "Button name", required = true) String name)
 	{
-		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
-		if (name == null || name.trim().isEmpty()) return "Error: name required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
+		if (formName != null && !formName.trim().isEmpty() && name != null && !name.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("deleteButton", () -> {
 				String projectPath = getProjectPath();
 				String error = BootstrapComponentService.deleteComponent(projectPath, formName, name);
-				result[0] = error != null ? "Error: " + error : "Successfully deleted button '" + name + "'";
-			}
-			catch (Exception e) { exception[0] = e; }
-		});
-
-		if (exception[0] != null) return "Error: " + exception[0].getMessage();
-		return result[0];
+				return error != null ? "Error: " + error : "Successfully deleted button '" + name + "'";
+			});
+		}
+		
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
+		return "Error: name required";
 	}
 
 	@Tool("Gets detailed information about a button component.")
@@ -166,44 +143,30 @@ public class ButtonComponentTools
 		@P(value = "Form name", required = true) String formName,
 		@P(value = "Button name", required = true) String name)
 	{
-		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
-		if (name == null || name.trim().isEmpty()) return "Error: name required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
+		if (formName != null && !formName.trim().isEmpty() && name != null && !name.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("getButtonInfo", () -> {
 				String projectPath = getProjectPath();
-				result[0] = BootstrapComponentService.getComponentInfo(projectPath, formName, name);
-			}
-			catch (Exception e) { exception[0] = e; }
-		});
-
-		if (exception[0] != null) return "Error: " + exception[0].getMessage();
-		return result[0];
+				return BootstrapComponentService.getComponentInfo(projectPath, formName, name);
+			});
+		}
+		
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
+		return "Error: name required";
 	}
 
 	@Tool("Lists all button components in a form.")
 	public String listButtons(@P(value = "Form name", required = true) String formName)
 	{
-		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
-
-		final String[] result = new String[1];
-		final Exception[] exception = new Exception[1];
-
-		Display.getDefault().syncExec(() -> {
-			try
-			{
+		if (formName != null && !formName.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("listButtons", () -> {
 				String projectPath = getProjectPath();
-				result[0] = BootstrapComponentService.listComponentsByType(projectPath, formName, "bootstrapcomponents-button");
-			}
-			catch (Exception e) { exception[0] = e; }
-		});
-
-		if (exception[0] != null) return "Error: " + exception[0].getMessage();
-		return result[0];
+				return BootstrapComponentService.listComponentsByType(projectPath, formName, "bootstrapcomponents-button");
+			});
+		}
+		
+		return "Error: formName required";
 	}
 
 	// Helper methods
