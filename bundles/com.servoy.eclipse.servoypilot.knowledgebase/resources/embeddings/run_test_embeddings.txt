@@ -1,0 +1,2 @@
+test onnx support
+run embeddings test

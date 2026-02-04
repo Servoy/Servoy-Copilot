@@ -37,6 +37,8 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.servoypilot.services.InstructionsFileService;
+import com.servoy.eclipse.servoypilot.services.InstructionsLoaderService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
 import jakarta.annotation.PostConstruct;
@@ -431,6 +433,58 @@ public class ChatViewPresenter
 	}
 	
 	/**
+	 * Called when user clicks "Save Instructions" from the menu
+	 */
+	public void onSaveInstructions()
+	{
+		logger.info("Save Instructions clicked");
+		
+		// Get the shell and execute the handler
+		PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
+			try
+			{
+				IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+				if (window != null && window.getShell() != null)
+				{
+					com.servoy.eclipse.servoypilot.handlers.SaveInstructionsHandler handler = 
+						new com.servoy.eclipse.servoypilot.handlers.SaveInstructionsHandler();
+					handler.execute(window.getShell());
+				}
+			}
+			catch (Exception e)
+			{
+				logger.error("Error executing Save Instructions handler", e);
+			}
+		});
+	}
+	
+	/**
+	 * Called when user clicks "Load Instructions" from the menu
+	 */
+	public void onLoadInstructions()
+	{
+		logger.info("Load Instructions clicked");
+		
+		// Get the shell and execute the handler
+		PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
+			try
+			{
+				IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+				if (window != null && window.getShell() != null)
+				{
+					com.servoy.eclipse.servoypilot.handlers.LoadInstructionsHandler handler = 
+						new com.servoy.eclipse.servoypilot.handlers.LoadInstructionsHandler();
+					handler.execute(window.getShell());
+				}
+			}
+			catch (Exception e)
+			{
+				logger.error("Error executing Load Instructions handler", e);
+			}
+		});
+	}
+	
+	/**
 	 * Called when a Servoy solution is activated
 	 * @param projectName the name of the activated project
 	 */
@@ -445,6 +499,42 @@ public class ChatViewPresenter
 		// Clear UI conversation history
 		contents.clear();
 		
+		// Phase 3: Manage knowledge base based on .servoy directory
+		IProject project = getProjectByName(projectName);
+		if (project != null)
+		{
+			InstructionsFileService fileService = new InstructionsFileService();
+			InstructionsLoaderService loaderService = new InstructionsLoaderService();
+			
+			if (fileService.servoyDirectoryExists(project))
+			{
+				// Load from .servoy
+				try
+				{
+					loaderService.clearKnowledgeBase();
+					loaderService.loadFromFileSystem(project.getFolder(".servoy"));
+					logger.info("Knowledge base loaded from .servoy directory for solution: " + projectName);
+				}
+				catch (Exception e)
+				{
+					logger.error("Error loading knowledge base from .servoy directory", e);
+				}
+			}
+			else
+			{
+				// Clear knowledge base (new/empty solution)
+				try
+				{
+					loaderService.clearKnowledgeBase();
+					logger.info("Knowledge base cleared for solution without .servoy directory: " + projectName);
+				}
+				catch (Exception e)
+				{
+					logger.error("Error clearing knowledge base", e);
+				}
+			}
+		}
+		
 		applyToView(view -> {
 			view.clearChatView();
 			
@@ -458,5 +548,19 @@ public class ChatViewPresenter
 				"Conversation history has been reset." +
 				"</div>");
 		});
+	}
+	
+	/**
+	 * Get IProject by project name
+	 * @param projectName the name of the Servoy project
+	 * @return the IProject or null if not found
+	 */
+	private IProject getProjectByName(String projectName)
+	{
+		if (projectName == null) return null;
+		
+		ServoyProject servoyProject = ServoyModelFinder.getServoyModel().getServoyProject(projectName);
+		
+		return servoyProject != null ? servoyProject.getProject() : null;
 	}
 }

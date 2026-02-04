@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -458,5 +460,141 @@ public class ServoyEmbeddingService
 		}
 		
 		return count;
+	}
+	
+	/**
+	 * Load embeddings from a directory in the file system.
+	 * Reads embeddings.list file to find all .txt files to load.
+	 * This is an ADDITIVE load - does NOT clear existing embeddings.
+	 * 
+	 * @param embeddingsDir the directory containing embedding .txt files
+	 * @return number of embeddings loaded
+	 */
+	public int loadFromDirectory(Path embeddingsDir)
+	{
+		int loadedCount = 0;
+		
+		try
+		{
+			// Read embeddings.list file
+			Path embeddingsList = embeddingsDir.resolve("embeddings.list");
+			if (!Files.exists(embeddingsList))
+			{
+				ServoyLog.logError("[ServoyEmbeddings] embeddings.list not found in " + embeddingsDir, null);
+				return 0;
+			}
+			
+			List<String> embeddingFiles = Files.readAllLines(embeddingsList, StandardCharsets.UTF_8);
+			
+			for (String embeddingFile : embeddingFiles)
+			{
+				embeddingFile = embeddingFile.trim();
+				if (embeddingFile.isEmpty() || embeddingFile.startsWith("#"))
+				{
+					continue;
+				}
+				
+				Path txtFile = embeddingsDir.resolve(embeddingFile);
+				if (Files.exists(txtFile))
+				{
+					int count = loadEmbeddingsFromFile(txtFile, embeddingFile);
+					loadedCount += count;
+				}
+				else
+				{
+					ServoyLog.logError("[ServoyEmbeddings] Embedding file not found: " + txtFile, null);
+				}
+			}
+			
+			ServoyLog.logInfo("[ServoyEmbeddings] Loaded " + loadedCount + " embeddings from " + embeddingsDir);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[ServoyEmbeddings] Error loading embeddings from directory: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to load embeddings from directory", e);
+		}
+		
+		return loadedCount;
+	}
+	
+	/**
+	 * Load embeddings from a specific file in the file system.
+	 * 
+	 * @param filePath the path to the embeddings file
+	 * @param filename the filename (used to extract category)
+	 * @return number of embeddings loaded
+	 */
+	private int loadEmbeddingsFromFile(Path filePath, String filename)
+	{
+		int count = 0;
+		
+		try
+		{
+			String category = extractCategoryFromFilename(filename);
+			
+			List<String> lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
+			for (String line : lines)
+			{
+				line = line.trim();
+				if (!line.isEmpty() && !line.startsWith("#"))
+				{
+					embed(line, "intent", category);
+					count++;
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[ServoyEmbeddings] Failed to load embeddings from " + filePath + ": " + e.getMessage(), e);
+		}
+		
+		return count;
+	}
+	
+	/**
+	 * Extract category/intent key from filename.
+	 * E.g., "forms.txt" -> "FORMS"
+	 *       "bootstrap/buttons.txt" -> "BOOTSTRAP_BUTTONS"
+	 * 
+	 * @param filename the file name (may include subdirectory)
+	 * @return the category key in uppercase
+	 */
+	private String extractCategoryFromFilename(String filename)
+	{
+		// Remove file extension
+		String baseName = filename;
+		if (baseName.contains("."))
+		{
+			baseName = baseName.substring(0, baseName.lastIndexOf('.'));
+		}
+		
+		// Replace path separators and hyphens with underscores, convert to uppercase
+		String category = baseName.replace("/", "_")
+		                          .replace("\\", "_")
+		                          .replace("-", "_")
+		                          .toUpperCase();
+		
+		return category;
+	}
+	
+	/**
+	 * Clear all embeddings from the store.
+	 * Does not reload - just clears.
+	 */
+	public void clearEmbeddings()
+	{
+		this.embeddingStore.removeAll();
+		this.embeddingCount = 0;
+		ServoyLog.logInfo("[ServoyEmbeddings] All embeddings cleared");
+	}
+	
+	/**
+	 * Check if embeddings are currently loaded.
+	 * 
+	 * @return true if embedding store has content
+	 */
+	public boolean hasEmbeddings()
+	{
+		return embeddingCount > 0;
 	}
 }

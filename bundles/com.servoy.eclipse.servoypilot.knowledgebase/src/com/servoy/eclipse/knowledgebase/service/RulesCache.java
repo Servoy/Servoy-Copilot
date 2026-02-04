@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -175,5 +177,83 @@ public class RulesCache
 			ServoyLog.logError("[RulesCache] Failed to load rule from " + path + ": " + e.getMessage(), e);
 		}
 		return false;
+	}
+	
+	/**
+	 * Load rules from a directory in the file system.
+	 * Reads rules.list file to find all .md files to load.
+	 * 
+	 * @param rulesDir the directory containing rule markdown files
+	 * @return number of rules loaded
+	 */
+	public static int loadFromDirectory(Path rulesDir)
+	{
+		int loadedCount = 0;
+		
+		try
+		{
+			// Read rules.list file to get list of rule files
+			Path rulesList = rulesDir.resolve("rules.list");
+			if (!Files.exists(rulesList))
+			{
+				ServoyLog.logError("[RulesCache] rules.list not found in " + rulesDir, null);
+				return 0;
+			}
+			
+			List<String> ruleFiles = Files.readAllLines(rulesList, StandardCharsets.UTF_8);
+			
+			for (String ruleFile : ruleFiles)
+			{
+				ruleFile = ruleFile.trim();
+				if (ruleFile.isEmpty() || ruleFile.startsWith("#"))
+				{
+					continue;
+				}
+				
+				Path mdFile = rulesDir.resolve(ruleFile);
+				if (Files.exists(mdFile))
+				{
+					String content = Files.readString(mdFile, StandardCharsets.UTF_8);
+					String intent = extractIntentFromFilename(ruleFile);
+					rulesCache.put(intent, content);
+					loadedCount++;
+				}
+				else
+				{
+					ServoyLog.logError("[RulesCache] Rule file not found: " + mdFile, null);
+				}
+			}
+			
+			ServoyLog.logInfo("[RulesCache] Loaded " + loadedCount + " rules from " + rulesDir);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[RulesCache] Error loading rules from directory: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to load rules from directory", e);
+		}
+		
+		return loadedCount;
+	}
+	
+	/**
+	 * Extract intent key from filename.
+	 * E.g., "forms.md" -> "FORMS"
+	 *       "bootstrap/buttons.md" -> "BOOTSTRAP_BUTTONS"
+	 * 
+	 * @param filename the rule filename (may include subdirectory)
+	 * @return the intent key in uppercase
+	 */
+	private static String extractIntentFromFilename(String filename)
+	{
+		// Remove .md extension
+		String baseName = filename.replace(".md", "");
+		
+		// Replace path separators and hyphens with underscores, convert to uppercase
+		String intent = baseName.replace("/", "_")
+		                        .replace("\\", "_")
+		                        .replace("-", "_")
+		                        .toUpperCase();
+		
+		return intent;
 	}
 }

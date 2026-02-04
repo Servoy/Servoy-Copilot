@@ -97,7 +97,7 @@ public class ServoyAiModel
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = loadSystemPrompt();
 
-		// DEBUG: Log system prompt info
+		// DEBUG: ServoyLog system prompt info
 		System.out.println("=== ServoyAI DEBUG ===");
 		System.out.println("System prompt loaded: " + systemPrompt.length() + " characters");
 		System.out.println("First 200 chars: " + systemPrompt.substring(0, Math.min(200, systemPrompt.length())));
@@ -220,7 +220,8 @@ public class ServoyAiModel
 		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName("gemini-2.0-flash").build(); // hard coded once per chat model, completion must be fast
 	}
 
-	private CompletionAssistent createCompletionServices(ChatModel model) {
+	private CompletionAssistent createCompletionServices(ChatModel model)
+	{
 		AiServices<CompletionAssistent> builder = AiServices.builder(CompletionAssistent.class);
 		builder.chatModel(model);
 		builder.systemMessageProvider(object -> "You are a code completion engine for Servoy JavaScript. " +

@@ -147,6 +147,7 @@ public class ChatView
 //	        modelDropdownItem = createModelSelectorComposite(actionToolBar);
 //	        createAttachmentToolItem(actionToolBar);
 //	        createReplayToolItem(actionToolBar);
+		createInstructionsDropdownToolItem(actionToolBar);
 		createClearChatToolItem(actionToolBar);
 		createStopToolItem(actionToolBar);
 		createSendToolItem(actionToolBar);
@@ -196,6 +197,73 @@ public class ChatView
 				});
 			}
 		});
+	}
+
+	/**
+	 * Creates a toolbar item for instructions management.
+	 * 
+	 * @param toolbar The parent toolbar
+	 * @return The created toolbar item
+	 */
+	private ToolItem createInstructionsDropdownToolItem(ToolBar toolbar)
+	{
+		ToolItem item = new ToolItem(toolbar, SWT.PUSH);
+		
+		try
+		{
+			// Use the hamburger menu icon from JFace
+			Image menuIcon = org.eclipse.jface.resource.JFaceResources.getImage(org.eclipse.jface.dialogs.PopupDialog.POPUP_IMG_MENU);
+			item.setImage(menuIcon);
+		}
+		catch (Exception e)
+		{
+			logger.error(e.getMessage(), e);
+		}
+		
+		item.setToolTipText("Instructions");
+		
+		// Create the popup menu
+		Menu menu = new Menu(toolbar.getShell(), SWT.POP_UP);
+		
+		// Menu item 1: Save Instructions
+		MenuItem saveItem = new MenuItem(menu, SWT.PUSH);
+		saveItem.setText("Save Instructions");
+		saveItem.addSelectionListener(new SelectionAdapter()
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e)
+			{
+				presenter.onSaveInstructions();
+			}
+		});
+		
+		// Menu item 2: Load Instructions
+		MenuItem loadItem = new MenuItem(menu, SWT.PUSH);
+		loadItem.setText("Load Instructions");
+		loadItem.addSelectionListener(new SelectionAdapter()
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e)
+			{
+				presenter.onLoadInstructions();
+			}
+		});
+		
+		// Show menu when button is clicked
+		item.addSelectionListener(new SelectionAdapter()
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e)
+			{
+				// Get the bounds of the toolbar item
+				org.eclipse.swt.graphics.Rectangle rect = item.getBounds();
+				org.eclipse.swt.graphics.Point pt = toolbar.toDisplay(new org.eclipse.swt.graphics.Point(rect.x, rect.y + rect.height));
+				menu.setLocation(pt.x, pt.y);
+				menu.setVisible(true);
+			}
+		});
+		
+		return item;
 	}
 
 	/**
