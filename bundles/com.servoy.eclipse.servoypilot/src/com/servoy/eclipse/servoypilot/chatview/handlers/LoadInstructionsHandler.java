@@ -1,4 +1,4 @@
-package com.servoy.eclipse.servoypilot.handlers;
+package com.servoy.eclipse.servoypilot.chatview.handlers;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.jobs.Job;

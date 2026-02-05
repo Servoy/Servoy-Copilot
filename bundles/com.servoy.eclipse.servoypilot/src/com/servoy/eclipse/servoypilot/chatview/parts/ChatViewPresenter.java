@@ -70,7 +70,7 @@ public class ChatViewPresenter
 	private Object activeProjectListener; // IActiveProjectListener proxy
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
-	
+
 	@PostConstruct
 	public void init()
 	{
@@ -81,11 +81,11 @@ public class ChatViewPresenter
 			if (servoyModel != null)
 			{
 				// Use reflection to avoid compile-time dependency on IActiveProjectListener
-				Class<?> listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
-				
+				Class< ? > listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
+
 				Object listener = java.lang.reflect.Proxy.newProxyInstance(
 					listenerClass.getClassLoader(),
-					new Class<?>[] { listenerClass },
+					new Class< ? >[] { listenerClass },
 					(proxy, method, args) -> {
 						if ("activeProjectChanged".equals(method.getName()) && args != null && args.length > 0)
 						{
@@ -97,15 +97,14 @@ public class ChatViewPresenter
 							}
 						}
 						else if ("activeProjectWillChange".equals(method.getName()))
-						{
-							return Boolean.TRUE;
-						}
-						return null;
+					{
+						return Boolean.TRUE;
 					}
-				);
-				
+						return null;
+					});
+
 				activeProjectListener = listener;
-				
+
 				// Add listener using reflection
 				servoyModel.getClass().getMethod("addActiveProjectListener", listenerClass)
 					.invoke(servoyModel, listener);
@@ -116,7 +115,7 @@ public class ChatViewPresenter
 			logger.error("Failed to register solution activation listener", e);
 		}
 	}
-	
+
 	@PreDestroy
 	public void dispose()
 	{
@@ -128,7 +127,7 @@ public class ChatViewPresenter
 				IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
 				if (servoyModel != null)
 				{
-					Class<?> listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
+					Class< ? > listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
 					servoyModel.getClass().getMethod("removeActiveProjectListener", listenerClass)
 						.invoke(servoyModel, activeProjectListener);
 				}
@@ -186,14 +185,14 @@ public class ChatViewPresenter
 		});
 
 		contents.add(assistantMessage);
-		
+
 		// DEBUG: Log what we're sending
 		System.out.println("=== SENDING MESSAGE ===");
 		System.out.println("MemoryId: " + currentMemoryId);
 		System.out.println("User message: " + text);
 		System.out.println("UI contents count: " + contents.size());
 		System.out.println("=======================");
-		
+
 		// CHANGED: Use new API with memoryId - ChatMemory handles history automatically
 		Activator.getDefault().getChatModel().chat(currentMemoryId, text).onPartialResponse(partial -> {
 			assistantMessage.appendContent(partial);
@@ -431,59 +430,8 @@ public class ChatViewPresenter
 	{
 		this.chatView = chatView;
 	}
-	
-	/**
-	 * Called when user clicks "Save Instructions" from the menu
-	 */
-	public void onSaveInstructions()
-	{
-		logger.info("Save Instructions clicked");
-		
-		// Get the shell and execute the handler
-		PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
-			try
-			{
-				IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-				if (window != null && window.getShell() != null)
-				{
-					com.servoy.eclipse.servoypilot.handlers.SaveInstructionsHandler handler = 
-						new com.servoy.eclipse.servoypilot.handlers.SaveInstructionsHandler();
-					handler.execute(window.getShell());
-				}
-			}
-			catch (Exception e)
-			{
-				logger.error("Error executing Save Instructions handler", e);
-			}
-		});
-	}
-	
-	/**
-	 * Called when user clicks "Load Instructions" from the menu
-	 */
-	public void onLoadInstructions()
-	{
-		logger.info("Load Instructions clicked");
-		
-		// Get the shell and execute the handler
-		PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
-			try
-			{
-				IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-				if (window != null && window.getShell() != null)
-				{
-					com.servoy.eclipse.servoypilot.handlers.LoadInstructionsHandler handler = 
-						new com.servoy.eclipse.servoypilot.handlers.LoadInstructionsHandler();
-					handler.execute(window.getShell());
-				}
-			}
-			catch (Exception e)
-			{
-				logger.error("Error executing Load Instructions handler", e);
-			}
-		});
-	}
-	
+
+
 	/**
 	 * Called when a Servoy solution is activated
 	 * @param projectName the name of the activated project
@@ -492,20 +440,20 @@ public class ChatViewPresenter
 	{
 		// Clear LangChain4j chat memory for the old solution
 		Activator.getDefault().getServoyAiModel().clearMemory(currentMemoryId);
-		
+
 		// Update memory ID to new solution
 		currentMemoryId = projectName != null ? projectName : "default";
-		
+
 		// Clear UI conversation history
 		contents.clear();
-		
+
 		// Phase 3: Manage knowledge base based on .servoy directory
 		IProject project = getProjectByName(projectName);
 		if (project != null)
 		{
 			InstructionsFileService fileService = new InstructionsFileService();
 			InstructionsLoaderService loaderService = new InstructionsLoaderService();
-			
+
 			if (fileService.servoyDirectoryExists(project))
 			{
 				// Load from .servoy
@@ -534,22 +482,22 @@ public class ChatViewPresenter
 				}
 			}
 		}
-		
+
 		applyToView(view -> {
 			view.clearChatView();
-			
+
 			// Add a system notification message
 			String notificationId = UUID.randomUUID().toString();
 			view.addMessage(notificationId, "system");
-			view.setMessageHtml(notificationId, 
+			view.setMessageHtml(notificationId,
 				"<div style='padding: 10px; background-color: #e8f5e9; border-left: 4px solid #4caf50; margin: 10px 0;'>" +
-				"<strong>New session started</strong><br/>" +
-				"Solution: <strong>" + projectName + "</strong><br/>" +
-				"Conversation history has been reset." +
-				"</div>");
+					"<strong>New session started</strong><br/>" +
+					"Solution: <strong>" + projectName + "</strong><br/>" +
+					"Conversation history has been reset." +
+					"</div>");
 		});
 	}
-	
+
 	/**
 	 * Get IProject by project name
 	 * @param projectName the name of the Servoy project
@@ -557,10 +505,13 @@ public class ChatViewPresenter
 	 */
 	private IProject getProjectByName(String projectName)
 	{
-		if (projectName == null) return null;
-		
+		if (projectName == null)
+		{
+			return null;
+		}
+
 		ServoyProject servoyProject = ServoyModelFinder.getServoyModel().getServoyProject(projectName);
-		
+
 		return servoyProject != null ? servoyProject.getProject() : null;
 	}
 }
