@@ -21,6 +21,7 @@
             name="Servoy AI Pilot">
       </page>
    </extension>
+<!--   
    <extension
          id="AICompletionProposalComputer"
          name="AI Proposals"
@@ -48,4 +49,6 @@
          id="com.servoy.eclipse.servoypilot.aiprovider1">
    </aiprovider>
 </extension>
+-->
+
 </plugin>
