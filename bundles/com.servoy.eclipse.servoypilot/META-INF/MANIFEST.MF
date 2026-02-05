@@ -11,8 +11,8 @@ Require-Bundle: org.eclipse.jface,
  org.eclipse.e4.ui.services,
  org.eclipse.e4.core.di.annotations,
  org.eclipse.core.runtime,
- org.eclipse.e4.core.commands;bundle-version="1.1.700",
- org.eclipse.e4.ui.workbench;bundle-version="1.18.100"
+ org.eclipse.e4.core.commands,
+ org.eclipse.e4.ui.workbench
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot
 Import-Package: com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
