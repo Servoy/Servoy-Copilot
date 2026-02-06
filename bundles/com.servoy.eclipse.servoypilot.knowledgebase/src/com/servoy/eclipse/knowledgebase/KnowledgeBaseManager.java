@@ -32,6 +32,7 @@ import org.sablo.specification.Package.IPackageReader;
 
 import com.servoy.eclipse.knowledgebase.service.RulesCache;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService;
+import com.servoy.eclipse.knowledgebase.util.DebugUtils;
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyNGPackageProject;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -83,28 +84,57 @@ public class KnowledgeBaseManager
 	 */
 	public static void loadKnowledgeBasesForSolution(Object solution)
 	{
+		DebugUtils.logMethodEntry("KnowledgeBaseManager", "loadKnowledgeBasesForSolution", solution);
+		
 		if (solution instanceof ServoyProject servoyProject)
 		{
+			DebugUtils.log("KnowledgeBaseManager", "Solution is ServoyProject: " + servoyProject.getProject().getName());
+			
+			DebugUtils.log("KnowledgeBaseManager", "Discovering knowledge base packages...");
 			IPackageReader[] packageReaders = discoverKnowledgeBasePackagesInSolution(servoyProject);
+			
+			DebugUtils.log("KnowledgeBaseManager", "Discovered " + packageReaders.length + " knowledge base packages");
+			for (int i = 0; i < packageReaders.length; i++)
+			{
+				DebugUtils.log("KnowledgeBaseManager", "  Package " + (i+1) + ": " + packageReaders[i].getPackageName());
+			}
+			
 			try
 			{
+				DebugUtils.log("KnowledgeBaseManager", "Getting embedding service instance...");
 				ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
+				
+				DebugUtils.log("KnowledgeBaseManager", "Calling reloadAllKnowledgeBasesFromReaders()...");
 				embeddingService.reloadAllKnowledgeBasesFromReaders(packageReaders);
 				
 				int embeddingCount = embeddingService.getEmbeddingCount();
 				int ruleCount = RulesCache.getRuleCount();
+				
+				DebugUtils.log("KnowledgeBaseManager", "Knowledge base loading complete:");
+				DebugUtils.log("KnowledgeBaseManager", "  - Embeddings: " + embeddingCount);
+				DebugUtils.log("KnowledgeBaseManager", "  - Rules: " + ruleCount);
+				DebugUtils.log("KnowledgeBaseManager", "  - Available intents: " + String.join(", ", RulesCache.getAvailableIntents()));
 				
 				if (packageReaders.length > 0)
 				{
 					ServoyLog.logInfo("[KnowledgeBaseManager] Knowledge bases loaded successfully - " + 
 						embeddingCount + " embeddings, " + ruleCount + " rules");
 				}
+				
+				DebugUtils.logMethodExit("KnowledgeBaseManager", "loadKnowledgeBasesForSolution", 
+					"Success - " + embeddingCount + " embeddings, " + ruleCount + " rules");
 			}
 			catch (Exception e)
 			{
+				DebugUtils.logException("KnowledgeBaseManager", "Error loading knowledge bases", e);
 				ServoyLog.logError("[KnowledgeBaseManager] Error loading/clearing knowledge bases: " + 
 					e.getMessage(), e);
 			}
+		}
+		else
+		{
+			DebugUtils.log("KnowledgeBaseManager", "Solution is not a ServoyProject instance: " + 
+				(solution != null ? solution.getClass().getName() : "null"));
 		}
 	}
 

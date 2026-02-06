@@ -40,6 +40,7 @@
 - `extendsForm` (string, optional): Parent form name for inheritance
 - `setAsMainForm` (boolean, optional, default false): Set as solution's first form
 - `properties` (object, optional): Property map (see Form Properties section)
+- `events` (object, optional): Event handlers map (event name -> method name, see Form Events section)
 
 **Note:** Width/height can be specified directly OR via properties map. Direct parameters preferred for simplicity.
 
@@ -97,6 +98,29 @@ openForm({
     "width": 1024,
     "height": 768,
     "showInMenu": true
+  }
+})
+
+// Update with events (methods must exist in form)
+openForm({
+  name: "ExistingForm",
+  events: {
+    "onLoad": "initializeData",
+    "onShow": "refreshDisplay"
+  }
+})
+
+// Update with properties and events combined
+openForm({
+  name: "ExistingForm",
+  properties: {
+    "styleClass": "enhanced-form",
+    "selectionMode": "single",
+    "titleText": "Updated Form"
+  },
+  events: {
+    "onLoad": "setupForm",
+    "onRecordSelection": "handleSelection"
   }
 })
 ```
@@ -392,15 +416,39 @@ setContext({context: "active"})
 - `useMinWidth` (boolean): Enable minimum width constraint
 - `useMinHeight` (boolean): Enable minimum height constraint
 
-**Core Properties:**
+**Data & Core Properties:**
 - `dataSource` (string): Database table (format: `db:/server_name/table_name`)
-- `showInMenu` (boolean): Show in Window menu (Servoy Client only)
-- `styleName` (string): Servoy style name
-- `navigatorID` (string): Navigator form ID or special values (DEFAULT, NONE, IGNORE)
+- `namedFoundSet` (string): Named foundset ("empty", "separate", or global relation name)
 - `initialSort` (string): Default sort order (e.g., "customer_name asc, id desc")
 
-**Example:**
+**UI & Display Properties:**
+- `showInMenu` (boolean): Show in Window menu (Servoy Client only)
+- `styleName` (string): Servoy style name
+- `styleClass` (string): CSS class name applied to the form
+- `titleText` (string): Form window title text
+- `transparent` (boolean): Enable transparent background
+- `navigatorID` (string): Navigator form ID or special values (DEFAULT, NONE, IGNORE)
+- `scrollbars` (string): Scrollbar settings - "horizontal", "vertical", or "both"
+
+**Selection & Behavior Properties:**
+- `selectionMode` (string): Record selection mode - "default", "single", or "multi"
+
+**Metadata Properties:**
+- `deprecated` (string): Deprecation message/info
+
+**Selection Mode Values:**
+- `"default"` - Default selection behavior
+- `"single"` - Single record selection only
+- `"multi"` - Multiple record selection allowed
+
+**Scrollbars Values:**
+- `"horizontal"` - Horizontal scrollbar only
+- `"vertical"` - Vertical scrollbar only
+- `"both"` - Both horizontal and vertical scrollbars
+
+**Examples:**
 ```javascript
+// Simple properties
 properties: {
   "width": 1024,
   "height": 768,
@@ -408,11 +456,164 @@ properties: {
   "showInMenu": false,
   "initialSort": "name asc"
 }
+
+// UI styling properties
+properties: {
+  "styleClass": "custom-form",
+  "titleText": "Customer Management",
+  "transparent": false,
+  "scrollbars": "vertical"
+}
+
+// Behavior properties
+properties: {
+  "selectionMode": "single",
+  "namedFoundSet": "separate"
+}
+
+// Combined properties
+properties: {
+  "width": 1024,
+  "height": 768,
+  "styleClass": "order-form",
+  "titleText": "Order Details",
+  "selectionMode": "single",
+  "scrollbars": "both",
+  "showInMenu": true,
+  "initialSort": "order_date desc"
+}
 ```
 
 ---
 
-## FORM STYLES
+## FORM EVENTS
+
+**The `events` parameter accepts event name to method name mappings.**
+
+**[CRITICAL] Methods must exist in the form before assigning events. Create methods first using Servoy's method editor.**
+
+**Supported Events:**
+
+**Lifecycle Events:**
+- `onLoad` - Form is loaded/reloaded from repository
+- `onUnLoad` - Form is unloaded from repository
+- `onShow` - Form is displayed (fires every time)
+- `onHide` - Form is hidden
+- `onBeforeHide` - Form wants to hide (can prevent hiding by returning false)
+
+**Record Events:**
+- `onRecordSelection` - Record is selected
+- `onBeforeRecordSelection` - Before record selection (can prevent by returning false)
+- `onRecordEditStart` - User starts editing a record
+- `onRecordEditStop` - Record is being saved (can prevent by returning false)
+
+**Element Events:**
+- `onElementDataChange` - Data changed in form component (fires after component's own handler)
+- `onElementFocusGained` - Component gains focus
+- `onElementFocusLost` - Component loses focus
+
+**UI Events:**
+- `onResize` - Form is resized
+
+**Commands:**
+- `onSort` - Sort command triggered
+
+**Event Parameter Format:**
+```javascript
+events: {
+  "onLoad": "initializeForm",
+  "onShow": "refreshData",
+  "onRecordSelection": "handleSelection"
+}
+```
+
+**[IMPORTANT] Method Resolution:**
+- Event values are method names (strings)
+- Methods must exist in the form's method collection
+- If method not found, event assignment is silently skipped (logged)
+- No error thrown if method missing
+
+**Complete Example with Events:**
+```javascript
+// First, ensure methods exist in form (via Servoy UI):
+// - initForm()
+// - loadData()
+// - handleRecordChange()
+
+// Then assign events:
+openForm({
+  name: "CustomerForm",
+  create: true,
+  width: 1024,
+  height: 768,
+  dataSource: "db:/example_data/customers",
+  properties: {
+    "styleClass": "customer-form",
+    "selectionMode": "single",
+    "titleText": "Customer Management"
+  },
+  events: {
+    "onLoad": "initForm",
+    "onShow": "loadData",
+    "onRecordSelection": "handleRecordChange"
+  }
+})
+```
+
+**Workflow for Adding Events:**
+1. Create form (if new)
+2. Create methods in form using Servoy method editor
+3. Call openForm with events parameter to assign handlers
+
+**Examples:**
+
+```javascript
+// Simple lifecycle events
+openForm({
+  name: "Dashboard",
+  events: {
+    "onLoad": "setupDashboard",
+    "onShow": "refreshWidgets"
+  }
+})
+
+// Record handling events
+openForm({
+  name: "OrderEntry",
+  events: {
+    "onRecordEditStart": "lockRecord",
+    "onRecordEditStop": "validateOrder",
+    "onRecordSelection": "loadOrderDetails"
+  }
+})
+
+// Element interaction events
+openForm({
+  name: "SearchForm",
+  events: {
+    "onElementDataChange": "filterResults",
+    "onElementFocusGained": "highlightField",
+    "onElementFocusLost": "validateField"
+  }
+})
+
+// Combined: properties + events
+openForm({
+  name: "ProductCatalog",
+  properties: {
+    "width": 1200,
+    "height": 800,
+    "styleClass": "catalog-form",
+    "selectionMode": "multi",
+    "scrollbars": "vertical"
+  },
+  events: {
+    "onLoad": "loadCategories",
+    "onShow": "updatePrices",
+    "onSort": "customSortHandler"
+  }
+})
+```
 
 **Choose based on target platform:**
 
@@ -680,6 +881,74 @@ User: "Create CustomerDetail extending NonExistent"
            Available forms: Dashboard, OrderList, ProductView
            Please create NonExistent first or choose an existing parent."
 → STOP (do NOT proceed with openForm)
+```
+
+**Example 14: Create form with multiple properties**
+```
+User: "Create OrderForm with title 'Order Entry', single selection, vertical scrollbars, and custom style class"
+→ openForm({
+    name: "OrderForm",
+    create: true,
+    properties: {
+      "titleText": "Order Entry",
+      "selectionMode": "single",
+      "scrollbars": "vertical",
+      "styleClass": "order-entry-form"
+    }
+  })
+```
+
+**Example 15: Create form with events (methods must exist)**
+```
+User: "Create ProductForm with onLoad and onShow events"
+→ openForm({
+    name: "ProductForm",
+    create: true,
+    events: {
+      "onLoad": "initProducts",
+      "onShow": "refreshProductList"
+    }
+  })
+→ Note: Methods "initProducts" and "refreshProductList" must exist in form
+```
+
+**Example 16: Update form with new properties**
+```
+User: "Make CustomerForm transparent with multi-selection"
+→ openForm({
+    name: "CustomerForm",
+    properties: {
+      "transparent": true,
+      "selectionMode": "multi"
+    }
+  })
+```
+
+**Example 17: Comprehensive form creation**
+```
+User: "Create InvoiceForm: responsive, 1200x900, bound to invoices table, with custom styling, events, and separate foundset"
+→ openForm({
+    name: "InvoiceForm",
+    create: true,
+    width: 1200,
+    height: 900,
+    style: "responsive",
+    dataSource: "db:/example_data/invoices",
+    properties: {
+      "titleText": "Invoice Management",
+      "styleClass": "invoice-form",
+      "selectionMode": "single",
+      "scrollbars": "both",
+      "namedFoundSet": "separate",
+      "showInMenu": true
+    },
+    events: {
+      "onLoad": "loadInvoiceSettings",
+      "onShow": "updateTotals",
+      "onRecordSelection": "selectInvoice",
+      "onRecordEditStop": "validateInvoice"
+    }
+  })
 ```
 
 ---

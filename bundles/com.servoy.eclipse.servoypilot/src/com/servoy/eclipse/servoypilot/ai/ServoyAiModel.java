@@ -135,50 +135,60 @@ public class ServoyAiModel
 	}
 
 	/**
-	 * Load the system prompt from resources with auto-selection based on AI provider.
-	 * Gemini models use a specialized prompt with chain-of-thought reasoning requirements.
-	 * Other models use the default prompt.
+	 * Load the system prompt from active solution's .servoy directory first, with fallback to plugin resources.
+	 * Tries to load from .servoy/system-prompts/chat-system-prompt.txt in the active solution.
+	 * If not found, falls back to plugin resources with auto-selection based on AI provider.
 	 * 
 	 * @return the system prompt text or fallback message if loading fails
 	 */
 	private String loadSystemPrompt()
 	{
-		// Auto-select prompt based on model provider
+		// Try to load from active solution's .servoy directory first
+		String promptFromSolution = loadSystemPromptFromSolution();
+		if (promptFromSolution != null)
+		{
+			System.out.println("=== SYSTEM PROMPT LOADED FROM SOLUTION ===");
+			System.out.println("Source: .servoy/system-prompts/chat-system-prompt.txt");
+			System.out.println("Length: " + promptFromSolution.length() + " characters");
+			System.out.println("==========================================");
+			return promptFromSolution;
+		}
+
+		// Fallback to plugin resources
 		String promptFile = selectPromptFile();
 
 		try (InputStream is = getClass().getResourceAsStream(promptFile))
 		{
-			if (is == null)
+			if (is != null)
 			{
-				System.err.println("System prompt resource not found: " + promptFile);
-				System.err.println("Falling back to default prompt...");
-
-				// Try default prompt as fallback
-				if (!promptFile.equals("/prompts/core-system-prompt.txt"))
-				{
-					try (InputStream fallbackIs = getClass().getResourceAsStream("/prompts/core-system-prompt.txt"))
-					{
-						if (fallbackIs != null)
-						{
-							return new String(fallbackIs.readAllBytes(), StandardCharsets.UTF_8);
-						}
-					}
-					catch (IOException e)
-					{
-						// Continue to final fallback
-					}
-				}
-
-				return "You are a Servoy development assistant."; // Final fallback
+				String prompt = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+				System.out.println("=== SYSTEM PROMPT LOADED FROM RESOURCES ===");
+				System.out.println("Selected prompt: " + promptFile);
+				System.out.println("Provider: " + configuration.getSelectedModel());
+				System.out.println("Model: " + configuration.getModel());
+				System.out.println("===========================================");
+				return prompt;
 			}
 
-			String prompt = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-			System.out.println("=== SYSTEM PROMPT SELECTION ===");
-			System.out.println("Selected prompt: " + promptFile);
-			System.out.println("Provider: " + configuration.getSelectedModel());
-			System.out.println("Model: " + configuration.getModel());
-			System.out.println("================================");
-			return prompt;
+			System.err.println("System prompt resource not found: " + promptFile);
+
+			// Try default prompt as fallback
+			if (!promptFile.equals("/prompts/core-system-prompt.txt"))
+			{
+				try (InputStream fallbackIs = getClass().getResourceAsStream("/prompts/core-system-prompt.txt"))
+				{
+					if (fallbackIs != null)
+					{
+						return new String(fallbackIs.readAllBytes(), StandardCharsets.UTF_8);
+					}
+				}
+				catch (IOException e)
+				{
+					// Continue to final fallback
+				}
+			}
+
+			return "You are a Servoy development assistant."; // Final fallback
 		}
 		catch (IOException e)
 		{
@@ -188,25 +198,59 @@ public class ServoyAiModel
 	}
 
 	/**
+	 * Load system prompt from active solution's .servoy/system-prompts/ directory.
+	 * 
+	 * @return the prompt text if found, null otherwise
+	 */
+	private String loadSystemPromptFromSolution()
+	{
+		try
+		{
+			// Get active project
+			com.servoy.eclipse.model.nature.ServoyProject activeProject = com.servoy.eclipse.model.ServoyModelFinder.getServoyModel().getActiveProject();
+
+			if (activeProject != null && activeProject.getProject() != null)
+			{
+				org.eclipse.core.resources.IProject project = activeProject.getProject();
+				org.eclipse.core.resources.IFolder servoyFolder = project.getFolder(".servoy");
+
+				if (servoyFolder.exists())
+				{
+					org.eclipse.core.resources.IFolder systemPromptsFolder = servoyFolder.getFolder("system-prompts");
+
+					if (systemPromptsFolder.exists())
+					{
+						org.eclipse.core.resources.IFile promptFile = systemPromptsFolder.getFile("chat-system-prompt.txt");
+
+						if (promptFile.exists())
+						{
+							try (InputStream is = promptFile.getContents())
+							{
+								return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+							}
+						}
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			System.err.println("Error loading system prompt from solution: " + e.getMessage());
+			// Return null to fall back to resources
+		}
+
+		return null;
+	}
+
+	/**
 	 * Select the appropriate prompt file based on the AI provider.
 	 * 
 	 * @return the path to the prompt resource file
 	 */
 	private String selectPromptFile()
 	{
-		// Check model provider
-		switch (configuration.getSelectedModel())
-		{
-			case GEMINI :
-				// Gemini requires chain-of-thought reasoning before tool calls
-				return "/prompts/core-system-prompt-gemini.txt";
-
-			case OPENAI :
-			case NONE :
-			default :
-				// GPT-4 and other models use the standard prompt
-				return "/prompts/core-system-prompt.txt";
-		}
+		//TODO: fallback to class loader system prompts (standup discussion needed)
+		return "/system-prompts/chat-system-prompt.txt";
 	}
 
 

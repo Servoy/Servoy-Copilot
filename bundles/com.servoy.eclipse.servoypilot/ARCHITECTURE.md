@@ -1,9 +1,20 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 3, 2026  
+**Last Updated:** February 5, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** All features implemented and functional
+
+**Recent Updates (Feb 5, 2026):**
+- **System Prompts from .servoy directory**: ServoyAiModel now loads chat-system-prompt.txt from active solution's .servoy/system-prompts/ first, with fallback to resources
+- **File renamed**: core-system-prompt.txt → chat-system-prompt.txt in knowledgebase bundle
+- **Services refactored**: InstructionsLoadService, InstructionsSaveService (formerly InstructionsFileService) now follow positive conditional coding rules
+- **System prompts support**: InstructionsLoadService now handles system-prompts/ directory loading
+- **DatabaseTools refactored**: Fixed double-call bug in getTableInfo(), added comprehensive debug logging, follows positive conditionals
+- **Test prompts for DatabaseTools**: Added database-tools-test-prompts.md with 20 test scenarios
+- Added comprehensive form properties support (18 properties)
+- Added complete form events support (13 events + 1 command)
+- Implemented DebugUtils system (controlled by -Dconsole.debug=true)
 
 ---
 
@@ -32,21 +43,18 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |-- Activator.java                        # Plugin lifecycle
 |   |-- ai/
 |   |   |-- Assistant.java                    # LangChain4j AIService interface
-|   |   +-- ServoyAiModel.java                # AI model initialization, memory management
+|   |   +-- ServoyAiModel.java                # AI model initialization, memory management, system prompt loading
 |   |-- chatview/parts/
 |   |   |-- ChatView.java                     # SWT/Browser UI component (with hamburger menu)
 |   |   |-- ChatViewPresenter.java            # Chat logic, conversation management, solution activation
 |   |   |-- CodeEditingService.java           # Diff generation (JGit)
 |   |   +-- ApplyPatchWizardHelper.java       # Code patch application UI
-|   |-- handlers/
-|   |   |-- SaveInstructionsHandler.java      # Save instructions to .servoy/ directory
-|   |   +-- LoadInstructionsHandler.java      # Load instructions from .servoy/ directory
 |   |-- preferences/
 |   |   |-- AiConfiguration.java              # AI provider settings
 |   |   +-- ServoyPilotPreferencePage.java    # Preferences UI
 |   |-- services/                             # Business logic services
-|   |   |-- InstructionsFileService.java      # File operations for .servoy/ directory
-|   |   |-- InstructionsLoaderService.java    # Knowledge base loading/clearing
+|   |   |-- InstructionsSaveService.java      # File operations for .servoy/ directory (save)
+|   |   |-- InstructionsLoadService.java      # Knowledge base loading/clearing (load)
 |   |   |-- BootstrapComponentService.java    # Bootstrap component operations
 |   |   |-- ContextService.java               # Solution/module context management
 |   |   |-- DatabaseSchemaService.java        # Database schema operations
@@ -88,8 +96,7 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 |       +-- ServoyEmbeddingService.java       # Vector embeddings with ONNX model (SPM + file system)
 +-- resources/                                 # Default knowledge base files
     |-- system-prompts/                        # System prompts
-    |   |-- core-system-prompt.txt
-    |   +-- core-system-prompt-gemini.txt
+    |   +-- chat-system-prompt.txt             # Default chat system prompt
     |-- embeddings/                            # Embedding files for RAG
     |   |-- embeddings.list                    # List of embedding files
     |   |-- forms.txt
@@ -266,8 +273,7 @@ Unregisters listener from ServoyModel
 <SolutionProject>/
   .servoy/                          (hidden directory)
     ├── system-prompts/
-    │   ├── core-system-prompt.txt
-    │   └── core-system-prompt-gemini.txt
+    │   └── chat-system-prompt.txt  (custom system prompt for this solution)
     ├── embeddings/
     │   ├── embeddings.list          (list of embedding files to load)
     │   ├── forms.txt
@@ -288,36 +294,47 @@ Unregisters listener from ServoyModel
             └── labels.md
 ```
 
-#### 3.5.1 InstructionsFileService
+#### 3.5.1 InstructionsSaveService
 
-**File:** `services/InstructionsFileService.java`
+**File:** `services/InstructionsSaveService.java`
 
-**Purpose:** File system operations for `.servoy/` directory
+**Purpose:** File system operations for saving knowledge base to `.servoy/` directory
 
 **Key Methods:**
 - `getActiveProject()` - Gets active Servoy solution using ServoyModelFinder
 - `servoyDirectoryExists(IProject)` - Checks if `.servoy/` exists
 - `copyResourcesToSolution(IProject, IProgressMonitor)` - Copies resources from knowledgebase bundle
 - `deleteServoyDirectory(IProject, IProgressMonitor)` - Deletes `.servoy/` completely
+- `findKnowledgebaseBundle()` - Locates the knowledgebase OSGi bundle
+- `createFolderIfNeeded(IFolder, IProgressMonitor)` - Creates folder if it doesn't exist
 - `copyBundleDirectory(...)` - Recursively copies from OSGi bundle
+- `copyBundleFile(...)` - Copies individual file from bundle
 - `createFolderRecursively(...)` - Creates folder hierarchy
 
-**Implementation:** Uses Eclipse IFolder/IFile APIs, handles subdirectories, no logging
+**Implementation:** Uses Eclipse IFolder/IFile APIs, follows positive conditional coding rules, proper error handling
 
-#### 3.5.2 InstructionsLoaderService
+**Refactored (Feb 5, 2026):** All methods now use positive conditionals instead of guard clauses
 
-**File:** `services/InstructionsLoaderService.java`
+#### 3.5.2 InstructionsLoadService
+
+**File:** `services/InstructionsLoadService.java`
 
 **Purpose:** Knowledge base loading and clearing operations
 
 **Key Methods:**
 - `clearKnowledgeBase()` - Clears RulesCache + ServoyEmbeddingService
-- `loadFromFileSystem(IFolder)` - Orchestrates loading from `.servoy/`
+- `loadFromFileSystem(IFolder)` - Orchestrates loading from `.servoy/` (system-prompts, rules, embeddings)
 - `isKnowledgeBaseLoaded()` - Checks if KB has content (rules or embeddings)
+- `loadSystemPromptsFromFolder(IFolder)` - Logs availability of custom system prompts
 - `loadRulesFromFolder(IFolder)` - Loads from `.servoy/rules/`
 - `loadEmbeddingsFromFolder(IFolder)` - Loads from `.servoy/embeddings/`
 
 **Implementation:** Uses ServoyLog, converts IFolder to Path, validates structure, proper exception handling
+
+**Refactored (Feb 5, 2026):** 
+- Now handles system-prompts/ directory
+- All methods use positive conditionals instead of guard clauses
+- Looks for `chat-system-prompt.txt` in system-prompts folder
 
 #### 3.5.3 Knowledge Base File System Loading
 
@@ -404,7 +421,243 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 7. LLM generates final response using tool result
 8. Response streamed to chat UI
 
-### 3.7 Code Editing & Diffing
+### 3.7 FormService - Comprehensive Property & Event Support
+
+**File:** `services/FormService.java`
+
+**Purpose:** Business logic for form CRUD operations with extensive property and event handler support
+
+**Recent Enhancements (Feb 5, 2026):**
+- Extended from 9 to 18 supported form properties
+- Added complete event handler support (13 events + 1 command)
+- Added helper methods for parsing selection mode and scrollbars values
+- Follows positive conditional coding rules
+
+**Supported Properties (18 total):**
+
+1. **Dimension Properties:**
+   - `width`, `height` - Direct dimension setting
+   - `useMinWidth`, `useMinHeight` - Minimum dimension constraints
+
+2. **Data & Core Properties:**
+   - `dataSource` - Database table binding (`db:/server/table`)
+   - `namedFoundSet` - Named foundset ("empty", "separate", or relation name)
+   - `initialSort` - Default sort order (e.g., "name asc, id desc")
+
+3. **UI & Display Properties:**
+   - `showInMenu` - Show in Window menu (Servoy Client)
+   - `styleName` - Servoy style name
+   - `styleClass` - CSS class name
+   - `titleText` - Form window title
+   - `transparent` - Transparent background
+   - `navigatorID` - Navigator form ID
+   - `scrollbars` - Scrollbar settings ("horizontal", "vertical", "both")
+
+4. **Selection & Behavior:**
+   - `selectionMode` - Record selection ("default", "single", "multi")
+
+5. **Metadata:**
+   - `deprecated` - Deprecation message/info
+
+**Supported Events (14 total):**
+
+**Lifecycle Events (5):**
+- `onLoad` - Form loaded/reloaded from repository
+- `onUnLoad` - Form unloaded from repository
+- `onShow` - Form displayed
+- `onHide` - Form hidden
+- `onBeforeHide` - Before form hides (can prevent)
+
+**Record Events (4):**
+- `onRecordSelection` - Record selected
+- `onBeforeRecordSelection` - Before selection (can prevent)
+- `onRecordEditStart` - User starts editing record
+- `onRecordEditStop` - Record being saved (can prevent)
+
+**Element Events (3):**
+- `onElementDataChange` - Data changed in component
+- `onElementFocusGained` - Component gains focus
+- `onElementFocusLost` - Component loses focus
+
+**UI Events (1):**
+- `onResize` - Form resized
+
+**Commands (1):**
+- `onSort` - Sort command triggered
+
+**Key Methods:**
+
+```java
+// Create form in specific project
+Form createFormInProject(ServoyProject, name, width, height, style, dataSource)
+
+// Apply properties to form
+void applyFormProperties(Form, Map<String, Object> properties)
+
+// Apply events to form
+void applyFormEvents(Form, Map<String, String> events, ServoyProject)
+
+// Set form inheritance
+void setFormParent(Form, parentFormName, ServoyProject)
+
+// Helper methods
+int parseSelectionMode(String value)  // "single" → SELECTION_MODE_SINGLE
+int parseScrollbars(String value)     // "both" → SCROLLBARS_BOTH
+String resolveMethodUUID(Form, String methodName)  // Method name → UUID
+```
+
+**Design Approach:**
+- **Permissive pattern:** Type checks, null checks, silent ignore on type mismatch
+- **Reports only actual setter exceptions** to caller
+- **No validation beyond type checking**
+- **Method resolution:** Events require method names, silently skipped if method not found
+
+**Example Usage:**
+```java
+// Create form with properties and events
+Map<String, Object> props = new HashMap<>();
+props.put("titleText", "Customer Management");
+props.put("styleClass", "customer-form");
+props.put("selectionMode", "single");
+props.put("scrollbars", "vertical");
+
+Map<String, String> events = new HashMap<>();
+events.put("onLoad", "initForm");
+events.put("onShow", "refreshData");
+
+Form form = FormService.createFormInProject(project, "customerForm", 1024, 768, "css", dataSource);
+FormService.applyFormProperties(form, props);
+FormService.applyFormEvents(form, events, project);
+```
+
+**Coding Rules Compliance:**
+- Follows positive conditionals (happy path flows naturally)
+- No unnecessary else blocks
+- Error handling at method edges
+- Clean top-to-bottom flow
+
+---
+
+### 3.8 DatabaseTools - Schema Operations with Bug Fix
+
+**File:** `tools/utility/DatabaseTools.java`
+
+**Purpose:** Database schema operations for listing tables and retrieving detailed table information
+
+**Tools (2 total):**
+- `listTables(serverName)` - Lists all tables in a database server
+- `getTableInfo(serverName, tableName)` - Retrieves detailed table info (columns, types, primary keys)
+
+**Critical Bug Fixed (Feb 5, 2026):**
+
+**Problem:** `getTableInfo()` had a race condition bug caused by calling `col.getColumnType()` **twice**:
+```java
+// BEFORE (BUGGY - double call):
+String colTypeName = col.getColumnType() != null ? col.getColumnType().toString() : "UNKNOWN";
+```
+
+First call checked for null, second call could return different value or throw exception.
+
+**Solution:** Call once and store the result:
+```java
+// AFTER (FIXED - single call):
+Object columnTypeObj = col.getColumnType();
+if (columnTypeObj != null)
+{
+    colTypeName = columnTypeObj.toString();
+}
+```
+
+**Additional Improvements:**
+- Positive conditionals throughout (no guard clauses)
+- Try-catch around column type retrieval for safety
+- Per-column error handling (failures don't break entire operation)
+- Comprehensive debug logging (controlled by `-Dconsole.debug=true`)
+- Clean top-to-bottom flow
+
+**Test Prompts:**
+- See `testprompts/database-tools-test-prompts.md` (20 test scenarios)
+
+---
+
+### 3.9 DebugUtils - Console Debugging System
+
+**Files:** 
+- `com.servoy.eclipse.servoypilot/src/.../util/DebugUtils.java`
+- `com.servoy.eclipse.servoypilot.knowledgebase/src/.../util/DebugUtils.java`
+
+**Purpose:** Centralized debug logging controlled by VM argument `-Dconsole.debug=true`
+
+**Activation:**
+Add to Eclipse launch configuration or eclipse.ini:
+```
+-Dconsole.debug=true
+```
+
+**API Methods:**
+```java
+// Simple log message
+DebugUtils.log("ComponentName", "Message with details");
+
+// Log method entry with parameters
+DebugUtils.logMethodEntry("ClassName", "methodName", param1, param2);
+
+// Log method exit with return value
+DebugUtils.logMethodExit("ClassName", "methodName", returnValue);
+
+// Log exceptions with stack trace
+DebugUtils.logException("ComponentName", "Error message", exception);
+
+// Add separator for readability
+DebugUtils.logSeparator();
+
+// Check if debug is enabled (avoid expensive string operations)
+if (DebugUtils.isDebugEnabled()) {
+    DebugUtils.log("Component", "Expensive: " + expensiveOp());
+}
+```
+
+**Output Format:**
+```
+[ServoyPilot-DEBUG] [ComponentName] Message
+[ServoyPilot-DEBUG] [ClassName.methodName] ENTRY - Params: value1, value2
+[ServoyPilot-DEBUG] [ClassName.methodName] EXIT - Return: resultValue
+[ServoyPilot-DEBUG] [ComponentName] ERROR: Error message
+```
+
+**Currently Instrumented:**
+- **DatabaseTools:** `listTables()`, `getTableInfo()` - Complete execution trace
+- **KnowledgeBaseManager:** `loadKnowledgeBasesForSolution()` - Package discovery, loading stats
+- **FormService:** Ready for instrumentation (not yet added)
+
+**Benefits:**
+- **Zero overhead when disabled** - Simple boolean check
+- **Consistent format** - All messages prefixed `[ServoyPilot-DEBUG]`
+- **Easy to filter** - Grep by component or method name
+- **Full stack traces** - Exception logging includes printStackTrace
+- **Easy to extend** - Add to any class/method as needed
+
+**Example Output:**
+```
+[ServoyPilot-DEBUG] [DatabaseTools.listTables] ENTRY - Params: example_data
+[ServoyPilot-DEBUG] [DatabaseTools] Found 15 tables in example_data
+[ServoyPilot-DEBUG] [DatabaseTools.listTables] EXIT - Return: 15 tables
+
+[ServoyPilot-DEBUG] [KnowledgeBaseManager.loadKnowledgeBasesForSolution] ENTRY - Params: ServoyProject@12345
+[ServoyPilot-DEBUG] [KnowledgeBaseManager] Solution is ServoyProject: MySolution
+[ServoyPilot-DEBUG] [KnowledgeBaseManager] Discovered 1 knowledge base packages
+[ServoyPilot-DEBUG] [KnowledgeBaseManager]   Package 1: com.servoy.eclipse.servoypilot.knowledgebase
+[ServoyPilot-DEBUG] [KnowledgeBaseManager] Knowledge base loading complete:
+[ServoyPilot-DEBUG] [KnowledgeBaseManager]   - Embeddings: 256
+[ServoyPilot-DEBUG] [KnowledgeBaseManager]   - Rules: 5
+[ServoyPilot-DEBUG] [KnowledgeBaseManager]   - Available intents: FORMS, RELATIONS, VALUELISTS, STYLES, BOOTSTRAP_BUTTONS
+```
+
+**Documentation:** See `DEBUG_SYSTEM.md` for complete usage guide
+
+---
+
+### 3.10 Code Editing & Diffing
 
 **Services:**
 - `CodeEditingService`: Generates diffs between existing code and AI-proposed code (uses JGit)
@@ -590,14 +843,33 @@ Import-Package: dev.langchain4j.memory,
 
 ## 7. System Prompt Philosophy
 
-The system prompts are **intentionally minimal** and **provider-specific**.
+The system prompts can be **solution-specific** or use **default plugin resources**.
 
-**Dual-Prompt System:**
-- `core-system-prompt.txt` - Default prompt for OpenAI GPT-4 (~2.4K tokens)
-- `core-system-prompt-gemini.txt` - Gemini-specific prompt with chain-of-thought reasoning (~3.5K tokens)
-- Auto-selected based on AI provider configured in preferences
+**System Prompt Loading Priority:**
+1. **Solution-specific** (highest priority): `.servoy/system-prompts/chat-system-prompt.txt` in active solution
+2. **Plugin resources** (fallback): Provider-specific defaults from plugin bundle
+3. **Final fallback**: Hardcoded minimal prompt
 
-**Contents (both prompts):**
+**Loading Flow (ServoyAiModel.loadSystemPrompt()):**
+```java
+1. Try loadSystemPromptFromSolution()
+   → Check active project's .servoy/system-prompts/chat-system-prompt.txt
+   → If found: Load and return (solution-specific customization)
+   
+2. If not found, select from plugin resources based on AI provider:
+   → Gemini: /prompts/core-system-prompt-gemini.txt (~3.5K tokens)
+   → OpenAI: /prompts/core-system-prompt.txt (~2.4K tokens)
+   
+3. If resource not found: Return "You are a Servoy development assistant."
+```
+
+**Benefits of Solution-Specific Prompts:**
+- Customize AI behavior per project/team
+- Include project-specific coding standards
+- Add domain-specific instructions
+- Override default behavior for special solutions
+
+**Default Prompt Contents:**
 1. **7 Critical Rules:**
    - User control (respect cancellations)
    - Never guess parameters
@@ -629,10 +901,10 @@ The system prompts are **intentionally minimal** and **provider-specific**.
 - `getKnowledge` tool: Domain-specific rules retrieved on-demand via embeddings
 - Benefits: Reduced token overhead, always up-to-date knowledge, relevant retrieval
 
-**Trade-off Accepted:**
-- 2.4K tokens sent with every request (vs 17K in original GitHub Copilot instructions)
+**Token Usage:**
+- Default prompts: ~2.4K-3.5K tokens sent with every request
 - Necessary because OpenAI/Gemini APIs are stateless (no MCP session state)
-- 86% reduction from original prompt size
+- 86% reduction from original GitHub Copilot instructions (17K → 2.4K)
 
 ---
 
@@ -862,9 +1134,11 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
    - Check console for "Solution activation listener registered SUCCESSFULLY"
    - Verify ServoyModel is available at startup
 
-3. **System prompt not loading**: Resource not packaged
-   - Verify build.properties includes `src/main/resources/`
-   - Check JAR contains `/prompts/core-system-prompt.txt`
+3. **System prompt not loading from .servoy**: File missing or wrong name
+   - Check `.servoy/system-prompts/chat-system-prompt.txt` exists
+   - Verify filename is exactly `chat-system-prompt.txt` (with hyphens)
+   - Check console for "SYSTEM PROMPT LOADED FROM SOLUTION" message
+   - If not found, falls back to plugin resources (expected behavior)
 
 4. **API calls failing**: Invalid configuration
    - Check API key in preferences
@@ -898,9 +1172,10 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 
 **Core Features:**
 - ✅ AI-powered chat interface with streaming responses
-- ✅ 40+ specialized tools for Servoy development
+- ✅ 40+ specialized tools for Servoy development (12 tool classes)
 - ✅ Solution-specific conversation memory (automatic reset on switch)
-- ✅ Dual-prompt system (OpenAI GPT-4 / Google Gemini)
+- ✅ Solution-specific system prompts (loaded from `.servoy/system-prompts/chat-system-prompt.txt`)
+- ✅ Dual-prompt fallback system (OpenAI GPT-4 / Google Gemini resources)
 - ✅ RAG with local ONNX embeddings (offline, fast)
 - ✅ Save/Load Instructions per solution
 - ✅ Automatic knowledge base loading on solution activation
@@ -910,6 +1185,7 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 **Knowledge Base Features:**
 - ✅ Dual-source loading (SPM packages + file system)
 - ✅ Solution-specific customization via `.servoy/` directories
+- ✅ System prompts, rules, and embeddings all supported
 - ✅ Semantic search with 80% similarity threshold
 - ✅ Intent-based rule retrieval
 - ✅ Variable substitution in rules (e.g., `{{PROJECT_NAME}}`)
@@ -922,18 +1198,27 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 - ✅ Auto-scroll toggle
 - ✅ Copy to clipboard
 
+**Testing & Quality:**
+- ✅ Test prompts suite (50+ test scenarios)
+  - `testprompts/form-tools-test-prompts.md` (30 prompts)
+  - `testprompts/database-tools-test-prompts.md` (20 prompts)
+- ✅ Debug system with DebugUtils (controlled by `-Dconsole.debug=true`)
+- ✅ Comprehensive error handling and logging
+- ✅ Positive conditional coding rules followed throughout
+
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)
 - Clean separation: UI (ChatView) → Presenter → Services → Tools
 - Stateless LLM with client-side memory management
 - Direct listener registration (no event bus)
 - Service layer for business logic
-- Handler pattern for menu actions
+- All services refactored to follow Java coding rules (positive conditionals)
 
 ---
 
 **End of Architecture Reference**
 
-**Last Updated:** February 3, 2026  
+**Last Updated:** February 5, 2026 (System prompts, DatabaseTools, Services refactoring)
 **All Features:** Implemented and Functional  
+**Status:** Production Ready  
 **Status:** Production Ready

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.servoy.eclipse.servoypilot.services.DatabaseSchemaService;
+import com.servoy.eclipse.servoypilot.util.DebugUtils;
 import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.persistence.ITable;
@@ -27,42 +28,47 @@ public class DatabaseTools
 	public String listTables(
 		@P(value = "Database server name", required = true) String serverName)
 	{
-		if (serverName == null || serverName.trim().isEmpty())
+		DebugUtils.logMethodEntry("DatabaseTools", "listTables", serverName);
+		
+		if (serverName != null && !serverName.trim().isEmpty())
 		{
-			return "Error: serverName parameter is required";
-		}
-
-		try
-		{
-			IServerInternal server = DatabaseSchemaService.getServer(serverName);
-			if (server == null)
+			try
 			{
+				IServerInternal server = DatabaseSchemaService.getServer(serverName);
+				if (server != null)
+				{
+					List<String> tables = DatabaseSchemaService.getTableNames(server);
+					DebugUtils.log("DatabaseTools", "Found " + tables.size() + " tables in " + serverName);
+					
+					StringBuilder result = new StringBuilder();
+					result.append("Database Server: ").append(serverName).append("\n");
+					result.append("Tables (").append(tables.size()).append("):\n\n");
+
+					if (tables.isEmpty())
+					{
+						result.append("(No tables found)\n");
+					}
+					
+					for (String tableName : tables)
+					{
+						result.append("  - ").append(tableName).append("\n");
+					}
+
+					DebugUtils.logMethodExit("DatabaseTools", "listTables", tables.size() + " tables");
+					return result.toString();
+				}
+				
+				DebugUtils.log("DatabaseTools", "Server not found: " + serverName);
 				return "Error: Database server '" + serverName + "' not found";
 			}
-
-			List<String> tables = DatabaseSchemaService.getTableNames(server);
-			StringBuilder result = new StringBuilder();
-			result.append("Database Server: ").append(serverName).append("\n");
-			result.append("Tables (").append(tables.size()).append("):\n\n");
-
-			if (tables.isEmpty())
+			catch (Exception e)
 			{
-				result.append("(No tables found)\n");
+				DebugUtils.logException("DatabaseTools", "listTables failed", e);
+				return "Error listing tables: " + e.getMessage();
 			}
-			else
-			{
-				for (String tableName : tables)
-				{
-					result.append("  - ").append(tableName).append("\n");
-				}
-			}
-
-			return result.toString();
 		}
-		catch (Exception e)
-		{
-			return "Error listing tables: " + e.getMessage();
-		}
+		
+		return "Error: serverName parameter is required";
 	}
 
 	/**
@@ -73,64 +79,110 @@ public class DatabaseTools
 		@P(value = "Database server name", required = true) String serverName,
 		@P(value = "Table name", required = true) String tableName)
 	{
-		if (serverName == null || serverName.trim().isEmpty())
+		DebugUtils.logMethodEntry("DatabaseTools", "getTableInfo", serverName, tableName);
+		
+		if (serverName != null && !serverName.trim().isEmpty())
 		{
-			return "Error: serverName parameter is required";
-		}
-
-		if (tableName == null || tableName.trim().isEmpty())
-		{
-			return "Error: tableName parameter is required";
-		}
-
-		try
-		{
-			IServerInternal server = DatabaseSchemaService.getServer(serverName);
-			if (server == null)
+			if (tableName != null && !tableName.trim().isEmpty())
 			{
-				return "Error: Database server '" + serverName + "' not found";
-			}
-
-			ITable table = DatabaseSchemaService.getTable(server, tableName);
-			if (table == null)
-			{
-				return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
-			}
-
-			StringBuilder result = new StringBuilder();
-			result.append("Table: ").append(table.getSQLName()).append("\n");
-			result.append("DataSource: ").append(table.getDataSource()).append("\n\n");
-			result.append("Columns:\n\n");
-
-			Collection<Column> columns = DatabaseSchemaService.getColumns(table);
-			if (columns != null && !columns.isEmpty())
-			{
-				int colNum = 1;
-				Set<String> pkNames = DatabaseSchemaService.getPrimaryKeyNames(table);
-
-				for (Column col : columns)
+				try
 				{
-					result.append(colNum).append(". ");
-					result.append("Name: ").append(col.getName()).append("\n");
+					IServerInternal server = DatabaseSchemaService.getServer(serverName);
+					
+					if (server != null)
+					{
+						ITable table = DatabaseSchemaService.getTable(server, tableName);
+						
+						if (table != null)
+						{
+							DebugUtils.log("DatabaseTools", "Table found: " + table.getSQLName() + ", DataSource: " + table.getDataSource());
 
-					String colTypeName = col.getColumnType() != null ? col.getColumnType().toString() : "UNKNOWN";
-					result.append("   Type: ").append(colTypeName).append("\n");
+							StringBuilder result = new StringBuilder();
+							result.append("Table: ").append(table.getSQLName()).append("\n");
+							result.append("DataSource: ").append(table.getDataSource()).append("\n\n");
+							result.append("Columns:\n\n");
 
-					boolean isPK = pkNames.contains(col.getName());
-					result.append("   Primary Key: ").append(isPK).append("\n\n");
-					colNum++;
+							Collection<Column> columns = DatabaseSchemaService.getColumns(table);
+							
+							if (columns != null && !columns.isEmpty())
+							{
+								DebugUtils.log("DatabaseTools", "Found " + columns.size() + " columns");
+								
+								int colNum = 1;
+								Set<String> pkNames = DatabaseSchemaService.getPrimaryKeyNames(table);
+								DebugUtils.log("DatabaseTools", "Primary keys: " + pkNames);
+
+								for (Column col : columns)
+								{
+									try
+									{
+										String colName = col.getName();
+										result.append(colNum).append(". ");
+										result.append("Name: ").append(colName).append("\n");
+
+										String colTypeName = "UNKNOWN";
+										try
+										{
+											Object columnTypeObj = col.getColumnType();
+											if (columnTypeObj != null)
+											{
+												colTypeName = columnTypeObj.toString();
+											}
+										}
+										catch (Exception typeEx)
+										{
+											DebugUtils.logException("DatabaseTools", "Error getting column type for " + colName, typeEx);
+											colTypeName = "ERROR: " + typeEx.getMessage();
+										}
+										
+										result.append("   Type: ").append(colTypeName).append("\n");
+
+										boolean isPK = pkNames.contains(colName);
+										result.append("   Primary Key: ").append(isPK).append("\n\n");
+										
+										colNum++;
+									}
+									catch (Exception colEx)
+									{
+										DebugUtils.logException("DatabaseTools", "Error processing column #" + colNum, colEx);
+										result.append(colNum).append(". ");
+										result.append("Name: [ERROR - " + colEx.getMessage() + "]\n");
+										result.append("   Type: UNKNOWN\n");
+										result.append("   Primary Key: false\n\n");
+										colNum++;
+									}
+								}
+								
+								DebugUtils.log("DatabaseTools", "Completed processing " + (colNum - 1) + " columns");
+								DebugUtils.logMethodExit("DatabaseTools", "getTableInfo", "Success - " + columns.size() + " columns");
+								return result.toString();
+							}
+							
+							DebugUtils.log("DatabaseTools", "No columns found for table");
+							result.append("(No columns found)\n");
+							DebugUtils.logMethodExit("DatabaseTools", "getTableInfo", "Success - 0 columns");
+							return result.toString();
+						}
+						
+						DebugUtils.log("DatabaseTools", "Table not found: " + tableName);
+						return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
+					}
+					
+					DebugUtils.log("DatabaseTools", "Server not found: " + serverName);
+					return "Error: Database server '" + serverName + "' not found";
+				}
+				catch (Exception e)
+				{
+					DebugUtils.logException("DatabaseTools", "getTableInfo failed", e);
+					return "Error getting table info: " + e.getMessage();
 				}
 			}
-			else
-			{
-				result.append("(No columns found)\n");
-			}
-
-			return result.toString();
+			
+			DebugUtils.log("DatabaseTools", "getTableInfo - tableName is null or empty");
+			return "Error: tableName parameter is required";
 		}
-		catch (Exception e)
-		{
-			return "Error getting table info: " + e.getMessage();
-		}
+		
+		DebugUtils.log("DatabaseTools", "getTableInfo - serverName is null or empty");
+		return "Error: serverName parameter is required";
 	}
 }

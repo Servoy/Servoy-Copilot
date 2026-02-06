@@ -37,8 +37,8 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
-import com.servoy.eclipse.servoypilot.services.InstructionsFileService;
-import com.servoy.eclipse.servoypilot.services.InstructionsLoaderService;
+import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
+import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
 import jakarta.annotation.PostConstruct;
@@ -451,8 +451,8 @@ public class ChatViewPresenter
 		IProject project = getProjectByName(projectName);
 		if (project != null)
 		{
-			InstructionsFileService fileService = new InstructionsFileService();
-			InstructionsLoaderService loaderService = new InstructionsLoaderService();
+			InstructionsSaveService fileService = new InstructionsSaveService();
+			InstructionsLoadService loaderService = new InstructionsLoadService();
 
 			if (fileService.servoyDirectoryExists(project))
 			{

@@ -8,11 +8,11 @@ import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
  * Service for loading instructions from .servoy directory into the knowledge base.
- * Handles clearing and loading knowledge base (rules and embeddings) from file system.
+ * Handles clearing and loading knowledge base (system-prompts, rules, and embeddings) from file system.
  */
-public class InstructionsLoaderService
+public class InstructionsLoadService
 {
-	public InstructionsLoaderService()
+	public InstructionsLoadService()
 	{
 	}
 
@@ -42,43 +42,49 @@ public class InstructionsLoaderService
 	/**
 	 * Load knowledge base from the .servoy directory in the file system.
 	 * 
-	 * @param servoyFolder the .servoy folder containing rules/ and embeddings/ subdirectories
+	 * @param servoyFolder the .servoy folder containing system-prompts/, rules/, and embeddings/ subdirectories
 	 */
 	public void loadFromFileSystem(IFolder servoyFolder)
 	{
-		if (servoyFolder == null || !servoyFolder.exists())
+		if (servoyFolder != null && servoyFolder.exists())
 		{
-			throw new IllegalArgumentException(".servoy folder does not exist");
-		}
-
-		try
-		{
-			IFolder rulesFolder = servoyFolder.getFolder("rules");
-			IFolder embeddingsFolder = servoyFolder.getFolder("embeddings");
-
-			if (!rulesFolder.exists())
+			try
 			{
-				throw new IllegalStateException("rules folder does not exist in .servoy directory");
-			}
+				IFolder systemPromptsFolder = servoyFolder.getFolder("system-prompts");
+				IFolder rulesFolder = servoyFolder.getFolder("rules");
+				IFolder embeddingsFolder = servoyFolder.getFolder("embeddings");
 
-			if (!embeddingsFolder.exists())
-			{
+				if (rulesFolder.exists() && embeddingsFolder.exists())
+				{
+					// Load system prompts if folder exists (optional)
+					if (systemPromptsFolder.exists())
+					{
+						loadSystemPromptsFromFolder(systemPromptsFolder);
+					}
+
+					// Load rules from file system
+					loadRulesFromFolder(rulesFolder);
+
+					// Load embeddings from file system
+					loadEmbeddingsFromFolder(embeddingsFolder);
+
+					ServoyLog.logInfo("[InstructionsLoaderService] Knowledge base loaded from: " + servoyFolder.getFullPath());
+					return;
+				}
+				
+				if (!rulesFolder.exists())
+				{
+					throw new IllegalStateException("rules folder does not exist in .servoy directory");
+				}
 				throw new IllegalStateException("embeddings folder does not exist in .servoy directory");
 			}
-
-			// Load rules from file system
-			loadRulesFromFolder(rulesFolder);
-
-			// Load embeddings from file system
-			loadEmbeddingsFromFolder(embeddingsFolder);
-
-			ServoyLog.logInfo("[InstructionsLoaderService] Knowledge base loaded from: " + servoyFolder.getFullPath());
+			catch (Exception e)
+			{
+				ServoyLog.logError("[InstructionsLoaderService] Error loading knowledge base from file system: " + e.getMessage(), e);
+				throw new RuntimeException("Failed to load knowledge base", e);
+			}
 		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[InstructionsLoaderService] Error loading knowledge base from file system: " + e.getMessage(), e);
-			throw new RuntimeException("Failed to load knowledge base", e);
-		}
+		throw new IllegalArgumentException(".servoy folder does not exist");
 	}
 
 	/**
@@ -91,6 +97,36 @@ public class InstructionsLoaderService
 	{
 		ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
 		return RulesCache.getRuleCount() > 0 || embeddingService.hasEmbeddings();
+	}
+
+	/**
+	 * Load system prompts from a workspace folder.
+	 * Currently logs the availability but doesn't integrate into runtime
+	 * (system prompts are loaded directly from resources by ServoyAiModel).
+	 * 
+	 * @param systemPromptsFolder the folder containing system prompt files
+	 */
+	private void loadSystemPromptsFromFolder(IFolder systemPromptsFolder)
+	{
+		try
+		{
+			// Convert IFolder to Path
+			java.nio.file.Path systemPromptsPath = java.nio.file.Paths.get(systemPromptsFolder.getLocationURI());
+			
+			// Log availability of custom system prompts
+			java.nio.file.Path chatSystemPrompt = systemPromptsPath.resolve("chat-system-prompt.txt");
+			if (java.nio.file.Files.exists(chatSystemPrompt))
+			{
+				ServoyLog.logInfo("[InstructionsLoaderService] Found custom chat system prompt at: " + chatSystemPrompt);
+				// Note: System prompts are currently loaded directly by ServoyAiModel from resources
+				// This provides visibility that custom prompts exist in .servoy directory
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[InstructionsLoaderService] Error checking system prompts folder: " + e.getMessage(), e);
+			// Don't throw - system prompts are optional
+		}
 	}
 
 	/**

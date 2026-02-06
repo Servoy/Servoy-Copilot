@@ -61,7 +61,8 @@ public class FormTools
 		@P(value = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
 		@P(value = "Parent form name (for inheritance)", required = false) String extendsForm,
 		@P(value = "Set as main form (default: false)", required = false) Boolean setAsMainForm,
-		@P(value = "Additional properties map", required = false) Map<String, Object> properties)
+		@P(value = "Additional properties map", required = false) Map<String, Object> properties,
+		@P(value = "Event handlers map (event name -> method name)", required = false) Map<String, String> events)
 	{
 		if (name != null && !name.trim().isEmpty())
 		{
@@ -72,7 +73,7 @@ public class FormTools
 
 			return UIThreadHelper.syncExec("openForm",
 				() -> openOrCreateForm(name, shouldCreate, formWidth, formHeight, formStyle,
-					dataSource, extendsForm, setAsMainForm, properties));
+					dataSource, extendsForm, setAsMainForm, properties, events));
 		}
 		
 		return "Error: name parameter is required";
@@ -211,7 +212,7 @@ public class FormTools
 	// =============================================
 
 	private String openOrCreateForm(String name, boolean create, int width, int height, String style,
-		String dataSource, String extendsForm, Boolean setAsMainForm, Map<String, Object> properties) throws RepositoryException
+		String dataSource, String extendsForm, Boolean setAsMainForm, Map<String, Object> properties, Map<String, String> events) throws RepositoryException
 	{
 		ServoyLog.logInfo("[FormTools] Processing form: " + name);
 
@@ -293,6 +294,13 @@ public class FormTools
 		if (!isNewForm && properties != null && !properties.isEmpty())
 		{
 			FormService.applyFormProperties(form, properties);
+			targetProject.saveEditingSolutionNodes(new IPersist[] { form }, true);
+		}
+
+		// Apply events if provided
+		if (!isNewForm && events != null && !events.isEmpty())
+		{
+			FormService.applyFormEvents(form, events, targetProject);
 			targetProject.saveEditingSolutionNodes(new IPersist[] { form }, true);
 		}
 

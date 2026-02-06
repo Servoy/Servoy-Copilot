@@ -6,8 +6,8 @@ import org.eclipse.e4.core.di.annotations.Execute;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 
-import com.servoy.eclipse.servoypilot.services.InstructionsFileService;
-import com.servoy.eclipse.servoypilot.services.InstructionsLoaderService;
+import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
+import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 
 /**
  * Handler for "Save Instructions" menu action.
@@ -18,8 +18,8 @@ public class SaveInstructionsHandler
 	@Execute
 	public void execute(Shell shell)
 	{
-		InstructionsFileService fileService = new InstructionsFileService();
-		InstructionsLoaderService loaderService = new InstructionsLoaderService();
+		InstructionsSaveService fileService = new InstructionsSaveService();
+		InstructionsLoadService loaderService = new InstructionsLoadService();
 
 		IProject project = fileService.getActiveProject();
 		if (project == null)
@@ -88,7 +88,6 @@ public class SaveInstructionsHandler
 				monitor.done();
 			}
 		});
-
 		job.schedule();
 	}
 }

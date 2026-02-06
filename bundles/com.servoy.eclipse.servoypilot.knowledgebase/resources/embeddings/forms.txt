@@ -27,21 +27,10 @@ form width
 form height
 responsive form
 css form
-create screen
-add screen
-make screen
-create page
-add page
-create UI screen
-make UI page
+absolute layout form
 form creation
-screen creation
-page creation
 design form
-design screen
-build UI form
-create interface
-add interface
+build form UI
 get form properties
 show form properties
 display form properties
@@ -51,3 +40,39 @@ check form size
 what is form size
 form information
 inspect form
+form events
+form event handler
+form onLoad event
+form onShow event
+form onHide event
+form onRecordSelection event
+form lifecycle events
+form event method
+form method handler
+form selection mode
+form single selection
+form multi selection
+form transparent
+form transparency
+form scrollbars
+form vertical scrollbars
+form horizontal scrollbars
+form title
+form title text
+form style class
+form css class
+form styleClass
+form named foundset
+form separate foundset
+form empty foundset
+form deprecated
+deprecate form
+create form with events
+create form with event handler
+form with properties
+update form properties
+modify form settings
+change form behavior
+set form event
+assign form event
+attach form event handler
