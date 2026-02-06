@@ -1,24 +1,21 @@
 package com.servoy.eclipse.servoypilot.services;
 
 import java.awt.Dimension;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.Map;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.core.ai.AiBridge;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.IForm;
 import com.servoy.j2db.persistence.Form;
-import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Part;
 import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.ScriptMethod;
-import com.servoy.j2db.persistence.StaticContentSpecLoader;
 
 /**
  * Service for form operations - create, update, and query forms.
@@ -37,7 +34,7 @@ public class FormService
 	private static final int SCROLLBARS_HORIZONTAL = 1;
 	private static final int SCROLLBARS_VERTICAL = 2;
 	private static final int SCROLLBARS_BOTH = 3;
-	
+
 	/**
 	 * Creates a new form in a specific project (active solution or module).
 	 * 
@@ -103,7 +100,10 @@ public class FormService
 	 */
 	public static void applyFormProperties(Form form, Map<String, Object> properties) throws RepositoryException
 	{
-		if (properties == null || properties.isEmpty()) return;
+		if (properties == null || properties.isEmpty())
+		{
+			return;
+		}
 
 		ServoyLog.logInfo("[FormService] Applying form properties: " + form.getName());
 
@@ -119,87 +119,87 @@ public class FormService
 
 				switch (propName)
 				{
-					case "width":
+					case "width" :
 						if (propValue instanceof Number)
 						{
 							form.setWidth(((Number)propValue).intValue());
 						}
 						break;
 
-					case "height":
+					case "height" :
 						if (propValue instanceof Number)
 						{
 							form.setHeight(((Number)propValue).intValue());
 						}
 						break;
 
-					case "minWidth":
-					case "useMinWidth":
+					case "minWidth" :
+					case "useMinWidth" :
 						if (propValue instanceof Boolean)
 						{
 							form.setUseMinWidth((Boolean)propValue);
 						}
 						break;
 
-					case "minHeight":
-					case "useMinHeight":
+					case "minHeight" :
+					case "useMinHeight" :
 						if (propValue instanceof Boolean)
 						{
 							form.setUseMinHeight((Boolean)propValue);
 						}
 						break;
 
-					case "dataSource":
+					case "dataSource" :
 						if (propValue != null)
 						{
 							form.setDataSource(propValue.toString());
 						}
 						break;
 
-					case "showInMenu":
+					case "showInMenu" :
 						if (propValue instanceof Boolean)
 						{
 							form.setShowInMenu((Boolean)propValue);
 						}
 						break;
 
-					case "styleName":
+					case "styleName" :
 						if (propValue != null)
 						{
 							form.setStyleName(propValue.toString());
 						}
 						break;
 
-					case "navigatorID":
-					case "navigator":
-						if (propValue != null)
-						{
-							form.setNavigatorID(propValue.toString());
-						}
-						break;
+//					case "navigatorID":
+//					case "navigator":
+//						if (propValue != null)
+//						{
+//							form.setNavigatorID(propValue.toString());
+//						}
+//						break;
 
-					case "initialSort":
+					case "initialSort" :
 						if (propValue != null)
 						{
 							form.setInitialSort(propValue.toString());
 						}
 						break;
 
-					case "deprecated":
+					case "deprecated" :
 						if (propValue != null)
 						{
 							form.setDeprecated(propValue.toString());
 						}
 						break;
 
-					case "namedFoundSet":
+					case "namedFoundSet" :
 						if (propValue != null)
 						{
 							form.setNamedFoundSet(propValue.toString());
 						}
 						break;
 
-					case "selectionMode":
+					case "selectionMode" :
 						if (propValue != null)
 						{
 							int mode = parseSelectionMode(propValue.toString());
@@ -207,28 +207,28 @@ public class FormService
 						}
 						break;
 
-					case "styleClass":
+					case "styleClass" :
 						if (propValue != null)
 						{
 							form.setStyleClass(propValue.toString());
 						}
 						break;
 
-					case "titleText":
+					case "titleText" :
 						if (propValue != null)
 						{
 							form.setTitleText(propValue.toString());
 						}
 						break;
 
-					case "transparent":
+					case "transparent" :
 						if (propValue instanceof Boolean)
 						{
 							form.setTransparent((Boolean)propValue);
 						}
 						break;
 
-					case "scrollbars":
+					case "scrollbars" :
 						if (propValue != null)
 						{
 							int scrollbars = parseScrollbars(propValue.toString());
@@ -236,7 +236,7 @@ public class FormService
 						}
 						break;
 
-					default:
+					default :
 						ServoyLog.logInfo("[FormService] Unknown property: " + propName);
 						break;
 				}
@@ -265,25 +265,8 @@ public class FormService
 			throw new RepositoryException("Parent form '" + parentFormName + "' not found");
 		}
 
-		try
-		{
-			if (ClientVersion.getMajorVersion() >= 2025 && ClientVersion.getMiddleVersion() >= 12)
-			{
-				Method setExtendsID = Form.class.getMethod("setExtendsID", String.class);
-				setExtendsID.invoke(form, parentForm.getUUID().toString());
-			}
-			else
-			{
-				Method setExtendsID = Form.class.getMethod("setExtendsID", int.class);
-				Method getID = Form.class.getMethod("getID");
-				setExtendsID.invoke(form, getID.invoke(parentForm));
-			}
-			servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
-		}
-		catch (NoSuchMethodException | SecurityException | IllegalAccessException | InvocationTargetException e)
-		{
-			ServoyLog.logError("Error setExtendsID on solution of form " + form  , e);
-		}
+		AiBridge.setFormExtendsID(form, parentForm);
+		servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
 	}
 
 	/**
@@ -318,7 +301,7 @@ public class FormService
 					String methodUUID = resolveMethodUUID(form, eventValue.trim());
 					if (methodUUID != null)
 					{
-						applyEventMethod(form, eventName, methodUUID);
+						AiBridge.applyEventMethod(form, eventName, methodUUID);
 					}
 				}
 			}
@@ -357,64 +340,6 @@ public class FormService
 		return null;
 	}
 
-	/**
-	 * Applies a specific event method to the form.
-	 * 
-	 * @param form The form to update
-	 * @param eventName The event name
-	 * @param methodUUID The method UUID
-	 */
-	private static void applyEventMethod(Form form, String eventName, String methodUUID)
-	{
-		switch (eventName)
-		{
-			case "onLoad":
-				form.setOnLoadMethodID(methodUUID);
-				break;
-			case "onUnLoad":
-				form.setOnUnLoadMethodID(methodUUID);
-				break;
-			case "onShow":
-				form.setOnShowMethodID(methodUUID);
-				break;
-			case "onHide":
-				form.setOnHideMethodID(methodUUID);
-				break;
-			case "onBeforeHide":
-				form.setOnBeforeHideMethodID(methodUUID);
-				break;
-			case "onRecordSelection":
-				form.setOnRecordSelectionMethodID(methodUUID);
-				break;
-			case "onBeforeRecordSelection":
-				form.setOnBeforeRecordSelectionMethodID(methodUUID);
-				break;
-			case "onRecordEditStart":
-				form.setOnRecordEditStartMethodID(methodUUID);
-				break;
-			case "onRecordEditStop":
-				form.setOnRecordEditStopMethodID(methodUUID);
-				break;
-			case "onElementDataChange":
-				form.setOnElementDataChangeMethodID(methodUUID);
-				break;
-			case "onElementFocusGained":
-				form.setOnElementFocusGainedMethodID(methodUUID);
-				break;
-			case "onElementFocusLost":
-				form.setOnElementFocusLostMethodID(methodUUID);
-				break;
-			case "onResize":
-				form.setOnResizeMethodID(methodUUID);
-				break;
-			case "onSort":
-				form.setOnSortCmdMethodID(methodUUID);
-				break;
-			default:
-				ServoyLog.logInfo("[FormService] Unknown event: " + eventName);
-				break;
-		}
-	}
 
 	/**
 	 * Parses selection mode string to constant.
