@@ -13,7 +13,7 @@ import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
  * Handler for "Save Instructions" menu action.
  * Copies instructions from knowledgebase bundle to .servoy/ directory in active solution.
  */
-public class SaveInstructionsHandler
+public class ResetInstructionsHandler
 {
 	@Execute
 	public void execute(Shell shell)

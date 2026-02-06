@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="ASCII"?>
 <fragment:ModelFragments xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:basic="http://www.eclipse.org/ui/2010/UIModel/application/descriptor/basic" xmlns:commands="http://www.eclipse.org/ui/2010/UIModel/application/commands" xmlns:fragment="http://www.eclipse.org/ui/2010/UIModel/fragment" xmlns:menu="http://www.eclipse.org/ui/2010/UIModel/application/ui/menu" xmi:id="_BxaXACerEeWxCPrV0pAZQQ">
   <fragments xsi:type="fragment:StringModelFragment" xmi:id="_cmd_frag" featurename="commands" parentElementId="xpath:/">
-    <elements xsi:type="commands:Command" xmi:id="com.servoypilot.command.clear" elementId="com.servoypilot.command.loadinstructions" commandName="Load Instructions" description="Loads the instructions from the active solution"/>
-    <elements xsi:type="commands:Command" xmi:id="_BbwZ0AKHEfGRM83nivCAQQ" elementId="com.servoypilot.command.saveinstructions" commandName="Save Instructions" description="Saves the internal instructions to the active solution"/>
+    <elements xsi:type="commands:Command" xmi:id="com.servoypilot.command.clear" elementId="com.servoypilot.command.loadinstructions" commandName="Refresh Instructions/prompts" description="Refreshes the instructions and prompts from the active solution (will create them if they are not there yet)"/>
+    <elements xsi:type="commands:Command" xmi:id="_BbwZ0AKHEfGRM83nivCAQQ" elementId="com.servoypilot.command.saveinstructions" commandName="Reset Instructions/Prompts" description="Rest the internal instructions and prompts to the active solution (this will overwrite the things back to the internal prompts)"/>
   </fragments>
   <fragments xsi:type="fragment:StringModelFragment" xmi:id="_hnd_frag" featurename="handlers" parentElementId="xpath:/">
-    <elements xsi:type="commands:Handler" xmi:id="com.servoypilot.handler.clear" elementId="com.servoypilot.command.loadinstructions" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.handlers.LoadInstructionsHandler" command="com.servoypilot.command.clear"/>
-    <elements xsi:type="commands:Handler" xmi:id="_HS3-MAKHEfGRM83nivCAQQ" elementId="com.servoypilot.command.saveinstructions" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.handlers.SaveInstructionsHandler" command="_BbwZ0AKHEfGRM83nivCAQQ"/>
+    <elements xsi:type="commands:Handler" xmi:id="com.servoypilot.handler.clear" elementId="com.servoypilot.command.loadinstructions" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.handlers.RefreshInstructionsHandler" command="com.servoypilot.command.clear"/>
+    <elements xsi:type="commands:Handler" xmi:id="_HS3-MAKHEfGRM83nivCAQQ" elementId="com.servoypilot.command.saveinstructions" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.handlers.ResetInstructionsHandler" command="_BbwZ0AKHEfGRM83nivCAQQ"/>
   </fragments>
   <fragments xsi:type="fragment:StringModelFragment" xmi:id="_EI7oACerEeWxCPrV0pAZQQ" featurename="descriptors" parentElementId="xpath:/">
     <elements xsi:type="basic:PartDescriptor" xmi:id="_KMklcCerEeWxCPrV0pAZQQ" elementId="com.servoypilot.chatview" label="Servoy AI Chat" iconURI="platform:/plugin/com.servoy.eclipse.servoypilot/icons/aichat.png" tooltip="Servoy AI Chat" category="Servoy" closeable="true" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.parts.ChatView">
@@ -14,8 +14,8 @@
       <tags>categoryTag:Servoy</tags>
       <menus xmi:id="_CsIugAKFEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.menu.myviewmenu" label="MyViewMenu">
         <tags>ViewMenu</tags>
-        <children xsi:type="menu:HandledMenuItem" xmi:id="_FVn5QAKFEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.handledmenuitem.clearchat" label="Load Instructions" tooltip="Loads the instructions from the active solution" command="com.servoypilot.command.clear"/>
-        <children xsi:type="menu:HandledMenuItem" xmi:id="_NjbWQAKHEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.handledmenuitem.saveinstructions" label="Save Instructions" tooltip="Saves the internal instructions to the active solution"/>
+        <children xsi:type="menu:HandledMenuItem" xmi:id="_FVn5QAKFEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.handledmenuitem.clearchat" label="Refresh Instructions/Prompts" tooltip="Refreshes the instructions and prompts from the active solution" command="com.servoypilot.command.clear"/>
+        <children xsi:type="menu:HandledMenuItem" xmi:id="_NjbWQAKHEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.handledmenuitem.saveinstructions" label="Reset Instructions/Prompts" tooltip="Resets the active solutions instructions and prompts back the shipped version." command="_BbwZ0AKHEfGRM83nivCAQQ"/>
       </menus>
     </elements>
   </fragments>

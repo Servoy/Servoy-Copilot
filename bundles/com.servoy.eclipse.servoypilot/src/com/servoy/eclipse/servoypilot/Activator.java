@@ -41,12 +41,14 @@ public class Activator implements BundleActivator
 		return preferenceStore;
 	}
 
+	@Override
 	public void start(BundleContext bundleContext) throws Exception
 	{
 		bundle = this;
 		PreferenceConstants.initializeDefaults(getPreferenceStore());
 	}
 
+	@Override
 	public void stop(BundleContext bundleContext) throws Exception
 	{
 		preferenceStore = null;

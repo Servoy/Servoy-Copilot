@@ -6,15 +6,15 @@ import org.eclipse.e4.core.di.annotations.Execute;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 
-import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
+import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 
 /**
- * Handler for "Load Instructions" menu action.
+ * Handler for "Refresh Instructions" menu action.
  * Loads instructions from .servoy/ directory into the AI knowledge base.
  * If .servoy/ doesn't exist, creates it first with default instructions.
  */
-public class LoadInstructionsHandler
+public class RefreshInstructionsHandler
 {
 	@Execute
 	public void execute(Shell shell)
@@ -31,7 +31,7 @@ public class LoadInstructionsHandler
 		}
 
 		// Execute in background job
-		Job job = Job.create("Loading Instructions", monitor -> {
+		Job job = Job.create("Refeshing Instructions/Prompts", monitor -> {
 			try
 			{
 				monitor.beginTask("Loading instructions", 2);

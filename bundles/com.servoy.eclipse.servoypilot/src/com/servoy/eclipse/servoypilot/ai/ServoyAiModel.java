@@ -1,10 +1,7 @@
 package com.servoy.eclipse.servoypilot.ai;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
+import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
@@ -95,7 +92,7 @@ public class ServoyAiModel
 	private Assistant createChatServices(StreamingChatModel model)
 	{
 		// Load system prompt (auto-selects based on model provider)
-		String systemPrompt = loadSystemPrompt();
+		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
 
 		// DEBUG: ServoyLog system prompt info
 		System.out.println("=== ServoyAI DEBUG ===");
@@ -134,126 +131,6 @@ public class ServoyAiModel
 		return builder.build();
 	}
 
-	/**
-	 * Load the system prompt from active solution's .servoy directory first, with fallback to plugin resources.
-	 * Tries to load from .servoy/system-prompts/chat-system-prompt.txt in the active solution.
-	 * If not found, falls back to plugin resources with auto-selection based on AI provider.
-	 * 
-	 * @return the system prompt text or fallback message if loading fails
-	 */
-	private String loadSystemPrompt()
-	{
-		// Try to load from active solution's .servoy directory first
-		String promptFromSolution = loadSystemPromptFromSolution();
-		if (promptFromSolution != null)
-		{
-			System.out.println("=== SYSTEM PROMPT LOADED FROM SOLUTION ===");
-			System.out.println("Source: .servoy/system-prompts/chat-system-prompt.txt");
-			System.out.println("Length: " + promptFromSolution.length() + " characters");
-			System.out.println("==========================================");
-			return promptFromSolution;
-		}
-
-		// Fallback to plugin resources
-		String promptFile = selectPromptFile();
-
-		try (InputStream is = getClass().getResourceAsStream(promptFile))
-		{
-			if (is != null)
-			{
-				String prompt = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-				System.out.println("=== SYSTEM PROMPT LOADED FROM RESOURCES ===");
-				System.out.println("Selected prompt: " + promptFile);
-				System.out.println("Provider: " + configuration.getSelectedModel());
-				System.out.println("Model: " + configuration.getModel());
-				System.out.println("===========================================");
-				return prompt;
-			}
-
-			System.err.println("System prompt resource not found: " + promptFile);
-
-			// Try default prompt as fallback
-			if (!promptFile.equals("/prompts/core-system-prompt.txt"))
-			{
-				try (InputStream fallbackIs = getClass().getResourceAsStream("/prompts/core-system-prompt.txt"))
-				{
-					if (fallbackIs != null)
-					{
-						return new String(fallbackIs.readAllBytes(), StandardCharsets.UTF_8);
-					}
-				}
-				catch (IOException e)
-				{
-					// Continue to final fallback
-				}
-			}
-
-			return "You are a Servoy development assistant."; // Final fallback
-		}
-		catch (IOException e)
-		{
-			System.err.println("Failed to load system prompt: " + e.getMessage());
-			return "You are a Servoy development assistant."; // Fallback
-		}
-	}
-
-	/**
-	 * Load system prompt from active solution's .servoy/system-prompts/ directory.
-	 * 
-	 * @return the prompt text if found, null otherwise
-	 */
-	private String loadSystemPromptFromSolution()
-	{
-		try
-		{
-			// Get active project
-			com.servoy.eclipse.model.nature.ServoyProject activeProject = com.servoy.eclipse.model.ServoyModelFinder.getServoyModel().getActiveProject();
-
-			if (activeProject != null && activeProject.getProject() != null)
-			{
-				org.eclipse.core.resources.IProject project = activeProject.getProject();
-				org.eclipse.core.resources.IFolder servoyFolder = project.getFolder(".servoy");
-
-				if (servoyFolder.exists())
-				{
-					org.eclipse.core.resources.IFolder systemPromptsFolder = servoyFolder.getFolder("system-prompts");
-
-					if (systemPromptsFolder.exists())
-					{
-						org.eclipse.core.resources.IFile promptFile = systemPromptsFolder.getFile("chat-system-prompt.txt");
-
-						if (promptFile.exists())
-						{
-							try (InputStream is = promptFile.getContents())
-							{
-								return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-							}
-						}
-					}
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			System.err.println("Error loading system prompt from solution: " + e.getMessage());
-			// Return null to fall back to resources
-		}
-
-		return null;
-	}
-
-	/**
-	 * Select the appropriate prompt file based on the AI provider.
-	 * 
-	 * @return the path to the prompt resource file
-	 */
-	private String selectPromptFile()
-	{
-		//TODO: fallback to class loader system prompts (standup discussion needed)
-		return "/system-prompts/chat-system-prompt.txt";
-	}
-
-
 	private OpenAiChatModel createOpenAICompletionModel(AiConfiguration conf)
 	{
 		return OpenAiChatModel.builder().modelName("gpt-4o-mini").apiKey(conf.getApiKey()).build(); // hard coded once per chat model, completion must be fast
@@ -268,9 +145,7 @@ public class ServoyAiModel
 	{
 		AiServices<CompletionAssistent> builder = AiServices.builder(CompletionAssistent.class);
 		builder.chatModel(model);
-		builder.systemMessageProvider(object -> "You are a code completion engine for Servoy JavaScript. " +
-			"Complete the following code. Return ONLY the code snippet to insert at the cursor. " +
-			"Do not include markdown formatting or explanations.\n\nCode:\n");
+		builder.systemMessageProvider(object -> SystemPrompts.INSTANCE.getCompletionPrompt());
 		return builder.build();
 
 	}

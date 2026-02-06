@@ -24,13 +24,13 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  */
 public class InstructionsSaveService
 {
-	private static final String SERVOY_DIR = ".servoy";
-	private static final String SYSTEM_PROMPTS_DIR = "system-prompts";
-	private static final String EMBEDDINGS_DIR = "embeddings";
-	private static final String RULES_DIR = "rules";
-	
+	public static final String SERVOY_DIR = ".servoy";
+	public static final String RESOURCES_PATH = "resources/";
+	public static final String SYSTEM_PROMPTS_DIR = "system-prompts";
+	public static final String EMBEDDINGS_DIR = "embeddings";
+	public static final String RULES_DIR = "rules";
+
 	private static final String KNOWLEDGEBASE_BUNDLE_ID = "com.servoy.eclipse.servoypilot.knowledgebase";
-	private static final String RESOURCES_PATH = "resources/";
 
 	/**
 	 * Get the active Servoy solution project.
@@ -130,16 +130,16 @@ public class InstructionsSaveService
 	 * 
 	 * @return the bundle, or null if not found
 	 */
-	private Bundle findKnowledgebaseBundle()
+	public static Bundle findKnowledgebaseBundle()
 	{
-		Bundle knowledgebaseBundle = FrameworkUtil.getBundle(getClass()).getBundleContext().getBundle(KNOWLEDGEBASE_BUNDLE_ID);
+		Bundle knowledgebaseBundle = FrameworkUtil.getBundle(InstructionsSaveService.class).getBundleContext().getBundle(KNOWLEDGEBASE_BUNDLE_ID);
 		if (knowledgebaseBundle != null)
 		{
 			return knowledgebaseBundle;
 		}
 
 		// Fallback: try to get by symbolic name
-		for (Bundle bundle : FrameworkUtil.getBundle(getClass()).getBundleContext().getBundles())
+		for (Bundle bundle : FrameworkUtil.getBundle(InstructionsSaveService.class).getBundleContext().getBundles())
 		{
 			if (KNOWLEDGEBASE_BUNDLE_ID.equals(bundle.getSymbolicName()))
 			{
@@ -185,7 +185,7 @@ public class InstructionsSaveService
 			{
 				URL entryUrl = entries.nextElement();
 				String entryPath = entryUrl.getPath();
-				
+
 				// Extract relative path
 				int bundlePathIndex = entryPath.indexOf(bundlePath);
 				if (bundlePathIndex >= 0)
@@ -195,7 +195,7 @@ public class InstructionsSaveService
 					{
 						relativePath = relativePath.substring(1);
 					}
-					
+
 					if (!relativePath.isEmpty())
 					{
 						// Check if it's a directory or file
@@ -232,7 +232,7 @@ public class InstructionsSaveService
 		throws CoreException, IOException
 	{
 		IPath filePath = new Path(relativePath);
-		
+
 		// Create parent folders if needed
 		if (filePath.segmentCount() > 1)
 		{
@@ -243,7 +243,7 @@ public class InstructionsSaveService
 				createFolderRecursively(parentFolder, monitor);
 			}
 		}
-		
+
 		// Copy file
 		try (InputStream is = entryUrl.openStream())
 		{
