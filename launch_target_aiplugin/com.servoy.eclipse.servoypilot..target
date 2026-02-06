@@ -4,7 +4,7 @@
     <locations>
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
             <repository location="https://build.servoy.com/latest/servoy_lts/update_site/"/>
-            <unit id="com.servoy.eclipse.feature.feature.group" version="2024.3.10.202602050102"/>
+            <unit id="com.servoy.eclipse.feature.feature.group" version="0.0.0"/>
         </location>
         <location includeDependencyDepth="none" includeDependencyScopes="compile" includeSource="true" missingManifest="generate" type="Maven">
             <dependencies>
