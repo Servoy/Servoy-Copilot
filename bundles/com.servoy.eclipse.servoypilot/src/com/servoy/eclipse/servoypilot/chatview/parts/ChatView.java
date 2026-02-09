@@ -40,6 +40,7 @@ import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.ui.tweaks.IconPreferences;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -426,6 +427,9 @@ public class ChatView
 			            <div id="notification-container"></div>
 			            <div id="content">
 			            </div>
+			            <div id="welcome" style="position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);text-align: center;">
+							This is the Servoy AI Assistant.<br/> Ask me anything related to Servoy Development
+			            </div>
 			    </body>
 			</html>
 			""";
@@ -452,7 +456,7 @@ public class ChatView
 	private String loadCss()
 	{
 		String[] cssFiles = { "textview_dark.css", "dark.min.css", "fa6.all.min.css", "katex.min.css" };
-		if (true)
+		if (!IconPreferences.getInstance().getUseDarkThemeIcons())
 		{
 			cssFiles = new String[] { "textview_light.css", "fa6.all.min.css", "katex.min.css" };
 		}
@@ -522,6 +526,10 @@ public class ChatView
 		String cssClass = "user".equals(role) ? "chat-bubble me" : "chat-bubble you";
 		uiSync.asyncExec(() -> {
 			browser.execute("""
+				var node = document.getElementById("welcome");
+				if(node) {
+				    node.remove();
+				}
 				var node = document.createElement("div");
 				node.setAttribute("id", "message-${id}");
 				node.setAttribute("class", "${cssClass}");
