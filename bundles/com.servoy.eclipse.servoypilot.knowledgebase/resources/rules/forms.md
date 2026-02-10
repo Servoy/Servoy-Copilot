@@ -182,7 +182,7 @@ getFormProperties({name: "CustomerForm"})
 - Dimensions (width, height, min width/height)
 - Form type (CSS, responsive, absolute)
 - DataSource
-- Settings (showInMenu, styleName, navigatorID, initialSort)
+- Settings (showInMenu, styleName, initialSort)
 - Inheritance (parent form if applicable)
 - Main form status
 
@@ -427,7 +427,6 @@ setContext({context: "active"})
 - `styleClass` (string): CSS class name applied to the form
 - `titleText` (string): Form window title text
 - `transparent` (boolean): Enable transparent background
-- `navigatorID` (string): Navigator form ID or special values (DEFAULT, NONE, IGNORE)
 - `scrollbars` (string): Scrollbar settings - "horizontal", "vertical", or "both"
 
 **Selection & Behavior Properties:**

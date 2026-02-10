@@ -520,12 +520,12 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 **Purpose:** Business logic for form CRUD operations with extensive property and event handler support
 
 **Recent Enhancements (Feb 5, 2026):**
-- Extended from 9 to 18 supported form properties
+- Extended from 9 to 17 supported form properties
 - Added complete event handler support (13 events + 1 command)
 - Added helper methods for parsing selection mode and scrollbars values
 - Follows positive conditional coding rules
 
-**Supported Properties (18 total):**
+**Supported Properties (17 total):**
 
 1. **Dimension Properties:**
    - `width`, `height` - Direct dimension setting
@@ -542,7 +542,6 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
    - `styleClass` - CSS class name
    - `titleText` - Form window title
    - `transparent` - Transparent background
-   - `navigatorID` - Navigator form ID
    - `scrollbars` - Scrollbar settings ("horizontal", "vertical", "both")
 
 4. **Selection & Behavior:**

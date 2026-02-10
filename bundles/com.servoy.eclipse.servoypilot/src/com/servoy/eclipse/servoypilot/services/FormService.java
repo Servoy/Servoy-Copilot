@@ -170,15 +170,6 @@ public class FormService
 						}
 						break;
 
-					// TODO: Navigator ID handling needs proper form lookup/conversion
-					// case "navigatorID" :
-					// case "navigator" :
-					// 	if (propValue != null)
-					// 	{
-					// 		form.setNavigatorID(propValue.toString());
-					// 	}
-					// 	break;
-
 					case "initialSort" :
 						if (propValue != null)
 						{
