@@ -170,13 +170,14 @@ public class FormService
 						}
 						break;
 
-					case "navigatorID" :
-					case "navigator" :
-						if (propValue != null)
-						{
-							form.setNavigatorID(propValue.toString());
-						}
-						break;
+					// TODO: Navigator ID handling needs proper form lookup/conversion
+					// case "navigatorID" :
+					// case "navigator" :
+					// 	if (propValue != null)
+					// 	{
+					// 		form.setNavigatorID(propValue.toString());
+					// 	}
+					// 	break;
 
 					case "initialSort" :
 						if (propValue != null)
@@ -312,7 +313,7 @@ public class FormService
 
 					if (methodUUID != null)
 					{
-						applyEventMethod(form, eventName, methodUUID);
+						AiBridge.applyEventMethod(form, eventName, methodUUID);
 					}
 				}
 			}
@@ -522,64 +523,6 @@ public class FormService
 		}
 
 		return null;
-	}
-
-	/**
-	 * Applies a specific event method to the form.
-	 * 
-	 * @param form The form to update
-	 * @param eventName The event name
-	 * @param methodUUID The method UUID
-	 */
-	private static void applyEventMethod(Form form, String eventName, String methodUUID)
-	{
-		switch (eventName)
-		{
-			case "onLoad" :
-				form.setOnLoadMethodID(methodUUID);
-				break;
-			case "onUnLoad" :
-				form.setOnUnLoadMethodID(methodUUID);
-				break;
-			case "onShow" :
-				form.setOnShowMethodID(methodUUID);
-				break;
-			case "onHide" :
-				form.setOnHideMethodID(methodUUID);
-				break;
-			case "onBeforeHide" :
-				form.setOnBeforeHideMethodID(methodUUID);
-				break;
-			case "onRecordSelection" :
-				form.setOnRecordSelectionMethodID(methodUUID);
-				break;
-			case "onBeforeRecordSelection" :
-				form.setOnBeforeRecordSelectionMethodID(methodUUID);
-				break;
-			case "onRecordEditStart" :
-				form.setOnRecordEditStartMethodID(methodUUID);
-				break;
-			case "onRecordEditStop" :
-				form.setOnRecordEditStopMethodID(methodUUID);
-				break;
-			case "onElementDataChange" :
-				form.setOnElementDataChangeMethodID(methodUUID);
-				break;
-			case "onElementFocusGained" :
-				form.setOnElementFocusGainedMethodID(methodUUID);
-				break;
-			case "onElementFocusLost" :
-				form.setOnElementFocusLostMethodID(methodUUID);
-				break;
-			case "onResize" :
-				form.setOnResizeMethodID(methodUUID);
-				break;
-			case "onSort" :
-				form.setOnSortCmdMethodID(methodUUID);
-				break;
-			default :
-				break;
-		}
 	}
 
 	/**
