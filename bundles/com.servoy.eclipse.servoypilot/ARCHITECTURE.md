@@ -1,11 +1,44 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 5, 2026  
+**Last Updated:** February 10, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** All features implemented and functional
 
-**Recent Updates (Feb 5, 2026):**
+**Recent Updates (Feb 10, 2026):**
+- **Knowledge base loading fixed**: 
+  - **REMOVED auto-create** `.servoy/` directory on solution activation
+  - Now loads from `.servoy/` directory **IF it exists** (solution-specific customization)
+  - Otherwise loads **default knowledge base from bundle resources** (knowledgebase bundle)
+  - Created `ServoyBundlePackageReader` for reading from OSGi bundle resources
+  - Added `InstructionsLoadService.loadFromBundleResources()` method
+  - Users must explicitly use "Reset Instructions" to create `.servoy/` directory with defaults
+- **Architecture improvements**:
+  - `ChatViewPresenter.onSolutionActivated()` now implements conditional loading logic
+  - Cleaner separation between default (bundle) and customized (filesystem) knowledge bases
+  - No unwanted file system modifications on solution activation
+
+**Previous Updates (Feb 9, 2026):**
+- **Form parent form setting fixed**: FormService.setFormParent() now uses correct API (setExtendsID(String)) - works on all versions
+- **Form properties and events enhanced**: 
+  - Properties can be set on both NEW and EXISTING forms (removed isNewForm restrictions)
+  - Events auto-create methods with skeleton code if they don't exist
+  - Added comprehensive examples in forms.md (18 examples)
+- **Knowledge base loading refactored**:
+  - Now loads ONLY from `.servoy/` directory in solution root (if exists)
+  - Removed NGPackageManager dependency
+  - Created ServoyFolderPackageReader for direct folder reading
+- **Chat memory clearing on Refresh/Reset**:
+  - Both "Refresh Instructions" and "Reset Instructions" now clear chat memory
+  - Clears chat UI for visual feedback
+  - User starts with completely fresh conversation (no prior context)
+  - Added Activator.clearChatMemory(memoryId) method
+- **Documentation updates**:
+  - Updated forms.md with critical rule #12: properties/events/extendsForm work on EXISTING forms
+  - Added Example 16 showing how to set inheritance on existing forms
+  - Added test prompts for form properties and events (12 test scenarios)
+
+**Previous Updates (Feb 5, 2026):**
 - **System Prompts from .servoy directory**: ServoyAiModel now loads chat-system-prompt.txt from active solution's .servoy/system-prompts/ first, with fallback to resources
 - **File renamed**: core-system-prompt.txt → chat-system-prompt.txt in knowledgebase bundle
 - **Services refactored**: InstructionsLoadService, InstructionsSaveService (formerly InstructionsFileService) now follow positive conditional coding rules
@@ -91,9 +124,11 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 |   |-- KnowledgeBaseManager.java             # Facade for knowledge base operations
 |   |-- KnowledgeBaseOperationsProvider.java  # Extension point provider
 |   |-- KnowledgeBaseStartup.java             # Startup listener
+|   |-- ServoyFolderPackageReader.java        # IPackageReader for .servoy/ directory (filesystem)
+|   |-- ServoyBundlePackageReader.java        # IPackageReader for bundle resources (default KB)
 |   +-- service/
-|       |-- RulesCache.java                   # Rules storage and loading (SPM + file system)
-|       +-- ServoyEmbeddingService.java       # Vector embeddings with ONNX model (SPM + file system)
+|       |-- RulesCache.java                   # Rules storage and loading (bundle + file system)
+|       +-- ServoyEmbeddingService.java       # Vector embeddings with ONNX model (bundle + file system)
 +-- resources/                                 # Default knowledge base files
     |-- system-prompts/                        # System prompts
     |   +-- chat-system-prompt.txt             # Default chat system prompt
@@ -199,6 +234,55 @@ LLM APIs (OpenAI, Gemini) are **stateless** - they don't remember conversations.
 
 **Implementation:**
 
+**ChatViewPresenter.java** registers dynamic proxy listener:
+```java
+@PostConstruct
+public void init() {
+    // Register IActiveProjectListener via reflection (avoids compile dependency)
+    Class<?> listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
+    Object listener = Proxy.newProxyInstance(..., (proxy, method, args) -> {
+        if ("activeProjectChanged".equals(method.getName())) {
+            ServoyProject project = (ServoyProject) args[0];
+            onSolutionActivated(project.getProject().getName());
+        }
+        return null;
+    });
+    servoyModel.addActiveProjectListener(listener);
+}
+```
+
+**onSolutionActivated(String projectName) workflow:**
+1. Clear old solution's chat memory: `clearMemory(currentMemoryId)`
+2. Update memory ID to new solution: `currentMemoryId = projectName`
+3. Clear UI conversation history
+4. **Check for `.servoy/` directory in solution root**:
+   - If **NOT exists**: Auto-create with default content from knowledgebase bundle (no dialog)
+   - If **exists**: Use existing content
+5. **Load knowledge base** from `.servoy/` directory:
+   - Clear previous knowledge base
+   - Load embeddings and rules from `.servoy/embeddings/` and `.servoy/rules/`
+6. Clear chat UI and show "New session started" notification
+
+**Auto-creation logic:**
+```java
+if (!fileService.servoyDirectoryExists(project)) {
+    // Auto-create .servoy directory with default content (no dialog)
+    fileService.copyResourcesToSolution(project, null);
+}
+// Load from .servoy (either existing or newly created)
+if (fileService.servoyDirectoryExists(project)) {
+    loaderService.clearKnowledgeBase();
+    loaderService.loadFromFileSystem(project.getFolder(".servoy"));
+}
+```
+
+**Benefits:**
+- Each solution gets isolated conversation context
+- Knowledge base automatically customized per solution
+- New solutions automatically get default knowledge base
+- User never manually manages knowledge base - it "just works"
+- Switching projects feels like starting fresh chat session
+
 **ChatViewPresenter.java** (Direct Listener Registration)
 - Registers `IActiveProjectListener` proxy in `@PostConstruct init()` using reflection (avoids compile-time dependency)
 - Listens directly to `ServoyModel.activeProjectChanged` events
@@ -233,14 +317,16 @@ ChatViewPresenter.onSolutionActivated(projectName)
 3. Clear UI conversation history
 4. Get IProject for new solution
 5. Check if .servoy/ directory exists
-   IF EXISTS:
+   IF NOT EXISTS:
+     - Auto-create .servoy/ with default content from knowledgebase bundle (no dialog)
+     - Log: "Creating .servoy directory with default content"
+   (ALWAYS proceeds to loading after this point)
+6. Load knowledge base from .servoy/ directory:
      - Clear knowledge base (rules + embeddings)
      - Load from .servoy/rules/ and .servoy/embeddings/
      - Log: "Knowledge base loaded from .servoy directory"
-   IF NOT EXISTS:
-     - Clear knowledge base (empty state)
-     - Log: "Knowledge base cleared for solution without .servoy"
-6. Show notification message
+7. Clear chat UI
+8. Show "New session started" notification
   ↓
 User closes ChatView
   ↓
@@ -254,6 +340,7 @@ Unregisters listener from ServoyModel
 - Direct communication (no event bus overhead)
 - Simple lifecycle management (register on create, unregister on destroy)
 - Automatic solution-specific knowledge base isolation
+- **Every solution automatically gets knowledge base** (no manual setup required)
 - No cross-contamination of rules/embeddings between solutions
 
 ---
@@ -324,12 +411,17 @@ Unregisters listener from ServoyModel
 **Key Methods:**
 - `clearKnowledgeBase()` - Clears RulesCache + ServoyEmbeddingService
 - `loadFromFileSystem(IFolder)` - Orchestrates loading from `.servoy/` (system-prompts, rules, embeddings)
+- `loadFromBundleResources()` - Loads default knowledge base from knowledgebase bundle's resources/
 - `isKnowledgeBaseLoaded()` - Checks if KB has content (rules or embeddings)
-- `loadSystemPromptsFromFolder(IFolder)` - Logs availability of custom system prompts
 - `loadRulesFromFolder(IFolder)` - Loads from `.servoy/rules/`
 - `loadEmbeddingsFromFolder(IFolder)` - Loads from `.servoy/embeddings/`
 
 **Implementation:** Uses ServoyLog, converts IFolder to Path, validates structure, proper exception handling
+
+**Refactored (Feb 10, 2026):**
+- Added `loadFromBundleResources()` for loading default knowledge base from bundle
+- Uses `ServoyBundlePackageReader` to read from OSGi bundle's resources/ directory
+- Enables fallback to default KB when `.servoy/` doesn't exist
 
 **Refactored (Feb 5, 2026):** 
 - Now handles system-prompts/ directory
@@ -691,7 +783,7 @@ if (DebugUtils.isDebugEnabled()) {
 11. Response added to memory for current solution
 ```
 
-### 4.2 Solution Switching (with Knowledge Base Management)
+### 4.2 Solution Switching (with Knowledge Base Loading)
 
 ```
 1. User opens ChatView
@@ -704,47 +796,55 @@ if (DebugUtils.isDebugEnabled()) {
    b. Updates currentMemoryId = new solution name
    c. Clears UI chat history
    d. Gets IProject for new solution
-   e. Checks if .servoy/ directory exists in new solution:
+   e. Clears knowledge base (rules + embeddings)
+   f. Checks if .servoy/ directory exists in new solution:
       IF EXISTS:
-        - InstructionsLoaderService.clearKnowledgeBase()
-        - InstructionsLoaderService.loadFromFileSystem(.servoy/)
+        - InstructionsLoadService.loadFromFileSystem(.servoy/)
         - Logs: "Knowledge base loaded from .servoy directory"
       IF NOT EXISTS:
-        - InstructionsLoaderService.clearKnowledgeBase()
-        - Logs: "Knowledge base cleared for solution without .servoy"
-   f. Shows "New session started" notification
-7. Next message uses new memoryId and new knowledge base (isolated per solution)
+        - InstructionsLoadService.loadFromBundleResources()
+        - Loads default knowledge base from knowledgebase bundle's resources/
+        - Logs: "Default knowledge base loaded from bundle"
+   g. Clears chat UI
+   h. Shows "New session started" notification
+7. Next message uses new memoryId and solution-specific or default knowledge base (isolated per solution)
 ```
+
+**Key Change (Feb 10, 2026):** No auto-creation of `.servoy/` - loads default knowledge base from bundle instead. Users must use "Reset Instructions" menu to create customized `.servoy/` directory.
 
 ### 4.3 Save/Load Instructions Workflows
 
-**Save Instructions:**
+**Refresh Instructions (Feb 9, 2026 - enhanced):**
 ```
-1. User clicks hamburger menu (≡) → "Save Instructions"
-2. ChatView calls presenter.onSaveInstructions()
-3. ChatViewPresenter calls SaveInstructionsHandler.execute(Shell)
-4. Handler gets active project
-5. If .servoy/ exists → show confirmation dialog
-6. Background Job starts (3 steps):
-   Step 1: Delete old .servoy/ (if overriding)
-   Step 2: Copy resources from knowledgebase bundle to .servoy/
-   Step 3: Clear KB + Load from new .servoy/
-7. Success dialog shown
-8. Knowledge base now loaded and available to AI
+1. User clicks menu → "Refresh Instructions"
+2. RefreshInstructionsHandler.execute() runs
+3. Handler gets active project
+4. Background Job starts:
+   Step 1: Create .servoy/ if doesn't exist (with defaults)
+   Step 2: Clear KB + Load from .servoy/
+   Step 3: Clear chat memory (Activator.clearChatMemory("default"))
+   Step 4: Clear chat UI (visual feedback)
+5. Success dialog: "Chat history has been cleared - starting fresh conversation"
+6. User starts with completely fresh context
 ```
 
-**Load Instructions:**
+**Reset Instructions (Feb 9, 2026 - enhanced):**
 ```
-1. User clicks hamburger menu (≡) → "Load Instructions"
-2. ChatView calls presenter.onLoadInstructions()
-3. ChatViewPresenter calls LoadInstructionsHandler.execute(Shell)
-4. Handler gets active project
-5. Background Job starts (2 steps):
-   Step 1: Create .servoy/ if doesn't exist (auto-provision)
-   Step 2: Clear KB + Load from .servoy/
-6. Success dialog shown
-7. Knowledge base now loaded and available to AI
+1. User clicks menu → "Reset Instructions"
+2. ResetInstructionsHandler.execute() runs
+3. Handler gets active project
+4. If .servoy/ exists → show confirmation dialog
+5. Background Job starts:
+   Step 1: Delete old .servoy/ (if overriding)
+   Step 2: Copy default resources from knowledgebase bundle to .servoy/
+   Step 3: Clear KB + Load from new .servoy/
+   Step 4: Clear chat memory (Activator.clearChatMemory("default"))
+   Step 5: Clear chat UI (visual feedback)
+6. Success dialog: "Chat history has been cleared - starting fresh conversation"
+7. User starts with default knowledge base and fresh conversation
 ```
+
+**Key Enhancement:** Both operations now clear chat memory, ensuring user truly starts fresh with no prior conversation context.
 
 ### 4.4 Configuration
 
@@ -976,18 +1076,112 @@ public class TextFieldComponentTools {
 
 ---
 
-## 9. Knowledge Base Architecture
+## 9. Knowledge Base Architecture (Feb 10, 2026 - Updated)
 
 ### 9.1 Overview
 
 The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with local ONNX embeddings for fast, offline semantic search.
 
+**Major Refactoring (Feb 10, 2026):**
+- **Conditional Loading:** Loads from `.servoy/` directory IF it exists, otherwise loads from bundle resources
+- **No Auto-Creation:** Removed automatic `.servoy/` directory creation on solution activation
+- **Bundle-Based Fallback:** New `ServoyBundlePackageReader` reads default KB from knowledgebase bundle
+- **Two Loading Paths:** 
+  - Solution-specific: `.servoy/` directory (customized knowledge base)
+  - Default: Bundle resources (default knowledge base from plugin)
+
 **Components:**
+- **KnowledgeBaseManager**: Facade for knowledge base operations (discovery, loading)
+- **ServoyFolderPackageReader**: IPackageReader for reading from `.servoy/` folder (filesystem)
+- **ServoyBundlePackageReader**: IPackageReader for reading from bundle resources (default KB)
 - **RulesCache**: Stores markdown rule files with intent-based retrieval
 - **ServoyEmbeddingService**: Generates and searches vector embeddings using ONNX model
-- **Dual-Source Loading**: Can load from SPM packages (workspace) OR file system (`.servoy/`)
+- **InstructionsLoadService**: Orchestrates loading from filesystem or bundle
+- **InstructionsSaveService**: Handles `.servoy/` directory creation and copying
 
-### 9.2 RulesCache
+### 9.2 KnowledgeBaseManager
+
+**Purpose:** Central manager for knowledge base operations
+
+**Key Method:**
+```java
+private static IPackageReader[] discoverKnowledgeBasePackagesInSolution(ServoyProject solution) {
+    IProject project = solution.getProject();
+    IFolder servoyFolder = project.getFolder(".servoy");
+    
+    if (!servoyFolder.exists()) {
+        // No .servoy directory → return empty (will load from bundle instead)
+        return new IPackageReader[0];
+    }
+    
+    // Create package reader for .servoy folder
+    ServoyFolderPackageReader reader = new ServoyFolderPackageReader(servoyFolder, solutionName);
+    return new IPackageReader[] { reader };
+}
+```
+
+**Workflow:**
+1. Check if `.servoy/` folder exists in solution root
+2. If YES → Create `ServoyFolderPackageReader` for it
+3. If NO → Return empty array (ChatViewPresenter will load from bundle)
+4. Load embeddings and rules from the reader
+
+**Benefits:**
+- Simple, direct file access (no complex package management)
+- Fast loading (no bundle scanning)
+- Predictable behavior (`.servoy/` or bundle resources)
+
+### 9.3 ServoyFolderPackageReader
+
+**Purpose:** IPackageReader implementation for reading from `.servoy/` folder
+
+**File:** `knowledgebase/ServoyFolderPackageReader.java`
+
+**Key Features:**
+- Implements `org.sablo.specification.Package.IPackageReader`
+- Reads directly from Eclipse `IFolder` (`.servoy/` directory)
+- No MANIFEST.MF required (not an SPM package)
+- Returns `File` for `getResource()` method
+
+**Methods:**
+- `getName()` / `getPackageName()` - Returns `<solutionName>-knowledge-base`
+- `getPackageDisplayname()` - Returns `<solutionName> Knowledge Base`
+- `getVersion()` - Returns "1.0.0"
+- `getPackageURL()` - Returns URL of `.servoy/` folder
+- `getUrlForPath(String)` - Resolves file paths within `.servoy/`
+- `readTextFile(String, Charset)` - Reads text file from `.servoy/`
+- `getResource()` - Returns `File` for `.servoy/` folder
+
+### 9.3a ServoyBundlePackageReader
+
+**Purpose:** IPackageReader implementation for reading from OSGi bundle resources
+
+**File:** `knowledgebase/ServoyBundlePackageReader.java`
+
+**Key Features:**
+- Implements `org.sablo.specification.Package.IPackageReader`
+- Reads from OSGi bundle's `resources/` directory
+- Used to load default knowledge base when `.servoy/` doesn't exist
+- No file system access required
+
+**Methods:**
+- `getName()` / `getPackageName()` - Returns bundle symbolic name + "-default"
+- `getPackageDisplayname()` - Returns "Default Knowledge Base"
+- `getVersion()` - Returns bundle version
+- `getPackageURL()` - Returns URL of bundle's base path
+- `getUrlForPath(String)` - Resolves resource paths within bundle
+- `readTextFile(String, Charset)` - Reads text file from bundle resources
+- `getResource()` - Returns null (bundle resources can't be accessed as File objects)
+
+**Usage:**
+```java
+Bundle knowledgebaseBundle = Platform.getBundle("com.servoy.eclipse.servoypilot.knowledgebase");
+IPackageReader bundleReader = new ServoyBundlePackageReader(knowledgebaseBundle, "resources");
+RulesCache.loadFromPackageReader(bundleReader);
+embeddingService.loadKnowledgeBaseFromReader(bundleReader);
+```
+
+### 9.4 RulesCache
 
 **Purpose:** Fast key-based retrieval of rule markdown content
 
@@ -997,22 +1191,20 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 - `forms.md` → `FORMS`
 - `bootstrap/buttons.md` → `BOOTSTRAP_BUTTONS`
 
-**Loading Sources:**
-1. **SPM Packages** (workspace projects marked as knowledge base):
-   - `loadFromPackageReader(IPackageReader)` 
-   - Reads from `rules/` directory in package
-2. **File System** (`.servoy/` directories):
-   - `loadFromDirectory(Path)`
-   - Reads `rules/rules.list` for file list
-   - Loads each `.md` file
+**Loading Source (Feb 9, 2026):**
+- **File System ONLY** (`.servoy/` directories):
+  - `loadFromPackageReader(IPackageReader)` now receives ServoyFolderPackageReader
+  - Reads `rules/rules.list` for file list
+  - Loads each `.md` file
 
 **Methods:**
 - `getRules(String intent)` - Retrieve rules by intent
 - `getRules(String intent, String projectName)` - With variable substitution (e.g., `{{PROJECT_NAME}}`)
 - `clear()` - Clear all cached rules
 - `getRuleCount()` - Get number of loaded rules
+- `getAvailableIntents()` - Get list of all loaded intents
 
-### 9.3 ServoyEmbeddingService
+### 9.5 ServoyEmbeddingService
 
 **Purpose:** Semantic search over knowledge base using vector embeddings
 
@@ -1022,20 +1214,17 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 - **Tokenizer:** ONNX tokenizer (no external dependencies)
 - **Similarity Threshold:** 0.8 (80% similarity minimum)
 
-**Loading Sources:**
-1. **SPM Packages**:
-   - `loadKnowledgeBaseFromReader(IPackageReader)`
-   - Reads from `embeddings/` directory in package
-2. **File System**:
-   - `loadFromDirectory(Path)`
-   - Reads `embeddings/embeddings.list` for file list
-   - Generates embeddings for each line in `.txt` files
+**Loading Source (Feb 9, 2026):**
+- **File System ONLY** (`.servoy/` directories):
+  - `loadKnowledgeBaseFromReader(IPackageReader)` receives ServoyFolderPackageReader
+  - Reads `embeddings/embeddings.list` for file list
+  - Generates embeddings for each line in `.txt` files
 
 **Methods:**
 - `search(String query, int maxResults)` - Semantic search
 - `getEmbeddingCount()` - Get number of embeddings loaded
 - `hasEmbeddings()` - Check if embeddings exist
-- `reloadAllKnowledgeBasesFromReaders(IPackageReader[])` - Clear and reload from SPM packages
+- `reloadAllKnowledgeBasesFromReaders(IPackageReader[])` - Clear and reload from package readers
 
 **Search Flow:**
 1. User query received
@@ -1044,7 +1233,7 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 4. Return matches with score > 0.8
 5. LLM uses matched content to answer question
 
-### 9.4 Integration with getKnowledge Tool
+### 9.6 Integration with getKnowledge Tool
 
 **Tool:** `KnowledgeTools.getKnowledge(String query)`
 
@@ -1177,30 +1366,42 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 - ✅ Solution-specific system prompts (loaded from `.servoy/system-prompts/chat-system-prompt.txt`)
 - ✅ Dual-prompt fallback system (OpenAI GPT-4 / Google Gemini resources)
 - ✅ RAG with local ONNX embeddings (offline, fast)
-- ✅ Save/Load Instructions per solution
+- ✅ **Refresh/Reset Instructions clear chat memory** (fresh conversation guaranteed)
+- ✅ **Auto-create `.servoy/` on solution activation** (no manual setup required)
 - ✅ Automatic knowledge base loading on solution activation
 - ✅ Background jobs for non-blocking operations
 - ✅ Code diff viewer and patch application
 
-**Knowledge Base Features:**
-- ✅ Dual-source loading (SPM packages + file system)
+**Knowledge Base Features (Feb 9, 2026 - Refactored):**
+- ✅ **Simplified loading:** ONLY from `.servoy/` directory (no NGPackageManager)
+- ✅ **Direct folder reading:** New ServoyFolderPackageReader for fast access
+- ✅ **Auto-creation:** Every solution gets default knowledge base automatically
 - ✅ Solution-specific customization via `.servoy/` directories
 - ✅ System prompts, rules, and embeddings all supported
 - ✅ Semantic search with 80% similarity threshold
 - ✅ Intent-based rule retrieval
 - ✅ Variable substitution in rules (e.g., `{{PROJECT_NAME}}`)
 
+**Form Management (Feb 9, 2026 - Enhanced):**
+- ✅ **Properties work on existing forms** (not just new ones)
+- ✅ **Events work on existing forms** with auto-created methods
+- ✅ **Inheritance (extendsForm) works on existing forms** (no delete/recreate needed)
+- ✅ 18 form properties supported (width, height, dataSource, styleClass, etc.)
+- ✅ 13 form events + 1 command supported (onLoad, onShow, onRecordSelection, etc.)
+- ✅ Fixed setFormParent() to use correct API (setExtendsID(String))
+
 **UI Features:**
 - ✅ Markdown rendering with syntax highlighting
-- ✅ Hamburger menu for knowledge base management
+- ✅ Refresh/Reset Instructions menus
 - ✅ Progress dialogs for background operations
 - ✅ Confirmation dialogs before overwriting
 - ✅ Auto-scroll toggle
 - ✅ Copy to clipboard
+- ✅ Clear chat UI on Refresh/Reset for visual feedback
 
 **Testing & Quality:**
-- ✅ Test prompts suite (50+ test scenarios)
-  - `testprompts/form-tools-test-prompts.md` (30 prompts)
+- ✅ Test prompts suite (60+ test scenarios)
+  - `testprompts/form-tools-test-prompts.md` (30 prompts + 12 properties/events tests)
   - `testprompts/database-tools-test-prompts.md` (20 prompts)
 - ✅ Debug system with DebugUtils (controlled by `-Dconsole.debug=true`)
 - ✅ Comprehensive error handling and logging
@@ -1218,7 +1419,6 @@ The knowledge base system uses **Retrieval-Augmented Generation (RAG)** with loc
 
 **End of Architecture Reference**
 
-**Last Updated:** February 5, 2026 (System prompts, DatabaseTools, Services refactoring)
+**Last Updated:** February 9, 2026 (Knowledge base loading refactored, Forms enhanced, Chat memory clearing)
 **All Features:** Implemented and Functional  
-**Status:** Production Ready  
 **Status:** Production Ready

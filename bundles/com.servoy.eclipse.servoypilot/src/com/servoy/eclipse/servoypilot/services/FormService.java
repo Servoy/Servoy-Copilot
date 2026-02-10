@@ -170,13 +170,13 @@ public class FormService
 						}
 						break;
 
-//					case "navigatorID":
-//					case "navigator":
-//						if (propValue != null)
-//						{
-//							form.setNavigatorID(propValue.toString());
-//						}
-//						break;
+					case "navigatorID" :
+					case "navigator" :
+						if (propValue != null)
+						{
+							form.setNavigatorID(propValue.toString());
+						}
+						break;
 
 					case "initialSort" :
 						if (propValue != null)
@@ -267,10 +267,12 @@ public class FormService
 
 		AiBridge.setFormExtendsID(form, parentForm);
 		servoyProject.saveEditingSolutionNodes(new IPersist[] { servoyProject.getEditingSolution() }, true);
+
+		ServoyLog.logInfo("[FormService] Set parent form '" + parentFormName + "' for form '" + form.getName() + "'");
 	}
 
 	/**
-	 * Applies events to a form.
+	 * Applies events to a form, auto-creating methods if they don't exist.
 	 * 
 	 * @param form The form to update
 	 * @param events Map of events to update (event name -> method name)
@@ -284,13 +286,14 @@ public class FormService
 			return;
 		}
 
-		ServoyLog.logInfo("[FormService] Applying form events: " + form.getName());
-
 		String eventValue = null;
 		String eventName = null;
 
 		try
 		{
+			IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IValidateName validator = servoyModel.getNameValidator();
+
 			for (Map.Entry<String, String> entry : events.entrySet())
 			{
 				eventName = entry.getKey();
@@ -298,18 +301,200 @@ public class FormService
 
 				if (eventValue != null && !eventValue.trim().isEmpty())
 				{
-					String methodUUID = resolveMethodUUID(form, eventValue.trim());
+					String methodName = eventValue.trim();
+					String methodUUID = resolveMethodUUID(form, methodName);
+
+					if (methodUUID == null)
+					{
+						ScriptMethod method = createFormMethod(form, methodName, eventName, validator);
+						methodUUID = method.getUUID().toString();
+					}
+
 					if (methodUUID != null)
 					{
-						AiBridge.applyEventMethod(form, eventName, methodUUID);
+						applyEventMethod(form, eventName, methodUUID);
 					}
 				}
 			}
+			servoyProject.saveEditingSolutionNodes(new IPersist[] { form }, true);
 		}
 		catch (Exception e)
 		{
 			throw new RepositoryException("Error setting event '" + eventName + "': " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Creates a new script method on a form with skeleton code based on event type.
+	 * 
+	 * @param form The form to add method to
+	 * @param methodName The method name
+	 * @param eventName The event name (for generating appropriate skeleton code)
+	 * @param validator Name validator
+	 * @return The created ScriptMethod
+	 * @throws RepositoryException If creation fails
+	 */
+	private static ScriptMethod createFormMethod(Form form, String methodName, String eventName, IValidateName validator)
+		throws RepositoryException
+	{
+		ScriptMethod method = form.createNewScriptMethod(validator, methodName);
+
+		String skeleton = getMethodSkeletonCode(eventName, methodName);
+		method.setDeclaration(skeleton);
+
+		ServoyLog.logInfo("[FormService] Created method '" + methodName + "' with skeleton code for event '" + eventName + "'");
+
+		return method;
+	}
+
+	/**
+	 * Generates skeleton code for a method based on event type.
+	 * 
+	 * @param eventName The event name
+	 * @param methodName The method name
+	 * @return JavaScript skeleton code as string
+	 */
+	private static String getMethodSkeletonCode(String eventName, String methodName)
+	{
+		if (eventName != null)
+		{
+			switch (eventName)
+			{
+				case "onLoad" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Initialize form data and setup\n");
+
+				case "onShow" :
+					return generateMethodDeclaration(methodName, "firstShow, event",
+						"// TODO: Refresh display data\n");
+
+				case "onHide" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Cleanup or save pending changes\n");
+
+				case "onBeforeHide" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Validate before hiding, return false to prevent\n\treturn true;\n");
+
+				case "onRecordSelection" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Handle record selection\n");
+
+				case "onBeforeRecordSelection" :
+					return generateMethodDeclaration(methodName, "oldSelection, newSelection, event",
+						"// TODO: Validate selection change, return false to prevent\n\treturn true;\n");
+
+				case "onRecordEditStart" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Handle edit start\n\treturn true;\n");
+
+				case "onRecordEditStop" :
+					return generateMethodDeclaration(methodName, "record, event",
+						"// TODO: Validate record before save, return false to prevent\n\treturn true;\n");
+
+				case "onElementDataChange" :
+					return generateMethodDeclaration(methodName, "oldValue, newValue, event",
+						"// TODO: Validate data change, return false to reject\n\treturn true;\n");
+
+				case "onElementFocusGained" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Handle focus gained\n\treturn true;\n");
+
+				case "onElementFocusLost" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Handle focus lost\n\treturn true;\n");
+
+				case "onResize" :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Handle form resize\n");
+
+				case "onSort" :
+					return generateMethodDeclaration(methodName, "dataProviderID, asc, event",
+						"// TODO: Handle sort command\n");
+
+				default :
+					return generateMethodDeclaration(methodName, "event",
+						"// TODO: Implement " + eventName + " handler\n");
+			}
+		}
+
+		return generateMethodDeclaration(methodName, "event", "// TODO: Implement method\n");
+	}
+
+	/**
+	 * Generates a JavaScript method declaration with JSDoc comment.
+	 * 
+	 * @param methodName The method name
+	 * @param params The parameter list
+	 * @param body The method body
+	 * @return Complete method declaration string
+	 */
+	private static String generateMethodDeclaration(String methodName, String params, String body)
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append("/**\n");
+
+		// Generate @param for each parameter based on the params string
+		if (params != null && !params.trim().isEmpty())
+		{
+			String[] paramArray = params.split(",");
+			for (String param : paramArray)
+			{
+				String trimmedParam = param.trim();
+				if (!trimmedParam.isEmpty())
+				{
+					// Determine the type based on parameter name conventions
+					String paramType = getParameterType(trimmedParam);
+					sb.append(" * @param {").append(paramType).append("} ").append(trimmedParam).append("\n");
+				}
+			}
+		}
+
+		sb.append(" */\n");
+		sb.append("function ").append(methodName).append("(").append(params).append(") {\n");
+		sb.append("\t").append(body);
+		sb.append("}\n");
+		return sb.toString();
+	}
+
+	/**
+	 * Determines the JSDoc type for a parameter based on its name.
+	 * 
+	 * @param paramName The parameter name
+	 * @return The JSDoc type string
+	 */
+	private static String getParameterType(String paramName)
+	{
+		if (paramName.equals("event"))
+		{
+			return "JSEvent";
+		}
+		if (paramName.equals("record"))
+		{
+			return "JSRecord";
+		}
+		if (paramName.equals("oldValue") || paramName.equals("newValue"))
+		{
+			return "Object";
+		}
+		if (paramName.equals("oldSelection") || paramName.equals("newSelection"))
+		{
+			return "JSRecord|JSRecord[]";
+		}
+		if (paramName.equals("firstShow"))
+		{
+			return "Boolean";
+		}
+		if (paramName.equals("asc"))
+		{
+			return "Boolean";
+		}
+		if (paramName.equals("dataProviderID"))
+		{
+			return "String";
+		}
+		// Default to generic type
+		return "*";
 	}
 
 	/**
@@ -336,10 +521,66 @@ public class FormService
 			}
 		}
 
-		ServoyLog.logInfo("[FormService] Method not found: " + methodName);
 		return null;
 	}
 
+	/**
+	 * Applies a specific event method to the form.
+	 * 
+	 * @param form The form to update
+	 * @param eventName The event name
+	 * @param methodUUID The method UUID
+	 */
+	private static void applyEventMethod(Form form, String eventName, String methodUUID)
+	{
+		switch (eventName)
+		{
+			case "onLoad" :
+				form.setOnLoadMethodID(methodUUID);
+				break;
+			case "onUnLoad" :
+				form.setOnUnLoadMethodID(methodUUID);
+				break;
+			case "onShow" :
+				form.setOnShowMethodID(methodUUID);
+				break;
+			case "onHide" :
+				form.setOnHideMethodID(methodUUID);
+				break;
+			case "onBeforeHide" :
+				form.setOnBeforeHideMethodID(methodUUID);
+				break;
+			case "onRecordSelection" :
+				form.setOnRecordSelectionMethodID(methodUUID);
+				break;
+			case "onBeforeRecordSelection" :
+				form.setOnBeforeRecordSelectionMethodID(methodUUID);
+				break;
+			case "onRecordEditStart" :
+				form.setOnRecordEditStartMethodID(methodUUID);
+				break;
+			case "onRecordEditStop" :
+				form.setOnRecordEditStopMethodID(methodUUID);
+				break;
+			case "onElementDataChange" :
+				form.setOnElementDataChangeMethodID(methodUUID);
+				break;
+			case "onElementFocusGained" :
+				form.setOnElementFocusGainedMethodID(methodUUID);
+				break;
+			case "onElementFocusLost" :
+				form.setOnElementFocusLostMethodID(methodUUID);
+				break;
+			case "onResize" :
+				form.setOnResizeMethodID(methodUUID);
+				break;
+			case "onSort" :
+				form.setOnSortCmdMethodID(methodUUID);
+				break;
+			default :
+				break;
+		}
+	}
 
 	/**
 	 * Parses selection mode string to constant.

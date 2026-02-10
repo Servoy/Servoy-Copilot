@@ -6,8 +6,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.swt.widgets.Display;
-
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -63,7 +61,7 @@ public class RelationTools
 				() -> openOrCreateRelation(name, primaryDataSource, foreignDataSource,
 					primaryColumn, foreignColumn, properties));
 		}
-		
+
 		return "Error: name parameter is required";
 	}
 
@@ -79,7 +77,7 @@ public class RelationTools
 			return UIThreadHelper.syncExec("deleteRelations",
 				() -> deleteRelationsImpl(names));
 		}
-		
+
 		return "Error: names parameter is required (array of relation names)";
 	}
 
@@ -95,80 +93,80 @@ public class RelationTools
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
 			String activeSolutionName = servoyProject.getEditingSolution().getName();
-		String contextName = null;
+			String contextName = null;
 
-		List<Relation> relations = new ArrayList<>();
+			List<Relation> relations = new ArrayList<>();
 
-		if ("current".equals(scope))
-		{
-			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String context = ContextService.getInstance().getCurrentContext();
-			contextName = "active".equals(context) ? activeSolutionName : context;
-
-			Iterator<Relation> relationsIterator = targetProject.getEditingSolution().getRelations(false);
-			while (relationsIterator.hasNext())
+			if ("current".equals(scope))
 			{
-				relations.add(relationsIterator.next());
-			}
-		}
-		else
-		{
-			Iterator<Relation> activeRelations = servoyProject.getEditingSolution().getRelations(false);
-			while (activeRelations.hasNext())
-			{
-				relations.add(activeRelations.next());
-			}
+				ServoyProject targetProject = resolveTargetProject(servoyModel);
+				String context = ContextService.getInstance().getCurrentContext();
+				contextName = "active".equals(context) ? activeSolutionName : context;
 
-			ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
-			for (ServoyProject module : modules)
-			{
-				if (module != null && module.getEditingSolution() != null && !module.equals(servoyProject))
+				Iterator<Relation> relationsIterator = targetProject.getEditingSolution().getRelations(false);
+				while (relationsIterator.hasNext())
 				{
-					Iterator<Relation> moduleRelations = module.getEditingSolution().getRelations(false);
-					while (moduleRelations.hasNext())
+					relations.add(relationsIterator.next());
+				}
+			}
+			else
+			{
+				Iterator<Relation> activeRelations = servoyProject.getEditingSolution().getRelations(false);
+				while (activeRelations.hasNext())
+				{
+					relations.add(activeRelations.next());
+				}
+
+				ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
+				for (ServoyProject module : modules)
+				{
+					if (module != null && module.getEditingSolution() != null && !module.equals(servoyProject))
 					{
-						relations.add(moduleRelations.next());
+						Iterator<Relation> moduleRelations = module.getEditingSolution().getRelations(false);
+						while (moduleRelations.hasNext())
+						{
+							relations.add(moduleRelations.next());
+						}
 					}
 				}
 			}
+
+			if (relations.isEmpty())
+			{
+				return "No relations found" + ("current".equals(scope) ? " in '" + contextName + "'" : " in the active solution");
+			}
+
+			StringBuilder result = new StringBuilder();
+
+			if ("current".equals(scope))
+			{
+				result.append("Relations in '").append(contextName).append("' (").append(relations.size()).append("):\n\n");
+			}
+			else
+			{
+				result.append("Relations in solution '").append(activeSolutionName).append("' and modules (").append(relations.size()).append("):\n\n");
+			}
+
+			int count = 1;
+			for (Relation relation : relations)
+			{
+				String solutionName = getSolutionName(relation);
+				String originInfo = formatOrigin(solutionName, activeSolutionName);
+
+				result.append(count).append(". ").append(relation.getName()).append(originInfo);
+				result.append("\n   Primary: ").append(relation.getPrimaryDataSource());
+				result.append("\n   Foreign: ").append(relation.getForeignDataSource());
+
+				String joinType = relation.getJoinType() == com.servoy.base.query.IQueryConstants.INNER_JOIN ? "INNER" : "LEFT OUTER";
+				result.append(" (").append(joinType).append(" JOIN)");
+
+				result.append("\n");
+				count++;
+			}
+
+			return result.toString();
 		}
 
-		if (relations.isEmpty())
-		{
-			return "No relations found" + ("current".equals(scope) ? " in '" + contextName + "'" : " in the active solution");
-		}
-
-		StringBuilder result = new StringBuilder();
-
-		if ("current".equals(scope))
-		{
-			result.append("Relations in '").append(contextName).append("' (").append(relations.size()).append("):\n\n");
-		}
-		else
-		{
-			result.append("Relations in solution '").append(activeSolutionName).append("' and modules (").append(relations.size()).append("):\n\n");
-		}
-
-		int count = 1;
-		for (Relation relation : relations)
-		{
-			String solutionName = getSolutionName(relation);
-			String originInfo = formatOrigin(solutionName, activeSolutionName);
-
-			result.append(count).append(". ").append(relation.getName()).append(originInfo);
-			result.append("\n   Primary: ").append(relation.getPrimaryDataSource());
-			result.append("\n   Foreign: ").append(relation.getForeignDataSource());
-
-			String joinType = relation.getJoinType() == com.servoy.base.query.IQueryConstants.INNER_JOIN ? "INNER" : "LEFT OUTER";
-			result.append(" (").append(joinType).append(" JOIN)");
-
-			result.append("\n");
-			count++;
-		}
-
-		return result.toString();
-		}
-		
 		throw new RepositoryException("No active Servoy solution project found");
 	}
 
@@ -193,151 +191,152 @@ public class RelationTools
 			if (targetProject != null && targetProject.getEditingSolution() != null)
 			{
 
-		// Determine if this is a READ or CREATE operation
-		boolean hasDataSources = (primaryDataSource != null && !primaryDataSource.trim().isEmpty()) &&
-			(foreignDataSource != null && !foreignDataSource.trim().isEmpty());
-		boolean isCreateOperation = hasDataSources;
+				// Determine if this is a READ or CREATE operation
+				boolean hasDataSources = (primaryDataSource != null && !primaryDataSource.trim().isEmpty()) &&
+					(foreignDataSource != null && !foreignDataSource.trim().isEmpty());
+				boolean isCreateOperation = hasDataSources;
 
-		// Search for existing relations
-		List<Relation> allMatchingRelations = new ArrayList<>();
-		List<String> relationLocations = new ArrayList<>();
+				// Search for existing relations
+				List<Relation> allMatchingRelations = new ArrayList<>();
+				List<String> relationLocations = new ArrayList<>();
 
-		Relation relationInTarget = targetProject.getEditingSolution().getRelation(name);
-		if (relationInTarget != null)
-		{
-			allMatchingRelations.add(relationInTarget);
-			relationLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
-		}
-
-		if (!targetProject.equals(servoyProject))
-		{
-			Relation relationInActive = servoyProject.getEditingSolution().getRelation(name);
-			if (relationInActive != null && !allMatchingRelations.contains(relationInActive))
-			{
-				allMatchingRelations.add(relationInActive);
-				relationLocations.add(servoyProject.getProject().getName() + " (active solution)");
-			}
-		}
-
-		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
-		for (ServoyProject module : modules)
-		{
-			if (module != null && module.getEditingSolution() != null &&
-				!module.equals(targetProject) && !module.equals(servoyProject))
-			{
-				Relation relationInModule = module.getEditingSolution().getRelation(name);
-				if (relationInModule != null && !allMatchingRelations.contains(relationInModule))
+				Relation relationInTarget = targetProject.getEditingSolution().getRelation(name);
+				if (relationInTarget != null)
 				{
-					allMatchingRelations.add(relationInModule);
-					relationLocations.add(module.getProject().getName());
+					allMatchingRelations.add(relationInTarget);
+					relationLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
 				}
-			}
-		}
 
-		boolean isNewRelation = false;
-		Relation relation = null;
-
-		if (!allMatchingRelations.isEmpty())
-		{
-			relation = allMatchingRelations.get(0);
-
-			// Apply properties if provided
-			if (properties != null && !properties.isEmpty())
-			{
-				Relation relationInCurrentContext = targetProject.getEditingSolution().getRelation(name);
-
-				if (relationInCurrentContext == null)
+				if (!targetProject.equals(servoyProject))
 				{
-					// UPDATE operation but relation not in current context - need approval
-					String foundLocation = findRelationLocation(name, servoyProject, servoyModel, targetProject);
-
-					if (foundLocation != null)
+					Relation relationInActive = servoyProject.getEditingSolution().getRelation(name);
+					if (relationInActive != null && !allMatchingRelations.contains(relationInActive))
 					{
-						String locationDisplay = "active".equals(foundLocation) ? servoyProject.getProject().getName() + " (active solution)" : foundLocation;
-						return "Current context: " + contextDisplay + "\n\n" +
-							"Relation '" + name + "' found in " + locationDisplay + ".\n" +
-							"Current context is " + contextDisplay + ".\n\n" +
-							"To update this relation's properties, I need to switch to " + locationDisplay + ".\n" +
-							"Do you want to proceed?\n\n" +
-							"[If yes, I will: setContext({context: \"" + foundLocation + "\"}) then update properties]";
+						allMatchingRelations.add(relationInActive);
+						relationLocations.add(servoyProject.getProject().getName() + " (active solution)");
+					}
+				}
+
+				ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
+				for (ServoyProject module : modules)
+				{
+					if (module != null && module.getEditingSolution() != null &&
+						!module.equals(targetProject) && !module.equals(servoyProject))
+					{
+						Relation relationInModule = module.getEditingSolution().getRelation(name);
+						if (relationInModule != null && !allMatchingRelations.contains(relationInModule))
+						{
+							allMatchingRelations.add(relationInModule);
+							relationLocations.add(module.getProject().getName());
+						}
+					}
+				}
+
+				boolean isNewRelation = false;
+				Relation relation = null;
+
+				if (!allMatchingRelations.isEmpty())
+				{
+					relation = allMatchingRelations.get(0);
+
+					// Apply properties if provided
+					if (properties != null && !properties.isEmpty())
+					{
+						Relation relationInCurrentContext = targetProject.getEditingSolution().getRelation(name);
+
+						if (relationInCurrentContext == null)
+						{
+							// UPDATE operation but relation not in current context - need approval
+							String foundLocation = findRelationLocation(name, servoyProject, servoyModel, targetProject);
+
+							if (foundLocation != null)
+							{
+								String locationDisplay = "active".equals(foundLocation) ? servoyProject.getProject().getName() + " (active solution)"
+									: foundLocation;
+								return "Current context: " + contextDisplay + "\n\n" +
+									"Relation '" + name + "' found in " + locationDisplay + ".\n" +
+									"Current context is " + contextDisplay + ".\n\n" +
+									"To update this relation's properties, I need to switch to " + locationDisplay + ".\n" +
+									"Do you want to proceed?\n\n" +
+									"[If yes, I will: setContext({context: \"" + foundLocation + "\"}) then update properties]";
+							}
+						}
+						else
+						{
+							// Relation in current context - can update
+							RelationService.updateRelationProperties(relation, properties);
+						}
+					}
+				}
+				else if (isCreateOperation)
+				{
+					// Create new relation in current context
+					relation = RelationService.createRelationInProject(targetProject, name, primaryDataSource, foreignDataSource,
+						primaryColumn, foreignColumn, properties);
+					allMatchingRelations.add(relation);
+					relationLocations.add(contextDisplay);
+					isNewRelation = true;
+				}
+				else
+				{
+					throw new RepositoryException("Relation '" + name + "' not found. To create it, provide primaryDataSource and foreignDataSource.");
+				}
+
+				// Open relation in editor
+				if (isNewRelation)
+				{
+					final Relation relationToOpen = relation;
+					UIThreadHelper.asyncExec("openRelationEditor",
+						() -> EditorUtil.openRelationEditor(relationToOpen));
+				}
+				else if (!allMatchingRelations.isEmpty())
+				{
+					final List<Relation> relationsToOpen = new ArrayList<>(allMatchingRelations);
+					UIThreadHelper.asyncExec("openRelationEditors", () -> {
+						for (Relation r : relationsToOpen)
+						{
+							EditorUtil.openRelationEditor(r);
+						}
+					});
+				}
+
+				// Build result message
+				StringBuilder result = new StringBuilder();
+
+				if (isNewRelation)
+				{
+					result.append("Relation '").append(name).append("' created successfully in ").append(contextDisplay);
+					result.append("\n  Primary: ").append(primaryDataSource);
+					result.append("\n  Foreign: ").append(foreignDataSource);
+					if (primaryColumn != null && foreignColumn != null)
+					{
+						result.append("\n  Mapping: ").append(primaryColumn).append(" = ").append(foreignColumn);
 					}
 				}
 				else
 				{
-					// Relation in current context - can update
-					RelationService.updateRelationProperties(relation, properties);
+					if (allMatchingRelations.size() == 1)
+					{
+						result.append("Relation '").append(name).append("' opened successfully");
+						result.append(" (from ").append(relationLocations.get(0)).append(")");
+					}
+					else
+					{
+						result.append("Relation '").append(name).append("' found in ").append(allMatchingRelations.size()).append(" locations. Opened all:\n");
+						for (int i = 0; i < allMatchingRelations.size(); i++)
+						{
+							result.append("  - ").append(relationLocations.get(i)).append("\n");
+						}
+					}
+					result.append("\n[Context remains: ").append(contextDisplay).append("]");
 				}
-			}
-		}
-		else if (isCreateOperation)
-		{
-			// Create new relation in current context
-			relation = RelationService.createRelationInProject(targetProject, name, primaryDataSource, foreignDataSource,
-				primaryColumn, foreignColumn, properties);
-			allMatchingRelations.add(relation);
-			relationLocations.add(contextDisplay);
-			isNewRelation = true;
-		}
-		else
-		{
-			throw new RepositoryException("Relation '" + name + "' not found. To create it, provide primaryDataSource and foreignDataSource.");
-		}
 
-		// Open relation in editor
-		if (isNewRelation)
-		{
-			final Relation relationToOpen = relation;
-			UIThreadHelper.asyncExec("openRelationEditor",
-				() -> EditorUtil.openRelationEditor(relationToOpen));
-		}
-		else if (!allMatchingRelations.isEmpty())
-		{
-			final List<Relation> relationsToOpen = new ArrayList<>(allMatchingRelations);
-			UIThreadHelper.asyncExec("openRelationEditors", () -> {
-				for (Relation r : relationsToOpen)
-				{
-					EditorUtil.openRelationEditor(r);
-				}
-			});
-		}
+				return result.toString();
+			}
 
-		// Build result message
-		StringBuilder result = new StringBuilder();
-
-		if (isNewRelation)
-		{
-			result.append("Relation '").append(name).append("' created successfully in ").append(contextDisplay);
-			result.append("\n  Primary: ").append(primaryDataSource);
-			result.append("\n  Foreign: ").append(foreignDataSource);
-			if (primaryColumn != null && foreignColumn != null)
-			{
-				result.append("\n  Mapping: ").append(primaryColumn).append(" = ").append(foreignColumn);
-			}
-		}
-		else
-		{
-			if (allMatchingRelations.size() == 1)
-			{
-				result.append("Relation '").append(name).append("' opened successfully");
-				result.append(" (from ").append(relationLocations.get(0)).append(")");
-			}
-			else
-			{
-				result.append("Relation '").append(name).append("' found in ").append(allMatchingRelations.size()).append(" locations. Opened all:\n");
-				for (int i = 0; i < allMatchingRelations.size(); i++)
-				{
-					result.append("  - ").append(relationLocations.get(i)).append("\n");
-				}
-			}
-			result.append("\n[Context remains: ").append(contextDisplay).append("]");
-		}
-
-		return result.toString();
-			}
-			
 			throw new RepositoryException("No target solution/module found for context: " + targetContext);
 		}
-		
+
 		throw new RepositoryException("No active Servoy solution project found");
 	}
 
@@ -353,161 +352,176 @@ public class RelationTools
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String targetContext = ContextService.getInstance().getCurrentContext();
+			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
 
-		List<String> deletedRelations = new ArrayList<>();
-		List<String> notFoundRelations = new ArrayList<>();
-		List<String> needsApproval = new ArrayList<>();
-		Map<String, String> approvalLocations = new HashMap<>();
-		List<Relation> relationsToDelete = new ArrayList<>();
+			List<String> deletedRelations = new ArrayList<>();
+			List<String> notFoundRelations = new ArrayList<>();
+			List<String> needsApproval = new ArrayList<>();
+			Map<String, String> approvalLocations = new HashMap<>();
+			List<Relation> relationsToDelete = new ArrayList<>();
 
-		// Find relations and check if they're in current context
-		for (String name : names)
-		{
-			if (name == null || name.trim().isEmpty()) continue;
-
-			Relation relation = targetProject.getEditingSolution().getRelation(name);
-			String foundInContext = null;
-
-			if (relation != null)
+			// Find relations and check if they're in current context
+			for (String name : names)
 			{
-				foundInContext = targetContext;
-				relationsToDelete.add(relation);
-			}
-			else
-			{
-				// Search other locations
-				if (!targetProject.equals(servoyProject))
+				if (name == null || name.trim().isEmpty())
 				{
-					relation = servoyProject.getEditingSolution().getRelation(name);
-					if (relation != null) foundInContext = "active";
+					continue;
 				}
 
-				if (relation == null)
-				{
-					ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
-					for (ServoyProject module : modules)
-					{
-						if (module != null && module.getEditingSolution() != null && !module.equals(targetProject))
-						{
-							relation = module.getEditingSolution().getRelation(name);
-							if (relation != null)
-							{
-								foundInContext = module.getProject().getName();
-								break;
-							}
-						}
-					}
-				}
+				Relation relation = targetProject.getEditingSolution().getRelation(name);
+				String foundInContext = null;
 
 				if (relation != null)
 				{
-					needsApproval.add(name);
-					approvalLocations.put(name, foundInContext);
+					foundInContext = targetContext;
+					relationsToDelete.add(relation);
 				}
 				else
 				{
-					notFoundRelations.add(name);
+					// Search other locations
+					if (!targetProject.equals(servoyProject))
+					{
+						relation = servoyProject.getEditingSolution().getRelation(name);
+						if (relation != null)
+						{
+							foundInContext = "active";
+						}
+					}
+
+					if (relation == null)
+					{
+						ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
+						for (ServoyProject module : modules)
+						{
+							if (module != null && module.getEditingSolution() != null && !module.equals(targetProject))
+							{
+								relation = module.getEditingSolution().getRelation(name);
+								if (relation != null)
+								{
+									foundInContext = module.getProject().getName();
+									break;
+								}
+							}
+						}
+					}
+
+					if (relation != null)
+					{
+						needsApproval.add(name);
+						approvalLocations.put(name, foundInContext);
+					}
+					else
+					{
+						notFoundRelations.add(name);
+					}
 				}
 			}
-		}
 
-		// If any items need approval, return approval request message
-		if (!needsApproval.isEmpty())
-		{
-			StringBuilder approvalMsg = new StringBuilder();
-			approvalMsg.append("Current context: ").append(contextDisplay).append("\n\n");
-
-			if (needsApproval.size() == 1)
+			// If any items need approval, return approval request message
+			if (!needsApproval.isEmpty())
 			{
-				String relationName = needsApproval.get(0);
-				String location = approvalLocations.get(relationName);
-				String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
+				StringBuilder approvalMsg = new StringBuilder();
+				approvalMsg.append("Current context: ").append(contextDisplay).append("\n\n");
 
-				approvalMsg.append("Relation '").append(relationName).append("' found in ").append(locationDisplay).append(".\n");
-				approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
-				approvalMsg.append("To delete this relation, I need to switch to ").append(locationDisplay).append(".\n");
-				approvalMsg.append("Do you want to proceed?\n\n");
-				approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
-			}
-			else
-			{
-				approvalMsg.append("Multiple relations found in different locations:\n");
-				for (String relationName : needsApproval)
+				if (needsApproval.size() == 1)
 				{
+					String relationName = needsApproval.get(0);
 					String location = approvalLocations.get(relationName);
 					String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
-					approvalMsg.append("  - ").append(relationName).append(" (in ").append(locationDisplay).append(")\n");
+
+					approvalMsg.append("Relation '").append(relationName).append("' found in ").append(locationDisplay).append(".\n");
+					approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
+					approvalMsg.append("To delete this relation, I need to switch to ").append(locationDisplay).append(".\n");
+					approvalMsg.append("Do you want to proceed?\n\n");
+					approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
 				}
-				approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
-				approvalMsg.append("Please switch context explicitly using setContext");
+				else
+				{
+					approvalMsg.append("Multiple relations found in different locations:\n");
+					for (String relationName : needsApproval)
+					{
+						String location = approvalLocations.get(relationName);
+						String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
+						approvalMsg.append("  - ").append(relationName).append(" (in ").append(locationDisplay).append(")\n");
+					}
+					approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
+					approvalMsg.append("Please switch context explicitly using setContext");
+				}
+
+				if (!relationsToDelete.isEmpty())
+				{
+					approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
+					approvalMsg.append(String.join(", ", relationsToDelete.stream().map(r -> r.getName()).toArray(String[]::new)));
+				}
+
+				return approvalMsg.toString();
 			}
 
+			// Delete relations (all are in current context)
 			if (!relationsToDelete.isEmpty())
 			{
-				approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
-				approvalMsg.append(String.join(", ", relationsToDelete.stream().map(r -> r.getName()).toArray(String[]::new)));
-			}
+				EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
 
-			return approvalMsg.toString();
-		}
-
-		// Delete relations (all are in current context)
-		if (!relationsToDelete.isEmpty())
-		{
-			EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
-
-			try
-			{
-				for (Relation relation : relationsToDelete)
+				try
 				{
-					IPersist editingNode = servoyProject.getEditingPersist(relation.getUUID());
-					if (editingNode == null) editingNode = relation;
-					repository.deleteObject(editingNode);
-					ServoyLog.logInfo("[RelationTools] Called deleteObject for relation: " + relation.getName());
-				}
+					for (Relation relation : relationsToDelete)
+					{
+						IPersist editingNode = servoyProject.getEditingPersist(relation.getUUID());
+						if (editingNode == null)
+						{
+							editingNode = relation;
+						}
+						repository.deleteObject(editingNode);
+						ServoyLog.logInfo("[RelationTools] Called deleteObject for relation: " + relation.getName());
+					}
 
-				for (Relation relation : relationsToDelete)
+					for (Relation relation : relationsToDelete)
+					{
+						IPersist editingNode = servoyProject.getEditingPersist(relation.getUUID());
+						if (editingNode == null)
+						{
+							editingNode = relation;
+						}
+						servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
+						deletedRelations.add(relation.getName());
+						ServoyLog.logInfo("[RelationTools] Successfully deleted relation: " + relation.getName());
+					}
+				}
+				catch (Exception e)
 				{
-					IPersist editingNode = servoyProject.getEditingPersist(relation.getUUID());
-					if (editingNode == null) editingNode = relation;
-					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
-					deletedRelations.add(relation.getName());
-					ServoyLog.logInfo("[RelationTools] Successfully deleted relation: " + relation.getName());
+					ServoyLog.logError("[RelationTools] FAILED to delete relations", e);
+					throw new RepositoryException("Failed to delete relations. Error: " + e.getMessage(), e);
 				}
 			}
-			catch (Exception e)
+
+			// Build result message
+			StringBuilder result = new StringBuilder();
+
+			if (!deletedRelations.isEmpty())
 			{
-				ServoyLog.logError("[RelationTools] FAILED to delete relations", e);
-				throw new RepositoryException("Failed to delete relations. Error: " + e.getMessage(), e);
+				result.append("Successfully deleted ").append(deletedRelations.size()).append(" relation(s): ");
+				result.append(String.join(", ", deletedRelations));
 			}
+
+			if (!notFoundRelations.isEmpty())
+			{
+				if (result.length() > 0)
+				{
+					result.append("\n\n");
+				}
+				result.append("Relations not found (").append(notFoundRelations.size()).append("): ");
+				result.append(String.join(", ", notFoundRelations));
+			}
+
+			if (deletedRelations.isEmpty() && notFoundRelations.isEmpty())
+			{
+				result.append("No relations specified for deletion");
+			}
+
+			return result.toString();
 		}
 
-		// Build result message
-		StringBuilder result = new StringBuilder();
-
-		if (!deletedRelations.isEmpty())
-		{
-			result.append("Successfully deleted ").append(deletedRelations.size()).append(" relation(s): ");
-			result.append(String.join(", ", deletedRelations));
-		}
-
-		if (!notFoundRelations.isEmpty())
-		{
-			if (result.length() > 0) result.append("\n\n");
-			result.append("Relations not found (").append(notFoundRelations.size()).append("): ");
-			result.append(String.join(", ", notFoundRelations));
-		}
-
-		if (deletedRelations.isEmpty() && notFoundRelations.isEmpty())
-		{
-			result.append("No relations specified for deletion");
-		}
-
-		return result.toString();
-		}
-		
 		throw new RepositoryException("No active Servoy solution project found");
 	}
 
@@ -520,12 +534,18 @@ public class RelationTools
 		String context = ContextService.getInstance().getCurrentContext();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 
-		if ("active".equals(context) || context == null) return activeProject;
+		if ("active".equals(context) || context == null)
+		{
+			return activeProject;
+		}
 
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName())) return module;
+			if (module != null && context.equals(module.getProject().getName()))
+			{
+				return module;
+			}
 		}
 
 		return activeProject;
@@ -558,7 +578,10 @@ public class RelationTools
 		try
 		{
 			IRootObject rootObject = persist.getRootObject();
-			if (rootObject instanceof Solution solution) return solution.getName();
+			if (rootObject instanceof Solution solution)
+			{
+				return solution.getName();
+			}
 		}
 		catch (Exception e)
 		{
@@ -569,7 +592,13 @@ public class RelationTools
 
 	private String formatOrigin(String solutionName, String activeSolutionName)
 	{
-		if (solutionName.equals(activeSolutionName)) return " (in: active solution)";
-		else return " (in: " + solutionName + ")";
+		if (solutionName.equals(activeSolutionName))
+		{
+			return " (in: active solution)";
+		}
+		else
+		{
+			return " (in: " + solutionName + ")";
+		}
 	}
 }

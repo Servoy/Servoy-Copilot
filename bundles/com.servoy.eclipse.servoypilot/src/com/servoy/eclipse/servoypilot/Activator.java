@@ -14,6 +14,7 @@ import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants;
+import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
 public class Activator implements BundleActivator
 {
@@ -95,5 +96,19 @@ public class Activator implements BundleActivator
 	public CompletionAssistent getCompletionChatModel()
 	{
 		return getServoyAiModel().getCompletionAssistant();
+	}
+
+	/**
+	 * Clear chat memory for a specific memory ID.
+	 * This completely erases conversation history, allowing fresh start.
+	 * 
+	 * @param memoryId The memory ID to clear (typically "default" or solution name)
+	 */
+	public void clearChatMemory(String memoryId)
+	{
+		if (chatModel != null)
+		{
+			chatModel.clearMemory(memoryId);
+		}
 	}
 }

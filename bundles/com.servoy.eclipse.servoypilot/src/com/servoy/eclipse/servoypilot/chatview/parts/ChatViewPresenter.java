@@ -37,9 +37,10 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
-import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
+import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
+import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -186,37 +187,26 @@ public class ChatViewPresenter
 
 		contents.add(assistantMessage);
 
-		// DEBUG: Log what we're sending
-		System.out.println("=== SENDING MESSAGE ===");
-		System.out.println("MemoryId: " + currentMemoryId);
-		System.out.println("User message: " + text);
-		System.out.println("UI contents count: " + contents.size());
-		System.out.println("=======================");
-
 		// CHANGED: Use new API with memoryId - ChatMemory handles history automatically
-		Activator.getDefault().getChatModel().chat(currentMemoryId, text).onPartialResponse(partial -> {
-			assistantMessage.appendContent(partial);
-			applyToView(part -> {
-				part.setMessageHtml(assistantMessage.getId(),
-					assistantMessage.getContent().text() + partial.toString());
-			});
-		}).onCompleteResponse(fullResponse -> {
-			assistantMessage.setContent(fullResponse.aiMessage().text());
-			applyToView(part -> {
-				part.setMessageHtml(assistantMessage.getId(), assistantMessage.getContent().text());
-			});
-			System.out.println("=== RESPONSE RECEIVED ===");
-			System.out.println("Response length: " + fullResponse.aiMessage().text().length() + " chars");
-			System.out.println("=========================");
-		}).onError(error -> {
-			applyToView(part -> {
-				part.setMessageHtml(assistantMessage.getId(), "Error: " + error.getMessage());
-			});
-			logger.error("Error getting assistant response", error);
-			System.out.println("=== ERROR ===");
-			System.out.println("Error: " + error.getMessage());
-			System.out.println("=============");
-		}).start();
+		Activator.getDefault().getChatModel().chat(currentMemoryId, text)
+			.onPartialResponse(partial -> {
+				assistantMessage.appendContent(partial);
+				applyToView(part -> {
+					part.setMessageHtml(assistantMessage.getId(),
+						assistantMessage.getContent().text() + partial.toString());
+				});
+			})
+			.onCompleteResponse(fullResponse -> {
+				assistantMessage.setContent(fullResponse.aiMessage().text());
+				applyToView(part -> {
+					part.setMessageHtml(assistantMessage.getId(), assistantMessage.getContent().text());
+				});
+			}).onError(error -> {
+				applyToView(part -> {
+					part.setMessageHtml(assistantMessage.getId(), "Error: " + error.getMessage());
+				});
+				logger.error("Error getting assistant response", error);
+			}).start();
 
 	}
 
@@ -447,39 +437,33 @@ public class ChatViewPresenter
 		// Clear UI conversation history
 		contents.clear();
 
-		// Phase 3: Manage knowledge base based on .servoy directory
+		// Manage knowledge base: load from .servoy if exists, otherwise load default from bundle
 		IProject project = getProjectByName(projectName);
 		if (project != null)
 		{
 			InstructionsSaveService fileService = new InstructionsSaveService();
 			InstructionsLoadService loaderService = new InstructionsLoadService();
 
-			if (fileService.servoyDirectoryExists(project))
+			try
 			{
-				// Load from .servoy
-				try
+				loaderService.clearKnowledgeBase();
+				
+				if (fileService.servoyDirectoryExists(project))
 				{
-					loaderService.clearKnowledgeBase();
+					// Load from solution-specific .servoy directory
 					loaderService.loadFromFileSystem(project.getFolder(".servoy"));
 					logger.info("Knowledge base loaded from .servoy directory for solution: " + projectName);
 				}
-				catch (Exception e)
+				else
 				{
-					logger.error("Error loading knowledge base from .servoy directory", e);
+					// Load default knowledge base from bundle resources
+					loaderService.loadFromBundleResources();
+					logger.info("Default knowledge base loaded from bundle for solution: " + projectName);
 				}
 			}
-			else
+			catch (Exception e)
 			{
-				// Clear knowledge base (new/empty solution)
-				try
-				{
-					loaderService.clearKnowledgeBase();
-					logger.info("Knowledge base cleared for solution without .servoy directory: " + projectName);
-				}
-				catch (Exception e)
-				{
-					logger.error("Error clearing knowledge base", e);
-				}
+				logger.error("Error loading knowledge base for solution: " + projectName, e);
 			}
 		}
 

@@ -94,12 +94,6 @@ public class ServoyAiModel
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
 
-		// DEBUG: ServoyLog system prompt info
-		System.out.println("=== ServoyAI DEBUG ===");
-		System.out.println("System prompt loaded: " + systemPrompt.length() + " characters");
-		System.out.println("First 200 chars: " + systemPrompt.substring(0, Math.min(200, systemPrompt.length())));
-		System.out.println("======================");
-
 		// Create message window memory (40 messages max)
 		ChatMemory chatMemory = MessageWindowChatMemory.builder()
 			.maxMessages(40)
@@ -109,10 +103,7 @@ public class ServoyAiModel
 		AiServices<Assistant> builder = AiServices.builder(Assistant.class);
 		builder.streamingChatModel(model);
 		builder.chatMemoryProvider(memoryId -> chatMemory);
-		builder.systemMessageProvider(memoryId -> {
-			System.out.println("=== SYSTEM MESSAGE REQUESTED for memoryId: " + memoryId + " ===");
-			return systemPrompt;
-		});
+		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register all migrated tools
 		builder.tools(

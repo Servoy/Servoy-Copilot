@@ -490,7 +490,7 @@ properties: {
 
 **The `events` parameter accepts event name to method name mappings.**
 
-**[CRITICAL] Methods must exist in the form before assigning events. Create methods first using Servoy's method editor.**
+**[AUTO-CREATE] Methods are automatically created with skeleton code if they don't exist.**
 
 **Supported Events:**
 
@@ -527,20 +527,36 @@ events: {
 }
 ```
 
-**[IMPORTANT] Method Resolution:**
+**[AUTO-CREATE BEHAVIOR] Method Auto-Creation:**
 - Event values are method names (strings)
-- Methods must exist in the form's method collection
-- If method not found, event assignment is silently skipped (logged)
-- No error thrown if method missing
+- If method doesn't exist, it's automatically created with appropriate skeleton code
+- Skeleton code includes proper JSDoc comments and TODO placeholders
+- Methods that require return values (onRecordEditStop, onBeforeHide, etc.) include `return true;`
+- You can customize the generated method after creation
 
-**Complete Example with Events:**
+**Example Skeleton Code Generated:**
 ```javascript
-// First, ensure methods exist in form (via Servoy UI):
-// - initForm()
-// - loadData()
-// - handleRecordChange()
+// For onLoad event:
+/**
+ * @param {JSEvent} event
+ */
+function initializeForm(event) {
+	// TODO: Initialize form data and setup
+}
 
-// Then assign events:
+// For onRecordEditStop event:
+/**
+ * @param {JSEvent} event
+ */
+function validateRecord(record, event) {
+	// TODO: Validate record before save, return false to prevent
+	return true;
+}
+```
+
+**Complete Example with Events (Methods Auto-Created):**
+```javascript
+// Methods will be auto-created with skeleton code if they don't exist
 openForm({
   name: "CustomerForm",
   create: true,
@@ -561,9 +577,9 @@ openForm({
 ```
 
 **Workflow for Adding Events:**
-1. Create form (if new)
-2. Create methods in form using Servoy method editor
-3. Call openForm with events parameter to assign handlers
+1. Create form (if new) OR open existing form
+2. Specify events in the openForm call - methods are auto-created with skeleton code
+3. Customize the auto-generated method code in Servoy method editor as needed
 
 **Examples:**
 
@@ -689,23 +705,47 @@ User: "Create CustomerDetail extending BaseForm"
 
 ---
 
-### Workflow 3: Update Form Properties
+### Workflow 3: Update Form Properties and Inheritance
 
-1. Call `openForm` with name + properties (no create=true needed)
+**[IMPORTANT] Properties, events, and inheritance (extendsForm) can ALL be updated on EXISTING forms.**
+
+1. Call `openForm` with name + properties/events/extendsForm (no create=true needed)
 2. Tool updates and confirms
 
-**For size updates, prefer direct parameters:**
+**Update size (direct parameters):**
 ```javascript
 openForm({name: "MyForm", width: 1024, height: 768})
 ```
 
-**For other properties:**
+**Update properties:**
 ```javascript
 openForm({
   name: "MyForm",
   properties: {"showInMenu": true, "initialSort": "name asc"}
 })
 ```
+
+**Set inheritance on existing form:**
+```javascript
+openForm({
+  name: "ExistingForm",
+  extendsForm: "BaseForm"  // ← Works on existing forms!
+})
+```
+
+**Update properties AND inheritance:**
+```javascript
+openForm({
+  name: "CustomerDetail",
+  extendsForm: "BaseForm",
+  properties: {
+    "width": 800,
+    "height": 600
+  }
+})
+```
+
+**[CRITICAL] You can ALWAYS set extendsForm on existing forms - no need to delete and recreate!**
 
 ---
 
@@ -760,6 +800,7 @@ User: "Make Dashboard the main form"
 9. **listForms is truth**: If listForms() doesn't show a form, it does NOT exist in {{PROJECT_NAME}} - STOP immediately
 10. **Tool restrictions**: Use ONLY the 4 tools listed - NO file system or search tools (see copilot-instructions.md RULE 6)
 11. **Scope parameter**: Use `scope: "current"` to filter by context, default is `"all"`
+12. **[CRITICAL] Update existing forms**: Properties, events, AND extendsForm work on EXISTING forms - NEVER tell users to delete and recreate forms to change inheritance or properties!
 
 ---
 
@@ -898,7 +939,7 @@ User: "Create OrderForm with title 'Order Entry', single selection, vertical scr
   })
 ```
 
-**Example 15: Create form with events (methods must exist)**
+**Example 15: Create form with events (methods auto-created)**
 ```
 User: "Create ProductForm with onLoad and onShow events"
 → openForm({
@@ -909,10 +950,22 @@ User: "Create ProductForm with onLoad and onShow events"
       "onShow": "refreshProductList"
     }
   })
-→ Note: Methods "initProducts" and "refreshProductList" must exist in form
+→ Result: Methods "initProducts" and "refreshProductList" auto-created with skeleton code
+→ User can then customize the generated method code in Servoy method editor
 ```
 
-**Example 16: Update form with new properties**
+**Example 16: Update existing form to extend parent form**
+```
+User: "Make customerDetail extend baseForm"
+→ openForm({
+    name: "customerDetail",
+    extendsForm: "baseForm"
+  })
+→ Result: Existing form "customerDetail" now inherits from "baseForm"
+→ Note: Works on existing forms - NO need to delete and recreate!
+```
+
+**Example 17: Update form with new properties**
 ```
 User: "Make CustomerForm transparent with multi-selection"
 → openForm({
@@ -924,7 +977,7 @@ User: "Make CustomerForm transparent with multi-selection"
   })
 ```
 
-**Example 17: Comprehensive form creation**
+**Example 18: Comprehensive form creation**
 ```
 User: "Create InvoiceForm: responsive, 1200x900, bound to invoices table, with custom styling, events, and separate foundset"
 → openForm({
@@ -949,6 +1002,7 @@ User: "Create InvoiceForm: responsive, 1200x900, bound to invoices table, with c
       "onRecordEditStop": "validateInvoice"
     }
   })
+→ Result: Form created with all properties applied, 4 event methods auto-created with skeleton code
 ```
 
 ---
@@ -958,7 +1012,7 @@ User: "Create InvoiceForm: responsive, 1200x900, bound to invoices table, with c
 **Not yet fully supported (inform user gracefully):**
 - Deleting forms
 - Adding UI components to forms (use separate component tools)
-- Form variables, methods, or calculations
+- Form variables or calculations
 - Complex layout modifications
 - Cross-project form operations
 

@@ -5,7 +5,11 @@ import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.e4.core.di.annotations.Execute;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PlatformUI;
 
+import com.servoy.eclipse.servoypilot.chatview.parts.ChatView;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 
@@ -55,7 +59,8 @@ public class RefreshInstructionsHandler
 					MessageDialog.openInformation(shell, "Success",
 						"Instructions loaded successfully from:\n" +
 							project.getName() + "/.servoy/\n\n" +
-							"Rules and embeddings are now available to the AI.");
+							"Rules and embeddings are now available to the AI.\n" +
+							"Chat history has been cleared - starting fresh conversation.");
 				});
 			}
 			catch (Exception e)
@@ -72,5 +77,32 @@ public class RefreshInstructionsHandler
 		});
 
 		job.schedule();
+	}
+
+	/**
+	 * Clear the chat view UI to give visual feedback that conversation restarted.
+	 */
+	private void clearChatView()
+	{
+		try
+		{
+			IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+			if (window != null)
+			{
+				IWorkbenchPage page = window.getActivePage();
+				if (page != null)
+				{
+					ChatView chatView = (ChatView)page.findView("com.servoy.eclipse.servoypilot.chatview");
+					if (chatView != null)
+					{
+						chatView.clearChatView();
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// Ignore
+		}
 	}
 }

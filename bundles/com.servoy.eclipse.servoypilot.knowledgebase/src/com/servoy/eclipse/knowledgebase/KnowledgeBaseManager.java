@@ -17,26 +17,15 @@
 
 package com.servoy.eclipse.knowledgebase;
 
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.jar.Manifest;
-
-import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.runtime.Platform;
-import org.osgi.framework.Bundle;
 import org.sablo.specification.Package.IPackageReader;
 
 import com.servoy.eclipse.knowledgebase.service.RulesCache;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService;
 import com.servoy.eclipse.knowledgebase.util.DebugUtils;
 import com.servoy.eclipse.model.ServoyModelFinder;
-import com.servoy.eclipse.model.nature.ServoyNGPackageProject;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.eclipse.model.ngpackages.BaseNGPackageManager;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
@@ -139,59 +128,9 @@ public class KnowledgeBaseManager
 	}
 
 	/**
-	 * Load a specific knowledge base package.
-	 * Called manually by user via UI action when selecting a package.
-	 * This does an ADDITIVE load (does NOT clear existing knowledge base).
-	 * 
-	 * @param packageName The name of the knowledge base package to load
-	 */
-	public static void loadKnowledgeBase(String packageName)
-	{
-		ServoyLog.logInfo("[KnowledgeBaseManager] loadKnowledgeBase called for: " + packageName);
-		
-		try
-		{
-			BaseNGPackageManager ngPackageManager = ServoyModelFinder.getServoyModel().getNGPackageManager();
-			
-			if (ngPackageManager != null)
-			{
-				List<IPackageReader> allReaders = ngPackageManager.getAllPackageReaders();
-			
-				IPackageReader targetReader = null;
-				for (IPackageReader reader : allReaders)
-				{
-					if (reader.getPackageName().equals(packageName))
-					{
-						targetReader = reader;
-						break;
-					}
-				}
-				
-				if (targetReader != null)
-				{
-					if (isKnowledgeBasePackage(targetReader))
-					{
-						ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
-						int newEmbeddings = embeddingService.loadKnowledgeBaseFromReader(targetReader);
-						int newRules = RulesCache.loadFromPackageReader(targetReader);
-						
-						ServoyLog.logInfo("[KnowledgeBaseManager] Knowledge base loaded: " + packageName + 
-							" (added " + newEmbeddings + " embeddings, " + newRules + " rules)");
-					}
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[KnowledgeBaseManager] Error loading knowledge base '" + packageName + "': " + 
-				e.getMessage(), e);
-		}
-	}
-
-	/**
-	 * Reload all knowledge bases from all installed bundles.
+	 * Reload all knowledge bases from active solution.
 	 * Called manually by user via UI action.
-	 * Clears existing knowledge and reloads fresh from active solution.
+	 * Clears existing knowledge and reloads fresh from active solution's .servoy directory.
 	 */
 	public static void reloadAllKnowledgeBases()
 	{
@@ -222,93 +161,34 @@ public class KnowledgeBaseManager
 	}
 
 	/**
-	 * Discover knowledge base packages in a solution.
+	 * Discover knowledge base in a solution.
 	 * 
-	 * 1. Get ALL loaded package readers from NGPackageManager (includes workspace projects AND installed zips)
-	 * 2. For each package reader, check MANIFEST.MF for Knowledge-Base: true
-	 * 3. Check for embeddings/embeddings.list OR rules/rules.list
-	 * 4. Return filtered list of knowledge base package readers
+	 * ONLY loads from .servoy directory if it exists.
+	 * If no .servoy directory exists, returns empty array (no knowledge base loaded).
 	 * 
 	 * @param solution The Servoy solution to scan
-	 * @return Array of package readers for knowledge base packages (no duplicates)
+	 * @return Array with single package reader for .servoy folder, or empty if folder doesn't exist
 	 */
 	private static IPackageReader[] discoverKnowledgeBasePackagesInSolution(ServoyProject solution)
 	{
 		String solutionName = solution.getProject().getName();
-		ServoyLog.logError("[discoverKnowledgeBasePackagesInSolution: " + solutionName);
-		List<IPackageReader> knowledgeBaseReaders = new ArrayList<>();
-		Set<String> processedPackageNames = new HashSet<>();
+		ServoyLog.logInfo("[KnowledgeBaseManager] Discovering knowledge base in solution: " + solutionName);
 		
-		try
+		IProject project = solution.getProject();
+		IFolder servoyFolder = project.getFolder(".servoy");
+		
+		// Check if .servoy directory exists
+		if (!servoyFolder.exists())
 		{
-			BaseNGPackageManager ngPackageManager = ServoyModelFinder.getServoyModel().getNGPackageManager();
-			
-			if (ngPackageManager != null)
-			{
-				List<IPackageReader> allReaders = ngPackageManager.getAllPackageReaders();
-				ServoyLog.logInfo("[KnowledgeBaseManager] Checking " + allReaders.size() + " loaded package(s) for knowledge bases");
-				
-				// Check each package reader for knowledge base markers
-				for (IPackageReader reader : allReaders)
-				{
-					String packageName = reader.getPackageName();
-					if (processedPackageNames.contains(packageName))
-					{
-						continue;
-					}
-						
-					if (isKnowledgeBasePackage(reader))
-					{
-						knowledgeBaseReaders.add(reader);
-						processedPackageNames.add(packageName);
-						ServoyLog.logInfo("[KnowledgeBaseManager] Found knowledge base package: " + packageName);
-					}
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[KnowledgeBaseManager] Error discovering knowledge base packages: " + 
-				e.getMessage(), e);
+			ServoyLog.logInfo("[KnowledgeBaseManager] No .servoy directory found - no knowledge base will be loaded");
+			return new IPackageReader[0];
 		}
 		
-		return knowledgeBaseReaders.toArray(new IPackageReader[0]);
-	}
-	
-	/**
-	 * Check if a package reader is a knowledge base package.
-	 * Works with ANY IPackageReader (workspace projects, zips, etc.)
-	 * 
-	 * Requirements:
-	 * 1. MANIFEST.MF must contain Knowledge-Base: true
-	 * 2. Must have embeddings/embeddings.list AND rules/rules.list
-	 * 
-	 * @param reader The package reader to check
-	 * @return true if this is a knowledge base package
-	 */
-	private static boolean isKnowledgeBasePackage(IPackageReader reader)
-	{
-		try
-		{
-			Manifest manifest = reader.getManifest();
-			if (manifest != null)
-			{
-				
-				String knowledgeBase = manifest.getMainAttributes().getValue("Knowledge-Base");
-				if ("true".equalsIgnoreCase(knowledgeBase))
-				{
-					boolean hasEmbeddings = reader.getUrlForPath("embeddings/embeddings.list") != null;
-					boolean hasRules = reader.getUrlForPath("rules/rules.list") != null;
-					
-					return hasEmbeddings && hasRules;
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[KnowledgeBaseManager] Error checking if package reader is knowledge base: " + 
-				reader.getPackageName() + " - " + e.getMessage(), e);
-		}
-		return false;
+		ServoyLog.logInfo("[KnowledgeBaseManager] .servoy directory found - creating package reader for it");
+		
+		// Create package reader for .servoy folder
+		ServoyFolderPackageReader reader = new ServoyFolderPackageReader(servoyFolder, solutionName);
+		
+		return new IPackageReader[] { reader };
 	}
 }

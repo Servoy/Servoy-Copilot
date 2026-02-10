@@ -6,8 +6,8 @@ import org.eclipse.e4.core.di.annotations.Execute;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 
-import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
+import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 
 /**
  * Handler for "Save Instructions" menu action.
@@ -73,7 +73,8 @@ public class ResetInstructionsHandler
 					MessageDialog.openInformation(shell, "Success",
 						"Instructions saved successfully to:\n" +
 							project.getName() + "/.servoy/\n\n" +
-							"Rules and embeddings have been loaded into the AI.");
+							"Rules and embeddings have been loaded into the AI.\n" +
+							"Chat history has been cleared - starting fresh conversation.");
 				});
 			}
 			catch (Exception e)

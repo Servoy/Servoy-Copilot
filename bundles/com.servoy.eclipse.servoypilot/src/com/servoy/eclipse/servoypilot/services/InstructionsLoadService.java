@@ -1,18 +1,24 @@
 package com.servoy.eclipse.servoypilot.services;
 
 import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.runtime.Platform;
+import org.osgi.framework.Bundle;
+import org.sablo.specification.Package.IPackageReader;
 
+import com.servoy.eclipse.knowledgebase.ServoyBundlePackageReader;
 import com.servoy.eclipse.knowledgebase.service.RulesCache;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 
 /**
- * Service for loading instructions from .servoy directory into the knowledge base.
- * Handles clearing and loading knowledge base (system-prompts, rules, and embeddings) from file system.
+ * Service for loading instructions from .servoy directory or bundle resources into the knowledge base.
+ * Handles clearing and loading knowledge base (system-prompts, rules, and embeddings) from file system or bundle.
  */
 public class InstructionsLoadService
 {
+	private static final String KNOWLEDGEBASE_BUNDLE_ID = "com.servoy.eclipse.servoypilot.knowledgebase";
+	
 	public InstructionsLoadService()
 	{
 	}
@@ -86,6 +92,40 @@ public class InstructionsLoadService
 			}
 		}
 		throw new IllegalArgumentException(".servoy folder does not exist");
+	}
+
+	/**
+	 * Load default knowledge base from the knowledgebase bundle resources.
+	 * Used when solution doesn't have a .servoy directory.
+	 * Loads from resources/ directory in com.servoy.eclipse.servoypilot.knowledgebase bundle.
+	 */
+	public void loadFromBundleResources()
+	{
+		try
+		{
+			Bundle knowledgebaseBundle = Platform.getBundle(KNOWLEDGEBASE_BUNDLE_ID);
+			if (knowledgebaseBundle == null)
+			{
+				throw new IllegalStateException("Knowledgebase bundle not found: " + KNOWLEDGEBASE_BUNDLE_ID);
+			}
+
+			// Create package reader for bundle's resources directory
+			IPackageReader bundleReader = new ServoyBundlePackageReader(knowledgebaseBundle, "resources");
+			
+			// Load rules and embeddings from bundle
+			int rulesLoaded = RulesCache.loadFromPackageReader(bundleReader);
+			
+			ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
+			int embeddingsLoaded = embeddingService.loadKnowledgeBaseFromReader(bundleReader);
+			
+			ServoyLog.logInfo("[InstructionsLoaderService] Default knowledge base loaded from bundle - " + 
+				embeddingsLoaded + " embeddings, " + rulesLoaded + " rules");
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[InstructionsLoaderService] Error loading default knowledge base from bundle: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to load default knowledge base from bundle", e);
+		}
 	}
 
 	/**
