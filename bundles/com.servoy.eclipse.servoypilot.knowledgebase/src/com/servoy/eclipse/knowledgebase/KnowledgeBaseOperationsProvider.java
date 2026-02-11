@@ -29,7 +29,8 @@ public class KnowledgeBaseOperationsProvider implements IKnowledgeBaseOperations
 	@Override
 	public void loadKnowledgeBase(String packageName)
 	{
-		KnowledgeBaseManager.loadKnowledgeBase(packageName);
+		//TODO: this is a dead code; need to search and remove for remainings from previous implementation
+		//KnowledgeBaseManager.loadKnowledgeBase(packageName);
 	}
 
 	@Override
