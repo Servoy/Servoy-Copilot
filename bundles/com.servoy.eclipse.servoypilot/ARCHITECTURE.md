@@ -80,6 +80,16 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |-- ChatViewPresenter.java            # Chat logic, conversation management, solution activation
 |   |   |-- CodeEditingService.java           # Diff generation (JGit)
 |   |   +-- ApplyPatchWizardHelper.java       # Code patch application UI
+|   |-- context/                              # Code context gathering (NEW)
+|   |   |-- CodeContextService.java           # Main service: extracts API context from code
+|   |   |-- IdentifierCollectingVisitor.java  # AST visitor: collects identifiers with types
+|   |   |-- SelectionTracker.java             # Singleton: tracks editor selections
+|   |   |-- ServoyAiContextMenu.java          # Dynamic context menu contribution
+|   |   |-- ServoyAiContextMenuHandler.java   # Handler for context menu commands
+|   |   +-- dto/                              # Data transfer objects
+|   |       |-- CodeContext.java              # Complete code context (identifiers + formatting)
+|   |       |-- IdentifierContext.java        # Single identifier (name, type, docs, kind)
+|   |       +-- SelectionInfo.java            # Selection metadata (file, offset, length, text)
 |   |-- preferences/
 |   |   |-- AiConfiguration.java              # AI provider settings
 |   |   +-- ServoyPilotPreferencePage.java    # Preferences UI
@@ -87,7 +97,7 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |-- InstructionsSaveService.java      # File operations for .servoy/ directory (save)
 |   |   |-- InstructionsLoadService.java      # Knowledge base loading/clearing (load)
 |   |   |-- BootstrapComponentService.java    # Bootstrap component operations
-|   |   |-- TargetService.java               # Solution/module target management
+|   |   |-- TargetService.java                # Solution/module target management
 |   |   |-- DatabaseSchemaService.java        # Database schema operations
 |   |   |-- FormService.java                  # Form CRUD operations
 |   |   |-- RelationService.java              # Relation CRUD operations
@@ -105,7 +115,8 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |   +-- LabelComponentTools.java      # Labels: list, add, update, delete, info
 |   |   +-- utility/                          # Utility tools
 |   |       |-- DatabaseTools.java            # Database: list tables, get info
-|   |       |-- TargetTools.java             # Context: get/set active solution/module
+|   |       |-- TargetTools.java              # Target: get/set active solution/module
+|   |       |-- CodeContextTools.java         # Code context: analyze selected code (NEW)
 |   |       +-- KnowledgeTools.java           # RAG: getKnowledge for rules retrieval
 |   +-- prompts/
 |       +-- SystemPrompts.java                # System prompt loading from bundle or .servoy/
@@ -467,6 +478,7 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 4. **Utility Tools** (`tools/utility/`)
    - **DatabaseTools**: `listTables()`, `getTableInfo()`
    - **TargetTools**: `getTarget()`, `setTarget()` (manages active solution/module)
+   - **CodeContextTools**: `getCodeContext()` (analyzes selected code for API context)
    - **KnowledgeTools**: `getKnowledge()` (RAG - retrieves rules via embeddings)
 
 **Tool Execution Flow:**
@@ -480,6 +492,92 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 8. Response streamed to chat UI
 
 ---
+
+### 3.7 Code Context Gathering
+
+**Purpose:** Extract API context from selected JavaScript code to provide AI with type information and documentation.
+
+**Architecture:**
+
+```
+User Selection → SelectionTracker → CodeContextService → AST Analysis → Documentation Extraction → Formatted Context
+```
+
+**Components:**
+
+1. **SelectionTracker (Singleton)**
+   - Implements `ISelectionListener` 
+   - Monitors editor selections across workspace
+   - Returns `SelectionInfo` (file path, offset, length, text, source module)
+   - Lifecycle: initialized on first use, disposed on plugin shutdown
+
+2. **CodeContextService**
+   - Parses JavaScript using DLTK's `JavaScriptParserUtil`
+   - Runs `TypeInferencer2` with custom `IdentifierCollectingVisitor`
+   - Extracts context for each identifier (name, type, documentation)
+   - Returns `CodeContext` with formatted output (XML/plain text)
+
+3. **IdentifierCollectingVisitor (AST Visitor)**
+   - Extends DLTK's `TypeInferencerVisitor`
+   - Collects identifiers within selection range
+   - Stores: `Map<JSNode, Pair<IValueReference, String>>` for identifiers
+   - Handles nested properties (e.g., `plugins.ngdesktop.openFile`)
+   - Deduplicates identifiers by name+type
+
+4. **Documentation Extraction (Phase 3 - IN PROGRESS)**
+   - **Servoy API** (`IdentifierKind.SERVOY_API`):
+     - Uses `ScriptObjectRegistry.getScriptObjectByName(typeName)`
+     - Returns `XMLScriptObjectAdapter` loaded from `servoydoc.xml`
+     - Extracts: signatures, parameters, return types, descriptions, samples
+   - **Solution Functions** (`IdentifierKind.SOLUTION_FUNCTION`):
+     - Detects type == "Function"
+     - Locates `IModelElement` using `ReferenceLocation`
+     - Reads ScriptDoc via `ScriptdocContentAccess.getContentReader()`
+     - Parses @param, @return, @description tags
+   - **Web Components** (`IdentifierKind.WEB_COMPONENT`):
+     - Extracts component name from `RuntimeWebComponent<componentName>`
+     - Gets spec from `WebComponentSpecProvider`
+     - Extracts API functions and properties
+   - **Web Services** (`IdentifierKind.WEB_SERVICE`):
+     - Extracts service name from `WebService<serviceName>`
+     - Gets spec from `WebServiceSpecProvider`
+     - Extracts service API
+
+5. **Context Menu Integration**
+   - Dynamic menu: "Servoy AI" (visible when text selected)
+   - Commands: Debug, Review, Generate Docs, Generate Tests
+   - Handler routes to `CodeContextService` for analysis
+   - No circular dependencies (self-contained via Eclipse command pattern)
+
+**Data Flow:**
+
+```
+1. User selects code in JavaScript editor
+2. SelectionTracker captures selection
+3. User clicks "Servoy AI → Generate Docs" (or LLM calls getCodeContext())
+4. CodeContextService.getCodeContext(selectionInfo):
+   a. Parse JavaScript → AST
+   b. Run TypeInferencer2 + IdentifierCollectingVisitor
+   c. For each identifier:
+      - Determine kind (SERVOY_API, WEB_COMPONENT, etc.)
+      - Extract documentation from appropriate source
+      - Create IdentifierContext
+   d. Deduplicate by name+type
+   e. Format as XML/plain text
+5. Return CodeContext to caller (LLM or context menu handler)
+```
+
+**Current Status:**
+- ✅ Phase 1: DTOs and SelectionTracker (COMPLETE)
+- ✅ Phase 2: AST Analysis (COMPLETE)
+- ⚠️ Phase 3: Documentation Extraction (IN PROGRESS - type names only, docs not yet extracted)
+- ✅ Phase 4: LLM Tool Integration (COMPLETE - skeleton)
+
+**Next Steps:**
+- Extract Servoy API docs using `XMLScriptObjectAdapter` methods
+- Extract ScriptDoc for solution functions
+- Extract component/service specs
+- Add formatting and token limiting
 
 ---
 

@@ -12,9 +12,9 @@ import org.osgi.framework.BundleContext;
 import com.servoy.eclipse.servoypilot.ai.Assistant;
 import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
+import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants;
-import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
 public class Activator implements BundleActivator
 {
@@ -52,6 +52,9 @@ public class Activator implements BundleActivator
 	@Override
 	public void stop(BundleContext bundleContext) throws Exception
 	{
+		// Dispose SelectionTracker
+		SelectionTracker.getInstance().dispose();
+		
 		preferenceStore = null;
 		clearChatModel();
 	}

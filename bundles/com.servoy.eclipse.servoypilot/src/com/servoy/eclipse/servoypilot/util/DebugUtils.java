@@ -25,6 +25,17 @@ public class DebugUtils
 	}
 	
 	/**
+	 * Log a simple debug message to System.out.
+	 * Always logs regardless of debug mode (use for important events).
+	 * 
+	 * @param message Debug message
+	 */
+	public static void debug(String message)
+	{
+		System.out.println(PREFIX + " " + message);
+	}
+	
+	/**
 	 * Log a debug message to System.out if debug mode is enabled.
 	 * 
 	 * @param component Component/class name
