@@ -148,7 +148,7 @@ setMainForm({name: "Dashboard"})
 **Parameters:**
 - `scope` (string, optional, default "all"):
   - `"all"` → Active solution + all modules
-  - `"current"` → Current context only (from ContextService)
+  - `"current"` → Current target only (from ContextService)
 
 **Examples:**
 ```javascript
@@ -156,12 +156,12 @@ setMainForm({name: "Dashboard"})
 listForms()
 listForms({scope: "all"})
 
-// List only current context
-setContext({context: "Module_A"})
+// List only current target
+setTarget({target: "Module_A"})
 listForms({scope: "current"})  // Only Module_A forms
 
 // List only active solution
-setContext({context: "active"})
+setTarget({target: "active"})
 listForms({scope: "current"})  // Only active solution
 ```
 
@@ -230,17 +230,17 @@ Forms in solution 'MainSolution' and modules (5 total):
 
 **Required format for EVERY response:**
 ```
-Current context: <context-name>
+Current target: <target-name>
 
 [rest of your response]
 ```
 
 **Examples:**
-- "Current context: active (MainSolution)"
-- "Current context: Module_A"
-- "Current context: Module_B"
+- "Current target: active (MainSolution)"
+- "Current target: Module_A"
+- "Current target: Module_B"
 
-**Check context at start:** Call `getContext()` if you don't know the current context.
+**Check target at start:** Call `getTarget()` if you don't know the current target.
 
 ---
 
@@ -249,7 +249,7 @@ Current context: <context-name>
 **Tools affected:** `openForm` (existing forms), `getFormProperties`, `listForms`
 
 **Behavior:**
-1. Search current context first
+1. Search current target first
 2. If not found → search active solution
 3. If still not found → search ALL modules
 4. **Display/Open ALL matching forms** (if multiple exist with same name)
@@ -257,7 +257,7 @@ Current context: <context-name>
 
 **Example 1: Single match in different module**
 ```javascript
-Current context: Module_C
+Current target: Module_C
 User: "Open productsForm"
 // productsForm exists in Module_A
 
@@ -271,7 +271,7 @@ You:
 
 **Example 2: Multiple matches (DISPLAY ALL)**
 ```javascript
-Current context: Module_C
+Current target: Module_C
 User: "Open customerForm"
 // customerForm exists in Module_A AND Module_B
 
@@ -294,12 +294,12 @@ You:
 **Tool affected:** `openForm` with `create=true`
 
 **Behavior:**
-1. Creates in **current context** (no questions asked)
-2. If user specifies different context → call `setContext` FIRST, then create
+1. Creates in **current target** (no questions asked)
+2. If user specifies different context → call `setTarget` FIRST, then create
 
-**Example 1: Create in current context**
+**Example 1: Create in current target**
 ```javascript
-Current context: Module_C
+Current target: Module_C
 User: "Create a dashboard form"
 
 You:
@@ -310,11 +310,11 @@ You:
 
 **Example 2: User specifies explicit context**
 ```javascript
-Current context: Module_C
+Current target: Module_C
 User: "Create dashboard form in Module_A"
 
 You:
-1. Call setContext({context: "Module_A"})  // FIRST!
+1. Call setTarget({target: "Module_A"})  // FIRST!
 2. Call openForm({name: "Dashboard", create: true})
 3. Form created in Module_A
 4. Context now: Module_A
@@ -327,32 +327,32 @@ You:
 **Tool affected:** `openForm` with properties/width/height/extendsForm/setAsMainForm on existing form
 
 **Behavior:**
-1. If form in current context → Update immediately
-2. If form NOT in current context → Tool returns approval request message
+1. If form in current target → Update immediately
+2. If form NOT in current target → Tool returns approval request message
 3. You ASK user for confirmation
-4. If user approves → call `setContext`, then retry operation
+4. If user approves → call `setTarget`, then retry operation
 5. If user denies → STOP, context unchanged
 
 **Example: Update in different context (approval needed)**
 ```javascript
-Current context: Module_C
+Current target: Module_C
 User: "Change productsForm width to 1024"
 // productsForm exists in Module_A (not in Module_C)
 
 You:
 1. Call openForm({name: "productsForm", width: 1024})
-2. Tool returns: "Current context: Module_C
+2. Tool returns: "Current target: Module_C
                   
                   Form 'productsForm' found in Module_A.
-                  Current context is Module_C.
+                  Current target is Module_C.
                   
                   To update this form's properties, I need to switch to Module_A.
                   Do you want to proceed?
                   
-                  [If yes, I will: setContext({context: 'Module_A'}) then update]"
+                  [If yes, I will: setTarget({target: 'Module_A'}) then update]"
 3. ASK user: "I found 'productsForm' in Module_A. Switch context and update?"
 4. If YES:
-   - Call setContext({context: "Module_A"})
+   - Call setTarget({target: "Module_A"})
    - Call openForm({name: "productsForm", width: 1024})
 5. If NO:
    - STOP, no changes
@@ -366,7 +366,7 @@ You:
 
 ### Default Behavior:
 - Context starts as "active" (active solution)
-- New forms created in current context
+- New forms created in current target
 - Context persists until changed or solution activated
 - **READ operations search everywhere, display all, never change context**
 - **UPDATE operations ask approval if switching context needed**
@@ -376,25 +376,25 @@ You:
 **User mentions module:**
 ```javascript
 User: "Create form in Module_A"
-You: setContext({context: "Module_A"})  // FIRST!
+You: setTarget({target: "Module_A"})  // FIRST!
      openForm({name: "Dashboard", create: true})  // Creates in Module_A
 ```
 
 **Unsure where to create:**
 ```javascript
-getContext()  // Check current context + available options
+getTarget()  // Check current target + available options
 ```
 
 **Multiple operations in same module:**
 ```javascript
-setContext({context: "Module_B"})
+setTarget({target: "Module_B"})
 openForm({name: "Form1", create: true})  // Created in Module_B
 openForm({name: "Form2", create: true})  // Also Module_B (persists)
 ```
 
 **Return to active solution:**
 ```javascript
-setContext({context: "active"})
+setTarget({target: "active"})
 ```
 
 ### Context Response Messages:
@@ -402,7 +402,7 @@ setContext({context: "active"})
 - "Form 'productForm' created in Module_A"
 - "Form 'productsForm' opened successfully (from module: Module_A)" ← Found via fallback search
 
-**[REQUIRED] If user says "in Module_X", call setContext FIRST before creating**
+**[REQUIRED] If user says "in Module_X", call setTarget FIRST before creating**
 
 ---
 
@@ -650,7 +650,7 @@ openForm({
 
 ### Workflow 1: Create Form (User Knows Details)
 
-1. Check if user specified module → If yes: `setContext({context: "Module_X"})`
+1. Check if user specified module → If yes: `setTarget({target: "Module_X"})`
 2. Determine width, height, style (use defaults if not specified)
 3. Call `openForm` with create=true
 4. Tool reports where created and opens form in designer
@@ -658,7 +658,7 @@ openForm({
 **Example:**
 ```
 User: "Create OrderEntry form 1024x768 in Module_A"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → openForm({
     name: "OrderEntry",
     create: true,
@@ -674,7 +674,7 @@ User: "Create OrderEntry form 1024x768 in Module_A"
 
 **[CRITICAL] Parent form MUST exist before creating child form.**
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. **Validate parent exists:** Call `listForms()` and check output
 3. If parent NOT found → Display error with available forms, STOP
 4. If parent found → Call `openForm` with extendsForm parameter
@@ -757,17 +757,17 @@ User: "Show me all forms"
 → [Format per "How to Present Results" section]
 ```
 
-**List current context only:**
+**List current target only:**
 ```
 User: "What forms are in Module_A?"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → listForms({scope: "current"})
 ```
 
 **List active solution only:**
 ```
 User: "Show forms in main solution"
-→ setContext({context: "active"})
+→ setTarget({target: "active"})
 → listForms({scope: "current"})
 ```
 
@@ -814,7 +814,7 @@ User: "Create CustomerList form"
 **Example 2: Create in module with context**
 ```
 User: "Create Dashboard form in Module_A"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → openForm({name: "Dashboard", create: true})
 ```
 
@@ -892,7 +892,7 @@ User: "Make ExistingForm show in menu and set initial sort"
 **Example 10: List with scope**
 ```
 User: "Show forms in Module_A only"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → listForms({scope: "current"})
 → [Format per presentation rules]
 ```

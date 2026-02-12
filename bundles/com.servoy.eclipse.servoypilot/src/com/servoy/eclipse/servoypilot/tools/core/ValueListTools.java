@@ -13,7 +13,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.ValueListService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
@@ -36,7 +36,7 @@ public class ValueListTools
 	 * Supports 4 types: CUSTOM, DATABASE (table), DATABASE (related), GLOBAL_METHOD.
 	 */
 	@Tool("Opens an existing valuelist or creates a new valuelist. Supports 4 types: CUSTOM, DATABASE (table), DATABASE (related), GLOBAL_METHOD. " +
-		"[CONTEXT-AWARE for CREATE] When creating a new valuelist, it will be created in the current context (active solution or module). " +
+		"[CONTEXT-AWARE for CREATE] When creating a new valuelist, it will be created in the current target (active solution or module). " +
 		"Use getContext to check where it will be created, setContext to change target location.")
 	public String openValueList(
 		@P(value = "ValueList name", required = true) String name,
@@ -61,7 +61,7 @@ public class ValueListTools
 	/**
 	 * Deletes one or more existing valuelists.
 	 */
-	@Tool("Deletes one or more existing valuelists. Requires approval if valuelist not in current context.")
+	@Tool("Deletes one or more existing valuelists. Requires approval if valuelist not in current target.")
 	public String deleteValueLists(
 		@P(value = "Array of valuelist names to delete", required = true) List<String> names)
 	{
@@ -81,10 +81,10 @@ public class ValueListTools
 	 * @return Formatted string with valuelist information
 	 */
 	@Tool("Lists valuelists in the active solution and its modules. " +
-		"Optional scope parameter: 'current' returns valuelists from current context only, " +
+		"Optional scope parameter: 'current' returns valuelists from current target only, " +
 		"'all' returns valuelists from active solution and all modules (default).")
 	public String getValueLists(
-		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
+		@P(value = "Scope: 'current' for target only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
 		return UIThreadHelper.syncExec("getValueLists",
 			() -> listValueLists(scope));
@@ -110,7 +110,7 @@ public class ValueListTools
 				if (currentOnly)
 				{
 					// Current context only
-					ServoyProject contextProject = ContextService.getCurrentContextProject();
+					ServoyProject contextProject = TargetService.getCurrentTargetProject();
 					if (contextProject != null)
 					{
 						Solution contextSolution = contextProject.getEditingSolution();
@@ -136,7 +136,7 @@ public class ValueListTools
 					}
 					else
 					{
-						return "Error: No current context set";
+						return "Error: No current target set";
 					}
 				}
 				else
@@ -239,10 +239,10 @@ public class ValueListTools
 
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			// Resolve target project based on current context
+			// Resolve target project based on current target
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			if (targetProject != null && targetProject.getEditingSolution() != null)
 			{
@@ -265,7 +265,7 @@ public class ValueListTools
 			if (valueListInTarget != null)
 			{
 				allMatchingValueLists.add(valueListInTarget);
-				valueListLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
+				valueListLocations.add("active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target);
 				valueList = valueListInTarget;
 			}
 
@@ -300,12 +300,12 @@ public class ValueListTools
 		}
 		else
 		{
-			// CREATE operation: Search current context only
+			// CREATE operation: Search current target only
 			valueList = targetProject.getEditingSolution().getValueList(name);
 			if (valueList != null)
 			{
 				allMatchingValueLists.add(valueList);
-				valueListLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
+				valueListLocations.add("active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target);
 			}
 		}
 
@@ -316,14 +316,14 @@ public class ValueListTools
 		{
 			ServoyLog.logInfo("[ValueListTools] Found " + allMatchingValueLists.size() + " matching valuelist(s): " + name);
 
-			// If properties are provided (UPDATE operation), check if valuelist is in current context
+			// If properties are provided (UPDATE operation), check if valuelist is in current target
 			if (properties != null && !properties.isEmpty())
 			{
 				ValueList valueListInCurrentContext = targetProject.getEditingSolution().getValueList(name);
 
 				if (valueListInCurrentContext == null)
 				{
-					// UPDATE operation but valuelist not in current context - need approval
+					// UPDATE operation but valuelist not in current target - need approval
 					String foundLocation = findValueListLocation(name, servoyProject, servoyModel, targetProject);
 
 					if (foundLocation != null)
@@ -334,12 +334,12 @@ public class ValueListTools
 							"Current context is " + contextDisplay + ".\n\n" +
 							"To update this valuelist's properties, I need to switch to " + locationDisplay + ".\n" +
 							"Do you want to proceed?\n\n" +
-							"[If yes, I will: setContext({context: \"" + foundLocation + "\"}) then update properties]";
+							"[If yes, I will: setTarget({target: \"" + foundLocation + "\"}) then update properties]";
 					}
 				}
 				else
 				{
-					// ValueList in current context - can update
+					// ValueList in current target - can update
 					ServoyLog.logInfo("[ValueListTools] Updating valuelist properties");
 					ValueListService.updateValueListProperties(valueList, properties);
 					propertiesModified = true;
@@ -348,8 +348,8 @@ public class ValueListTools
 		}
 		else if (isCreateOperation)
 		{
-			// ValueList doesn't exist - create it in current context
-			ServoyLog.logInfo("[ValueListTools] ValueList doesn't exist, creating in " + targetContext + ": " + name);
+			// ValueList doesn't exist - create it in current target
+			ServoyLog.logInfo("[ValueListTools] ValueList doesn't exist, creating in " + target + ": " + name);
 
 			if (!hasCustom && !hasDatabase && !hasRelated && !hasGlobalMethod)
 			{
@@ -360,7 +360,7 @@ public class ValueListTools
 			valueList = ValueListService.createValueListInProject(targetProject, name, customValues, dataSource,
 				relationName, globalMethod, displayColumn, returnColumn, properties);
 			allMatchingValueLists.add(valueList);
-			valueListLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
+			valueListLocations.add("active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target);
 			isNewValueList = true;
 		}
 		else
@@ -421,7 +421,7 @@ public class ValueListTools
 		return result.toString();
 			}
 			
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+			throw new RepositoryException("No target solution/module found for target: " + target);
 		}
 		
 		throw new RepositoryException("No active Servoy solution project found");
@@ -438,10 +438,10 @@ public class ValueListTools
 
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			// Get current context
+			// Get current target
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			List<String> deletedValueLists = new ArrayList<>();
 			List<String> notFoundValueLists = new ArrayList<>();
@@ -449,7 +449,7 @@ public class ValueListTools
 			Map<String, String> approvalLocations = new HashMap<>();
 			List<ValueList> valueListsToDelete = new ArrayList<>();
 
-			// Find valuelists and check if they're in current context
+			// Find valuelists and check if they're in current target
 			for (String name : names)
 			{
 				if (name == null || name.trim().isEmpty()) continue;
@@ -459,7 +459,7 @@ public class ValueListTools
 
 				if (valueList != null)
 				{
-					foundInContext = targetContext;
+					foundInContext = target;
 					valueListsToDelete.add(valueList);
 				}
 				else
@@ -516,7 +516,7 @@ public class ValueListTools
 					approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
 					approvalMsg.append("To delete this valuelist, I need to switch to ").append(locationDisplay).append(".\n");
 					approvalMsg.append("Do you want to proceed?\n\n");
-					approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
+					approvalMsg.append("[If yes, I will: setTarget({target: \"").append(location).append("\"}) then delete]");
 				}
 				else
 				{
@@ -528,19 +528,19 @@ public class ValueListTools
 						approvalMsg.append("  - ").append(valueListName).append(" (in ").append(locationDisplay).append(")\n");
 					}
 					approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
-					approvalMsg.append("Please switch context explicitly using setContext({context: \"module_name\"})");
+					approvalMsg.append("Please switch target explicitly using setTarget({target: \"module_name\"})");
 				}
 
 				if (!valueListsToDelete.isEmpty())
 				{
-					approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
+					approvalMsg.append("\n\nNote: Can delete from current target without approval: ");
 					approvalMsg.append(String.join(", ", valueListsToDelete.stream().map(vl -> vl.getName()).toArray(String[]::new)));
 				}
 
 				return approvalMsg.toString();
 			}
 
-			// Delete valuelists (all are in current context)
+			// Delete valuelists (all are in current target)
 			if (!valueListsToDelete.isEmpty())
 			{
 				EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
@@ -602,14 +602,14 @@ public class ValueListTools
 	// =============================================
 
 	/**
-	 * Resolve target project based on current context.
+	 * Resolve target project based on current target.
 	 */
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel)
 	{
-		String context = ContextService.getInstance().getCurrentContext();
+		String target = TargetService.getInstance().getCurrentTarget();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 
-		if ("active".equals(context) || context == null)
+		if ("active".equals(target) || target == null)
 		{
 			return activeProject;
 		}
@@ -618,7 +618,7 @@ public class ValueListTools
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName()))
+			if (module != null && target.equals(module.getProject().getName()))
 			{
 				return module;
 			}

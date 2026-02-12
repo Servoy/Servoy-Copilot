@@ -10,7 +10,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.BootstrapComponentService;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.j2db.persistence.RepositoryException;
 
@@ -181,15 +181,15 @@ public class LabelComponentTools
 
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel) throws RepositoryException
 	{
-		String context = ContextService.getInstance().getCurrentContext();
-		if ("active".equals(context)) return servoyModel.getActiveProject();
+		String target = TargetService.getInstance().getCurrentTarget();
+		if ("active".equals(target)) return servoyModel.getActiveProject();
 
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName())) return module;
+			if (module != null && target.equals(module.getProject().getName())) return module;
 		}
 
-		throw new RepositoryException("Context '" + context + "' not found");
+		throw new RepositoryException("Target '" + target + "' not found");
 	}
 }

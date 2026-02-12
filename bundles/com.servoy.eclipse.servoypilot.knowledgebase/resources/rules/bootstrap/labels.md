@@ -28,14 +28,14 @@
 **The label tools are context-aware with smart fallback:**
 
 ### How It Works:
-1. **Looks in current context FIRST** (active solution or current module)
+1. **Looks in current target FIRST** (active solution or current module)
 2. **If form not found**, searches all solutions and modules
 3. **If found in ONE place**, auto-switches context and performs operation
 4. **If found in MULTIPLE places**, returns error asking user to specify
 
 ### Available Context Tools:
-- **getContext** - Shows current context and available solutions/modules
-- **setContext** - Switches to a different solution or module
+- **getTarget** - Shows current target and available solutions/modules
+- **setTarget** - Switches to a different solution or module
 
 ### When to Use Context:
 
@@ -50,7 +50,7 @@ addLabel(formName="customerForm", name="lblName", ...)
 **User specifies module explicitly:**
 ```
 User: "Add a label to customerForm in Module_B"
-You: setContext({context: "Module_B"})
+You: setTarget({target: "Module_B"})
      then addLabel(formName="customerForm", ...)
 ```
 
@@ -58,16 +58,16 @@ You: setContext({context: "Module_B"})
 ```
 addLabel(formName="customerForm", ...)
 # Returns error: "Form 'customerForm' found in multiple locations: MainSolution (active), Module_A, Module_B. 
-# Use setContext to specify which one."
+# Use setTarget to specify which one."
 
-You: setContext({context: "Module_A"})
+You: setTarget({target: "Module_A"})
      then retry addLabel(formName="customerForm", ...)
 ```
 
 ### Key Rules for Context:
 1. [AUTOMATIC] Tools search and switch context when form is unambiguous
-2. [REQUIRED] If form in multiple places, use setContext to specify
-3. [OPTIONAL] Can call setContext first to be explicit about target
+2. [REQUIRED] If form in multiple places, use setTarget to specify
+3. [OPTIONAL] Can call setTarget first to be explicit about target
 4. [INFO] Tools always report which context was used in response
 
 ---
@@ -115,7 +115,7 @@ addLabel(
 
 # User explicitly specifies module
 # User says: "Add a title label to orderForm in Module_A"
-setContext({context: "Module_A"})
+setTarget({target: "Module_A"})
 addLabel(
   formName="orderForm",
   name="lblTitle",

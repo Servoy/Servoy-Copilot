@@ -173,7 +173,7 @@ openValueList({
 **Parameters:**
 - `scope` (string, optional, default "all"):
   - `"all"` → Active solution + all modules
-  - `"current"` → Current context only (from ContextService)
+  - `"current"` → Current target only (from ContextService)
 
 **Examples:**
 ```javascript
@@ -181,12 +181,12 @@ openValueList({
 getValueLists()
 getValueLists({scope: "all"})
 
-// List only current context
-setContext({context: "Module_B"})
+// List only current target
+setTarget({target: "Module_B"})
 getValueLists({scope: "current"})  // Only Module_B valuelists
 
 // List only active solution
-setContext({context: "active"})
+setTarget({target: "active"})
 getValueLists({scope: "current"})  // Only active solution
 ```
 
@@ -287,48 +287,48 @@ Value lists in solution 'MainSolution' and modules:
 
 **Required format for EVERY response:**
 ```
-Current context: <context-name>
+Current target: <target-name>
 
 [rest of your response]
 ```
 
 **Examples:**
-- "Current context: active (MainSolution)"
-- "Current context: Module_A"
-- "Current context: Module_B"
+- "Current target: active (MainSolution)"
+- "Current target: Module_A"
+- "Current target: Module_B"
 
-**Check context at start:** Call `getContext()` if you don't know the current context.
+**Check target at start:** Call `getTarget()` if you don't know the current target.
 
 ---
 
 ### Tool Behavior by Operation Type
 
 **READ Operations (openValueList, getValueLists):**
-- Search current context → active solution → all modules
+- Search current target → active solution → all modules
 - **Display/Open ALL matches** (if multiple found)
 - **Context NEVER changes**
 - Shows location info
 
 **CREATE Operations (openValueList with type parameters):**
-- Creates in **current context ONLY**
-- User specifies different module? Call `setContext` FIRST
-- **Example:** To create in Module_A while in Module_C → `setContext` then `openValueList`
+- Creates in **current target ONLY**
+- User specifies different module? Call `setTarget` FIRST
+- **Example:** To create in Module_A while in Module_C → `setTarget` then `openValueList`
 
 **UPDATE Operations (openValueList with properties on existing):**
-- In current context → Updates immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
+- In current target → Updates immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
 
 **DELETE Operations (deleteValueLists):**
-- In current context → Deletes immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
+- In current target → Deletes immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
 
 ---
 
 ### Default Behavior:
 - Context starts as "active" (active solution)
-- New valuelists created in current context
+- New valuelists created in current target
 - Context persists until changed
 - **READ: Search everywhere, display all, never change context**
 - **UPDATE/DELETE: Ask approval if switching context needed**
@@ -338,25 +338,25 @@ Current context: <context-name>
 **User mentions module:**
 ```javascript
 User: "Create valuelist in Module_B"
-You: setContext({context: "Module_B"})  // FIRST!
+You: setTarget({target: "Module_B"})  // FIRST!
      openValueList({...})  // Creates in Module_B
 ```
 
 **Unsure where to create:**
 ```javascript
-getContext()  // Check current context + available options
+getTarget()  // Check current target + available options
 ```
 
 **Multiple operations in same module:**
 ```javascript
-setContext({context: "Module_A"})
+setTarget({target: "Module_A"})
 openValueList({...})  // Created in Module_A
 openValueList({...})  // Also Module_A (context persists)
 ```
 
 **Return to active solution:**
 ```javascript
-setContext({context: "active"})
+setTarget({target: "active"})
 ```
 
 ### Context Response Messages:
@@ -364,7 +364,7 @@ setContext({context: "active"})
 - "ValueList 'Y' created in Module_B (DATABASE)"
 - "ValueList 'countries_vl' opened successfully (from module: Module_A)" ← Found via fallback search
 
-**[REQUIRED] If user says "in Module_X", call setContext FIRST before creating**
+**[REQUIRED] If user says "in Module_X", call setTarget FIRST before creating**
 
 ---
 
@@ -408,7 +408,7 @@ setContext({context: "active"})
 
 ### Workflow 1: Create Custom ValueList
 
-1. Check if user specified module → If yes: `setContext({context: "Module_X"})`
+1. Check if user specified module → If yes: `setTarget({target: "Module_X"})`
 2. Extract values from user input (comma-separated, list, etc.)
 3. Call `openValueList` with customValues array
 4. Tool reports where created
@@ -416,7 +416,7 @@ setContext({context: "active"})
 **Example:**
 ```
 User: "Create status valuelist with Active, Inactive, Pending in Module_C"
-→ setContext({context: "Module_C"})
+→ setTarget({target: "Module_C"})
 → openValueList({
     name: "status_list",
     customValues: ["Active", "Inactive", "Pending"]
@@ -428,7 +428,7 @@ User: "Create status valuelist with Active, Inactive, Pending in Module_C"
 
 ### Workflow 2: Create Database ValueList (Table)
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. Ask for database server name if not provided (NEVER guess)
 3. If user doesn't know tables: `listTables({serverName: "..."})`
 4. Ask for table name if not provided
@@ -458,7 +458,7 @@ User: "example_data"
 
 ### Workflow 3: Create Related ValueList
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. User mentions relation or "related table"
 3. Verify relation exists (optional: call `getRelations()`)
 4. Ask for displayColumn/returnColumn for the related table
@@ -479,7 +479,7 @@ User: "Create valuelist showing orders for current customer"
 
 ### Workflow 4: Create Global Method ValueList
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. User mentions "dynamic", "from code", "from method", "from API"
 3. Ask for global method name (format: "scopes.scopeName.methodName")
 4. Remind: Method must return JSDataSet with 1-2 columns
@@ -507,17 +507,17 @@ User: "Show me all valuelists"
 → [Format per "How to Present Results" section]
 ```
 
-**List current context only:**
+**List current target only:**
 ```
 User: "What valuelists are in Module_B?"
-→ setContext({context: "Module_B"})
+→ setTarget({target: "Module_B"})
 → getValueLists({scope: "current"})
 ```
 
 **List active solution only:**
 ```
 User: "Show valuelists in main solution"
-→ setContext({context: "active"})
+→ setTarget({target: "active"})
 → getValueLists({scope: "current"})
 ```
 
@@ -575,7 +575,7 @@ User: "Create status list with Active, Inactive, Pending"
 **Example 2: Custom in module**
 ```
 User: "Create payment methods list in Module_A: Cash, Credit Card, Check"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → openValueList({
     name: "payment_methods",
     customValues: ["Cash", "Credit Card", "Check"]
@@ -637,7 +637,7 @@ User: "scopes.globals.getCountriesFromAPI"
 **Example 7: List with scope in module**
 ```
 User: "Show valuelists in Module_B only"
-→ setContext({context: "Module_B"})
+→ setTarget({target: "Module_B"})
 → getValueLists({scope: "current"})
 → [Format per presentation rules]
 ```

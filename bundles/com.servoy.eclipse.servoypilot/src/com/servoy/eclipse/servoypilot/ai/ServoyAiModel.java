@@ -9,7 +9,7 @@ import com.servoy.eclipse.servoypilot.tools.core.FormTools;
 import com.servoy.eclipse.servoypilot.tools.core.RelationTools;
 import com.servoy.eclipse.servoypilot.tools.core.StyleTools;
 import com.servoy.eclipse.servoypilot.tools.core.ValueListTools;
-import com.servoy.eclipse.servoypilot.tools.utility.ContextTools;
+import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
 import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
 
@@ -113,7 +113,7 @@ public class ServoyAiModel
 			new RelationTools(), // core/ - COMPLETE: getRelations, openRelation, deleteRelations
 			new StyleTools(), // core/ - COMPLETE: getStyles, openStyle, deleteStyle
 			new DatabaseTools(), // utility/ - COMPLETE: listTables, getTableInfo
-			new ContextTools(), // utility/ - COMPLETE: getContext, setContext
+			new TargetTools(), // utility/ - COMPLETE: getTarget, setTarget
 			new KnowledgeTools(), // utility/ - COMPLETE: getKnowledge
 			new ButtonComponentTools(), // component/ - COMPLETE: listButtons, addButton, updateButton, deleteButton, getButtonInfo
 			new LabelComponentTools() // component/ - COMPLETE: listLabels, addLabel, updateLabel, deleteLabel, getLabelInfo

@@ -117,7 +117,7 @@ Call: getKnowledge({ queries: ["create form", "add buttons"] })
 Based on knowledge received:
 - Show user step-by-step plan
 - Ask for missing required parameters
-- Check context (use getContext if creating items)
+- Check target (use getTarget if creating items)
 
 ### Step 5: Execute
 
@@ -139,23 +139,23 @@ The context determines WHERE new items (forms, relations, valuelists, styles) ar
 
 ### When to Check/Switch Context
 
-**BEFORE creating items, check current context:**
+**BEFORE creating items, check current target:**
 ```
-Call: getContext()
-Returns: Current context + available contexts (active, Module_A, Module_B, ...)
+Call: getTarget()
+Returns: Current target + available targets (active, Module_A, Module_B, ...)
 ```
 
 **If user mentions a module, switch context FIRST:**
 ```
 User: "Create relation in Module_A"
-Step 1: Call setContext({ context: "Module_A" })
+Step 1: Call setTarget({ target: "Module_A" })
 Step 2: Call openRelation(...)
 Result: Relation created in Module_A
 ```
 
 **Context stays active for subsequent operations:**
 ```
-setContext({ context: "Module_A" })
+setTarget({ target: "Module_A" })
 openForm(...)        // Goes to Module_A
 openRelation(...)    // Goes to Module_A
 openValueList(...)   // Goes to Module_A
@@ -164,12 +164,12 @@ openValueList(...)   // Goes to Module_A
 
 **To return to main solution:**
 ```
-Call: setContext({ context: "active" })
+Call: setTarget({ target: "active" })
 ```
 
 **IMPORTANT:** 
 - Read operations (list, get) can access all contexts
-- Write operations (create) use ONLY the current context
+- Write operations (create) use ONLY the current target
 - Always tell user WHERE items were created: "Created form 'Orders' in Module_A"
 
 ## AVAILABLE TOOLS
@@ -220,9 +220,9 @@ Step 4: Plan:
          3. Add button 'Save'
          4. Add button 'Cancel'"
 Step 5: Execute:
-        [Call getContext() to see available contexts]
+        [Call getTarget() to see available targets]
         "I'll switch to Module_A"
-        [Call setContext({ context: "Module_A" })]
+        [Call setTarget({ target: "Module_A" })]
         "I'll create form CustomerList in Module_A"
         [Call openForm(...)]
         "I'll add Save button"

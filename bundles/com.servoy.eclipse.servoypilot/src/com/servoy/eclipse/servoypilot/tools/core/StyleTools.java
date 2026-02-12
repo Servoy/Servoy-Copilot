@@ -6,7 +6,7 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.StyleService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 
@@ -36,7 +36,7 @@ public class StyleTools
 	/**
 	 * Adds or updates a CSS class in a LESS file.
 	 */
-	@Tool("Adds or updates a CSS class in a LESS file. Context-aware: style added to current context.")
+	@Tool("Adds or updates a CSS class in a LESS file. Context-aware: style added to current target.")
 	public String openStyle(
 		@P(value = "CSS class name (without dot)", required = true) String className,
 		@P(value = "CSS content (rules)", required = true) String cssContent,
@@ -59,7 +59,7 @@ public class StyleTools
 	/**
 	 * Deletes a CSS class from a LESS file.
 	 */
-	@Tool("Deletes a CSS class from a LESS file in the current context.")
+	@Tool("Deletes a CSS class from a LESS file in the current target.")
 	public String deleteStyle(
 		@P(value = "CSS class name (without dot)", required = true) String className,
 		@P(value = "LESS file name (defaults to <solution-name>.less)", required = false) String lessFileName)
@@ -85,12 +85,12 @@ public class StyleTools
 		if (servoyProject != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+		String target = TargetService.getInstance().getCurrentTarget();
+		String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 		if ("current".equals(scope))
 		{
-			// List from current context only
+			// List from current target only
 			String projectPath = targetProject.getProject().getLocation().toOSString();
 			String solutionName = targetProject.getSolution().getName();
 
@@ -165,8 +165,8 @@ public class StyleTools
 		if (servoyProject != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+		String target = TargetService.getInstance().getCurrentTarget();
+		String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 		// Remove leading dot if provided
 		if (className.startsWith("."))
@@ -179,19 +179,19 @@ public class StyleTools
 		String foundProjectPath = null;
 		String foundSolutionName = null;
 
-		// Check current context first
+		// Check current target first
 		String projectPath = targetProject.getProject().getLocation().toOSString();
 		String solutionName = targetProject.getSolution().getName();
 		String checkResult = StyleService.getStyle(projectPath, solutionName, lessFileName, className);
 
 		if (!checkResult.startsWith("Class '") || !checkResult.contains("not found"))
 		{
-			foundInContext = targetContext;
+			foundInContext = target;
 			foundProjectPath = projectPath;
 			foundSolutionName = solutionName;
 		}
 
-		// If not found in current context, search active solution
+		// If not found in current target, search active solution
 		if (foundInContext == null && !targetProject.equals(servoyProject))
 		{
 			projectPath = servoyProject.getProject().getLocation().toOSString();
@@ -231,7 +231,7 @@ public class StyleTools
 
 		// Determine operation type
 		boolean isUpdate = foundInContext != null;
-		boolean needsApproval = isUpdate && !foundInContext.equals(targetContext);
+		boolean needsApproval = isUpdate && !foundInContext.equals(target);
 
 		if (needsApproval)
 		{
@@ -244,10 +244,10 @@ public class StyleTools
 				"Current context is " + contextDisplay + ".\n\n" +
 				"To update this style, I need to switch to " + foundLocationDisplay + ".\n" +
 				"Do you want to proceed?\n\n" +
-				"[If yes, I will: setContext({context: \"" + foundInContext + "\"}) then update style]";
+				"[If yes, I will: setTarget({target: \"" + foundInContext + "\"}) then update style]";
 		}
 
-		// Add/update in current context
+		// Add/update in current target
 		projectPath = targetProject.getProject().getLocation().toOSString();
 		solutionName = targetProject.getSolution().getName();
 
@@ -262,7 +262,7 @@ public class StyleTools
 			? lessFileName
 			: solutionName + ".less";
 
-		if (isUpdate && foundInContext.equals(targetContext))
+		if (isUpdate && foundInContext.equals(target))
 		{
 			return "Successfully updated style class '" + className + "' in " + contextDisplay + " (file: " + targetFile + ")";
 		}
@@ -287,8 +287,8 @@ public class StyleTools
 		if (servoyProject != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-		String targetContext = ContextService.getInstance().getCurrentContext();
-		String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+		String target = TargetService.getInstance().getCurrentTarget();
+		String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 		// Remove leading dot if provided
 		if (className.startsWith("."))
@@ -296,7 +296,7 @@ public class StyleTools
 			className = className.substring(1);
 		}
 
-		// Delete from current context only
+		// Delete from current target only
 		String projectPath = targetProject.getProject().getLocation().toOSString();
 		String solutionName = targetProject.getSolution().getName();
 
@@ -314,9 +314,9 @@ public class StyleTools
 					: foundInContext;
 
 				return "Current context: " + contextDisplay + "\n\n" +
-					"Style class '" + className + "' not found in current context.\n" +
+					"Style class '" + className + "' not found in current target.\n" +
 					"However, it exists in " + foundLocationDisplay + ".\n\n" +
-					"To delete it, use: setContext({context: \"" + foundInContext + "\"}) then deleteStyle again";
+					"To delete it, use: setTarget({target: \"" + foundInContext + "\"}) then deleteStyle again";
 			}
 
 			return "Error: " + error;
@@ -338,15 +338,15 @@ public class StyleTools
 
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel)
 	{
-		String context = ContextService.getInstance().getCurrentContext();
+		String target = TargetService.getInstance().getCurrentTarget();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 
-		if ("active".equals(context) || context == null) return activeProject;
+		if ("active".equals(target) || target == null) return activeProject;
 
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName())) return module;
+			if (module != null && target.equals(module.getProject().getName())) return module;
 		}
 
 		return activeProject;

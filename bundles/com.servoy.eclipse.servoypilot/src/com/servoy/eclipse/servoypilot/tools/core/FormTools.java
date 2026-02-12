@@ -13,7 +13,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.FormService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
@@ -38,9 +38,9 @@ public class FormTools
 	/**
 	 * Lists forms in the active solution and its modules.
 	 */
-	@Tool("Lists forms in the active solution and its modules. Optional scope parameter: 'current' for context only, 'all' for solution + modules (default).")
+	@Tool("Lists forms in the active solution and its modules. Optional scope parameter: 'current' for target only, 'all' for solution + modules (default).")
 	public String getForms(
-		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
+		@P(value = "Scope: 'current' for target only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
 		return UIThreadHelper.syncExec("getForms",
 			() -> listFormsImpl(scope != null ? scope : "all"));
@@ -112,8 +112,8 @@ public class FormTools
 			if ("current".equals(scope))
 			{
 				ServoyProject targetProject = resolveTargetProject(servoyModel);
-				String context = ContextService.getInstance().getCurrentContext();
-				contextName = "active".equals(context) ? activeSolutionName : context;
+				String target = TargetService.getInstance().getCurrentTarget();
+				contextName = "active".equals(target) ? activeSolutionName : target;
 
 				Iterator<Form> formsIterator = targetProject.getEditingSolution().getForms(null, false);
 				while (formsIterator.hasNext())
@@ -209,8 +209,8 @@ public class FormTools
 			}
 
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			if (targetProject != null && targetProject.getEditingSolution() != null)
 			{
@@ -223,7 +223,7 @@ public class FormTools
 				if (formInTarget != null)
 				{
 					allMatchingForms.add(formInTarget);
-					formLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
+					formLocations.add("active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target);
 				}
 
 				if (!targetProject.equals(servoyProject))
@@ -379,7 +379,7 @@ public class FormTools
 				return result.toString();
 			}
 
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+			throw new RepositoryException("No target solution/module found for context: " + target);
 		}
 
 		throw new RepositoryException("No active Servoy solution project found");
@@ -397,8 +397,8 @@ public class FormTools
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			List<String> deletedForms = new ArrayList<>();
 			List<String> notFoundForms = new ArrayList<>();
@@ -419,7 +419,7 @@ public class FormTools
 
 				if (form != null)
 				{
-					foundInContext = targetContext;
+					foundInContext = target;
 					formsToDelete.add(form);
 				}
 				else
@@ -576,10 +576,10 @@ public class FormTools
 
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel)
 	{
-		String context = ContextService.getInstance().getCurrentContext();
+		String target = TargetService.getInstance().getCurrentTarget();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 
-		if ("active".equals(context) || context == null)
+		if ("active".equals(target) || target == null)
 		{
 			return activeProject;
 		}
@@ -587,7 +587,7 @@ public class FormTools
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName()))
+			if (module != null && target.equals(module.getProject().getName()))
 			{
 				return module;
 			}

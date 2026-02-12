@@ -87,7 +87,7 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |-- InstructionsSaveService.java      # File operations for .servoy/ directory (save)
 |   |   |-- InstructionsLoadService.java      # Knowledge base loading/clearing (load)
 |   |   |-- BootstrapComponentService.java    # Bootstrap component operations
-|   |   |-- ContextService.java               # Solution/module context management
+|   |   |-- TargetService.java               # Solution/module target management
 |   |   |-- DatabaseSchemaService.java        # Database schema operations
 |   |   |-- FormService.java                  # Form CRUD operations
 |   |   |-- RelationService.java              # Relation CRUD operations
@@ -105,7 +105,7 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |   +-- LabelComponentTools.java      # Labels: list, add, update, delete, info
 |   |   +-- utility/                          # Utility tools
 |   |       |-- DatabaseTools.java            # Database: list tables, get info
-|   |       |-- ContextTools.java             # Context: get/set active solution/module
+|   |       |-- TargetTools.java             # Context: get/set active solution/module
 |   |       +-- KnowledgeTools.java           # RAG: getKnowledge for rules retrieval
 |   +-- prompts/
 |       +-- SystemPrompts.java                # System prompt loading from bundle or .servoy/
@@ -466,7 +466,7 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 
 4. **Utility Tools** (`tools/utility/`)
    - **DatabaseTools**: `listTables()`, `getTableInfo()`
-   - **ContextTools**: `getContext()`, `setContext()` (manages active solution/module)
+   - **TargetTools**: `getTarget()`, `setTarget()` (manages active solution/module)
    - **KnowledgeTools**: `getKnowledge()` (RAG - retrieves rules via embeddings)
 
 **Tool Execution Flow:**

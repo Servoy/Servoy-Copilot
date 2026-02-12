@@ -56,7 +56,7 @@ addStyle({
 })
 
 // Style in specific module
-setContext({context: "Module_A"})
+setTarget({target: "Module_A"})
 addStyle({
   className: "btn-green",
   cssContent: "background-color: #10b981; color: white; padding: 10px 20px"
@@ -163,45 +163,45 @@ Total: 5 classes
 
 **Required format for EVERY response:**
 ```
-Current context: <context-name>
+Current target: <target-name>
 
 [rest of your response]
 ```
 
 **Examples:**
-- "Current context: active (MainSolution)"
-- "Current context: Module_A"
-- "Current context: Module_B"
+- "Current target: active (MainSolution)"
+- "Current target: Module_A"
+- "Current target: Module_B"
 
-**Check context at start:** Call `getContext()` if you don't know the current context.
+**Check target at start:** Call `getTarget()` if you don't know the current target.
 
 ---
 
 ### Tool Behavior by Operation Type
 
 **READ Operations (getStyle, listStyles):**
-- Search current context → active solution → all modules
+- Search current target → active solution → all modules
 - **Display ALL matches** (if multiple found)
 - **Context NEVER changes**
 - Shows location info for each match
 - **listStyles with scope='all':** Shows all styles from all modules with origin info
 
 **CREATE Operations (addStyle when style doesn't exist anywhere):**
-- Creates in **current context**
-- User specifies different module? Call `setContext` FIRST
-- **Example:** To create in Module_A while in Module_C → `setContext` then `addStyle`
+- Creates in **current target**
+- User specifies different module? Call `setTarget` FIRST
+- **Example:** To create in Module_A while in Module_C → `setTarget` then `addStyle`
 
 **UPDATE Operations (addStyle when style already exists):**
-- In current context → Updates immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
-- **Example:** Style in Module_A, current context Module_C → approval needed
+- In current target → Updates immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
+- **Example:** Style in Module_A, current target Module_C → approval needed
 
 **DELETE Operations (deleteStyle):**
-- In current context → Deletes immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
-- **Example:** Style in Module_A, current context Module_C → approval needed
+- In current target → Deletes immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
+- **Example:** Style in Module_A, current target Module_C → approval needed
 
 **[CRITICAL] Styles now follow same approval pattern as Forms, Relations, ValueLists:**
 - READ: Search everywhere, display all, never change context
@@ -211,7 +211,7 @@ Current context: <context-name>
 
 ### Default Behavior:
 - Context starts as "active" (active solution)
-- Styles created in current context's `medias/ai-generated.less` file
+- Styles created in current target's `medias/ai-generated.less` file
 - Context persists until changed
 - **READ: Search everywhere, display all, never change context**
 - **UPDATE/DELETE: Ask approval if switching context needed**
@@ -226,28 +226,28 @@ Current context: <context-name>
 **User mentions module:**
 ```javascript
 User: "Add style in Module_B"
-You: setContext({context: "Module_B"})  // FIRST!
+You: setTarget({target: "Module_B"})  // FIRST!
      addStyle({...})  // Creates in Module_B/medias/ai-generated.less
 ```
 
 **Unsure where to create:**
 ```javascript
-getContext()  // Check current context + available options
+getTarget()  // Check current target + available options
 ```
 
 **Multiple operations in same module:**
 ```javascript
-setContext({context: "Module_A"})
+setTarget({target: "Module_A"})
 addStyle({...})  // Created in Module_A
 addStyle({...})  // Also Module_A (persists)
 ```
 
 **Return to active solution:**
 ```javascript
-setContext({context: "active"})
+setTarget({target: "active"})
 ```
 
-**[REQUIRED] If user says "in Module_X", call setContext FIRST before creating**
+**[REQUIRED] If user says "in Module_X", call setTarget FIRST before creating**
 
 ---
 
@@ -352,7 +352,7 @@ color: white;
 
 ### Workflow 1: Create Simple Style
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. Determine class name (suggest based on appearance)
 3. Create CSS with simple format
 4. Call `addStyle`
@@ -360,7 +360,7 @@ color: white;
 **Example:**
 ```
 User: "Create blue button style in Module_A"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → addStyle({
     className: "btn-blue",
     cssContent: "background: #007bff; color: white; padding: 12px 24px; border-radius: 6px"
@@ -372,7 +372,7 @@ User: "Create blue button style in Module_A"
 
 ### Workflow 2: Create LESS Style with Nesting
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. Determine class name
 3. Create CSS with LESS nested format (use backticks for multi-line)
 4. Ensure proper brace balancing
@@ -458,7 +458,7 @@ User: "Delete btn-old style"
 3. **CSS content only**: Do NOT include wrapper `.className { }` - tool adds it
 4. **Two formats**: Simple CSS (semicolon-separated) OR LESS (multi-line with nesting)
 5. **Syntax validation**: Balanced braces, no duplicate braces, no `};` at class level
-6. **File location**: Styles go to `medias/ai-generated.less` in current context
+6. **File location**: Styles go to `medias/ai-generated.less` in current target
 7. **Backup safety**: All modifications create `.less.backup` file
 8. **Auto-import**: First style creation auto-imports ai-generated.less into main .less
 9. **Applying styles**: Use `styleClass` parameter in component tools
@@ -480,7 +480,7 @@ User: "Create blue gradient button style"
 **Example 2: Style in module with context**
 ```
 User: "Create yellow highlight label in Module_B"
-→ setContext({context: "Module_B"})
+→ setTarget({target: "Module_B"})
 → addStyle({
     className: "label-highlight",
     cssContent: "background-color: #fff3cd; color: #856404; padding: 5px 10px; border: 1px solid #ffc107; border-radius: 4px; font-weight: bold"

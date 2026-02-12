@@ -1,24 +1,15 @@
 package com.servoy.eclipse.servoypilot.tools.component;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
-
-import org.eclipse.swt.widgets.Display;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.BootstrapComponentService;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
-import com.servoy.j2db.persistence.Form;
-import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.RepositoryException;
-import com.servoy.j2db.persistence.Solution;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -180,15 +171,15 @@ public class ButtonComponentTools
 
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel) throws RepositoryException
 	{
-		String context = ContextService.getInstance().getCurrentContext();
-		if ("active".equals(context)) return servoyModel.getActiveProject();
+		String target = TargetService.getInstance().getCurrentTarget();
+		if ("active".equals(target)) return servoyModel.getActiveProject();
 
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module.getProject().getName().equals(context)) return module;
+			if (module.getProject().getName().equals(target)) return module;
 		}
 
-		throw new RepositoryException("Context '" + context + "' not found");
+		throw new RepositoryException("Target '" + target + "' not found");
 	}
 }

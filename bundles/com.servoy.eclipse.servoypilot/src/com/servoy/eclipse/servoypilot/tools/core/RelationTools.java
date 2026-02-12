@@ -11,7 +11,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.ContextService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.RelationService;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
@@ -35,9 +35,9 @@ public class RelationTools
 	/**
 	 * Lists relations in the active solution and its modules.
 	 */
-	@Tool("Lists relations in the active solution and its modules. Optional scope parameter: 'current' for context only, 'all' for solution + modules (default).")
+	@Tool("Lists relations in the active solution and its modules. Optional scope parameter: 'current' for target only, 'all' for solution + modules (default).")
 	public String getRelations(
-		@P(value = "Scope: 'current' for context only, 'all' for solution + modules (default 'all')", required = false) String scope)
+		@P(value = "Scope: 'current' for target only, 'all' for solution + modules (default 'all')", required = false) String scope)
 	{
 		return UIThreadHelper.syncExec("getRelations",
 			() -> listRelationsImpl(scope != null ? scope : "all"));
@@ -46,7 +46,7 @@ public class RelationTools
 	/**
 	 * Opens an existing relation or creates a new relation.
 	 */
-	@Tool("Opens an existing relation or creates a new relation between two tables. Context-aware: when creating, relation created in current context.")
+	@Tool("Opens an existing relation or creates a new relation between two tables. Context-aware: when creating, relation created in current target.")
 	public String openRelation(
 		@P(value = "Relation name", required = true) String name,
 		@P(value = "Primary datasource (format: 'server_name/table_name' or 'db:/server_name/table_name')", required = false) String primaryDataSource,
@@ -68,7 +68,7 @@ public class RelationTools
 	/**
 	 * Deletes one or more existing relations.
 	 */
-	@Tool("Deletes one or more existing relations. Requires approval if relation not in current context.")
+	@Tool("Deletes one or more existing relations. Requires approval if relation not in current target.")
 	public String deleteRelations(
 		@P(value = "Array of relation names to delete", required = true) List<String> names)
 	{
@@ -100,8 +100,8 @@ public class RelationTools
 			if ("current".equals(scope))
 			{
 				ServoyProject targetProject = resolveTargetProject(servoyModel);
-				String context = ContextService.getInstance().getCurrentContext();
-				contextName = "active".equals(context) ? activeSolutionName : context;
+				String target = TargetService.getInstance().getCurrentTarget();
+				contextName = "active".equals(target) ? activeSolutionName : target;
 
 				Iterator<Relation> relationsIterator = targetProject.getEditingSolution().getRelations(false);
 				while (relationsIterator.hasNext())
@@ -185,8 +185,8 @@ public class RelationTools
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			if (targetProject != null && targetProject.getEditingSolution() != null)
 			{
@@ -204,7 +204,7 @@ public class RelationTools
 				if (relationInTarget != null)
 				{
 					allMatchingRelations.add(relationInTarget);
-					relationLocations.add("active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext);
+					relationLocations.add("active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target);
 				}
 
 				if (!targetProject.equals(servoyProject))
@@ -246,7 +246,7 @@ public class RelationTools
 
 						if (relationInCurrentContext == null)
 						{
-							// UPDATE operation but relation not in current context - need approval
+							// UPDATE operation but relation not in current target - need approval
 							String foundLocation = findRelationLocation(name, servoyProject, servoyModel, targetProject);
 
 							if (foundLocation != null)
@@ -258,19 +258,19 @@ public class RelationTools
 									"Current context is " + contextDisplay + ".\n\n" +
 									"To update this relation's properties, I need to switch to " + locationDisplay + ".\n" +
 									"Do you want to proceed?\n\n" +
-									"[If yes, I will: setContext({context: \"" + foundLocation + "\"}) then update properties]";
+									"[If yes, I will: setTarget({target: \"" + foundLocation + "\"}) then update properties]";
 							}
 						}
 						else
 						{
-							// Relation in current context - can update
+							// Relation in current target - can update
 							RelationService.updateRelationProperties(relation, properties);
 						}
 					}
 				}
 				else if (isCreateOperation)
 				{
-					// Create new relation in current context
+					// Create new relation in current target
 					relation = RelationService.createRelationInProject(targetProject, name, primaryDataSource, foreignDataSource,
 						primaryColumn, foreignColumn, properties);
 					allMatchingRelations.add(relation);
@@ -334,7 +334,7 @@ public class RelationTools
 				return result.toString();
 			}
 
-			throw new RepositoryException("No target solution/module found for context: " + targetContext);
+			throw new RepositoryException("No target solution/module found for target: " + target);
 		}
 
 		throw new RepositoryException("No active Servoy solution project found");
@@ -352,8 +352,8 @@ public class RelationTools
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
 			ServoyProject targetProject = resolveTargetProject(servoyModel);
-			String targetContext = ContextService.getInstance().getCurrentContext();
-			String contextDisplay = "active".equals(targetContext) ? targetProject.getProject().getName() + " (active solution)" : targetContext;
+			String target = TargetService.getInstance().getCurrentTarget();
+			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			List<String> deletedRelations = new ArrayList<>();
 			List<String> notFoundRelations = new ArrayList<>();
@@ -361,7 +361,7 @@ public class RelationTools
 			Map<String, String> approvalLocations = new HashMap<>();
 			List<Relation> relationsToDelete = new ArrayList<>();
 
-			// Find relations and check if they're in current context
+			// Find relations and check if they're in current target
 			for (String name : names)
 			{
 				if (name == null || name.trim().isEmpty())
@@ -374,7 +374,7 @@ public class RelationTools
 
 				if (relation != null)
 				{
-					foundInContext = targetContext;
+					foundInContext = target;
 					relationsToDelete.add(relation);
 				}
 				else
@@ -434,7 +434,7 @@ public class RelationTools
 					approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
 					approvalMsg.append("To delete this relation, I need to switch to ").append(locationDisplay).append(".\n");
 					approvalMsg.append("Do you want to proceed?\n\n");
-					approvalMsg.append("[If yes, I will: setContext({context: \"").append(location).append("\"}) then delete]");
+					approvalMsg.append("[If yes, I will: setTarget({target: \"").append(location).append("\"}) then delete]");
 				}
 				else
 				{
@@ -446,19 +446,19 @@ public class RelationTools
 						approvalMsg.append("  - ").append(relationName).append(" (in ").append(locationDisplay).append(")\n");
 					}
 					approvalMsg.append("\nCurrent context is ").append(contextDisplay).append(".\n");
-					approvalMsg.append("Please switch context explicitly using setContext");
+					approvalMsg.append("Please switch target explicitly using setContext");
 				}
 
 				if (!relationsToDelete.isEmpty())
 				{
-					approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
+					approvalMsg.append("\n\nNote: Can delete from current target without approval: ");
 					approvalMsg.append(String.join(", ", relationsToDelete.stream().map(r -> r.getName()).toArray(String[]::new)));
 				}
 
 				return approvalMsg.toString();
 			}
 
-			// Delete relations (all are in current context)
+			// Delete relations (all are in current target)
 			if (!relationsToDelete.isEmpty())
 			{
 				EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
@@ -531,10 +531,10 @@ public class RelationTools
 
 	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel)
 	{
-		String context = ContextService.getInstance().getCurrentContext();
+		String target = TargetService.getInstance().getCurrentTarget();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 
-		if ("active".equals(context) || context == null)
+		if ("active".equals(target) || target == null)
 		{
 			return activeProject;
 		}
@@ -542,7 +542,7 @@ public class RelationTools
 		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
 		for (ServoyProject module : modules)
 		{
-			if (module != null && context.equals(module.getProject().getName()))
+			if (module != null && target.equals(module.getProject().getName()))
 			{
 				return module;
 			}

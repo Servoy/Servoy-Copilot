@@ -96,7 +96,7 @@ openRelation({
 **Parameters:**
 - `scope` (string, optional, default "all"):
   - `"all"` → Active solution + all modules
-  - `"current"` → Current context only (from ContextService)
+  - `"current"` → Current target only (from ContextService)
 
 **Examples:**
 ```javascript
@@ -104,12 +104,12 @@ openRelation({
 getRelations()
 getRelations({scope: "all"})
 
-// List only current context
-setContext({context: "Module_A"})
+// List only current target
+setTarget({target: "Module_A"})
 getRelations({scope: "current"})  // Only Module_A relations
 
 // List only active solution
-setContext({context: "active"})
+setTarget({target: "active"})
 getRelations({scope: "current"})  // Only active solution
 ```
 
@@ -217,48 +217,48 @@ POTENTIAL Relations (inferred from naming):
 
 **Required format for EVERY response:**
 ```
-Current context: <context-name>
+Current target: <target-name>
 
 [rest of your response]
 ```
 
 **Examples:**
-- "Current context: active (MainSolution)"
-- "Current context: Module_A"
-- "Current context: Module_B"
+- "Current target: active (MainSolution)"
+- "Current target: Module_A"
+- "Current target: Module_B"
 
-**Check context at start:** Call `getContext()` if you don't know the current context.
+**Check target at start:** Call `getTarget()` if you don't know the current target.
 
 ---
 
 ### Tool Behavior by Operation Type
 
 **READ Operations (openRelation, getRelations):**
-- Search current context → active solution → all modules
+- Search current target → active solution → all modules
 - **Display/Open ALL matches** (if multiple found)
 - **Context NEVER changes**
 - Shows location info
 
 **CREATE Operations (openRelation with primaryDataSource/foreignDataSource):**
-- Creates in **current context ONLY**
-- User specifies different module? Call `setContext` FIRST
-- **Example:** To create in Module_A while in Module_C → `setContext` then `openRelation`
+- Creates in **current target ONLY**
+- User specifies different module? Call `setTarget` FIRST
+- **Example:** To create in Module_A while in Module_C → `setTarget` then `openRelation`
 
 **UPDATE Operations (openRelation with properties on existing):**
-- In current context → Updates immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
+- In current target → Updates immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
 
 **DELETE Operations (deleteRelations):**
-- In current context → Deletes immediately
-- NOT in current context → Tool returns **approval request**
-- You ASK user → If YES: `setContext` + retry → If NO: STOP
+- In current target → Deletes immediately
+- NOT in current target → Tool returns **approval request**
+- You ASK user → If YES: `setTarget` + retry → If NO: STOP
 
 ---
 
 ### Default Behavior:
 - Context starts as "active" (active solution)
-- New relations created in current context
+- New relations created in current target
 - Context persists until changed
 - **READ: Search everywhere, display all, never change context**
 - **UPDATE/DELETE: Ask approval if switching context needed**
@@ -268,25 +268,25 @@ Current context: <context-name>
 **User mentions module:**
 ```javascript
 User: "Create relation in Module_A"
-You: setContext({context: "Module_A"})  // FIRST!
+You: setTarget({target: "Module_A"})  // FIRST!
      openRelation({...})  // Creates in Module_A
 ```
 
 **Unsure where to create:**
 ```javascript
-getContext()  // Check current context + available options
+getTarget()  // Check current target + available options
 ```
 
 **Multiple operations in same module:**
 ```javascript
-setContext({context: "Module_B"})
+setTarget({target: "Module_B"})
 openRelation({...})  // Created in Module_B
 openRelation({...})  // Also Module_B (context persists)
 ```
 
 **Return to active solution:**
 ```javascript
-setContext({context: "active"})
+setTarget({target: "active"})
 ```
 
 ### Context Response Messages:
@@ -294,7 +294,7 @@ setContext({context: "active"})
 - "Created relation 'Y' in Module_A"
 - "Relation 'customers_to_orders' opened successfully (from module: Module_A)" ← Found via fallback search
 
-**[REQUIRED] If user says "in Module_X", call setContext FIRST before creating**
+**[REQUIRED] If user says "in Module_X", call setTarget FIRST before creating**
 
 ---
 
@@ -302,14 +302,14 @@ setContext({context: "active"})
 
 ### Workflow 1: Create Relation (User Knows All Details)
 
-1. Check if user specified module → If yes: `setContext({context: "Module_X"})`
+1. Check if user specified module → If yes: `setTarget({target: "Module_X"})`
 2. Call `openRelation` with all parameters
 3. Tool reports where created
 
 **Example:**
 ```
 User: "Create relation from orders to customers using customer_id in Module_A"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → openRelation({
     name: "orders_to_customers",
     primaryDataSource: "example_data/orders",
@@ -324,7 +324,7 @@ User: "Create relation from orders to customers using customer_id in Module_A"
 
 ### Workflow 2: Discover Then Create
 
-1. Check context if module mentioned
+1. Check target if module mentioned
 2. Ask for database server name if not provided
 3. Call `discoverDbRelations({serverName: "..."})`
 4. Present EXPLICIT FKs separately from POTENTIAL
@@ -375,17 +375,17 @@ User: "Show me all relations"
 → [Format output per "How to Present Results" section]
 ```
 
-**List current context only:**
+**List current target only:**
 ```
 User: "What relations are in Module_A?"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → getRelations({scope: "current"})
 ```
 
 **List active solution only:**
 ```
 User: "Show me relations in the main solution"
-→ setContext({context: "active"})
+→ setTarget({target: "active"})
 → getRelations({scope: "current"})
 ```
 
@@ -435,7 +435,7 @@ User: "Create relation from orders to customers on customer_id"
 **Example 2: Create in module with properties**
 ```
 User: "Create inner join relation from products to categories in Module_A"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → openRelation({
     name: "products_to_categories",
     primaryDataSource: "example_data/products",
@@ -460,7 +460,7 @@ User: "Create the first explicit one"
 **Example 4: List with scope**
 ```
 User: "Show relations in Module_A only"
-→ setContext({context: "Module_A"})
+→ setTarget({target: "Module_A"})
 → getRelations({scope: "current"})
 → [Format per presentation rules]
 ```
