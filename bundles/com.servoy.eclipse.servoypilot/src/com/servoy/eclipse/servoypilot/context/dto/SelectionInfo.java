@@ -5,8 +5,9 @@ import java.util.Optional;
 import org.eclipse.dltk.core.ISourceModule;
 
 /**
- * Immutable data class representing a code selection in the editor.
+ * Immutable data class representing a code selection or full file in the editor.
  * Contains selection metadata: file path, offset, length, and selected text.
+ * When length > 0, represents a text selection. When length equals file length, represents entire file.
  */
 public final class SelectionInfo
 {
@@ -30,8 +31,8 @@ public final class SelectionInfo
 	 * 
 	 * @param filePath the full path to the file
 	 * @param offset the selection start offset
-	 * @param length the selection length
-	 * @param selectedText the actual selected text
+	 * @param length the selection length (0 for full file)
+	 * @param selectedText the actual selected text (entire file content if no selection)
 	 * @param sourceModule the DLTK source module
 	 * @return Optional containing SelectionInfo, or empty if invalid parameters
 	 */
@@ -39,10 +40,9 @@ public final class SelectionInfo
 	{
 		if (filePath != null && !filePath.trim().isEmpty() && 
 			offset >= 0 && length >= 0 && 
-			selectedText != null && 
 			sourceModule != null)
 		{
-			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText, sourceModule));
+			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule));
 		}
 		return Optional.empty();
 	}

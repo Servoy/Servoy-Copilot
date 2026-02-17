@@ -36,16 +36,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			if (selection.isPresent())
 			{
 				SelectionInfo selectionInfo = selection.get();
-				
-				// Get command name for debug output
-				String commandName = getCommandName(commandId);
-				
-				// Debug output
-				DebugUtils.debug("ServoyAI Context Menu: " + commandName + " invoked");
-				DebugUtils.debug("  File: " + selectionInfo.getFilePath());
-				DebugUtils.debug("  Offset: " + selectionInfo.getOffset());
-				DebugUtils.debug("  Length: " + selectionInfo.getLength());
-				DebugUtils.debug("  Selected text: " + selectionInfo.getSelectedText().substring(0, Math.min(100, selectionInfo.getSelectedText().length())) + "...");
 
 				// Handle specific commands
 				switch (commandId)
@@ -100,8 +90,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateDocs(SelectionInfo selection)
 	{
-		DebugUtils.debug("[GENERATE DOCS] Analyzing code context...");
-		
 		// Get code context using the visitor
 		CodeContextService service = CodeContextService.getInstance();
 		CodeContext context = service.getCodeContext(selection);
@@ -117,18 +105,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			DebugUtils.debug("[GENERATE DOCS] No API context found in selection.");
 			return;
 		}
-		
-		// Display the grabbed context
-		DebugUtils.debug("[GENERATE DOCS] ========================================");
-		DebugUtils.debug("[GENERATE DOCS] Code Context (XML format):");
-		DebugUtils.debug("[GENERATE DOCS] ========================================");
-		DebugUtils.debug(context.getFormattedXML());
-		DebugUtils.debug("[GENERATE DOCS] ========================================");
-		DebugUtils.debug("[GENERATE DOCS] Code Context (Plain text format):");
-		DebugUtils.debug("[GENERATE DOCS] ========================================");
-		DebugUtils.debug(context.getFormattedPlainText());
-		DebugUtils.debug("[GENERATE DOCS] ========================================");
-		DebugUtils.debug("[GENERATE DOCS] Found " + context.getIdentifierCount() + " identifiers");
 		
 		// TODO: Use this context to generate JSDoc comments
 		DebugUtils.debug("[GENERATE DOCS] Next step: Generate JSDoc based on context above");

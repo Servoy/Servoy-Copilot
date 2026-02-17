@@ -97,8 +97,10 @@ public class SelectionTracker implements ISelectionListener
 
 	/**
 	 * Gets the current selection information.
+	 * If text is selected, returns selection info for that range.
+	 * If no text is selected, returns selection info for the entire file.
 	 * 
-	 * @return Optional containing SelectionInfo if a valid selection exists, empty otherwise
+	 * @return Optional containing SelectionInfo if an active editor exists, empty otherwise
 	 */
 	public Optional<SelectionInfo> getCurrentSelection()
 	{
@@ -110,11 +112,34 @@ public class SelectionTracker implements ISelectionListener
 				ISourceModule module = DLTKUIPlugin.getEditorInputModelElement(input);
 				if (module != null)
 				{
+					int offset = currentSelection.getOffset();
+					int length = currentSelection.getLength();
+					String text = currentSelection.getText();
+					
+					// If no selection (length == 0), use entire file range
+					if (length == 0)
+					{
+						try
+						{
+							String source = module.getSource();
+							if (source != null)
+							{
+								offset = 0;
+								length = source.length();
+								text = source;
+							}
+						}
+						catch (Exception e)
+						{
+							// Fall through to return empty
+						}
+					}
+					
 					return SelectionInfo.create(
 						currentFilePath,
-						currentSelection.getOffset(),
-						currentSelection.getLength(),
-						currentSelection.getText(),
+						offset,
+						length,
+						text,
 						module
 					);
 				}

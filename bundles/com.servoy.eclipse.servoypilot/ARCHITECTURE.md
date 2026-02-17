@@ -1,9 +1,9 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 11, 2026  
+**Last Updated:** February 16, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
-**Status:** All features implemented and functional
+**Status:** All features implemented and functional (including Code Context Gathering - Phases 1-4 complete with enhanced documentation extraction)
 
 ---
 
@@ -42,6 +42,42 @@
 
 **Current Workaround:**
 The system works correctly despite the over-engineering. The obsolete architecture doesn't break functionality, it just adds unnecessary complexity.
+
+---
+
+## ⚠️ TODO - START AGENTS IMPLEMENTATION USING CODE CONTEXT INFRASTRUCTURE
+
+**Now that code context extraction is complete (Phases 1-4), we can implement specialized agents:**
+
+**REQUIRED ACTIONS:**
+
+1. **Implement context menu handlers** (`ServoyAiContextMenuHandler.java`):
+   - Debug Agent: Analyze code for bugs, suggest fixes
+   - Review Agent: Code review with best practices
+   - Generate Docs Agent: Create JSDoc comments from code context
+   - Generate Tests Agent: Generate unit tests based on code analysis
+
+2. **Create knowledge base entries for agents** (Phase 6.2):
+   - Add embeddings for code context queries
+   - Add rules for using CodeContextTools
+   - Examples of context-aware assistance
+
+3. **Update system prompts for agents** (Phase 6.3):
+   - Add instructions for using code context
+   - Add examples of context-aware responses
+   - Update tool usage guidelines
+
+**Dependencies:**
+- ✅ Code context extraction complete (getCodeContext tool)
+- ✅ XML formatting ready for LLM consumption
+- ✅ Context menu infrastructure in place
+- ✅ Selection and full-file analysis working
+
+**Benefits:**
+- Agents will have deep understanding of Servoy APIs being used
+- Context-aware suggestions (knows what components, services are in scope)
+- Accurate documentation generation with proper type information
+- Better debugging with API-specific knowledge
 
 ---
 
@@ -478,7 +514,12 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 4. **Utility Tools** (`tools/utility/`)
    - **DatabaseTools**: `listTables()`, `getTableInfo()`
    - **TargetTools**: `getTarget()`, `setTarget()` (manages active solution/module)
-   - **CodeContextTools**: `getCodeContext()` (analyzes selected code for API context)
+   - **CodeContextTools**: `getCodeContext()` ✨ **NEW**
+     - Analyzes selected code or entire file (when no selection)
+     - Extracts API context: types, documentation for all identifiers
+     - Supports: Servoy API, Web Components, Web Services, Solution Functions
+     - Returns XML-formatted context for LLM consumption
+     - Enables context-aware assistance (debugging, reviews, doc generation)
    - **KnowledgeTools**: `getKnowledge()` (RAG - retrieves rules via embeddings)
 
 **Tool Execution Flow:**
@@ -493,7 +534,7 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
 
 ---
 
-### 3.7 Code Context Gathering
+### 3.7 Code Context Gathering ✅ COMPLETE
 
 **Purpose:** Extract API context from selected JavaScript code to provide AI with type information and documentation.
 
@@ -511,11 +552,12 @@ User Selection → SelectionTracker → CodeContextService → AST Analysis → 
    - Returns `SelectionInfo` (file path, offset, length, text, source module)
    - Lifecycle: initialized on first use, disposed on plugin shutdown
 
-2. **CodeContextService**
+2. **CodeContextService** ✅ COMPLETE
    - Parses JavaScript using DLTK's `JavaScriptParserUtil`
    - Runs `TypeInferencer2` with custom `IdentifierCollectingVisitor`
    - Extracts context for each identifier (name, type, documentation)
-   - Returns `CodeContext` with formatted output (XML/plain text)
+   - Returns `CodeContext` with complete documentation
+   - Handles errors gracefully (syntax errors, missing types)
 
 3. **IdentifierCollectingVisitor (AST Visitor)**
    - Extends DLTK's `TypeInferencerVisitor`
@@ -524,60 +566,237 @@ User Selection → SelectionTracker → CodeContextService → AST Analysis → 
    - Handles nested properties (e.g., `plugins.ngdesktop.openFile`)
    - Deduplicates identifiers by name+type
 
-4. **Documentation Extraction (Phase 3 - IN PROGRESS)**
-   - **Servoy API** (`IdentifierKind.SERVOY_API`):
-     - Uses `ScriptObjectRegistry.getScriptObjectByName(typeName)`
-     - Returns `XMLScriptObjectAdapter` loaded from `servoydoc.xml`
-     - Extracts: signatures, parameters, return types, descriptions, samples
-   - **Solution Functions** (`IdentifierKind.SOLUTION_FUNCTION`):
+4. **Documentation Extraction** ✅ COMPLETE (Phase 3 - Feb 13, 2026, Enhanced Feb 16, 2026)
+   
+   - **Servoy API** (`IdentifierKind.SERVOY_API`): ✅ COMPLETE
+     - Uses `ScriptObjectRegistry.getScriptObjectByName(typeName)` → `ITypedScriptObject`
+     - Accesses `IObjectDocumentation` with complete API metadata
+     - Extracts: function signatures, parameters (@param), return types (@return), descriptions
+     - **✨ NEW (Feb 16):** Extracts @sample code examples via `fdoc.getSample(ClientSupport.ng)`
+     - **✨ NEW (Feb 16):** Extracts deprecation info via `fdoc.isDeprecated()` and `fdoc.getDeprecatedText()`
+     - Handles overloaded functions (shows most complete signature)
+     - Supports TYPE_FUNCTION, TYPE_PROPERTY, TYPE_CONSTANT
+     - Uses `DocumentationUtil.getJavaToJSTypeTranslator()` for type conversion
+     - Formats with `ClientSupport.ng` for NG Client compatibility
+     - **Documentation Flow:** XML files generated from Java JSDoc → Runtime loaded via ScriptObjectRegistry
+   
+   - **Solution Functions** (`IdentifierKind.SOLUTION_FUNCTION`): ✅ COMPLETE
      - Detects type == "Function"
-     - Locates `IModelElement` using `ReferenceLocation`
+     - Locates `IModelElement` using `ReferenceLocation` + visitor pattern
      - Reads ScriptDoc via `ScriptdocContentAccess.getContentReader()`
-     - Parses @param, @return, @description tags
-   - **Web Components** (`IdentifierKind.WEB_COMPONENT`):
-     - Extracts component name from `RuntimeWebComponent<componentName>`
-     - Gets spec from `WebComponentSpecProvider`
-     - Extracts API functions and properties
-   - **Web Services** (`IdentifierKind.WEB_SERVICE`):
+     - Filters out internal metadata (@properties= lines)
+     - Returns clean ScriptDoc with @param, @return, @description tags
+   
+   - **Web Components** (`IdentifierKind.WEB_COMPONENT`): ✅ COMPLETE
+     - Extracts component name from `RuntimeWebComponent<componentName>` (handles `_abs` suffix)
+     - **Uses TypeCreator for merged _doc.js + .spec documentation:**
+       - Gets `TypeCreator` via `TypeProviderFactory.getTypeProvider().getTypeCreator()`
+       - Looks up `Type` via `typeCreator.findType(null, fullTypeName)`
+       - Iterates `Type.getMembers()` to extract Method/Property documentation
+       - Method.getDescription() contains **merged _doc.js + .spec content**
+       - Handles optional parameters with `ParameterKind.OPTIONAL`
+       - Formats: `identifier.methodName(param1, param2?)`
+   
+   - **Web Services** (`IdentifierKind.WEB_SERVICE`): ✅ COMPLETE
      - Extracts service name from `WebService<serviceName>`
-     - Gets spec from `WebServiceSpecProvider`
-     - Extracts service API
+     - **Uses TypeCreator for merged _doc.js + .spec documentation** (same as components)
+     - Shared implementation via `extractWebObjectDocumentationFromTypeCreator()`
+
+   **Debug Output (Feb 16, 2026):**
+   - Consolidated debug logging in `CodeContextService` (closer to extraction code)
+   - Output format:
+     ```
+     === CODE CONTEXT EXTRACTION ===
+     File: /path/to/file.js
+     Selection: offset=X, length=Y
+     Selected text:
+     <code snippet>
+     --------------------------------
+     
+     identifier -> documentation with @sample and @deprecated
+     
+     identifier -> no docs
+     
+     --------------------------------
+     Total: N identifiers
+     ================================
+     ```
+   - Simple, non-duplicated output showing all identifiers with or without documentation
 
 5. **Context Menu Integration**
-   - Dynamic menu: "Servoy AI" (visible when text selected)
+   - Dynamic menu: "Servoy AI" (always visible in JavaScript editors)
+   - Works with selection or full file (when no selection)
    - Commands: Debug, Review, Generate Docs, Generate Tests
    - Handler routes to `CodeContextService` for analysis
    - No circular dependencies (self-contained via Eclipse command pattern)
 
+**Technical Implementation Details:**
+
+**DLTK Integration:**
+- Added DLTK bundles to `Require-Bundle` (not `Import-Package`)
+- Follows same approach as `com.servoy.eclipse.debug` (TypeCreator's bundle)
+- Dependencies: `org.eclipse.dltk.core`, `org.eclipse.dltk.javascript.core`, `org.eclipse.dltk.javascript.ui`, `org.eclipse.dltk.ui`
+- Uses DLTK's "internal" Type model (Type, Method, Property, Parameter) - same as TypeCreator
+- No forbidden reference errors (bundle-level access bypasses package restrictions)
+
+**New Public APIs Created:**
+- `TypeProvider.getTypeCreator()` - exposes TypeCreator instance (added to com.servoy.eclipse.debug)
+- `TypeProviderFactory.getTypeProvider()` - static singleton access (added to com.servoy.eclipse.debug)
+- Both exported from com.servoy.eclipse.debug bundle
+
 **Data Flow:**
 
 ```
-1. User selects code in JavaScript editor
-2. SelectionTracker captures selection
+1. User selects code in JavaScript editor (or no selection for full file)
+2. SelectionTracker captures selection (or creates full file range if no selection)
 3. User clicks "Servoy AI → Generate Docs" (or LLM calls getCodeContext())
 4. CodeContextService.getCodeContext(selectionInfo):
-   a. Parse JavaScript → AST
+   a. Parse JavaScript → AST (JavaScriptParserUtil)
    b. Run TypeInferencer2 + IdentifierCollectingVisitor
    c. For each identifier:
-      - Determine kind (SERVOY_API, WEB_COMPONENT, etc.)
-      - Extract documentation from appropriate source
-      - Create IdentifierContext
+      - Determine kind (SERVOY_API, WEB_COMPONENT, WEB_SERVICE, SOLUTION_FUNCTION)
+      - Extract documentation from appropriate source:
+        * SERVOY_API → ScriptObjectRegistry + IObjectDocumentation
+        * SOLUTION_FUNCTION → ScriptdocContentAccess
+        * WEB_COMPONENT/WEB_SERVICE → TypeCreator + Type.getMembers()
+      - Create IdentifierContext with complete docs
    d. Deduplicate by name+type
-   e. Format as XML/plain text
-5. Return CodeContext to caller (LLM or context menu handler)
+   e. Return CodeContext with XML-formatted output
+5. Return formatted context to caller (LLM or context menu handler)
 ```
 
-**Current Status:**
-- ✅ Phase 1: DTOs and SelectionTracker (COMPLETE)
-- ✅ Phase 2: AST Analysis (COMPLETE)
-- ⚠️ Phase 3: Documentation Extraction (IN PROGRESS - type names only, docs not yet extracted)
-- ✅ Phase 4: LLM Tool Integration (COMPLETE - skeleton)
+**Status:**
+- ✅ Phase 1: DTOs and SelectionTracker (COMPLETE - Feb 12, 2026)
+- ✅ Phase 2: AST Analysis (COMPLETE - Feb 12, 2026)
+- ✅ Phase 3: Documentation Extraction (COMPLETE - Feb 13, 2026)
+  - ✅ Enhanced with @sample and @deprecated support (Feb 16, 2026)
+  - ✅ Consolidated debug output (Feb 16, 2026)
+  - ✅ Phase 3.6: XML Formatting (COMPLETE - Feb 13, 2026)
+- ✅ Phase 4: LLM Tool Integration (COMPLETE - Feb 13, 2026)
+  - ✅ Optimized to single method handling both selection and full file
+  - ✅ Removed stub methods (getCodeContextForFile, getCodeContextForSelection)
+  - ✅ Context menu now always visible (not selection-dependent)
+- ⏳ Phase 5: Testing and Refinement (IN PROGRESS - Feb 16, 2026)
+  - Manual testing using TEST_CODE_CONTEXT.md
+  - Debug output validation complete
+- ⏳ Phase 6: Knowledge Base & Agents (PARTIALLY COMPLETE)
+  - ✅ Architecture documentation complete
+  - ⏳ Agent implementation pending
 
-**Next Steps:**
-- Extract Servoy API docs using `XMLScriptObjectAdapter` methods
-- Extract ScriptDoc for solution functions
-- Extract component/service specs
-- Add formatting and token limiting
+**Total Implementation Time:** ~19 hours (including @sample/@deprecated enhancements and debug improvements)
+
+---
+
+### 3.8 Code Context Package - Detailed Reference
+
+**Package:** `com.servoy.eclipse.servoypilot.context`
+
+This package provides code analysis infrastructure for extracting API context from JavaScript code.
+
+#### Core Classes:
+
+**CodeContextService** (Singleton)
+- **Purpose:** Main orchestrator for code context extraction
+- **Key Method:** `getCodeContext(SelectionInfo) → CodeContext`
+- **Responsibilities:**
+  - Parse JavaScript using DLTK's JavaScriptParserUtil
+  - Run type inference with TypeInferencer2
+  - Extract documentation for all identifier types
+  - Return formatted CodeContext with XML output
+- **Error Handling:** Graceful degradation - returns error context on parse failures
+- **Thread Safety:** Uses workspace locks when accessing DLTK model
+
+**SelectionTracker** (Singleton, ISelectionListener)
+- **Purpose:** Monitors editor selections across workspace
+- **Lifecycle:**
+  - Initialized on first `getInstance()` call
+  - Registers with `ISelectionService` 
+  - Disposed on plugin shutdown via `Activator`
+- **Key Method:** `getCurrentSelection() → Optional<SelectionInfo>`
+- **Smart Behavior:**
+  - If text selected: Returns SelectionInfo for that range
+  - If no selection (length=0): Reads entire file via `module.getSource()` and creates full file range
+- **Thread Safety:** Synchronized getInstance(), uses LOCK object
+
+**IdentifierCollectingVisitor** (TypeInferencerVisitor)
+- **Purpose:** AST visitor that collects identifiers with type information
+- **Extends:** DLTK's `TypeInferencerVisitor`
+- **Data Structures:**
+  - `Map<JSNode, Pair<IValueReference, String>> identifiers` - collected identifiers
+  - `Map<JSNode, List<IValueReference>> propertiesOrCalls` - properties/methods on identifiers
+- **Key Features:**
+  - Only collects identifiers within specified offset/length range
+  - Handles nested properties (e.g., `plugins.ngdesktop.openFile`)
+  - Deduplicates by name+type combination
+
+**ServoyAiContextMenu** (CompoundContributionItem)
+- **Purpose:** Dynamic context menu contribution
+- **Visibility:** Always visible in JavaScript editors (checks for `ITextSelection` instanceof)
+- **Menu Structure:**
+  ```
+  Servoy AI
+  ├─ Debug
+  ├─ Review
+  ├─ ─────────
+  ├─ Generate Docs
+  └─ Generate Tests
+  ```
+
+**ServoyAiContextMenuHandler** (AbstractHandler)
+- **Purpose:** Handles all context menu command executions
+- **Current Status:** Stub implementations with TODOs for agents
+- **Pattern:** Routes to CodeContextService for analysis
+
+#### Data Transfer Objects (DTOs):
+
+**SelectionInfo** (Immutable)
+- **Fields:** filePath, offset, length, selectedText, sourceModule
+- **Factory:** `create(...)` returns `Optional<SelectionInfo>`
+- **Validation:** Ensures non-null filePath and sourceModule, non-negative offset/length
+- **Supports:** Both text selections and full file ranges
+
+**IdentifierContext** (Immutable)
+- **Fields:** name, typeName, documentation, kind (enum)
+- **IdentifierKind Enum:** SERVOY_API, WEB_COMPONENT, WEB_SERVICE, SOLUTION_FUNCTION, UNKNOWN
+- **Formatting:**
+  - `toFormattedString()` - Plain text for display
+  - `toFormattedXML()` - XML format: `<type>name: TypeName</type><description>docs</description>`
+
+**CodeContext** (Immutable)
+- **Fields:** selectionInfo, identifiers (List), hasError, errorMessage
+- **Factory Methods:**
+  - `success(SelectionInfo, List<IdentifierContext>)`
+  - `error(SelectionInfo, String)`
+  - `empty(SelectionInfo)`
+- **Output Methods:**
+  - `getFormattedXML()` - Concatenated XML from all identifiers
+  - `getFormattedPlainText()` - Human-readable format
+
+#### Usage Example:
+
+```java
+// From LLM tool
+SelectionTracker tracker = SelectionTracker.getInstance();
+Optional<SelectionInfo> selection = tracker.getCurrentSelection();
+
+if (selection.isPresent()) {
+    CodeContextService service = CodeContextService.getInstance();
+    CodeContext context = service.getCodeContext(selection.get());
+    
+    if (!context.hasError()) {
+        String xmlContext = context.getFormattedXML();
+        // Send to LLM or use in agent
+    }
+}
+```
+
+#### Extension Points:
+
+To add new identifier types:
+1. Add enum value to `IdentifierKind`
+2. Add detection logic in `CodeContextService.determineIdentifierKind()`
+3. Add extraction method (e.g., `extractMyTypeDocumentation()`)
+4. Call from `extractIdentifierContext()`
 
 ---
 
@@ -1176,5 +1395,5 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **End of Architecture Reference**
 
-**Last Updated:** February 11, 2026  
-**Status:** Production Ready
+**Last Updated:** February 16, 2026  
+**Status:** Production Ready - Code Context Infrastructure Complete (Phases 1-4) with Enhanced Documentation Extraction (@sample, @deprecated)

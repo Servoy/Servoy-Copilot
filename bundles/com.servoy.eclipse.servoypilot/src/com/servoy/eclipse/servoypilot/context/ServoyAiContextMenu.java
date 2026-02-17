@@ -13,7 +13,7 @@ import org.eclipse.ui.menus.CommandContributionItemParameter;
 
 /**
  * Dynamic context menu contribution for Servoy AI code analysis features.
- * Appears in JavaScript editor context menus when text is selected.
+ * Appears in JavaScript editor context menus.
  * 
  * Pattern follows AI Bridge implementation - self-contained, no circular dependencies.
  */
@@ -69,7 +69,8 @@ public class ServoyAiContextMenu extends CompoundContributionItem
 	}
 
 	/**
-	 * Menu is visible only when there is a text selection.
+	 * Menu is visible when there is an active editor.
+	 * Works for both text selection and full file analysis.
 	 */
 	private boolean shouldBeVisible()
 	{
@@ -77,11 +78,8 @@ public class ServoyAiContextMenu extends CompoundContributionItem
 		if (window != null)
 		{
 			ISelection selection = window.getSelectionService().getSelection();
-			if (selection instanceof ITextSelection textSelection)
-			{
-				String text = textSelection.getText();
-				return text != null && text.trim().length() > 0;
-			}
+			// Show menu if there's any text selection (including empty selection in active editor)
+			return selection instanceof ITextSelection;
 		}
 		return false;
 	}
