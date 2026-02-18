@@ -9,7 +9,7 @@ import org.eclipse.ui.preferences.ScopedPreferenceStore;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 
-import com.servoy.eclipse.servoypilot.ai.Assistant;
+import com.servoy.eclipse.servoypilot.ai.VibeCodingAssistant;
 import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.DocumentationAssistant;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
@@ -53,14 +53,13 @@ public class Activator implements BundleActivator
 	@Override
 	public void stop(BundleContext bundleContext) throws Exception
 	{
-		// Dispose SelectionTracker
 		SelectionTracker.getInstance().dispose();
-		
+
 		preferenceStore = null;
 		clearChatModel();
 	}
 
-	public Assistant getChatModel()
+	public VibeCodingAssistant getChatModel()
 	{
 		return getServoyAiModel().getAssistant();
 	}

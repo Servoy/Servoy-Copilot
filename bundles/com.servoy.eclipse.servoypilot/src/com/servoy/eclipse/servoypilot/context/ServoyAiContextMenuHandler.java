@@ -5,7 +5,6 @@ import java.util.Optional;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
@@ -40,19 +39,19 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 				// Handle specific commands
 				switch (commandId)
 				{
-					case "com.servoy.eclipse.servoypilot.context.debug":
+					case "com.servoy.eclipse.servoypilot.context.debug" :
 						handleDebug(selectionInfo);
 						break;
-					case "com.servoy.eclipse.servoypilot.context.review":
+					case "com.servoy.eclipse.servoypilot.context.review" :
 						handleReview(selectionInfo);
 						break;
-					case "com.servoy.eclipse.servoypilot.context.generateDocs":
+					case "com.servoy.eclipse.servoypilot.context.generateDocs" :
 						handleGenerateDocs(selectionInfo);
 						break;
-					case "com.servoy.eclipse.servoypilot.context.generateTests":
+					case "com.servoy.eclipse.servoypilot.context.generateTests" :
 						handleGenerateTests(selectionInfo);
 						break;
-					default:
+					default :
 						DebugUtils.debug("Unknown command: " + commandId);
 				}
 			}
@@ -63,15 +62,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		}
 
 		return null;
-	}
-
-	private String getCommandName(String commandId)
-	{
-		if (commandId.endsWith(".debug")) return "Debug";
-		if (commandId.endsWith(".review")) return "Review";
-		if (commandId.endsWith(".generateDocs")) return "Generate Docs";
-		if (commandId.endsWith(".generateTests")) return "Generate Tests";
-		return commandId;
 	}
 
 	private void handleDebug(SelectionInfo selection)
@@ -93,30 +83,30 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		// Get code context using the visitor
 		CodeContextService service = CodeContextService.getInstance();
 		CodeContext context = service.getCodeContext(selection);
-		
+
 		if (context.hasError())
 		{
 			return;
 		}
-		
+
 		if (context.isEmpty())
 		{
 			return;
 		}
-		
+
 		// Get current solution name and create documentation-specific memory ID
 		String solutionName = getCurrentSolutionName();
 		String memoryId = solutionName + "-documentation";
-		
+
 		// Call documentation assistant with XML-formatted context
 		String xmlContext = context.getFormattedXML();
-		
+
 		// TODO: Handle TokenStream response
 		// - Collect tokens into StringBuilder
 		// - Create temp file with generated documentation
 		// - Show comparison editor (GitHub Copilot style)
 		// - Update view with file entry
-		com.servoy.eclipse.servoypilot.Activator.getDefault().getDocumentationAssistant().generateDocumentation(memoryId, xmlContext);
+		com.servoy.eclipse.servoypilot.Activator.getDefault().getDocumentationAssistant().executeRequest(memoryId, xmlContext);
 	}
 
 	private void handleGenerateTests(SelectionInfo selection)

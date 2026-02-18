@@ -37,6 +37,7 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.servoypilot.ai.IAssistant;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
@@ -67,14 +68,25 @@ public class ChatViewPresenter
 
 	private ChatView chatView;
 	private final List<ChatMessage> contents = new ArrayList<>();
+	private String solutionName = "default"; // Current solution name
 	private String currentMemoryId = "default-chat"; // Memory ID for chat assistant conversation isolation
 	private Object activeProjectListener; // IActiveProjectListener proxy
+	private IAssistant currentAssistant; // Currently active assistant
+	private IAssistant[] availableAssistants; // Array of available assistants for combo population
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
 
 	@PostConstruct
 	public void init()
 	{
+		// Initialize available assistants
+		availableAssistants = new IAssistant[] {
+			Activator.getDefault().getServoyAiModel().getAssistant(),
+			Activator.getDefault().getServoyAiModel().getDocumentationAssistant()
+		};
+		// Set default assistant to Chat
+		currentAssistant = availableAssistants[0];
+
 		// Register solution activation listener
 		try
 		{
@@ -154,9 +166,34 @@ public class ChatViewPresenter
 
 	public void onAssistantChanged(int selectedIndex)
 	{
-		// TODO: Implement assistant switching logic
-		// For now, just log the selection
-		logger.info("Assistant changed to index: " + selectedIndex);
+		if (selectedIndex >= 0 && selectedIndex < availableAssistants.length)
+		{
+			currentAssistant = availableAssistants[selectedIndex];
+			
+			// Update memory ID with new assistant's suffix
+			currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
+			
+			// Clear UI for new assistant
+			applyToView(view -> {
+				view.clearChatView();
+				view.clearUserInput();
+			});
+			
+			logger.info("Switched to assistant: " + currentAssistant.getDisplayName() + " with memory ID: " + currentMemoryId);
+		}
+	}
+
+	public void populateAssistantSelector()
+	{
+		if (availableAssistants != null && availableAssistants.length > 0)
+		{
+			String[] names = new String[availableAssistants.length];
+			for (int i = 0; i < availableAssistants.length; i++)
+			{
+				names[i] = availableAssistants[i].getDisplayName();
+			}
+			applyToView(view -> view.setAssistantSelectorItems(names));
+		}
 	}
 
 	public void applyToView(Consumer< ? super ChatView> consumer)
@@ -194,8 +231,8 @@ public class ChatViewPresenter
 
 		contents.add(assistantMessage);
 
-		// CHANGED: Use new API with memoryId - ChatMemory handles history automatically
-		Activator.getDefault().getChatModel().chat(currentMemoryId, text)
+		// Use current assistant's executeRequest method
+		currentAssistant.executeRequest(currentMemoryId, text)
 			.onPartialResponse(partial -> {
 				assistantMessage.appendContent(partial);
 				applyToView(part -> {
@@ -435,17 +472,14 @@ public class ChatViewPresenter
 	 */
 	public void onSolutionActivated(String projectName)
 	{
-		// Extract solution name from current memory ID (remove -chat suffix)
-		String oldSolutionName = currentMemoryId.endsWith("-chat") 
-			? currentMemoryId.substring(0, currentMemoryId.length() - 5) 
-			: currentMemoryId;
-		
 		// Clear all memories (chat + documentation) for the old solution
-		Activator.getDefault().getServoyAiModel().clearAllMemories(oldSolutionName);
+		Activator.getDefault().getServoyAiModel().clearAllMemories(solutionName);
 
-		// Update memory ID to new solution with -chat suffix
-		String solutionName = projectName != null ? projectName : "default";
-		currentMemoryId = solutionName + "-chat";
+		// Update solution name
+		solutionName = projectName != null ? projectName : "default";
+		
+		// Update memory ID with current assistant suffix
+		currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
 
 		// Clear UI conversation history
 		contents.clear();

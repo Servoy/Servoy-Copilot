@@ -142,9 +142,10 @@ public class ChatView
 
 		// Left side: Assistant selector
 		assistantSelector = new Combo(buttonBar, SWT.READ_ONLY | SWT.DROP_DOWN);
-		assistantSelector.setItems("Chat Assistant", "Documentation Assistant");
 		assistantSelector.select(0); // Default to Chat Assistant
-		assistantSelector.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, false, false));
+		GridData comboLayoutData = new GridData(SWT.LEFT, SWT.CENTER, false, false);
+		comboLayoutData.widthHint = 200; // Set minimum width for display names to fit
+		assistantSelector.setLayoutData(comboLayoutData);
 		assistantSelector.addSelectionListener(new SelectionAdapter()
 		{
 			@Override
@@ -154,6 +155,8 @@ public class ChatView
 				presenter.onAssistantChanged(selectedIndex);
 			}
 		});
+		// Populate combo after presenter initialization
+		presenter.populateAssistantSelector();
 
 		// Right side: Action buttons - Use ToolBar instead of Composite
 		actionToolBar = new ToolBar(buttonBar, SWT.FLAT | SWT.RIGHT);
@@ -195,6 +198,16 @@ public class ChatView
 		uiSync.asyncExec(() -> inputArea.setText(""));
 	}
 
+	public void setAssistantSelectorItems(String[] assistantNames)
+	{
+		uiSync.asyncExec(() -> {
+			if (assistantSelector != null && !assistantSelector.isDisposed())
+			{
+				assistantSelector.setItems(assistantNames);
+				assistantSelector.select(0);
+			}
+		});
+	}
 
 	public void setInputEnabled(boolean enabled)
 	{

@@ -1,10 +1,16 @@
 package com.servoy.eclipse.servoypilot.ai;
 
-import dev.langchain4j.service.MemoryId;
-import dev.langchain4j.service.TokenStream;
-import dev.langchain4j.service.UserMessage;
-
-public interface DocumentationAssistant
+public interface DocumentationAssistant extends IAssistant
 {
-	TokenStream generateDocumentation(@MemoryId String memoryId, @UserMessage String userMessage);
+	@Override
+	default AssistantType getType()
+	{
+		return AssistantType.DOCUMENTATION;
+	}
+
+	@Override
+	default String getDisplayName()
+	{
+		return AssistantType.DOCUMENTATION.getDisplayName();
+	}
 }

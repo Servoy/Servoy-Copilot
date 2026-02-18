@@ -1,70 +1,62 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 17, 2026  
+**Last Updated:** February 18, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
-**Status:** All features implemented and functional (including Code Context Gathering - Phases 1-4 complete with enhanced documentation extraction, Documentation Assistant skeleton complete with independent memory management)
+**Status:** Multi-Assistant View Switcher implemented and functional. Chat and Documentation assistants can be switched via dropdown in ChatView. Code Context Gathering complete (Phases 1-4). Documentation Assistant ready for context menu integration.
 
 ---
 
-## ⚠️ CRITICAL TODO - UI IMPLEMENTATION FOR MULTIPLE ASSISTANT VIEWS
+## ✅ COMPLETED - MULTI-ASSISTANT VIEW SWITCHER (February 18, 2026)
 
-**IMMEDIATE PRIORITY: Implement UI infrastructure for documentation assistant and future specialized assistants**
+**Implementation Complete:** Users can now switch between different AI assistants (VibeCoding, Documentation) within the existing ChatView using a dropdown selector.
 
-**Current State:**
-- ✅ Documentation assistant skeleton complete (interface, memory, system prompt)
-- ✅ Independent memory management per assistant (chat, documentation)
-- ✅ Context menu integration ready (`handleGenerateDocs()`)
-- ✅ TokenStream support for progressive updates
-- ❌ **NO UI to display documentation generation results**
+**What Was Implemented:**
 
-**REQUIRED UI IMPLEMENTATION:**
+1. **IAssistant Interface** - Common interface for all chat view assistants:
+   - `TokenStream executeRequest(String memoryId, String request)` - Unified method for all assistants
+   - `void clearMemory(String memoryId)` - Clear conversation memory
+   - `AssistantType getType()` - Returns assistant type enum
+   - `String getDisplayName()` - Returns display name for UI
 
-1. **Create Documentation View** (similar to ChatView):
-   - Show list of files being documented (GitHub Copilot style)
-   - Display generation progress per file
-   - Click file → open comparison editor showing:
-     - Left: Original code
-     - Right: Code with generated JSDoc (live updates as tokens stream)
-   - Accept/Reject buttons per file or section
+2. **AssistantType Enum** - CHAT and DOCUMENTATION values:
+   - `getDisplayName()` - "Chat Assistant", "Documentation Assistant"
+   - `getMemorySuffix()` - "-chat", "-documentation"
+   - `fromIndex(int)` - Helper for combo selection
 
-2. **TokenStream Handler in Context Menu Handler**:
-   - Collect streaming tokens from DocumentationAssistant
-   - Create temporary file with generated documentation
-   - Update Documentation View with file entry
-   - Open Eclipse Compare Editor with live updates
+3. **Assistant Interfaces Updated**:
+   - `VibeCodingAssistant` extends `IAssistant` - implements `executeRequest()` for chat functionality
+   - `DocumentationAssistant` extends `IAssistant` - implements `executeRequest()` for documentation generation
 
-3. **Multi-View Architecture**:
-   - Separate views per assistant type:
-     - Chat View (existing) - for chat assistant
-     - Documentation View (NEW) - for documentation assistant
-     - Future: Debug View, Review View, Test Generation View
-   - Each view manages its own assistant's responses
-   - Views can be opened/closed independently
-   - Memory management already in place (solution-scoped per assistant)
+4. **ChatView UI**:
+   - Added `Combo` widget (200px width) for assistant selection
+   - Populated dynamically from `availableAssistants` array
+   - Selection listener calls `presenter.onAssistantChanged(index)`
 
-4. **UI Components Needed**:
-   - DocumentationView.java (E4 Part)
-   - DocumentationViewPresenter.java (logic)
-   - File list widget (SWT Tree/Table)
-   - Progress indicators per file
-   - Integration with Eclipse Compare framework
+5. **ChatViewPresenter**:
+   - `IAssistant currentAssistant` - Reference to active assistant
+   - `IAssistant[] availableAssistants` - Array of available assistants
+   - `String solutionName` - Current solution name (no parsing needed)
+   - `onAssistantChanged(int)` - Switches assistant, updates memory ID, clears UI
+   - `populateAssistantSelector()` - Populates combo with display names
+   - `onSendUserMessage()` - Uses `currentAssistant.executeRequest()` (polymorphic)
 
-**Why This Is Critical:**
-- Documentation assistant is functional but has no output mechanism
-- Context menu call generates documentation but user sees nothing
-- GitHub Copilot-style file-by-file review is expected UX
-- Foundation for all future specialized assistants (Debug, Review, Test Gen)
+6. **Memory Management**:
+   - Each assistant maintains independent LangChain4j memory
+   - Memory ID format: `solutionName + assistantType.getMemorySuffix()`
+   - Example: `"MySolution-chat"`, `"MySolution-documentation"`
+   - Solution switch clears all assistant memories
 
-**Implementation Priority:**
-1. **Phase 1**: Basic Documentation View with file list
-2. **Phase 2**: TokenStream collection and temp file creation
-3. **Phase 3**: Compare editor integration with live updates
-4. **Phase 4**: Accept/Reject workflow
-5. **Phase 5**: Extend pattern to other assistants
+**Architecture Benefits:**
+- ✅ Clean polymorphic design (no instanceof checks)
+- ✅ Easy to add new assistants (just implement IAssistant)
+- ✅ Single view for all conversational assistants
+- ✅ Independent memory per assistant type
+- ✅ Solution-scoped isolation
 
-**Current Workaround:**
-Documentation assistant can be called but has no UI - tokens stream to nowhere. Must implement UI before feature is usable.
+**Remaining Work:**
+- Documentation Assistant needs context menu integration for code documentation generation
+- Future assistants: Debug, Review, Test Generation (framework ready)
 
 ---
 
@@ -184,17 +176,20 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |-- src/com/servoy/eclipse/servoypilot/
 |   |-- Activator.java                        # Plugin lifecycle
 |   |-- ai/
-|   |   |-- Assistant.java                    # LangChain4j AIService interface for chat
-|   |   |-- CompletionAssistent.java          # LangChain4j AIService interface for code completion
+|   |   |-- IAssistant.java                   # Common interface for all chat view assistants (NEW - Feb 18, 2026)
+|   |   |-- AssistantType.java                # Enum: CHAT, DOCUMENTATION with display names and memory suffixes (NEW - Feb 18, 2026)
+|   |   |-- VibeCodingAssistant.java          # LangChain4j interface for chat assistant (extends IAssistant)
+|   |   |-- DocumentationAssistant.java       # LangChain4j interface for documentation assistant (extends IAssistant)
+|   |   |-- CompletionAssistent.java          # LangChain4j interface for code completion (stateless)
 |   |   |-- AIModelProvider.java              # Model provider interface
 |   |   |-- AIModelTools.java                 # Model-related tools
 |   |   +-- ServoyAiModel.java                # AI model initialization, memory management
 |   |-- chatview/parts/
-|   |   |-- ChatView.java                     # SWT/Browser UI component (with hamburger menu)
-|   |   |-- ChatViewPresenter.java            # Chat logic, conversation management, solution activation
+|   |   |-- ChatView.java                     # SWT/Browser UI with assistant selector combo (UPDATED - Feb 18, 2026)
+|   |   |-- ChatViewPresenter.java            # Multi-assistant management, conversation logic (UPDATED - Feb 18, 2026)
 |   |   |-- CodeEditingService.java           # Diff generation (JGit)
 |   |   +-- ApplyPatchWizardHelper.java       # Code patch application UI
-|   |-- context/                              # Code context gathering (NEW)
+|   |-- context/                              # Code context gathering
 |   |   |-- CodeContextService.java           # Main service: extracts API context from code
 |   |   |-- IdentifierCollectingVisitor.java  # AST visitor: collects identifiers with types
 |   |   |-- SelectionTracker.java             # Singleton: tracks editor selections
@@ -284,8 +279,23 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 ### 3.1 User Interface (Chat View)
 
 **Component:** `ChatView.java` (Eclipse E4 View Part)  
-**Presenter:** `ChatViewPresenter.java` (handles logic)  
+**Presenter:** `ChatViewPresenter.java` (handles multi-assistant logic)  
 **Technology:** SWT with embedded Browser component for rich HTML/CSS rendering
+
+**UI Layout (Updated Feb 18, 2026):**
+```
+[Browser - Chat Messages]
+─────────────────────────
+[Text Input Area]
+─────────────────────────
+[Assistant Selector ▼] [Clear] [Stop] [Send]
+```
+
+**Assistant Selector Combo:**
+- Dropdown showing available assistants ("VibeCoding Assistant", "Documentation Assistant")
+- 200px width to fit display names
+- Switches between assistants dynamically
+- Preserves independent conversation history per assistant
 
 **Toolbar:**
 ```
@@ -296,9 +306,10 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 ```
 
 **Key Features:**
+- **Multi-assistant support** - Switch between Chat and Documentation assistants (NEW - Feb 18, 2026)
 - Markdown rendering with syntax highlighting
 - Streaming responses (partial updates as AI generates text)
-- Message history display
+- Message history display (per assistant)
 - Code diff viewer integration
 - Copy to clipboard functionality
 - Hamburger menu (≡) for knowledge base management
@@ -316,15 +327,27 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 - Manage separate memory stores per assistant (InMemoryChatMemoryStore)
 - Register tools appropriate for each assistant type
 
-**Three Assistant Types:**
+**Three Assistant Types (Updated Feb 18, 2026):**
 
-1. **Chat Assistant** (`Assistant.java`):
-   - Interface: `TokenStream chat(@MemoryId String memoryId, @UserMessage String userMessage)`
+All assistants implement the `IAssistant` interface for unified management in ChatView:
+
+```java
+public interface IAssistant {
+    TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request);
+    void clearMemory(String memoryId);
+    AssistantType getType();
+    String getDisplayName();
+}
+```
+
+1. **VibeCoding Assistant** (`VibeCodingAssistant.java extends IAssistant`):
+   - Interface: `TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request)`
    - Purpose: General conversation and Servoy development assistance
    - System Prompt: `chat.txt` (~2.4K tokens)
    - Tools: Full toolset (12 tool classes, 40+ individual tools)
    - Memory: 40 messages max, solution-scoped with `-chat` suffix
-   - UI: ChatView (existing)
+   - UI: ChatView (shared with all assistants)
+   - LangChain4j generates implementation for annotated interface method
 
 2. **Completion Assistant** (`CompletionAssistent.java`):
    - Interface: `String complete(String prompt)`
@@ -334,14 +357,27 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
    - Memory: **None** (stateless - each completion is independent)
    - Models: Fast models (gpt-4o-mini / gemini-2.0-flash)
    - UI: Inline editor completion
+   - **Note:** Does NOT implement IAssistant (not in ChatView dropdown)
 
-3. **Documentation Assistant** (`DocumentationAssistant.java`) ✨ **NEW - Feb 17, 2026**:
-   - Interface: `TokenStream generateDocumentation(@MemoryId String memoryId, @UserMessage String userMessage)`
+3. **Documentation Assistant** (`DocumentationAssistant.java extends IAssistant`):
+   - Interface: `TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request)`
    - Purpose: Generate JSDoc documentation from code context
    - System Prompt: `documentation.txt`
    - Tools: None currently (works with provided XML context)
    - Memory: 40 messages max, solution-scoped with `-documentation` suffix
-   - UI: **TODO** - Documentation View needed (GitHub Copilot style)
+   - UI: ChatView (shared with VibeCoding assistant)
+   - LangChain4j generates implementation for annotated interface method
+
+**AssistantType Enum:**
+```java
+public enum AssistantType {
+    CHAT("VibeCoding Assistant", "-chat"),
+    DOCUMENTATION("Documentation Assistant", "-documentation");
+    
+    public String getDisplayName();
+    public String getMemorySuffix();
+}
+```
 
 **System Prompt Strategy:**
 - Loads prompts from `resources/system-prompts/` or `.servoy/system-prompts/`
@@ -392,6 +428,56 @@ LLM APIs (OpenAI, Gemini) are **stateless** - they don't remember conversations.
 4. Full context sent to LLM
 5. Response received → Added to memory
 6. If solution switches → All memories cleared for old solution, new `memoryId`s set
+
+### 3.3a Multi-Assistant Management in ChatView (NEW - Feb 18, 2026)
+
+**ChatViewPresenter Fields:**
+```java
+private String solutionName = "default";  // Current solution name
+private IAssistant currentAssistant;       // Active assistant reference
+private IAssistant[] availableAssistants;  // Array of all available assistants
+private String currentMemoryId;            // Format: solutionName + assistantType.getMemorySuffix()
+```
+
+**Assistant Switching Flow:**
+1. User selects assistant from combo → `onAssistantChanged(int index)` called
+2. `currentAssistant = availableAssistants[index]`
+3. Update memory ID: `currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix()`
+4. Clear UI (conversation display)
+5. Log switch: `"Switched to assistant: {displayName} with memory ID: {memoryId}"`
+
+**Message Sending (Polymorphic):**
+```java
+public void onSendUserMessage(String text) {
+    // Clean polymorphic call - no instanceof checks
+    currentAssistant.executeRequest(currentMemoryId, text)
+        .onPartialResponse(partial -> updateUI())
+        .onCompleteResponse(response -> saveToMemory())
+        .start();
+}
+```
+
+**Solution Switching Integration:**
+```java
+public void onSolutionActivated(String projectName) {
+    // Clear all memories for old solution
+    servoyAiModel.clearAllMemories(solutionName);
+    
+    // Update to new solution
+    solutionName = projectName != null ? projectName : "default";
+    currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
+    
+    // Load knowledge base for new solution
+    // ...
+}
+```
+
+**Benefits:**
+- Single view serves all conversational assistants
+- Clean polymorphic design (IAssistant interface)
+- Easy to add new assistants (just add to array)
+- Independent memory per assistant type
+- No complex view management
 
 ### 3.4 Solution Activation Integration
 
@@ -1467,10 +1553,10 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Core Features:**
 - ✅ AI-powered chat interface with streaming responses
+- ✅ **Multi-assistant view switcher** (NEW - Feb 18, 2026) - Switch between VibeCoding and Documentation assistants in ChatView
 - ✅ Code completion support via CompletionAssistant (stateless, fast)
-- ✅ **Documentation assistant** (NEW - Feb 17, 2026) - JSDoc generation from code context
 - ✅ 40+ specialized tools for Servoy development (12 tool classes)
-- ✅ **Independent memory management** per assistant (chat, documentation)
+- ✅ **Independent memory management** per assistant (vibecoding, documentation)
 - ✅ Solution-specific conversation memory with assistant-scoped IDs (`solution-chat`, `solution-documentation`)
 - ✅ Automatic reset of all assistant memories on solution switch
 - ✅ Solution-specific system prompts (loaded from `.servoy/system-prompts/`)
@@ -1479,22 +1565,36 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 - ✅ Knowledge base loading from `.servoy/` directory or bundle resources
 - ✅ Background jobs for non-blocking operations
 - ✅ Code diff viewer and patch application
-- ⏳ **Documentation View UI** (skeleton complete, UI implementation pending)
 
-**Assistant Types:**
-- ✅ **Chat Assistant**: Full conversation with 40+ tools, 40 message memory, streaming responses
+**Assistant Types (Updated Feb 18, 2026):**
+- ✅ **VibeCoding Assistant**: Full conversation with 40+ tools, 40 message memory, streaming responses
+  - ✅ Accessible via assistant selector dropdown in ChatView
+  - ✅ Independent conversation history
 - ✅ **Completion Assistant**: Fast code completion, stateless (no memory), fast models
+  - ✅ Inline editor completion (not in ChatView dropdown)
 - ✅ **Documentation Assistant**: JSDoc generation, 40 message memory, streaming responses
+  - ✅ Accessible via assistant selector dropdown in ChatView
+  - ✅ Independent conversation history
   - ✅ Interface and memory management complete
   - ✅ Context menu integration ready
   - ✅ Code context extraction working
-  - ⏳ UI for displaying results pending (GitHub Copilot-style view needed)
+  - ⏳ Context menu handler needs implementation for automated doc generation
 
-**Memory Management (Updated Feb 17, 2026):**
+**Multi-Assistant Architecture (NEW - Feb 18, 2026):**
+- ✅ `IAssistant` interface - Common interface for all chat view assistants
+- ✅ `AssistantType` enum - CHAT, DOCUMENTATION with display names and memory suffixes
+- ✅ Assistant selector combo in ChatView (200px width)
+- ✅ Dynamic assistant switching with memory ID updates
+- ✅ Polymorphic message sending (`executeRequest()` method)
+- ✅ Clean code - no instanceof checks
+- ✅ Easy extensibility - add new assistants by implementing IAssistant
+
+**Memory Management (Updated Feb 18, 2026):**
 - ✅ Separate `ChatMemoryStore` per assistant type
 - ✅ Solution-scoped memory IDs: `<solution>-<assistant>` format
 - ✅ Independent memory clearing per assistant or all at once
 - ✅ Automatic memory reset on solution switch (all assistants)
+- ✅ 40 message window per assistant (automatic trimming)
 - ✅ 40 message window per assistant (automatic trimming)
 
 **Knowledge Base Features:**
@@ -1531,7 +1631,7 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)
-- 3 specialized assistants (chat, completion, documentation) with independent memories
+- 3 specialized assistants (vibecoding, completion, documentation) with independent memories
 - Clean separation: UI (Views) → Presenters → Services → Tools
 - Stateless LLM with client-side memory management (per assistant)
 - Direct listener registration for solution activation events
@@ -1541,5 +1641,5 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **End of Architecture Reference**
 
-**Last Updated:** February 17, 2026  
-**Status:** Production Ready - Code Context Complete, Documentation Assistant Skeleton Complete (Memory Management Implemented), UI Implementation Pending
+**Last Updated:** February 18, 2026  
+**Status:** Production Ready - Multi-Assistant View Switcher Complete, Code Context Complete, Documentation Assistant Ready for Context Menu Integration

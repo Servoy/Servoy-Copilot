@@ -27,7 +27,7 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 
 public class ServoyAiModel
 {
-	private final Assistant assistant;
+	private final VibeCodingAssistant assistant;
 	private final ChatMemoryStore chatMemoryStore;
 	private final ChatMemoryStore documentationMemoryStore;
 	private final CompletionAssistent completionAssistant;
@@ -72,7 +72,7 @@ public class ServoyAiModel
 	}
 
 
-	public Assistant getAssistant()
+	public VibeCodingAssistant getAssistant()
 	{
 		return assistant;
 	}
@@ -102,7 +102,7 @@ public class ServoyAiModel
 			.build();
 	}
 
-	private Assistant createChatServices(StreamingChatModel model)
+	private VibeCodingAssistant createChatServices(StreamingChatModel model)
 	{
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
@@ -113,7 +113,7 @@ public class ServoyAiModel
 			.chatMemoryStore(chatMemoryStore)
 			.build();
 
-		AiServices<Assistant> builder = AiServices.builder(Assistant.class);
+		AiServices<VibeCodingAssistant> builder = AiServices.builder(VibeCodingAssistant.class);
 		builder.streamingChatModel(model);
 		builder.chatMemoryProvider(memoryId -> chatMemory);
 		builder.systemMessageProvider(memoryId -> systemPrompt);
