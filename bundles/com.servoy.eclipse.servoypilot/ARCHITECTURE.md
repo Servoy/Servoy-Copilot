@@ -1,9 +1,70 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 16, 2026  
+**Last Updated:** February 17, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
-**Status:** All features implemented and functional (including Code Context Gathering - Phases 1-4 complete with enhanced documentation extraction)
+**Status:** All features implemented and functional (including Code Context Gathering - Phases 1-4 complete with enhanced documentation extraction, Documentation Assistant skeleton complete with independent memory management)
+
+---
+
+## ⚠️ CRITICAL TODO - UI IMPLEMENTATION FOR MULTIPLE ASSISTANT VIEWS
+
+**IMMEDIATE PRIORITY: Implement UI infrastructure for documentation assistant and future specialized assistants**
+
+**Current State:**
+- ✅ Documentation assistant skeleton complete (interface, memory, system prompt)
+- ✅ Independent memory management per assistant (chat, documentation)
+- ✅ Context menu integration ready (`handleGenerateDocs()`)
+- ✅ TokenStream support for progressive updates
+- ❌ **NO UI to display documentation generation results**
+
+**REQUIRED UI IMPLEMENTATION:**
+
+1. **Create Documentation View** (similar to ChatView):
+   - Show list of files being documented (GitHub Copilot style)
+   - Display generation progress per file
+   - Click file → open comparison editor showing:
+     - Left: Original code
+     - Right: Code with generated JSDoc (live updates as tokens stream)
+   - Accept/Reject buttons per file or section
+
+2. **TokenStream Handler in Context Menu Handler**:
+   - Collect streaming tokens from DocumentationAssistant
+   - Create temporary file with generated documentation
+   - Update Documentation View with file entry
+   - Open Eclipse Compare Editor with live updates
+
+3. **Multi-View Architecture**:
+   - Separate views per assistant type:
+     - Chat View (existing) - for chat assistant
+     - Documentation View (NEW) - for documentation assistant
+     - Future: Debug View, Review View, Test Generation View
+   - Each view manages its own assistant's responses
+   - Views can be opened/closed independently
+   - Memory management already in place (solution-scoped per assistant)
+
+4. **UI Components Needed**:
+   - DocumentationView.java (E4 Part)
+   - DocumentationViewPresenter.java (logic)
+   - File list widget (SWT Tree/Table)
+   - Progress indicators per file
+   - Integration with Eclipse Compare framework
+
+**Why This Is Critical:**
+- Documentation assistant is functional but has no output mechanism
+- Context menu call generates documentation but user sees nothing
+- GitHub Copilot-style file-by-file review is expected UX
+- Foundation for all future specialized assistants (Debug, Review, Test Gen)
+
+**Implementation Priority:**
+1. **Phase 1**: Basic Documentation View with file list
+2. **Phase 2**: TokenStream collection and temp file creation
+3. **Phase 3**: Compare editor integration with live updates
+4. **Phase 4**: Accept/Reject workflow
+5. **Phase 5**: Extend pattern to other assistants
+
+**Current Workaround:**
+Documentation assistant can be called but has no UI - tokens stream to nowhere. Must implement UI before feature is usable.
 
 ---
 
@@ -45,24 +106,39 @@ The system works correctly despite the over-engineering. The obsolete architectu
 
 ---
 
-## ⚠️ TODO - START AGENTS IMPLEMENTATION USING CODE CONTEXT INFRASTRUCTURE
+## ⚠️ TODO - AGENTS IMPLEMENTATION USING CODE CONTEXT INFRASTRUCTURE
 
-**Now that code context extraction is complete (Phases 1-4), we can implement specialized agents:**
+**Now that code context extraction is complete (Phases 1-4) and documentation assistant skeleton is ready:**
+
+**CURRENT STATUS (Feb 17, 2026):**
+- ✅ **Generate Docs Agent (Documentation Assistant)**: Skeleton complete
+  - Interface, memory management, system prompt implemented
+  - Context menu integration ready
+  - **BLOCKED**: Needs UI implementation (Documentation View)
+- ⏳ **Debug Agent**: Not started
+- ⏳ **Review Agent**: Not started
+- ⏳ **Generate Tests Agent**: Not started
 
 **REQUIRED ACTIONS:**
 
-1. **Implement context menu handlers** (`ServoyAiContextMenuHandler.java`):
+1. **Complete Documentation Assistant UI** (`ServoyAiContextMenuHandler.java`):
+   - ✅ Skeleton complete with context extraction
+   - ✅ Memory management implemented
+   - ❌ UI implementation pending (see CRITICAL TODO above)
+   - Once UI ready: Handle TokenStream, create temp files, show comparison editor
+
+2. **Implement remaining agents** (after UI pattern established):
    - Debug Agent: Analyze code for bugs, suggest fixes
    - Review Agent: Code review with best practices
-   - Generate Docs Agent: Create JSDoc comments from code context
    - Generate Tests Agent: Generate unit tests based on code analysis
+   - Each will follow Documentation Assistant pattern (own interface, memory, prompt, view)
 
-2. **Create knowledge base entries for agents** (Phase 6.2):
+3. **Create knowledge base entries for agents** (Phase 6.2):
    - Add embeddings for code context queries
    - Add rules for using CodeContextTools
    - Examples of context-aware assistance
 
-3. **Update system prompts for agents** (Phase 6.3):
+4. **Update system prompts for agents** (Phase 6.3):
    - Add instructions for using code context
    - Add examples of context-aware responses
    - Update tool usage guidelines
@@ -72,6 +148,8 @@ The system works correctly despite the over-engineering. The obsolete architectu
 - ✅ XML formatting ready for LLM consumption
 - ✅ Context menu infrastructure in place
 - ✅ Selection and full-file analysis working
+- ✅ Documentation assistant skeleton complete
+- ❌ **BLOCKED**: UI implementation required before agents are functional
 
 **Benefits:**
 - Agents will have deep understanding of Servoy APIs being used
@@ -177,7 +255,8 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 +-- resources/                                 # Default knowledge base files
     |-- system-prompts/                        # System prompts
     |   |-- chat.txt                           # Default chat system prompt
-    |   +-- completion.txt                     # Default completion system prompt
+    |   |-- completion.txt                     # Default completion system prompt
+    |   +-- documentation.txt                  # Documentation assistant system prompt (NEW - Feb 17, 2026)
     |-- embeddings/                            # Embedding files for RAG
     |   |-- embeddings.list                    # List of embedding files
     |   |-- forms.txt
@@ -231,52 +310,92 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 **Core Class:** `ServoyAiModel.java`
 
 **Responsibilities:**
-- Initialize OpenAI or Gemini streaming chat model based on user preferences
+- Initialize OpenAI or Gemini streaming chat models based on user preferences
 - Configure LangChain4j `AiServices` with tools and memory
-- Provide system prompt via `systemMessageProvider`
-- Manage chat memory store (InMemoryChatMemoryStore)
-- Register 12 tool classes (40+ individual tools)
+- Provide system prompts via `systemMessageProvider` (per assistant type)
+- Manage separate memory stores per assistant (InMemoryChatMemoryStore)
+- Register tools appropriate for each assistant type
 
-**Assistant Interface:** `Assistant.java` (LangChain4j AIService)
-- Defines the interaction contract: `chat(UserMessage)`, `chat(List<ChatMessage>)`
-- Handles streaming responses via `StreamingResponseHandler`
+**Three Assistant Types:**
+
+1. **Chat Assistant** (`Assistant.java`):
+   - Interface: `TokenStream chat(@MemoryId String memoryId, @UserMessage String userMessage)`
+   - Purpose: General conversation and Servoy development assistance
+   - System Prompt: `chat.txt` (~2.4K tokens)
+   - Tools: Full toolset (12 tool classes, 40+ individual tools)
+   - Memory: 40 messages max, solution-scoped with `-chat` suffix
+   - UI: ChatView (existing)
+
+2. **Completion Assistant** (`CompletionAssistent.java`):
+   - Interface: `String complete(String prompt)`
+   - Purpose: Fast code completion (autocomplete while typing)
+   - System Prompt: `completion.txt`
+   - Tools: None (stateless, context-only)
+   - Memory: **None** (stateless - each completion is independent)
+   - Models: Fast models (gpt-4o-mini / gemini-2.0-flash)
+   - UI: Inline editor completion
+
+3. **Documentation Assistant** (`DocumentationAssistant.java`) ✨ **NEW - Feb 17, 2026**:
+   - Interface: `TokenStream generateDocumentation(@MemoryId String memoryId, @UserMessage String userMessage)`
+   - Purpose: Generate JSDoc documentation from code context
+   - System Prompt: `documentation.txt`
+   - Tools: None currently (works with provided XML context)
+   - Memory: 40 messages max, solution-scoped with `-documentation` suffix
+   - UI: **TODO** - Documentation View needed (GitHub Copilot style)
 
 **System Prompt Strategy:**
-- Loads condensed prompt from `/prompts/core-system-prompt.txt` (~2.4K tokens)
+- Loads prompts from `resources/system-prompts/` or `.servoy/system-prompts/`
 - Provided to LangChain4j via `systemMessageProvider` lambda
 - Sent with **every request** (stateless LLM APIs require full context)
 - RAG-first approach: Core rules in prompt, detailed rules via `getKnowledge` tool
 
 ### 3.3 Conversation Memory Management
 
-**Architecture:** Stateless LLM with Client-Side Memory
+**Architecture:** Stateless LLM with Client-Side Memory + Independent Memory Stores per Assistant
 
 LLM APIs (OpenAI, Gemini) are **stateless** - they don't remember conversations. All context must be sent with each request.
 
-**Implementation:**
-- `ChatMemoryStore`: `InMemoryChatMemoryStore` (LangChain4j)
+**Implementation (Updated Feb 17, 2026):**
+- **Separate Memory Stores:**
+  - `chatMemoryStore`: For chat assistant conversations
+  - `documentationMemoryStore`: For documentation assistant conversations
+  - Completion assistant: **No memory** (stateless)
 - `ChatMemory`: `MessageWindowChatMemory` with `maxMessages = 40`
-- **Memory ID**: Current Servoy solution name (e.g., "MySolution", "Module_A")
+- **Memory ID Format**: `<SolutionName>-<AssistantType>`
+  - Chat: `"MySolution-chat"`
+  - Documentation: `"MySolution-documentation"`
+  - Completion: N/A (no memory)
 - **Automatic trimming**: LangChain4j removes oldest messages when limit exceeded
 - **System prompt**: Always included via `systemMessageProvider` (not stored in memory)
 
+**Memory Management Methods:**
+- `clearChatMemory(String solutionName)` - Clear only chat assistant memory
+- `clearDocumentationMemory(String solutionName)` - Clear only documentation assistant memory
+- `clearAllMemories(String solutionName)` - Clear both chat and documentation memories
+
+**Benefits of Independent Memory:**
+- Each assistant has isolated conversation context
+- Chat conversations don't pollute documentation generation context
+- Selective memory clearing (can reset one assistant without affecting others)
+- Future-proof for additional specialized assistants
+
 **Session Management:**
-- **Session = Active Servoy Solution** (not chat window lifecycle)
-- Conversation resets when user switches solutions
+- **Session = Active Servoy Solution** (not view lifecycle)
+- Conversation resets when user switches solutions (all assistants cleared)
 - Prevents context pollution between different projects
-- Old solution's memory is cleared via `chatMemoryStore.deleteMessages(memoryId)`
+- Memory IDs scoped to solution name + assistant type
 
 **Flow:**
-1. User sends message ? Added to memory for current solution
-2. LangChain4j collects all messages for `memoryId`
+1. User sends message → Added to appropriate assistant's memory with solution-scoped ID
+2. LangChain4j collects all messages for `memoryId` (e.g., "MySolution-chat")
 3. System prompt added automatically
 4. Full context sent to LLM
-5. Response received ? Added to memory
-6. If solution switches ? Old memory cleared, new `memoryId` set
+5. Response received → Added to memory
+6. If solution switches → All memories cleared for old solution, new `memoryId`s set
 
 ### 3.4 Solution Activation Integration
 
-**Goal:** Reset conversation AND manage knowledge base when user switches Servoy projects
+**Goal:** Reset all assistant conversations AND manage knowledge base when user switches Servoy projects
 
 **Implementation:**
 
@@ -297,17 +416,20 @@ public void init() {
 }
 ```
 
-**onSolutionActivated(String projectName) workflow:**
-1. Clear old solution's chat memory: `clearMemory(currentMemoryId)`
-2. Update memory ID to new solution: `currentMemoryId = projectName`
-3. Clear UI conversation history
-4. **Check for `.servoy/` directory in solution root**:
+**onSolutionActivated(String projectName) workflow (Updated Feb 17, 2026):**
+1. Extract old solution name from current memory ID (remove `-chat` suffix)
+2. Clear ALL assistant memories for old solution: `clearAllMemories(oldSolutionName)`
+   - Clears chat assistant memory (`oldSolution-chat`)
+   - Clears documentation assistant memory (`oldSolution-documentation`)
+3. Update memory ID to new solution with assistant suffix: `currentMemoryId = newSolution + "-chat"`
+4. Clear UI conversation history
+5. **Check for `.servoy/` directory in solution root**:
    - If **NOT exists**: Auto-create with default content from knowledgebase bundle (no dialog)
    - If **exists**: Use existing content
-5. **Load knowledge base** from `.servoy/` directory:
+6. **Load knowledge base** from `.servoy/` directory:
    - Clear previous knowledge base
    - Load embeddings and rules from `.servoy/embeddings/` and `.servoy/rules/`
-6. Clear chat UI and show "New session started" notification
+7. Clear chat UI and show "New session started" notification
 
 **Auto-creation logic:**
 ```java
@@ -333,8 +455,10 @@ if (fileService.servoyDirectoryExists(project)) {
 - Registers `IActiveProjectListener` proxy in `@PostConstruct init()` using reflection (avoids compile-time dependency)
 - Listens directly to `ServoyModel.activeProjectChanged` events
 - When solution changes, calls `onSolutionActivated(projectName)`:
-  - Clears LangChain4j memory: `servoyAiModel.clearMemory(currentMemoryId)`
-  - Updates `currentMemoryId = projectName`
+  - Extracts old solution name from current memory ID (removes `-chat` suffix)
+  - Clears ALL LangChain4j memories: `servoyAiModel.clearAllMemories(oldSolutionName)`
+    - Clears both chat and documentation assistant memories
+  - Updates `currentMemoryId = newSolution + "-chat"`
   - Clears UI conversation history
   - **Manages knowledge base based on `.servoy/` directory:**
     - If `.servoy/` exists → Clears and loads knowledge base from directory
@@ -1343,15 +1467,35 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Core Features:**
 - ✅ AI-powered chat interface with streaming responses
-- ✅ Code completion support via CompletionAssistant
+- ✅ Code completion support via CompletionAssistant (stateless, fast)
+- ✅ **Documentation assistant** (NEW - Feb 17, 2026) - JSDoc generation from code context
 - ✅ 40+ specialized tools for Servoy development (12 tool classes)
-- ✅ Solution-specific conversation memory (automatic reset on switch)
+- ✅ **Independent memory management** per assistant (chat, documentation)
+- ✅ Solution-specific conversation memory with assistant-scoped IDs (`solution-chat`, `solution-documentation`)
+- ✅ Automatic reset of all assistant memories on solution switch
 - ✅ Solution-specific system prompts (loaded from `.servoy/system-prompts/`)
 - ✅ Fallback to bundle default prompts when solution-specific don't exist
 - ✅ RAG with local ONNX embeddings (offline, fast)
 - ✅ Knowledge base loading from `.servoy/` directory or bundle resources
 - ✅ Background jobs for non-blocking operations
 - ✅ Code diff viewer and patch application
+- ⏳ **Documentation View UI** (skeleton complete, UI implementation pending)
+
+**Assistant Types:**
+- ✅ **Chat Assistant**: Full conversation with 40+ tools, 40 message memory, streaming responses
+- ✅ **Completion Assistant**: Fast code completion, stateless (no memory), fast models
+- ✅ **Documentation Assistant**: JSDoc generation, 40 message memory, streaming responses
+  - ✅ Interface and memory management complete
+  - ✅ Context menu integration ready
+  - ✅ Code context extraction working
+  - ⏳ UI for displaying results pending (GitHub Copilot-style view needed)
+
+**Memory Management (Updated Feb 17, 2026):**
+- ✅ Separate `ChatMemoryStore` per assistant type
+- ✅ Solution-scoped memory IDs: `<solution>-<assistant>` format
+- ✅ Independent memory clearing per assistant or all at once
+- ✅ Automatic memory reset on solution switch (all assistants)
+- ✅ 40 message window per assistant (automatic trimming)
 
 **Knowledge Base Features:**
 - ✅ **Dual-source loading:** `.servoy/` directory (customized) or bundle resources (default)
@@ -1377,6 +1521,7 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 - ✅ Confirmation dialogs before overwriting
 - ✅ Auto-scroll toggle
 - ✅ Copy to clipboard
+- ⏳ Documentation View (pending implementation)
 
 **Testing & Quality:**
 - ✅ Test prompts suite available
@@ -1386,8 +1531,9 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)
-- Clean separation: UI (ChatView) → Presenter → Services → Tools
-- Stateless LLM with client-side memory management
+- 3 specialized assistants (chat, completion, documentation) with independent memories
+- Clean separation: UI (Views) → Presenters → Services → Tools
+- Stateless LLM with client-side memory management (per assistant)
 - Direct listener registration for solution activation events
 - Service layer for business logic
 
@@ -1395,5 +1541,5 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **End of Architecture Reference**
 
-**Last Updated:** February 16, 2026  
-**Status:** Production Ready - Code Context Infrastructure Complete (Phases 1-4) with Enhanced Documentation Extraction (@sample, @deprecated)
+**Last Updated:** February 17, 2026  
+**Status:** Production Ready - Code Context Complete, Documentation Assistant Skeleton Complete (Memory Management Implemented), UI Implementation Pending

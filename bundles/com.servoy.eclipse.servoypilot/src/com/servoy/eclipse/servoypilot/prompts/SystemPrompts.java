@@ -56,6 +56,11 @@ public class SystemPrompts
 		return prompts.get("completion.txt");
 	}
 
+	public String getDocumentationPrompt()
+	{
+		return prompts.get("documentation.txt");
+	}
+
 	public String getPrompt(String name)
 	{
 		return prompts.get(name);

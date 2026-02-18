@@ -67,7 +67,7 @@ public class ChatViewPresenter
 
 	private ChatView chatView;
 	private final List<ChatMessage> contents = new ArrayList<>();
-	private String currentMemoryId = "default"; // Memory ID for conversation isolation
+	private String currentMemoryId = "default-chat"; // Memory ID for chat assistant conversation isolation
 	private Object activeProjectListener; // IActiveProjectListener proxy
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
@@ -150,6 +150,13 @@ public class ChatViewPresenter
 			view.clearUserInput();
 //	            view.clearAttachments();
 		});
+	}
+
+	public void onAssistantChanged(int selectedIndex)
+	{
+		// TODO: Implement assistant switching logic
+		// For now, just log the selection
+		logger.info("Assistant changed to index: " + selectedIndex);
 	}
 
 	public void applyToView(Consumer< ? super ChatView> consumer)
@@ -428,11 +435,17 @@ public class ChatViewPresenter
 	 */
 	public void onSolutionActivated(String projectName)
 	{
-		// Clear LangChain4j chat memory for the old solution
-		Activator.getDefault().getServoyAiModel().clearMemory(currentMemoryId);
+		// Extract solution name from current memory ID (remove -chat suffix)
+		String oldSolutionName = currentMemoryId.endsWith("-chat") 
+			? currentMemoryId.substring(0, currentMemoryId.length() - 5) 
+			: currentMemoryId;
+		
+		// Clear all memories (chat + documentation) for the old solution
+		Activator.getDefault().getServoyAiModel().clearAllMemories(oldSolutionName);
 
-		// Update memory ID to new solution
-		currentMemoryId = projectName != null ? projectName : "default";
+		// Update memory ID to new solution with -chat suffix
+		String solutionName = projectName != null ? projectName : "default";
+		currentMemoryId = solutionName + "-chat";
 
 		// Clear UI conversation history
 		contents.clear();

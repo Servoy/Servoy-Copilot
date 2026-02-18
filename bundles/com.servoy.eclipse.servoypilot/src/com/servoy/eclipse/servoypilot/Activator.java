@@ -11,6 +11,7 @@ import org.osgi.framework.BundleContext;
 
 import com.servoy.eclipse.servoypilot.ai.Assistant;
 import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
+import com.servoy.eclipse.servoypilot.ai.DocumentationAssistant;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
@@ -101,6 +102,11 @@ public class Activator implements BundleActivator
 		return getServoyAiModel().getCompletionAssistant();
 	}
 
+	public DocumentationAssistant getDocumentationAssistant()
+	{
+		return getServoyAiModel().getDocumentationAssistant();
+	}
+
 	/**
 	 * Clear chat memory for a specific memory ID.
 	 * This completely erases conversation history, allowing fresh start.
@@ -111,7 +117,7 @@ public class Activator implements BundleActivator
 	{
 		if (chatModel != null)
 		{
-			chatModel.clearMemory(memoryId);
+			chatModel.clearAllMemories(memoryId);
 		}
 	}
 }

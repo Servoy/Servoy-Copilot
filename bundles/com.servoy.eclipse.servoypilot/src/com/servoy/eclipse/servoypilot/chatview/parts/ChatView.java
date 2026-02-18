@@ -29,6 +29,7 @@ import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Menu;
@@ -71,6 +72,7 @@ public class ChatView
 
 	private Browser browser;
 	private Text inputArea;
+	private Combo assistantSelector;
 	private boolean autoScrollEnabled = true;
 	private int notificationIdCounter = 0;
 	private ToolBar actionToolBar;
@@ -138,7 +140,20 @@ public class ChatView
 		buttonBar.setLayout(buttonBarLayout);
 		buttonBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
-		// Left side: Model selector
+		// Left side: Assistant selector
+		assistantSelector = new Combo(buttonBar, SWT.READ_ONLY | SWT.DROP_DOWN);
+		assistantSelector.setItems("Chat Assistant", "Documentation Assistant");
+		assistantSelector.select(0); // Default to Chat Assistant
+		assistantSelector.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, false, false));
+		assistantSelector.addSelectionListener(new SelectionAdapter()
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e)
+			{
+				int selectedIndex = assistantSelector.getSelectionIndex();
+				presenter.onAssistantChanged(selectedIndex);
+			}
+		});
 
 		// Right side: Action buttons - Use ToolBar instead of Composite
 		actionToolBar = new ToolBar(buttonBar, SWT.FLAT | SWT.RIGHT);

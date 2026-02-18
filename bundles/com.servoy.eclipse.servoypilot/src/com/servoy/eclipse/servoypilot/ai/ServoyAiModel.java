@@ -9,10 +9,9 @@ import com.servoy.eclipse.servoypilot.tools.core.FormTools;
 import com.servoy.eclipse.servoypilot.tools.core.RelationTools;
 import com.servoy.eclipse.servoypilot.tools.core.StyleTools;
 import com.servoy.eclipse.servoypilot.tools.core.ValueListTools;
-import com.servoy.eclipse.servoypilot.tools.utility.CodeContextTools;
-import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
 import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
+import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
 
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -30,16 +29,17 @@ public class ServoyAiModel
 {
 	private final Assistant assistant;
 	private final ChatMemoryStore chatMemoryStore;
+	private final ChatMemoryStore documentationMemoryStore;
 	private final CompletionAssistent completionAssistant;
-	private final AiConfiguration configuration;
+	private final DocumentationAssistant documentationAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
-		this.configuration = conf;
 		String apiKey = conf.getApiKey();
 		String model = conf.getModel();
-		// Create chat memory store
+		// Create separate memory stores for each assistant
 		this.chatMemoryStore = new InMemoryChatMemoryStore();
+		this.documentationMemoryStore = new InMemoryChatMemoryStore();
 
 		// create the models if there is an api key and model name
 		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty())
@@ -56,11 +56,18 @@ public class ServoyAiModel
 				case GEMINI -> createCompletionServices(createGeminiCompletionModel(conf));
 				case NONE -> null;
 			};
+			documentationAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createDocumentationServices(createOpenAIDocumentationModel(conf));
+				case GEMINI -> createDocumentationServices(createGeminiDocumentationModel(conf));
+				case NONE -> null;
+			};
 		}
 		else
 		{
 			assistant = null;
 			completionAssistant = null;
+			documentationAssistant = null;
 		}
 	}
 
@@ -73,6 +80,11 @@ public class ServoyAiModel
 	public CompletionAssistent getCompletionAssistant()
 	{
 		return completionAssistant;
+	}
+
+	public DocumentationAssistant getDocumentationAssistant()
+	{
+		return documentationAssistant;
 	}
 
 
@@ -106,7 +118,7 @@ public class ServoyAiModel
 		builder.chatMemoryProvider(memoryId -> chatMemory);
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register all migrated tools
+		// Register all tools
 		builder.tools(
 			new EclipseTools(), // General Eclipse/workspace operations
 			new ValueListTools(), // core/ - COMPLETE: getValueLists, openValueList, deleteValueLists
@@ -116,7 +128,6 @@ public class ServoyAiModel
 			new DatabaseTools(), // utility/ - COMPLETE: listTables, getTableInfo
 			new TargetTools(), // utility/ - COMPLETE: getTarget, setTarget
 			new KnowledgeTools(), // utility/ - COMPLETE: getKnowledge
-			new CodeContextTools(), // utility/ - Phase 1-4: getCodeContext, getCodeContextForFile, getCodeContextForSelection
 			new ButtonComponentTools(), // component/ - COMPLETE: listButtons, addButton, updateButton, deleteButton, getButtonInfo
 			new LabelComponentTools() // component/ - COMPLETE: listLabels, addLabel, updateLabel, deleteLabel, getLabelInfo
 		);
@@ -143,15 +154,72 @@ public class ServoyAiModel
 
 	}
 
+	private OpenAiStreamingChatModel createOpenAIDocumentationModel(AiConfiguration conf)
+	{
+		return OpenAiStreamingChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
+	}
+
+	private GoogleAiGeminiStreamingChatModel createGeminiDocumentationModel(AiConfiguration conf)
+	{
+		return GoogleAiGeminiStreamingChatModel.builder()
+			.apiKey(conf.getApiKey())
+			.modelName(conf.getModel())
+			.allowCodeExecution(true)
+			.build();
+	}
+
+	private DocumentationAssistant createDocumentationServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getDocumentationPrompt();
+
+		ChatMemory chatMemory = MessageWindowChatMemory.builder()
+			.maxMessages(40)
+			.chatMemoryStore(documentationMemoryStore)
+			.build();
+
+		AiServices<DocumentationAssistant> builder = AiServices.builder(DocumentationAssistant.class);
+		builder.streamingChatModel(model);
+		builder.chatMemoryProvider(memoryId -> chatMemory);
+		builder.systemMessageProvider(memoryId -> systemPrompt);
+
+		// Register tools if needed (for now, none)
+		// builder.tools(...);
+
+		return builder.build();
+	}
+
 	/**
 	 * Clear the chat memory for a specific memory ID (solution name)
-	 * @param memoryId the memory ID to clear
+	 * @param memoryId the memory ID to clear (e.g., "MySolution")
 	 */
-	public void clearMemory(String memoryId)
+	public void clearChatMemory(String memoryId)
 	{
 		if (chatMemoryStore != null)
 		{
 			chatMemoryStore.deleteMessages(memoryId);
 		}
+	}
+
+	/**
+	 * Clear the documentation memory for a specific memory ID (solution name)
+	 * @param memoryId the memory ID to clear (e.g., "MySolution")
+	 */
+	public void clearDocumentationMemory(String memoryId)
+	{
+		if (documentationMemoryStore != null)
+		{
+			documentationMemoryStore.deleteMessages(memoryId);
+		}
+	}
+
+	/**
+	 * Clear all memories (chat and documentation) for a specific memory ID
+	 * Used when switching solutions to ensure complete context reset
+	 * @param memoryId the memory ID to clear (e.g., "MySolution")
+	 */
+	public void clearAllMemories(String memoryId)
+	{
+		clearChatMemory(memoryId);
+		clearDocumentationMemory(memoryId);
 	}
 }

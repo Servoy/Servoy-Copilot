@@ -96,18 +96,27 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		
 		if (context.hasError())
 		{
-			DebugUtils.debug("[GENERATE DOCS] Error: " + context.getErrorMessage());
 			return;
 		}
 		
 		if (context.isEmpty())
 		{
-			DebugUtils.debug("[GENERATE DOCS] No API context found in selection.");
 			return;
 		}
 		
-		// TODO: Use this context to generate JSDoc comments
-		DebugUtils.debug("[GENERATE DOCS] Next step: Generate JSDoc based on context above");
+		// Get current solution name and create documentation-specific memory ID
+		String solutionName = getCurrentSolutionName();
+		String memoryId = solutionName + "-documentation";
+		
+		// Call documentation assistant with XML-formatted context
+		String xmlContext = context.getFormattedXML();
+		
+		// TODO: Handle TokenStream response
+		// - Collect tokens into StringBuilder
+		// - Create temp file with generated documentation
+		// - Show comparison editor (GitHub Copilot style)
+		// - Update view with file entry
+		com.servoy.eclipse.servoypilot.Activator.getDefault().getDocumentationAssistant().generateDocumentation(memoryId, xmlContext);
 	}
 
 	private void handleGenerateTests(SelectionInfo selection)
@@ -115,5 +124,26 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		DebugUtils.debug("[GENERATE TESTS] Generating unit tests for selected code...");
 		DebugUtils.debug("[GENERATE TESTS] This will create test cases.");
 		// TODO: Implement test generation
+	}
+
+	/**
+	 * Get the current active solution name
+	 * @return solution name or "default" if none active
+	 */
+	private String getCurrentSolutionName()
+	{
+		try
+		{
+			com.servoy.eclipse.model.extensions.IServoyModel servoyModel = com.servoy.eclipse.model.ServoyModelFinder.getServoyModel();
+			if (servoyModel != null && servoyModel.getActiveProject() != null)
+			{
+				return servoyModel.getActiveProject().getProject().getName();
+			}
+		}
+		catch (Exception e)
+		{
+			// Fallback to default if error
+		}
+		return "default";
 	}
 }
