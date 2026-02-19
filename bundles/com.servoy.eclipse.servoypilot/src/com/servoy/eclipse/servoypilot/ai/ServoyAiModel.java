@@ -50,6 +50,7 @@ public class ServoyAiModel
 	private VibeCodingAssistant vibeCodingAssistant;
 	private CompletionAssistent completionAssistant;
 	private DocumentationAssistant documentationAssistant;
+	private QuickFixAssistant quickFixAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -98,6 +99,20 @@ public class ServoyAiModel
 			};
 		}
 		return documentationAssistant;
+	}
+
+	public QuickFixAssistant getQuickFixAssistant()
+	{
+		if (quickFixAssistant == null && conf.isValid())
+		{
+			quickFixAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createQuickFixServices(createOpenAIModel(conf));
+				case GEMINI -> createQuickFixServices(createGeminiModel(conf));
+				case NONE -> null;
+			};
+		}
+		return quickFixAssistant;
 	}
 
 
@@ -196,6 +211,21 @@ public class ServoyAiModel
 		// builder.tools(...);
 
 		return builder.build();
+	}
+
+	private QuickFixAssistant createQuickFixServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getQuickFixPrompt();
+
+		return AiServices.builder(QuickFixAssistant.class)
+			.streamingChatModel(model)
+			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+				.id(memoryId)
+				.maxMessages(MAX_MESSAGES)
+				.chatMemoryStore(sharedMemoryStore)
+				.build())
+			.systemMessageProvider(memoryId -> systemPrompt)
+			.build();
 	}
 
 	/**

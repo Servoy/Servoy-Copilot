@@ -16,37 +16,19 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
-public enum AssistantType
+public interface QuickFixAssistant extends IAssistant
 {
-	CHAT("VibeCoding Assistant", "-vibe"),
-	DOCUMENTATION("Documentation Assistant", "-documentation"),
-	QUICKFIX("QuickFix Assistant", "-quickfix");
-
-	private final String displayName;
-	private final String memorySuffix;
-
-	AssistantType(String displayName, String memorySuffix)
+	@Override
+	default AssistantType getType()
 	{
-		this.displayName = displayName;
-		this.memorySuffix = memorySuffix;
+		return AssistantType.QUICKFIX;
 	}
 
-	public String getDisplayName()
+	@Override
+	default String getDisplayName()
 	{
-		return displayName;
+		return AssistantType.QUICKFIX.getDisplayName();
 	}
 
-	public String getMemorySuffix()
-	{
-		return memorySuffix;
-	}
-
-	public static AssistantType fromIndex(int index)
-	{
-		if (index >= 0 && index < values().length)
-		{
-			return values()[index];
-		}
-		return CHAT; // Default
-	}
+	String fix(String prompt);
 }
