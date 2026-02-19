@@ -29,7 +29,6 @@ import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
 import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
 
-import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -43,35 +42,34 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 
 public class ServoyAiModel
 {
-	private final AiConfiguration conf;
-	private final ChatMemoryStore vibeMemoryStore;
-	private final ChatMemoryStore documentationMemoryStore;
+	private static final int MAX_MESSAGES = 40;
 
-	private VibeCodingAssistant assistant;
+	private final AiConfiguration conf;
+	private final ChatMemoryStore sharedMemoryStore;
+
+	private VibeCodingAssistant vibeCodingAssistant;
 	private CompletionAssistent completionAssistant;
 	private DocumentationAssistant documentationAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
 		this.conf = conf;
-		// Create separate memory stores for each assistant
-		this.vibeMemoryStore = new InMemoryChatMemoryStore();
-		this.documentationMemoryStore = new InMemoryChatMemoryStore();
+		this.sharedMemoryStore = new InMemoryChatMemoryStore();
 	}
 
 
 	public VibeCodingAssistant getVibeCodingAssistant()
 	{
-		if (assistant == null && conf.isValid())
+		if (vibeCodingAssistant == null && conf.isValid())
 		{
-			assistant = switch (conf.getSelectedModel())
+			vibeCodingAssistant = switch (conf.getSelectedModel())
 			{
 				case OPENAI -> createVibeCodingServices(createOpenAIModel(conf));
 				case GEMINI -> createVibeCodingServices(createGeminiModel(conf));
 				case NONE -> null;
 			};
 		}
-		return assistant;
+		return vibeCodingAssistant;
 	}
 
 	public CompletionAssistent getCompletionAssistant()
@@ -122,15 +120,13 @@ public class ServoyAiModel
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
 
-		// Create message window memory (40 messages max)
-		ChatMemory vibeMemory = MessageWindowChatMemory.builder()
-			.maxMessages(40)
-			.chatMemoryStore(vibeMemoryStore)
-			.build();
-
 		AiServices<VibeCodingAssistant> builder = AiServices.builder(VibeCodingAssistant.class);
 		builder.streamingChatModel(model);
-		builder.chatMemoryProvider(memoryId -> vibeMemory);
+		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+			.id(memoryId)
+			.maxMessages(MAX_MESSAGES)
+			.chatMemoryStore(sharedMemoryStore)
+			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register all tools
@@ -187,14 +183,13 @@ public class ServoyAiModel
 	{
 		String systemPrompt = SystemPrompts.INSTANCE.getDocumentationPrompt();
 
-		ChatMemory chatMemory = MessageWindowChatMemory.builder()
-			.maxMessages(40)
-			.chatMemoryStore(documentationMemoryStore)
-			.build();
-
 		AiServices<DocumentationAssistant> builder = AiServices.builder(DocumentationAssistant.class);
 		builder.streamingChatModel(model);
-		builder.chatMemoryProvider(memoryId -> chatMemory);
+		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+			.id(memoryId)
+			.maxMessages(MAX_MESSAGES)
+			.chatMemoryStore(sharedMemoryStore)
+			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register tools if needed (for now, none)
@@ -204,37 +199,41 @@ public class ServoyAiModel
 	}
 
 	/**
-	 * Clear the chat memory for a specific memory ID (solution name)
-	 * @param memoryId the memory ID to clear (e.g., "MySolution")
+	 * Clear memory for a specific memory ID
+	 * @param memoryId the memory ID to clear (e.g., "MySolution-vibe")
 	 */
-	public void clearVibeMemory(String memoryId)
+	public void clearMemory(String memoryId)
 	{
-		if (vibeMemoryStore != null)
+		if (sharedMemoryStore != null)
 		{
-			vibeMemoryStore.deleteMessages(memoryId);
+			sharedMemoryStore.deleteMessages(memoryId);
 		}
 	}
 
 	/**
-	 * Clear the documentation memory for a specific memory ID (solution name)
-	 * @param memoryId the memory ID to clear (e.g., "MySolution")
+	 * Clear all assistant memories for a specific solution.
+	 * Iterates through all assistant types and clears their memory IDs.
+	 * @param solutionName the solution name (e.g., "MySolution")
 	 */
-	public void clearDocumentationMemory(String memoryId)
+	public void clearAllMemories(String solutionName)
 	{
-		if (documentationMemoryStore != null)
+		if (sharedMemoryStore != null)
 		{
-			documentationMemoryStore.deleteMessages(memoryId);
+			// Iterate through all assistant types and clear their memories
+			for (AssistantType assistantType : AssistantType.values())
+			{
+				String memoryId = solutionName + assistantType.getMemorySuffix();
+				sharedMemoryStore.deleteMessages(memoryId);
+			}
 		}
 	}
 
 	/**
-	 * Clear all memories (chat and documentation) for a specific memory ID
-	 * Used when switching solutions to ensure complete context reset
-	 * @param memoryId the memory ID to clear (e.g., "MySolution")
+	 * Get the shared memory store used by all assistants
+	 * @return the shared memory store
 	 */
-	public void clearAllMemories(String memoryId)
+	public ChatMemoryStore getSharedMemoryStore()
 	{
-		clearVibeMemory(memoryId);
-		clearDocumentationMemory(memoryId);
+		return sharedMemoryStore;
 	}
 }

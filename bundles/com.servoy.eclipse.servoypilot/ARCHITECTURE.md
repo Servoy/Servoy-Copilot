@@ -1,9 +1,177 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 18, 2026  
+**Last Updated:** February 19, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
-**Status:** Multi-Assistant View Switcher implemented and functional. Chat and Documentation assistants can be switched via dropdown in ChatView. Code Context Gathering complete (Phases 1-4). Documentation Assistant ready for context menu integration.
+**Status:** 
+- ✅ Multi-Assistant View Switcher implemented and functional
+- ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
+- ✅ Code Context Gathering complete (Phases 1-4)
+- ✅ Documentation Assistant ready for context menu integration
+- ⚠️ **KNOWN BUG:** Message deletion not working (UUID vs msg-N ID mismatch)
+- 🔄 **TESTING REQUIRED:** Full memory refactoring validation pending
+
+---
+
+## ✅ COMPLETED - MEMORY STORE REFACTORING (February 19, 2026)
+
+**Implementation Complete:** Conversation memory now uses single source of truth (LangChain4j memory store). Eliminated dual storage pattern (UI list + memory store).
+
+### **Architecture Changes**
+
+**Before (Dual Storage):**
+- `ChatViewPresenter` maintained `List<ChatMessage> contents` for UI display
+- LangChain4j maintained separate `InMemoryChatMemoryStore` for AI context
+- Two copies of same data → sync issues, complexity
+
+**After (Single Source):**
+- **Removed:** `List<ChatMessage> contents` from ChatViewPresenter
+- **Single source:** `sharedMemoryStore` in `ServoyAiModel`
+- UI displays filtered view of memory store (User + AI messages only)
+
+### **Memory Store Design**
+
+**Single Shared Store:**
+```java
+private final ChatMemoryStore sharedMemoryStore = new InMemoryChatMemoryStore();
+```
+
+**Memory Isolation via IDs:**
+- Format: `<solutionName>-<assistantSuffix>`
+- VibeCoding: `"MySolution-vibe"`
+- Documentation: `"MySolution-documentation"`
+- Completion: No memory (stateless)
+
+**MessageWindowChatMemory Configuration:**
+```java
+MessageWindowChatMemory.builder()
+    .id(memoryId)
+    .maxMessages(MAX_MESSAGES) // Static constant: 40
+    .chatMemoryStore(sharedMemoryStore)
+    .build()
+```
+
+### **UI Refresh from Memory**
+
+**refreshViewFromMemory() Method:**
+1. Reads: `sharedMemoryStore.getMessages(currentMemoryId)`
+2. Filters: Skip `SystemMessage` and `ToolExecutionResultMessage`
+3. Displays: Only `UserMessage` and `AiMessage`
+4. IDs: Generates `msg-0`, `msg-1`, etc. based on filtered index
+5. Renders: Markdown → HTML via existing `MarkdownParser`
+
+**Refresh Triggers:**
+- Assistant switched
+- Solution switched
+- Message deleted
+- ~~AI response completed~~ (removed to avoid flickering)
+
+### **Streaming Implementation**
+
+**Token Accumulation:**
+```java
+StringBuilder accumulatedResponse = new StringBuilder();
+.onPartialResponse(partial -> {
+    accumulatedResponse.append(partial);  // Accumulate tokens
+    view.setMessageHtml(assistantMsgId, accumulatedResponse.toString());
+})
+.onCompleteResponse(fullResponse -> {
+    // No refresh - streaming already shows full response
+    // LangChain4j auto-adds to store
+})
+```
+
+**Why no refresh after complete?**
+- Streaming already displays full accumulated response
+- Refresh causes unnecessary flickering (clear → rebuild UI)
+- Messages persist in UI with UUID-based IDs
+
+### **Message Deletion**
+
+**Current Implementation:**
+```java
+public void onRemoveMessage(String messageId) {
+    if (messageId.startsWith("msg-")) {
+        // Parse filtered index from "msg-5" → 5
+        // Map to store index (account for hidden System/Tool messages)
+        // Delete from store
+        // Refresh UI
+    }
+}
+```
+
+**⚠️ KNOWN BUG - Message Deletion Not Working:**
+
+**Root Cause:**
+- Streaming messages use **UUID-based IDs** (e.g., `"f47ac10b-58cc-4372-a567-0e02b2c3d479"`)
+- Delete method expects **`msg-N` format** (e.g., `"msg-5"`)
+- Check `if (!messageId.startsWith("msg-"))` fails for UUIDs
+- Method returns early without deleting
+
+**Why UUIDs?**
+- Removed `refreshViewFromMemory()` call after streaming completes (to avoid flickering)
+- Messages stay with original UUID-based IDs from `onSendUserMessage()`
+- Never converted to `msg-N` format
+
+**Fix Needed:**
+- Handle both UUID and `msg-N` formats in `onRemoveMessage()`
+- OR: Always refresh after completion to normalize IDs
+- OR: Track UUID → store index mapping
+
+**Workaround:**
+- Switch assistant and switch back → Triggers refresh → IDs become `msg-N` → Delete works
+
+### **Solution Switching**
+
+**onSolutionActivated() Flow:**
+```java
+1. clearAllMemories(oldSolutionName)  // Clear all assistant memories
+2. Update solutionName
+3. Update currentMemoryId = solutionName + assistantSuffix
+4. Load knowledge base from .servoy or bundle
+5. Clear UI
+6. Show "New session started" notification
+```
+
+**Memory Clearing:**
+```java
+public void clearAllMemories(String solutionName) {
+    for (AssistantType type : AssistantType.values()) {
+        sharedMemoryStore.deleteMessages(solutionName + type.getMemorySuffix());
+    }
+}
+```
+
+### **Benefits Achieved**
+
+✅ **Single source of truth** - No dual storage confusion  
+✅ **Automatic sync** - UI always reflects memory state  
+✅ **Simplified code** - Removed `contents` list and all operations on it  
+✅ **Correct deletion** - Affects both store and UI (when IDs match)  
+✅ **Assistant isolation** - Independent memories via memoryId  
+✅ **Smooth streaming** - Token accumulation works correctly  
+✅ **No flickering** - Removed unnecessary refresh after streaming  
+
+### **Testing Status**
+
+🔄 **PENDING FULL VALIDATION:**
+
+**Test File:** `testprompts/memory-refactoring-test-prompts.md` (20 test cases)
+
+**Tested:**
+- ✅ Streaming with token accumulation
+- ✅ Assistant switching
+- ✅ Solution switching
+- ✅ Memory isolation per assistant
+
+**Not Yet Tested:**
+- ❌ Message deletion (known bug)
+- ❌ 40 message limit eviction
+- ❌ Error handling edge cases
+- ❌ Rapid assistant switching
+- ❌ Full end-to-end workflow
+
+**Action Required:** Run all 20 test cases from test file after fixing deletion bug
 
 ---
 

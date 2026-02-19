@@ -58,6 +58,11 @@ import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.data.message.UserMessage;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -82,7 +87,6 @@ public class ChatViewPresenter
 	private UISynchronize uiSync;
 
 	private ChatView chatView;
-	private final List<ChatMessage> contents = new ArrayList<>();
 	private String solutionName = "default"; // Current solution name
 	private String currentMemoryId = "default-chat"; // Memory ID for chat assistant conversation isolation
 	private Object activeProjectListener; // IActiveProjectListener proxy
@@ -169,13 +173,19 @@ public class ChatViewPresenter
 
 	public void onClear()
 	{
-		// TODO stop/clear any ongoing operations
+		// Stop any ongoing operations
 		onStop();
+
+		// Clear memory store for current assistant
+		Activator.getDefault().getServoyAiModel().clearMemory(currentMemoryId);
+
+		// Clear UI
 		applyToView(view -> {
 			view.clearChatView();
 			view.clearUserInput();
-//	            view.clearAttachments();
 		});
+
+		logger.info("Cleared conversation for memory ID: " + currentMemoryId);
 	}
 
 	public void onAssistantChanged(int selectedIndex)
@@ -187,11 +197,14 @@ public class ChatViewPresenter
 			// Update memory ID with new assistant's suffix
 			currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
 
-			// Clear UI for new assistant
+			// Clear UI
 			applyToView(view -> {
 				view.clearChatView();
 				view.clearUserInput();
 			});
+
+			// Reload messages from new assistant's memory
+			refreshViewFromMemory();
 
 			logger.info("Switched to assistant: " + currentAssistant.getDisplayName() + " with memory ID: " + currentMemoryId);
 		}
@@ -215,57 +228,114 @@ public class ChatViewPresenter
 		consumer.accept(chatView);
 	}
 
+	/**
+	 * Refresh UI view from memory store (single source of truth).
+	 * Filters out system and tool messages, displays only user and AI messages.
+	 */
+	private void refreshViewFromMemory()
+	{
+		// Get messages from store for current assistant
+		List<ChatMessage> allMessages = Activator.getDefault().getServoyAiModel().getSharedMemoryStore().getMessages(currentMemoryId);
+
+		if (allMessages == null || allMessages.isEmpty())
+		{
+			// No messages - view already cleared
+			return;
+		}
+
+		// Clear existing UI
+		applyToView(view -> view.clearChatView());
+
+		// Filter to displayable messages (User + AI only)
+		int filteredIndex = 0;
+		for (ChatMessage message : allMessages)
+		{
+			// Skip System and Tool messages
+			if (message instanceof SystemMessage || message instanceof ToolExecutionResultMessage)
+			{
+				continue;
+			}
+
+			// Determine role and get text using pattern matching
+			String role;
+			String text;
+			if (message instanceof UserMessage userMsg)
+			{
+				role = "user";
+				text = userMsg.singleText();
+			}
+			else if (message instanceof AiMessage aiMsg)
+			{
+				role = "assistant";
+				text = aiMsg.text();
+			}
+			else
+			{
+				continue; // Skip unknown types
+			}
+
+			// Generate UI message ID
+			String messageId = "msg-" + filteredIndex;
+			filteredIndex++;
+
+			// Render in UI
+			applyToView(view -> {
+				view.addMessage(messageId, role);
+				view.setMessageHtml(messageId, text); // Markdown→HTML conversion happens in setMessageHtml
+			});
+		}
+	}
+
 	public void onStop()
 	{
-		contents.clear();
+		// Cancel ongoing jobs
 		var jobs = jobManager.find(null);
 		Arrays.stream(jobs).filter(job -> job.getName().startsWith(JOB_PREFIX)).forEach(Job::cancel);
 
 		applyToView(messageView -> {
 			messageView.setInputEnabled(true);
 		});
-
 	}
 
 	public void onSendUserMessage(String text)
 	{
-		ChatMessage message = new TextChatMessage(UUID.randomUUID().toString(), "user", text);
-		contents.add(message);
-		TextChatMessage assistantMessage = new TextChatMessage(UUID.randomUUID().toString(), "assistant");
+		// Generate temporary IDs for streaming display
+		String userMsgId = UUID.randomUUID().toString();
+		String assistantMsgId = UUID.randomUUID().toString();
 
+		// Show user message immediately (temporary, will be replaced by refresh)
 		applyToView(part -> {
 			part.clearUserInput();
-//	            part.clearAttachments();
-			part.addMessage(message.getId(), message.getRole());
-			part.setMessageHtml(message.getId(), text);
-			part.addMessage(assistantMessage.getId(), assistantMessage.getRole());
-			part.setMessageHtml(assistantMessage.getId(), "...");
-//	            attachments.clear();
+			part.addMessage(userMsgId, "user");
+			part.setMessageHtml(userMsgId, text);
+			part.addMessage(assistantMsgId, "assistant");
+			part.setMessageHtml(assistantMsgId, "...");
 		});
 
-		contents.add(assistantMessage);
+		// Accumulate streaming tokens
+		StringBuilder accumulatedResponse = new StringBuilder();
 
-		// Use current assistant's executeRequest method
+		// LangChain4j automatically adds user message to store before calling LLM
 		currentAssistant.executeRequest(currentMemoryId, text)
 			.onPartialResponse(partial -> {
-				assistantMessage.appendContent(partial);
+				// Accumulate tokens and update display
+				accumulatedResponse.append(partial);
 				applyToView(part -> {
-					part.setMessageHtml(assistantMessage.getId(),
-						assistantMessage.getContent().text() + partial.toString());
+					part.setMessageHtml(assistantMsgId, accumulatedResponse.toString());
 				});
 			})
 			.onCompleteResponse(fullResponse -> {
-				assistantMessage.setContent(fullResponse.aiMessage().text());
+				// LangChain4j automatically added AI response to store
+				// No refresh needed - streaming already shows full response
+				// Refresh would cause flickering by clearing and rebuilding UI
+			})
+			.onError(error -> {
 				applyToView(part -> {
-					part.setMessageHtml(assistantMessage.getId(), assistantMessage.getContent().text());
-				});
-			}).onError(error -> {
-				applyToView(part -> {
-					part.setMessageHtml(assistantMessage.getId(), "Error: " + error.getMessage());
+					part.setMessageHtml(assistantMsgId, "Error: " + error.getMessage());
 				});
 				logger.error("Error getting assistant response", error);
-			}).start();
-
+			})
+			.start();
 	}
 
 	public void onAttachmentAdded(ImageData imageData)
@@ -467,11 +537,60 @@ public class ChatViewPresenter
 
 	public void onRemoveMessage(String messageId)
 	{
-		contents.stream().filter(message -> messageId.equals(message.getId())).findFirst()
-			.ifPresent(messageToRemove -> contents.remove(messageToRemove));
-		applyToView(view -> {
-			view.removeMessage(messageId);
-		});
+		// Use positive conditional - process valid message IDs
+		if (messageId.startsWith("msg-"))
+		{
+			try
+			{
+				int filteredIndex = Integer.parseInt(messageId.substring(4)); // "msg-5" → 5
+
+				// Get all messages from store
+				List<ChatMessage> allMessages = Activator.getDefault().getServoyAiModel().getSharedMemoryStore().getMessages(currentMemoryId);
+
+				if (allMessages != null && !allMessages.isEmpty())
+				{
+					// Filter to displayable messages to find the correct store index
+					int currentFilteredIndex = 0;
+					int storeIndexToDelete = -1;
+
+					for (int i = 0; i < allMessages.size(); i++)
+					{
+						ChatMessage msg = allMessages.get(i);
+
+						// Skip non-displayable messages
+						if (msg instanceof SystemMessage || msg instanceof ToolExecutionResultMessage)
+						{
+							continue;
+						}
+
+						// Check if this is the message to delete
+						if (currentFilteredIndex == filteredIndex)
+						{
+							storeIndexToDelete = i;
+							break;
+						}
+
+						currentFilteredIndex++;
+					}
+
+					// Delete message from store if found
+					if (storeIndexToDelete >= 0)
+					{
+						allMessages.remove(storeIndexToDelete);
+						Activator.getDefault().getServoyAiModel().getSharedMemoryStore().updateMessages(currentMemoryId, allMessages);
+
+						// Refresh UI from updated store
+						refreshViewFromMemory();
+
+						logger.info("Deleted message at filtered index " + filteredIndex + " (store index " + storeIndexToDelete + ")");
+					}
+				}
+			}
+			catch (NumberFormatException e)
+			{
+				logger.error("Invalid message ID format: " + messageId, e);
+			}
+		}
 	}
 
 	public void setChatView(ChatView chatView)
@@ -486,7 +605,7 @@ public class ChatViewPresenter
 	 */
 	public void onSolutionActivated(String projectName)
 	{
-		// Clear all memories (chat + documentation) for the old solution
+		// Clear all memories (vibe + documentation) for the old solution
 		Activator.getDefault().getServoyAiModel().clearAllMemories(solutionName);
 
 		// Update solution name
@@ -494,9 +613,6 @@ public class ChatViewPresenter
 
 		// Update memory ID with current assistant suffix
 		currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
-
-		// Clear UI conversation history
-		contents.clear();
 
 		// Manage knowledge base: load from .servoy if exists, otherwise load default from bundle
 		IProject project = getProjectByName(projectName);
