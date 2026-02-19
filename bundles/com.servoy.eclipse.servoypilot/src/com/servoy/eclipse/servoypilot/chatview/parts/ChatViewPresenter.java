@@ -57,7 +57,6 @@ import com.servoy.eclipse.servoypilot.ai.IAssistant;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
-import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -96,9 +95,8 @@ public class ChatViewPresenter
 	public void init()
 	{
 		// Initialize available assistants
-		availableAssistants = new IAssistant[] {
-			Activator.getDefault().getServoyAiModel().getAssistant(),
-			Activator.getDefault().getServoyAiModel().getDocumentationAssistant()
+		availableAssistants = new IAssistant[] { Activator.getDefault().getServoyAiModel().getVibeCodingAssistant(), Activator.getDefault().getServoyAiModel()
+			.getDocumentationAssistant()
 		};
 		// Set default assistant to Chat
 		currentAssistant = availableAssistants[0];
@@ -185,16 +183,16 @@ public class ChatViewPresenter
 		if (selectedIndex >= 0 && selectedIndex < availableAssistants.length)
 		{
 			currentAssistant = availableAssistants[selectedIndex];
-			
+
 			// Update memory ID with new assistant's suffix
 			currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
-			
+
 			// Clear UI for new assistant
 			applyToView(view -> {
 				view.clearChatView();
 				view.clearUserInput();
 			});
-			
+
 			logger.info("Switched to assistant: " + currentAssistant.getDisplayName() + " with memory ID: " + currentMemoryId);
 		}
 	}
@@ -493,7 +491,7 @@ public class ChatViewPresenter
 
 		// Update solution name
 		solutionName = projectName != null ? projectName : "default";
-		
+
 		// Update memory ID with current assistant suffix
 		currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
 
@@ -510,7 +508,7 @@ public class ChatViewPresenter
 			try
 			{
 				loaderService.clearKnowledgeBase();
-				
+
 				if (fileService.servoyDirectoryExists(project))
 				{
 					// Load from solution-specific .servoy directory

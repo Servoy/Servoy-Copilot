@@ -95,11 +95,11 @@ public class ChatView
 
 	private Runnable chatModelListener = () -> {
 		uiSync.asyncExec(() -> {
-			boolean hasModel = Activator.getDefault().getChatModel() != null;
+			boolean hasModel = Activator.getDefault().getServoyAiModel() != null;
 			inputArea.setEditable(hasModel);
 			if (!hasModel)
 			{
-				inputArea.setText("No chat model configured. Please set up an AI model in preferences. (Window -> Preferences -> Servoy-> Servoy AI Pilot)");
+				inputArea.setText("No AI model configured. Please set up an AI model in preferences. (Window -> Preferences -> Servoy-> Servoy AI Pilot)");
 			}
 			else
 			{
@@ -228,7 +228,7 @@ public class ChatView
 	public void setInputEnabled(boolean enabled)
 	{
 		uiSync.asyncExec(() -> {
-			boolean realEnabled = Activator.getDefault().getChatModel() != null && enabled;
+			boolean realEnabled = Activator.getDefault().getServoyAiModel() != null && enabled;
 			inputArea.setEnabled(realEnabled);
 			if (realEnabled)
 			{

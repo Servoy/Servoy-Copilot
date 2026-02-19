@@ -18,7 +18,7 @@ package com.servoy.eclipse.servoypilot.ai;
 
 public enum AssistantType
 {
-	CHAT("VibeCoding Assistant", "-chat"),
+	CHAT("VibeCoding Assistant", "-vibe"),
 	DOCUMENTATION("Documentation Assistant", "-documentation");
 
 	private final String displayName;

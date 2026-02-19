@@ -44,7 +44,7 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 public class ServoyAiModel
 {
 	private final VibeCodingAssistant assistant;
-	private final ChatMemoryStore chatMemoryStore;
+	private final ChatMemoryStore vibeMemoryStore;
 	private final ChatMemoryStore documentationMemoryStore;
 	private final CompletionAssistent completionAssistant;
 	private final DocumentationAssistant documentationAssistant;
@@ -54,7 +54,7 @@ public class ServoyAiModel
 		String apiKey = conf.getApiKey();
 		String model = conf.getModel();
 		// Create separate memory stores for each assistant
-		this.chatMemoryStore = new InMemoryChatMemoryStore();
+		this.vibeMemoryStore = new InMemoryChatMemoryStore();
 		this.documentationMemoryStore = new InMemoryChatMemoryStore();
 
 		// create the models if there is an api key and model name
@@ -62,8 +62,8 @@ public class ServoyAiModel
 		{
 			assistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createChatServices(createOpenAIModel(conf));
-				case GEMINI -> createChatServices(createGeminiModel(conf));
+				case OPENAI -> createVibeCodingServices(createOpenAIModel(conf));
+				case GEMINI -> createVibeCodingServices(createGeminiModel(conf));
 				case NONE -> null;
 			};
 			completionAssistant = switch (conf.getSelectedModel())
@@ -88,7 +88,7 @@ public class ServoyAiModel
 	}
 
 
-	public VibeCodingAssistant getAssistant()
+	public VibeCodingAssistant getVibeCodingAssistant()
 	{
 		return assistant;
 	}
@@ -118,20 +118,20 @@ public class ServoyAiModel
 			.build();
 	}
 
-	private VibeCodingAssistant createChatServices(StreamingChatModel model)
+	private VibeCodingAssistant createVibeCodingServices(StreamingChatModel model)
 	{
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
 
 		// Create message window memory (40 messages max)
-		ChatMemory chatMemory = MessageWindowChatMemory.builder()
+		ChatMemory vibeMemory = MessageWindowChatMemory.builder()
 			.maxMessages(40)
-			.chatMemoryStore(chatMemoryStore)
+			.chatMemoryStore(vibeMemoryStore)
 			.build();
 
 		AiServices<VibeCodingAssistant> builder = AiServices.builder(VibeCodingAssistant.class);
 		builder.streamingChatModel(model);
-		builder.chatMemoryProvider(memoryId -> chatMemory);
+		builder.chatMemoryProvider(memoryId -> vibeMemory);
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register all tools
@@ -208,11 +208,11 @@ public class ServoyAiModel
 	 * Clear the chat memory for a specific memory ID (solution name)
 	 * @param memoryId the memory ID to clear (e.g., "MySolution")
 	 */
-	public void clearChatMemory(String memoryId)
+	public void clearVibeMemory(String memoryId)
 	{
-		if (chatMemoryStore != null)
+		if (vibeMemoryStore != null)
 		{
-			chatMemoryStore.deleteMessages(memoryId);
+			vibeMemoryStore.deleteMessages(memoryId);
 		}
 	}
 
@@ -235,7 +235,7 @@ public class ServoyAiModel
 	 */
 	public void clearAllMemories(String memoryId)
 	{
-		clearChatMemory(memoryId);
+		clearVibeMemory(memoryId);
 		clearDocumentationMemory(memoryId);
 	}
 }

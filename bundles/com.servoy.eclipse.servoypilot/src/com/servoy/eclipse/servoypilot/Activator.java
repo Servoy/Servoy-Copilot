@@ -25,7 +25,6 @@ import org.eclipse.ui.preferences.ScopedPreferenceStore;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 
-import com.servoy.eclipse.servoypilot.ai.VibeCodingAssistant;
 import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.DocumentationAssistant;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
@@ -41,8 +40,8 @@ public class Activator implements BundleActivator
 	private static Activator bundle;
 
 	private ScopedPreferenceStore preferenceStore;
-	private ServoyAiModel chatModel;
-	private final List<Runnable> chatModelChangeListeners = new ArrayList<>();
+	private ServoyAiModel servoyAIModel;
+	private final List<Runnable> servoyAIModelChangeListeners = new ArrayList<>();
 
 	public static Activator getDefault()
 	{
@@ -72,43 +71,37 @@ public class Activator implements BundleActivator
 		SelectionTracker.getInstance().dispose();
 
 		preferenceStore = null;
-		clearChatModel();
+		clearServoyAiModel();
 	}
-
-	public VibeCodingAssistant getChatModel()
-	{
-		return getServoyAiModel().getAssistant();
-	}
-
 
 	public ServoyAiModel getServoyAiModel()
 	{
-		if (chatModel == null)
+		if (servoyAIModel == null)
 		{
-			chatModel = new ServoyAiModel(new AiConfiguration());
+			servoyAIModel = new ServoyAiModel(new AiConfiguration());
 		}
-		return chatModel;
+		return servoyAIModel;
 	}
 
-	public void clearChatModel()
+	public void clearServoyAiModel()
 	{
-		chatModel = null;
+		servoyAIModel = null;
 		fireChatModelChanged();
 	}
 
 	public void addChatModelChangeListener(Runnable listener)
 	{
-		chatModelChangeListeners.add(listener);
+		servoyAIModelChangeListeners.add(listener);
 	}
 
 	public void removeChatModelChangeListener(Runnable listener)
 	{
-		chatModelChangeListeners.remove(listener);
+		servoyAIModelChangeListeners.remove(listener);
 	}
 
 	private void fireChatModelChanged()
 	{
-		chatModelChangeListeners.forEach(Runnable::run);
+		servoyAIModelChangeListeners.forEach(Runnable::run);
 	}
 
 
@@ -122,17 +115,4 @@ public class Activator implements BundleActivator
 		return getServoyAiModel().getDocumentationAssistant();
 	}
 
-	/**
-	 * Clear chat memory for a specific memory ID.
-	 * This completely erases conversation history, allowing fresh start.
-	 * 
-	 * @param memoryId The memory ID to clear (typically "default" or solution name)
-	 */
-	public void clearChatMemory(String memoryId)
-	{
-		if (chatModel != null)
-		{
-			chatModel.clearAllMemories(memoryId);
-		}
-	}
 }

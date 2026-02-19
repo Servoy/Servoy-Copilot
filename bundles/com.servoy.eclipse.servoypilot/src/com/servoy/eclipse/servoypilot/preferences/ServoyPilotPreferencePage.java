@@ -145,7 +145,7 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 		{
 			updateDefaultModelOptions();
 		}
-		Activator.getDefault().clearChatModel();
+		Activator.getDefault().clearServoyAiModel();
 	}
 
 	@Override
@@ -167,7 +167,7 @@ public class ServoyPilotPreferencePage extends FieldEditorPreferencePage impleme
 	public boolean performOk()
 	{
 		boolean returnValue = super.performOk();
-		Activator.getDefault().clearChatModel();
+		Activator.getDefault().clearServoyAiModel();
 		return returnValue;
 
 	}

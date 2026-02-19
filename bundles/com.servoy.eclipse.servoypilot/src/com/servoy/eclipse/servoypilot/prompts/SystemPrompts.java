@@ -58,13 +58,13 @@ public class SystemPrompts
 			throw new RuntimeException("Failed to load system prompts from .servoy directory", e);
 		}
 		// now that the system prompts are (re)loaded we need to flush the models
-		Activator.getDefault().clearChatModel();
+		Activator.getDefault().clearServoyAiModel();
 	}
 
 
 	public String getChatPrompt()
 	{
-		return prompts.get("chat.txt");
+		return prompts.get("vibe-coding.txt");
 	}
 
 	public String getCompletionPrompt()
