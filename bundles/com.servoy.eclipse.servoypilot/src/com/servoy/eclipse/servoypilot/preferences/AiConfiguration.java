@@ -58,4 +58,9 @@ public class AiConfiguration
 		}
 	}
 
+	public boolean isValid()
+	{
+		return getApiKey() != null && !getApiKey().isEmpty() && getModel() != null && !getModel().isEmpty();
+	}
+
 }

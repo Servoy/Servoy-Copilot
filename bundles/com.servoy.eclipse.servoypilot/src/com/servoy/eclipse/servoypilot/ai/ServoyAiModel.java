@@ -43,22 +43,26 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 
 public class ServoyAiModel
 {
-	private final VibeCodingAssistant assistant;
+	private final AiConfiguration conf;
 	private final ChatMemoryStore vibeMemoryStore;
 	private final ChatMemoryStore documentationMemoryStore;
-	private final CompletionAssistent completionAssistant;
-	private final DocumentationAssistant documentationAssistant;
+
+	private VibeCodingAssistant assistant;
+	private CompletionAssistent completionAssistant;
+	private DocumentationAssistant documentationAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
-		String apiKey = conf.getApiKey();
-		String model = conf.getModel();
+		this.conf = conf;
 		// Create separate memory stores for each assistant
 		this.vibeMemoryStore = new InMemoryChatMemoryStore();
 		this.documentationMemoryStore = new InMemoryChatMemoryStore();
+	}
 
-		// create the models if there is an api key and model name
-		if (apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty())
+
+	public VibeCodingAssistant getVibeCodingAssistant()
+	{
+		if (assistant == null && conf.isValid())
 		{
 			assistant = switch (conf.getSelectedModel())
 			{
@@ -66,12 +70,28 @@ public class ServoyAiModel
 				case GEMINI -> createVibeCodingServices(createGeminiModel(conf));
 				case NONE -> null;
 			};
+		}
+		return assistant;
+	}
+
+	public CompletionAssistent getCompletionAssistant()
+	{
+		if (completionAssistant == null && conf.isValid())
+		{
 			completionAssistant = switch (conf.getSelectedModel())
 			{
 				case OPENAI -> createCompletionServices(createOpenAICompletionModel(conf));
 				case GEMINI -> createCompletionServices(createGeminiCompletionModel(conf));
 				case NONE -> null;
 			};
+		}
+		return completionAssistant;
+	}
+
+	public DocumentationAssistant getDocumentationAssistant()
+	{
+		if (documentationAssistant == null && conf.isValid())
+		{
 			documentationAssistant = switch (conf.getSelectedModel())
 			{
 				case OPENAI -> createDocumentationServices(createOpenAIDocumentationModel(conf));
@@ -79,27 +99,6 @@ public class ServoyAiModel
 				case NONE -> null;
 			};
 		}
-		else
-		{
-			assistant = null;
-			completionAssistant = null;
-			documentationAssistant = null;
-		}
-	}
-
-
-	public VibeCodingAssistant getVibeCodingAssistant()
-	{
-		return assistant;
-	}
-
-	public CompletionAssistent getCompletionAssistant()
-	{
-		return completionAssistant;
-	}
-
-	public DocumentationAssistant getDocumentationAssistant()
-	{
 		return documentationAssistant;
 	}
 
