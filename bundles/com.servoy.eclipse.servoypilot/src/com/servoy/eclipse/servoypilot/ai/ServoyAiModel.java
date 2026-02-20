@@ -100,21 +100,30 @@ public class ServoyAiModel
 		}
 		return documentationAssistant;
 	}
-	
+
 	public QuickFixAssistant getQuickFixAssistant()
 	{
 		if (quickFixAssistant == null && conf.isValid())
 		{
 			quickFixAssistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createQuickFixServices(createOpenAIModel(conf));
-				case GEMINI -> createQuickFixServices(createGeminiModel(conf));
+				case OPENAI -> createQuickFixServices(createQuickFixOpenAIModel(conf));
+				case GEMINI -> createQuickFixServices(createQuickFixGeminiModel(conf));
 				case NONE -> null;
 			};
 		}
 		return quickFixAssistant;
 	}
 
+	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
+	{
+		return OpenAiChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
+	}
+
+	private ChatModel createQuickFixGeminiModel(AiConfiguration conf)
+	{
+		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).allowCodeExecution(true).build();
+	}
 
 	public AiConfiguration getConfiguration()
 	{
@@ -221,12 +230,12 @@ public class ServoyAiModel
 		return builder.build();
 	}
 
-	private QuickFixAssistant createQuickFixServices(StreamingChatModel model)
+	private QuickFixAssistant createQuickFixServices(ChatModel model)
 	{
 		String systemPrompt = SystemPrompts.INSTANCE.getQuickFixPrompt();
 
 		return AiServices.builder(QuickFixAssistant.class)
-			.streamingChatModel(model)
+			.chatModel(model)
 			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 				.id(memoryId)
 				.maxMessages(MAX_MESSAGES)
