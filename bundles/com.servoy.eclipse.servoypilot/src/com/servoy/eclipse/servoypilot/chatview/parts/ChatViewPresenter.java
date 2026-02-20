@@ -535,64 +535,6 @@ public class ChatViewPresenter
 		});
 	}
 
-	public void onRemoveMessage(String messageId)
-	{
-		// Use positive conditional - process valid message IDs
-		if (messageId.startsWith("msg-"))
-		{
-			try
-			{
-				int filteredIndex = Integer.parseInt(messageId.substring(4)); // "msg-5" → 5
-
-				// Get all messages from store
-				List<ChatMessage> allMessages = Activator.getDefault().getServoyAiModel().getSharedMemoryStore().getMessages(currentMemoryId);
-
-				if (allMessages != null && !allMessages.isEmpty())
-				{
-					// Filter to displayable messages to find the correct store index
-					int currentFilteredIndex = 0;
-					int storeIndexToDelete = -1;
-
-					for (int i = 0; i < allMessages.size(); i++)
-					{
-						ChatMessage msg = allMessages.get(i);
-
-						// Skip non-displayable messages
-						if (msg instanceof SystemMessage || msg instanceof ToolExecutionResultMessage)
-						{
-							continue;
-						}
-
-						// Check if this is the message to delete
-						if (currentFilteredIndex == filteredIndex)
-						{
-							storeIndexToDelete = i;
-							break;
-						}
-
-						currentFilteredIndex++;
-					}
-
-					// Delete message from store if found
-					if (storeIndexToDelete >= 0)
-					{
-						allMessages.remove(storeIndexToDelete);
-						Activator.getDefault().getServoyAiModel().getSharedMemoryStore().updateMessages(currentMemoryId, allMessages);
-
-						// Refresh UI from updated store
-						refreshViewFromMemory();
-
-						logger.info("Deleted message at filtered index " + filteredIndex + " (store index " + storeIndexToDelete + ")");
-					}
-				}
-			}
-			catch (NumberFormatException e)
-			{
-				logger.error("Invalid message ID format: " + messageId, e);
-			}
-		}
-	}
-
 	public void setChatView(ChatView chatView)
 	{
 		this.chatView = chatView;

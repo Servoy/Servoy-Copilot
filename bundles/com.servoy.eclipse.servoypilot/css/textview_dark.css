@@ -223,15 +223,6 @@ summary {
   background-color: var(--background-light);
 }
 
-/* Message toolbar and remove icon */
-.message-toolbar { position: relative; text-align: right; margin-bottom: 4px; display: none; }
-.chat-bubble .message-toolbar {
-    display: none !important;
-}
-.chat-bubble:hover .message-toolbar {
-    display: block !important;
-}
-
 /* Notification system */
 #notification-container {
   position: fixed;

@@ -95,7 +95,8 @@ public class ChatView
 
 	private Runnable chatModelListener = () -> {
 		uiSync.asyncExec(() -> {
-			boolean hasModel = Activator.getDefault().getServoyAiModel() != null;
+			boolean hasModel = Activator.getDefault().getServoyAiModel() != null &&
+				Activator.getDefault().getServoyAiModel().getConfiguration().isValid();
 			inputArea.setEditable(hasModel);
 			if (!hasModel)
 			{
@@ -228,7 +229,8 @@ public class ChatView
 	public void setInputEnabled(boolean enabled)
 	{
 		uiSync.asyncExec(() -> {
-			boolean realEnabled = Activator.getDefault().getServoyAiModel() != null && enabled;
+			boolean realEnabled = Activator.getDefault().getServoyAiModel() != null &&
+				Activator.getDefault().getServoyAiModel().getConfiguration().isValid() && enabled;
 			inputArea.setEnabled(realEnabled);
 			if (realEnabled)
 			{
@@ -456,7 +458,6 @@ public class ChatView
 		new InsertCodeFunction(browser, "eclipseInsertCode");
 		new NewFileFunction(browser, "eclipseNewFile");
 		new ScrollInteractionFunction(browser, "eclipseScrollInteraction");
-		new RemoveMessageFunction(browser, "eclipseRemoveMessage");
 	}
 
 	private void initializeChatView(Browser browser)
@@ -578,19 +579,9 @@ public class ChatView
 				node.setAttribute("id", "message-${id}");
 				node.setAttribute("class", "${cssClass}");
 
-				var toolbar = document.createElement('div');
-				toolbar.setAttribute('class', 'message-toolbar');
-
-				var trash = document.createElement('i');
-				trash.setAttribute('class', 'fa-solid fa-trash');
-				trash.onclick = function() { window.eclipseRemoveMessage('${id}'); };
-
-				toolbar.appendChild(trash);
-
 				var content = document.createElement('div');
 				content.setAttribute('id', 'message-content-${id}');
 
-				node.appendChild(toolbar);
 				node.appendChild(content);
 
 				document.getElementById("content").appendChild(node);
@@ -878,30 +869,6 @@ public class ChatView
 				String codeBlock = (String)arguments[0];
 				String lang = (String)arguments[1];
 				presenter.onNewFile(codeBlock, lang);
-			}
-			return null;
-		}
-	}
-
-	/**
-	 * This function establishes a JavaScript-to-Java callback for the browser,
-	 * allowing the browser to notify Java when the user scrolls. It is invoked from
-	 * JavaScript when the scroll position changes.
-	 */
-	private class RemoveMessageFunction extends BrowserFunction
-	{
-		public RemoveMessageFunction(Browser browser, String name)
-		{
-			super(browser, name);
-		}
-
-		@Override
-		public Object function(Object[] arguments)
-		{
-			if (arguments.length > 0 && arguments[0] instanceof String)
-			{
-				String messageId = (String)arguments[0];
-				presenter.onRemoveMessage(messageId);
 			}
 			return null;
 		}

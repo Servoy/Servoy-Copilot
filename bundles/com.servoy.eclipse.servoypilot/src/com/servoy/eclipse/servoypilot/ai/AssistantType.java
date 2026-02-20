@@ -18,7 +18,7 @@ package com.servoy.eclipse.servoypilot.ai;
 
 public enum AssistantType
 {
-	CHAT("VibeCoding Assistant", "-vibe"),
+	VIBE_CODING("VibeCoding Assistant", "-vibe"),
 	DOCUMENTATION("Documentation Assistant", "-documentation"),
 	QUICKFIX("QuickFix Assistant", "-quickfix");
 
@@ -47,6 +47,6 @@ public enum AssistantType
 		{
 			return values()[index];
 		}
-		return CHAT; // Default
+		return VIBE_CODING; // Default
 	}
 }

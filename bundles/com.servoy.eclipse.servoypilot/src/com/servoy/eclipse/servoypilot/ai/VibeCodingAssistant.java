@@ -21,12 +21,12 @@ public interface VibeCodingAssistant extends IAssistant
 	@Override
 	default AssistantType getType()
 	{
-		return AssistantType.CHAT;
+		return AssistantType.VIBE_CODING;
 	}
 
 	@Override
 	default String getDisplayName()
 	{
-		return AssistantType.CHAT.getDisplayName();
+		return AssistantType.VIBE_CODING.getDisplayName();
 	}
 }

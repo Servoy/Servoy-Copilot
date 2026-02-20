@@ -100,7 +100,7 @@ public class ServoyAiModel
 		}
 		return documentationAssistant;
 	}
-
+	
 	public QuickFixAssistant getQuickFixAssistant()
 	{
 		if (quickFixAssistant == null && conf.isValid())
@@ -113,6 +113,12 @@ public class ServoyAiModel
 			};
 		}
 		return quickFixAssistant;
+	}
+
+
+	public AiConfiguration getConfiguration()
+	{
+		return conf;
 	}
 
 
@@ -139,6 +145,7 @@ public class ServoyAiModel
 		builder.streamingChatModel(model);
 		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 			.id(memoryId)
+			.alwaysKeepSystemMessageFirst(true)
 			.maxMessages(MAX_MESSAGES)
 			.chatMemoryStore(sharedMemoryStore)
 			.build());
@@ -202,6 +209,7 @@ public class ServoyAiModel
 		builder.streamingChatModel(model);
 		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 			.id(memoryId)
+			.alwaysKeepSystemMessageFirst(true)
 			.maxMessages(MAX_MESSAGES)
 			.chatMemoryStore(sharedMemoryStore)
 			.build());
