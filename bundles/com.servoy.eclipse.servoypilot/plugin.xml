@@ -113,4 +113,16 @@
       </menuContribution>
    </extension>
 
+	<!--extension point="org.eclipse.ui.ide.markerResolution">
+		<markerResolutionGenerator
+			markerType="org.eclipse.core.resources.problemmarker"
+			class="com.servoy.eclipse.servoypilot.quickfix.ServoyAIQuickFixGenerator" />
+	</extension-->
+	
+	<extension point="org.eclipse.dltk.ui.correctionProcessor">
+     <correctionProcessor
+            class="com.servoy.eclipse.servoypilot.quickfix.ServoyAICorrectionProcessor"
+            nature="org.eclipse.dltk.javascript.core.nature">
+      </correctionProcessor>
+</extension>
 </plugin>

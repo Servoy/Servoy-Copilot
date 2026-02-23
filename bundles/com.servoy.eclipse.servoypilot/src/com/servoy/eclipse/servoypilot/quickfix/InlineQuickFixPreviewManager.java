@@ -1,0 +1,422 @@
+/*
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+
+ This program is free software; you can redistribute it and/or modify it under
+ the terms of the GNU Affero General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License along
+ with this program; if not, see http://www.gnu.org/licenses or write to the Free
+ Software Foundation,Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
+ */
+
+package com.servoy.eclipse.servoypilot.quickfix;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
+import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.source.ISourceViewer;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.LineBackgroundListener;
+import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.GC;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.layout.RowData;
+import org.eclipse.swt.layout.RowLayout;
+import org.eclipse.swt.widgets.Canvas;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.texteditor.ITextEditor;
+
+import com.servoy.eclipse.model.util.ServoyLog;
+
+public class InlineQuickFixPreviewManager
+{
+	private String originalContent;
+	private LineBackgroundListener backgroundListener;
+	private Composite floatingBar;
+
+	private final Set<Integer> addedLines = new HashSet<>();
+	private final Set<Integer> removedLines = new HashSet<>();
+
+	private final List<PreviewChange> previewChanges = new ArrayList<>();
+
+	private final List<Color> colors = new ArrayList<>();
+
+	private static class PreviewChange
+	{
+		int startOffset;
+		int originalLength;
+		String modifiedLine;
+		public String lineDelimiter;
+	}
+
+	public void preview(ITextEditor editor, QuickFixProposal proposal) throws Exception
+	{
+		if (!(editor instanceof ScriptEditor))
+		{
+			return;
+		}
+
+		ScriptEditor scriptEditor = (ScriptEditor)editor;
+		ISourceViewer viewer = scriptEditor.getViewer();
+		if (viewer == null)
+		{
+			return;
+		}
+
+		StyledText textWidget = viewer.getTextWidget();
+		IDocument document = viewer.getDocument();
+		originalContent = document.get();
+
+		addedLines.clear();
+		removedLines.clear();
+		previewChanges.clear();
+
+		Display display = textWidget.getDisplay();
+		Color addedColor = new Color(display, 230, 255, 230);
+		colors.add(addedColor);
+		Color removedColor = new Color(display, 255, 230, 230);
+		colors.add(removedColor);
+
+		for (TextEdit edit : proposal.getEdits())
+		{
+			int startLine = document.getLineOfOffset(edit.getOffset());
+
+			int lineOffset = document.getLineOffset(startLine);
+			int lineLength = document.getLineLength(startLine);
+
+			String lineDelimiter = document.getLineDelimiter(startLine);
+			if (lineDelimiter == null)
+			{
+				lineDelimiter = "\n";
+			}
+
+			String originalLine = document.get(
+				lineOffset,
+				lineLength - lineDelimiter.length());
+
+			int relativeOffset = edit.getOffset() - lineOffset;
+			String modifiedLine = originalLine.substring(0, relativeOffset) + edit.getReplacement() + originalLine.substring(relativeOffset + edit.getLength());
+			String previewBlock = originalLine + lineDelimiter +
+				modifiedLine;
+
+			// replace ONLY the original line content (including delimiter)
+			document.replace(
+				lineOffset,
+				lineLength,
+				previewBlock + lineDelimiter);
+
+			removedLines.add(startLine);
+			addedLines.add(startLine + 1);
+
+			PreviewChange change = new PreviewChange();
+			change.lineDelimiter = lineDelimiter;
+			change.startOffset = lineOffset;
+			change.originalLength = previewBlock.length() + lineDelimiter.length();
+			change.modifiedLine = modifiedLine;
+			previewChanges.add(change);
+		}
+
+		backgroundListener = event -> {
+			try
+			{
+				int lineIndex = document.getLineOfOffset(event.lineOffset);
+				if (removedLines.contains(lineIndex))
+				{
+					event.lineBackground = removedColor;
+				}
+				else if (addedLines.contains(lineIndex))
+				{
+					event.lineBackground = addedColor;
+				}
+			}
+			catch (BadLocationException e)
+			{
+				ServoyLog.logError(e);
+			}
+		};
+
+		textWidget.addLineBackgroundListener(backgroundListener);
+		textWidget.redraw();
+
+		showAcceptRejectUI(editor);
+	}
+
+	private void accept(ITextEditor editor)
+	{
+		try
+		{
+			ScriptEditor scriptEditor = (ScriptEditor)editor;
+			ISourceViewer viewer = scriptEditor.getViewer();
+			IDocument document = viewer.getDocument();
+
+			for (int i = previewChanges.size() - 1; i >= 0; i--)
+			{
+				PreviewChange change = previewChanges.get(i);
+				int line = document.getLineOfOffset(change.startOffset);
+				int offset = document.getLineOffset(line);
+				document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot accept quickfix proposal", e);
+		}
+
+		cleanup(editor);
+	}
+
+	private void reject(ITextEditor editor)
+	{
+		//TODO fix the caret position, do not replace the whole text, just remove the proposed fix
+		try
+		{
+			ScriptEditor scriptEditor = (ScriptEditor)editor;
+			ISourceViewer viewer = scriptEditor.getViewer();
+			viewer.getDocument().set(originalContent);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error on quickfix proposal rejection: ", e);
+		}
+
+		cleanup(editor);
+	}
+
+	private void cleanup(ITextEditor editor)
+	{
+		try
+		{
+			ScriptEditor scriptEditor = (ScriptEditor)editor;
+			ISourceViewer viewer = scriptEditor.getViewer();
+			StyledText textWidget = viewer.getTextWidget();
+
+			if (backgroundListener != null)
+			{
+				textWidget.removeLineBackgroundListener(backgroundListener);
+				backgroundListener = null;
+			}
+			for (Color color : colors)
+			{
+				color.dispose();
+			}
+
+			addedLines.clear();
+			removedLines.clear();
+			previewChanges.clear();
+
+			disposeFloatingBar();
+
+			textWidget.redraw();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error on cleanup.", e);
+		}
+	}
+
+	private void showAcceptRejectUI(ITextEditor editor)
+	{
+		if (!(editor instanceof ScriptEditor))
+		{
+			return;
+		}
+
+		ScriptEditor scriptEditor = (ScriptEditor)editor;
+		StyledText text = scriptEditor.getViewer().getTextWidget();
+
+		if (floatingBar != null && !floatingBar.isDisposed())
+		{
+			floatingBar.dispose();
+		}
+
+		floatingBar = new Composite(text, SWT.DOUBLE_BUFFERED);
+
+		RowLayout layout = new RowLayout(SWT.HORIZONTAL);
+		layout.marginTop = 3;
+		layout.marginBottom = 0;
+		layout.marginLeft = 0;
+		layout.marginRight = 0;
+		layout.spacing = 6;
+		layout.wrap = false;
+		layout.center = true;
+		floatingBar.setLayout(layout);
+		int lineHeight = text.getLineHeight() + 5;
+		Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
+		floatingBar.setSize(size.x, lineHeight);
+
+		Color blue = new Color(text.getDisplay(), 43, 173, 223);
+		colors.add(blue);
+		Color blueHover = new Color(text.getDisplay(), 30, 155, 205);
+		colors.add(blueHover);
+		Color neutral = new Color(text.getDisplay(), 200, 200, 200);
+		colors.add(neutral);
+		Color neutralHover = new Color(text.getDisplay(), 170, 170, 170);
+		colors.add(neutralHover);
+
+		createStyledButton(
+			floatingBar,
+			text,
+			"✔ Keep",
+			blue,
+			blueHover,
+			() -> {
+				accept(editor);
+				disposeFloatingBar();
+			});
+
+		createStyledButton(
+			floatingBar,
+			text,
+			"✖ Undo",
+			neutral,
+			neutralHover,
+			() -> {
+				reject(editor);
+				disposeFloatingBar();
+			});
+
+		createStyledButton(
+			floatingBar,
+			text,
+			"⇄ Diff",
+			neutral,
+			neutralHover,
+			() -> {
+				toggleDiffEditor();
+			});
+
+		floatingBar.pack();
+		positionFloatingBar(text);
+
+		// Reposition on scroll
+		text.addListener(SWT.MouseWheel, e -> positionFloatingBar(text));
+		text.addListener(SWT.Resize, e -> positionFloatingBar(text));
+		text.addListener(SWT.KeyDown, e -> positionFloatingBar(text));
+
+		floatingBar.setVisible(true);
+	}
+
+	private Control createStyledButton(
+		Composite parent,
+		StyledText styledText,
+		String text,
+		Color normalBg,
+		Color hoverBg,
+		Runnable action)
+	{
+		Canvas button = new Canvas(parent, SWT.DOUBLE_BUFFERED);
+		Display display = parent.getDisplay();
+
+		final int ARC = 8;
+		final int PADDING_X = 12;
+		final int lineHeight = styledText.getLineHeight() + 5;
+		button.setCursor(display.getSystemCursor(SWT.CURSOR_HAND));
+
+
+		final boolean[] hovered = { false };
+		button.addPaintListener(e -> {
+			GC gc = e.gc;
+			gc.setAntialias(SWT.ON);
+			Rectangle bounds = button.getClientArea();
+			gc.setBackground(hovered[0] ? hoverBg : normalBg);
+			gc.fillRoundRectangle(
+				bounds.x,
+				bounds.y,
+				bounds.width - 1,
+				bounds.height - 1,
+				ARC,
+				ARC);
+			gc.setForeground(display.getSystemColor(SWT.COLOR_WHITE));
+			Point textSize = gc.textExtent(text);
+			int textX = bounds.x + (bounds.width - textSize.x) / 2;
+			int textY = bounds.y + (bounds.height - textSize.y) / 2;
+			gc.drawText(text, textX, textY, true);
+		});
+
+		button.addListener(SWT.MouseEnter, e -> {
+			hovered[0] = true;
+			button.redraw();
+		});
+
+		button.addListener(SWT.MouseExit, e -> {
+			hovered[0] = false;
+			button.redraw();
+		});
+
+		button.addListener(SWT.MouseUp, e -> {
+			if (action != null)
+			{
+				action.run();
+			}
+		});
+
+		GC gc = new GC(button);
+		Point textSize = gc.textExtent(text);
+		gc.dispose();
+
+		int width = textSize.x + PADDING_X * 2;
+		button.setSize(width, lineHeight);
+		RowData rd = new RowData();
+		rd.height = lineHeight;
+		button.setLayoutData(rd);
+
+		return button;
+	}
+
+
+	private void positionFloatingBar(StyledText text)
+	{
+		if (floatingBar == null || floatingBar.isDisposed())
+		{
+			return;
+		}
+
+		if (addedLines.isEmpty())
+		{
+			return;
+		}
+
+		int firstLine = addedLines.iterator().next();
+
+		try
+		{
+			int y = text.getLinePixel(firstLine) - text.getLineHeight();
+			Rectangle clientArea = text.getClientArea();
+			Point size = floatingBar.getSize();
+			int x = clientArea.width - size.x - 10;
+			floatingBar.setLocation(x, y);
+		}
+		catch (Exception ignore)
+		{
+		}
+	}
+
+	private void disposeFloatingBar()
+	{
+		if (floatingBar != null && !floatingBar.isDisposed())
+		{
+			floatingBar.dispose();
+		}
+	}
+
+	private void toggleDiffEditor()
+	{
+		// TODO Auto-generated method stub
+
+	}
+}
