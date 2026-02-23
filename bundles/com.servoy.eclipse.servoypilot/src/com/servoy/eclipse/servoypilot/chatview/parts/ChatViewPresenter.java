@@ -20,7 +20,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +48,7 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.WizardNewFileCreationPage;
 
+import com.servoy.eclipse.core.IActiveProjectListener;
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -88,8 +88,8 @@ public class ChatViewPresenter
 
 	private ChatView chatView;
 	private String solutionName = "default"; // Current solution name
-	private String currentMemoryId = "default-chat"; // Memory ID for chat assistant conversation isolation
-	private Object activeProjectListener; // IActiveProjectListener proxy
+	private String currentMemoryId = "default-vibe"; // Memory ID for chat assistant conversation isolation
+	private IActiveProjectListener activeProjectListener; // Solution activation listener
 	private IAssistant currentAssistant; // Currently active assistant
 	private IAssistant[] availableAssistants; // Array of available assistants for combo population
 
@@ -111,34 +111,36 @@ public class ChatViewPresenter
 			IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
 			if (servoyModel != null)
 			{
-				// Use reflection to avoid compile-time dependency on IActiveProjectListener
-				Class< ? > listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
-
-				Object listener = java.lang.reflect.Proxy.newProxyInstance(
-					listenerClass.getClassLoader(),
-					new Class< ? >[] { listenerClass },
-					(proxy, method, args) -> {
-						if ("activeProjectChanged".equals(method.getName()) && args != null && args.length > 0)
-						{
-							ServoyProject project = (ServoyProject)args[0];
-							if (project != null)
-							{
-								String projectName = project.getProject().getName();
-								onSolutionActivated(projectName);
-							}
-						}
-						else if ("activeProjectWillChange".equals(method.getName()))
+				activeProjectListener = new IActiveProjectListener()
+				{
+					@Override
+					public void activeProjectChanged(ServoyProject activeProject)
 					{
-						return Boolean.TRUE;
+						if (activeProject != null)
+						{
+							String projectName = activeProject.getProject().getName();
+							onSolutionActivated(projectName);
+						}
 					}
-						return null;
-					});
 
-				activeProjectListener = listener;
+					@Override
+					public boolean activeProjectWillChange(ServoyProject activeProject, ServoyProject toProject)
+					{
+						return true;
+					}
 
-				// Add listener using reflection
-				servoyModel.getClass().getMethod("addActiveProjectListener", listenerClass)
-					.invoke(servoyModel, listener);
+					@Override
+					public void activeProjectUpdated(ServoyProject activeProject, int updateInfo)
+					{
+						// Not needed for our use case
+					}
+				};
+
+				// addActiveProjectListener is on concrete ServoyModel class, not IServoyModel interface
+				// Use reflection to call it without casting to concrete type
+				servoyModel.getClass().getMethod("addActiveProjectListener", IActiveProjectListener.class)
+					.invoke(servoyModel, activeProjectListener);
+				logger.info("Solution activation listener registered successfully");
 			}
 		}
 		catch (Exception e)
@@ -158,9 +160,10 @@ public class ChatViewPresenter
 				IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
 				if (servoyModel != null)
 				{
-					Class< ? > listenerClass = Class.forName("com.servoy.eclipse.core.IActiveProjectListener");
-					servoyModel.getClass().getMethod("removeActiveProjectListener", listenerClass)
+					// removeActiveProjectListener is on concrete ServoyModel class, not IServoyModel interface
+					servoyModel.getClass().getMethod("removeActiveProjectListener", IActiveProjectListener.class)
 						.invoke(servoyModel, activeProjectListener);
+					logger.info("Solution activation listener removed successfully");
 				}
 			}
 			catch (Exception e)

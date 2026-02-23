@@ -1,21 +1,24 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 19, 2026  
+**Last Updated:** February 23, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
 - ✅ Multi-Assistant View Switcher implemented and functional
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
+- ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
 - ✅ Documentation Assistant ready for context menu integration
-- ⚠️ **KNOWN BUG:** Message deletion not working (UUID vs msg-N ID mismatch)
-- 🔄 **TESTING REQUIRED:** Full memory refactoring validation pending
+- ✅ QuickFix Assistant implemented (non-ChatView, stateful)
+- ✅ **Delete Icon Removed (Feb 20, 2026):** Message deletion feature completely removed due to UUID/msg-N mismatch bug
 
 ---
 
 ## ✅ COMPLETED - MEMORY STORE REFACTORING (February 19, 2026)
 
 **Implementation Complete:** Conversation memory now uses single source of truth (LangChain4j memory store). Eliminated dual storage pattern (UI list + memory store).
+
+**Validation Status:** ✅ COMPLETE - Fully tested and working correctly in production.
 
 ### **Architecture Changes**
 
@@ -40,6 +43,7 @@ private final ChatMemoryStore sharedMemoryStore = new InMemoryChatMemoryStore();
 - Format: `<solutionName>-<assistantSuffix>`
 - VibeCoding: `"MySolution-vibe"`
 - Documentation: `"MySolution-documentation"`
+- QuickFix: `"MySolution-quickfix"`
 - Completion: No memory (stateless)
 
 **MessageWindowChatMemory Configuration:**
@@ -88,38 +92,22 @@ StringBuilder accumulatedResponse = new StringBuilder();
 
 ### **Message Deletion**
 
-**Current Implementation:**
-```java
-public void onRemoveMessage(String messageId) {
-    if (messageId.startsWith("msg-")) {
-        // Parse filtered index from "msg-5" → 5
-        // Map to store index (account for hidden System/Tool messages)
-        // Delete from store
-        // Refresh UI
-    }
-}
-```
+**Status:** Feature removed (February 20, 2026)
 
-**⚠️ KNOWN BUG - Message Deletion Not Working:**
+**Reason for Removal:**
+- UUID vs. msg-N ID mismatch made deletion unreliable
+- UI/memory sync issues when 40+ messages accumulated without refresh
+- Complexity not justified for limited use case
 
-**Root Cause:**
-- Streaming messages use **UUID-based IDs** (e.g., `"f47ac10b-58cc-4372-a567-0e02b2c3d479"`)
-- Delete method expects **`msg-N` format** (e.g., `"msg-5"`)
-- Check `if (!messageId.startsWith("msg-"))` fails for UUIDs
-- Method returns early without deleting
+**What Was Removed:**
+- Trash icon in message toolbar (HTML/JavaScript)
+- `RemoveMessageFunction` BrowserFunction class
+- `ChatViewPresenter.onRemoveMessage()` method
+- `.message-toolbar` CSS styling (dark and light themes)
 
-**Why UUIDs?**
-- Removed `refreshViewFromMemory()` call after streaming completes (to avoid flickering)
-- Messages stay with original UUID-based IDs from `onSendUserMessage()`
-- Never converted to `msg-N` format
-
-**Fix Needed:**
-- Handle both UUID and `msg-N` formats in `onRemoveMessage()`
-- OR: Always refresh after completion to normalize IDs
-- OR: Track UUID → store index mapping
-
-**Workaround:**
-- Switch assistant and switch back → Triggers refresh → IDs become `msg-N` → Delete works
+**Alternative:**
+- Users can clear entire conversation using "Clear" button in toolbar
+- Solution switching auto-clears all messages
 
 ### **Solution Switching**
 
@@ -147,31 +135,27 @@ public void clearAllMemories(String solutionName) {
 ✅ **Single source of truth** - No dual storage confusion  
 ✅ **Automatic sync** - UI always reflects memory state  
 ✅ **Simplified code** - Removed `contents` list and all operations on it  
-✅ **Correct deletion** - Affects both store and UI (when IDs match)  
 ✅ **Assistant isolation** - Independent memories via memoryId  
 ✅ **Smooth streaming** - Token accumulation works correctly  
 ✅ **No flickering** - Removed unnecessary refresh after streaming  
 
 ### **Testing Status**
 
-🔄 **PENDING FULL VALIDATION:**
+✅ **VALIDATION COMPLETE (February 23, 2026):**
 
-**Test File:** `testprompts/memory-refactoring-test-prompts.md` (20 test cases)
+All memory refactoring features have been tested and validated in production:
 
-**Tested:**
+**Tested and Working:**
 - ✅ Streaming with token accumulation
 - ✅ Assistant switching
 - ✅ Solution switching
 - ✅ Memory isolation per assistant
+- ✅ 40 message limit eviction
+- ✅ Error handling edge cases
+- ✅ Rapid assistant switching
+- ✅ Full end-to-end workflow
 
-**Not Yet Tested:**
-- ❌ Message deletion (known bug)
-- ❌ 40 message limit eviction
-- ❌ Error handling edge cases
-- ❌ Rapid assistant switching
-- ❌ Full end-to-end workflow
-
-**Action Required:** Run all 20 test cases from test file after fixing deletion bug
+**Result:** System is stable and performing as designed.
 
 ---
 
@@ -344,17 +328,18 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |-- src/com/servoy/eclipse/servoypilot/
 |   |-- Activator.java                        # Plugin lifecycle
 |   |-- ai/
-|   |   |-- IAssistant.java                   # Common interface for all chat view assistants (NEW - Feb 18, 2026)
-|   |   |-- AssistantType.java                # Enum: CHAT, DOCUMENTATION with display names and memory suffixes (NEW - Feb 18, 2026)
+|   |   |-- IAssistant.java                   # Common interface for all conversational assistants (Feb 18, 2026)
+|   |   |-- AssistantType.java                # Enum: VIBE_CODING, DOCUMENTATION, QUICKFIX with display names and memory suffixes (Updated Feb 23, 2026)
 |   |   |-- VibeCodingAssistant.java          # LangChain4j interface for chat assistant (extends IAssistant)
 |   |   |-- DocumentationAssistant.java       # LangChain4j interface for documentation assistant (extends IAssistant)
+|   |   |-- QuickFixAssistant.java            # LangChain4j interface for quick fix assistant (extends IAssistant) - NEW Feb 23, 2026
 |   |   |-- CompletionAssistent.java          # LangChain4j interface for code completion (stateless)
 |   |   |-- AIModelProvider.java              # Model provider interface
 |   |   |-- AIModelTools.java                 # Model-related tools
-|   |   +-- ServoyAiModel.java                # AI model initialization, memory management
+|   |   +-- ServoyAiModel.java                # AI model initialization, single shared memory store management
 |   |-- chatview/parts/
 |   |   |-- ChatView.java                     # SWT/Browser UI with assistant selector combo (UPDATED - Feb 18, 2026)
-|   |   |-- ChatViewPresenter.java            # Multi-assistant management, conversation logic (UPDATED - Feb 18, 2026)
+|   |   |-- ChatViewPresenter.java            # Multi-assistant management, conversation logic (UPDATED - Feb 23, 2026)
 |   |   |-- CodeEditingService.java           # Diff generation (JGit)
 |   |   +-- ApplyPatchWizardHelper.java       # Code patch application UI
 |   |-- context/                              # Code context gathering
@@ -419,7 +404,8 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
     |-- system-prompts/                        # System prompts
     |   |-- chat.txt                           # Default chat system prompt
     |   |-- completion.txt                     # Default completion system prompt
-    |   +-- documentation.txt                  # Documentation assistant system prompt (NEW - Feb 17, 2026)
+    |   |-- documentation.txt                  # Documentation assistant system prompt (Feb 17, 2026)
+    |   +-- quickfix.txt                       # QuickFix assistant system prompt (Feb 23, 2026)
     |-- embeddings/                            # Embedding files for RAG
     |   |-- embeddings.list                    # List of embedding files
     |   |-- forms.txt
@@ -492,12 +478,12 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 - Initialize OpenAI or Gemini streaming chat models based on user preferences
 - Configure LangChain4j `AiServices` with tools and memory
 - Provide system prompts via `systemMessageProvider` (per assistant type)
-- Manage separate memory stores per assistant (InMemoryChatMemoryStore)
+- Manage single shared memory store (`sharedMemoryStore`) used by all assistants
 - Register tools appropriate for each assistant type
 
-**Three Assistant Types (Updated Feb 18, 2026):**
+**Four Assistant Types (Updated Feb 23, 2026):**
 
-All assistants implement the `IAssistant` interface for unified management in ChatView:
+The system provides four specialized assistants. Three implement the `IAssistant` interface for unified management:
 
 ```java
 public interface IAssistant {
@@ -513,8 +499,8 @@ public interface IAssistant {
    - Purpose: General conversation and Servoy development assistance
    - System Prompt: `chat.txt` (~2.4K tokens)
    - Tools: Full toolset (12 tool classes, 40+ individual tools)
-   - Memory: 40 messages max, solution-scoped with `-chat` suffix
-   - UI: ChatView (shared with all assistants)
+   - Memory: 40 messages max, solution-scoped with `-vibe` suffix
+   - UI: ChatView (shared with Documentation assistant)
    - LangChain4j generates implementation for annotated interface method
 
 2. **Completion Assistant** (`CompletionAssistent.java`):
@@ -536,11 +522,25 @@ public interface IAssistant {
    - UI: ChatView (shared with VibeCoding assistant)
    - LangChain4j generates implementation for annotated interface method
 
+4. **QuickFix Assistant** (`QuickFixAssistant.java extends IAssistant`) ✨ **NEW**:
+   - Interface: `String fix(String prompt)` (non-streaming, synchronous)
+   - Purpose: Quick fixes for code issues and errors
+   - System Prompt: `quickfix.txt`
+   - Tools: None currently
+   - Memory: 40 messages max, solution-scoped with `-quickfix` suffix
+   - Models: Same as main chat models (OpenAI/Gemini)
+   - UI: **Not yet in ChatView dropdown** - Currently accessible only programmatically
+   - **Implementation Status:** 
+     - ✅ Interface and memory management complete in ServoyAiModel
+     - ❌ Not yet added to ChatViewPresenter's `availableAssistants` array
+     - Future: May be added to UI for conversational quick fixes
+
 **AssistantType Enum:**
 ```java
 public enum AssistantType {
-    CHAT("VibeCoding Assistant", "-chat"),
-    DOCUMENTATION("Documentation Assistant", "-documentation");
+    VIBE_CODING("VibeCoding Assistant", "-vibe"),
+    DOCUMENTATION("Documentation Assistant", "-documentation"),
+    QUICKFIX("QuickFix Assistant", "-quickfix");
     
     public String getDisplayName();
     public String getMemorySuffix();
@@ -555,64 +555,80 @@ public enum AssistantType {
 
 ### 3.3 Conversation Memory Management
 
-**Architecture:** Stateless LLM with Client-Side Memory + Independent Memory Stores per Assistant
+**Architecture:** Stateless LLM with Client-Side Memory + Shared Memory Store for All Assistants
 
 LLM APIs (OpenAI, Gemini) are **stateless** - they don't remember conversations. All context must be sent with each request.
 
-**Implementation (Updated Feb 17, 2026):**
-- **Separate Memory Stores:**
-  - `chatMemoryStore`: For chat assistant conversations
-  - `documentationMemoryStore`: For documentation assistant conversations
+**Implementation (Updated Feb 23, 2026):**
+- **Single Shared Memory Store:**
+  - `sharedMemoryStore`: One `InMemoryChatMemoryStore` instance shared by all assistants
+  - VibeCoding, Documentation, and QuickFix assistants all use the same store
   - Completion assistant: **No memory** (stateless)
 - `ChatMemory`: `MessageWindowChatMemory` with `maxMessages = 40`
-- **Memory ID Format**: `<SolutionName>-<AssistantType>`
-  - Chat: `"MySolution-chat"`
+- **Memory ID Format**: `<SolutionName>-<AssistantType.getMemorySuffix()>`
+  - VibeCoding: `"MySolution-vibe"`
   - Documentation: `"MySolution-documentation"`
+  - QuickFix: `"MySolution-quickfix"`
   - Completion: N/A (no memory)
 - **Automatic trimming**: LangChain4j removes oldest messages when limit exceeded
 - **System prompt**: Always included via `systemMessageProvider` (not stored in memory)
 
 **Memory Management Methods:**
-- `clearChatMemory(String solutionName)` - Clear only chat assistant memory
-- `clearDocumentationMemory(String solutionName)` - Clear only documentation assistant memory
-- `clearAllMemories(String solutionName)` - Clear both chat and documentation memories
+- `clearMemory(String memoryId)` - Clear specific assistant memory
+- `clearAllMemories(String solutionName)` - Clear all assistant memories for a solution (iterates through all AssistantType values)
+- `getSharedMemoryStore()` - Access the single shared memory store instance
 
-**Benefits of Independent Memory:**
-- Each assistant has isolated conversation context
-- Chat conversations don't pollute documentation generation context
-- Selective memory clearing (can reset one assistant without affecting others)
-- Future-proof for additional specialized assistants
+**Benefits of Shared Memory with ID Isolation:**
+- Single memory store simplifies architecture (one instance to manage)
+- Memory isolation maintained through unique memory IDs per assistant+solution
+- Each assistant has isolated conversation context despite shared store
+- VibeCoding conversations don't pollute Documentation or QuickFix contexts
+- Efficient memory usage (one store instead of multiple)
+- Easy to add new assistants (just add AssistantType enum value)
+- `clearAllMemories()` can iterate through all types automatically
 
 **Session Management:**
 - **Session = Active Servoy Solution** (not view lifecycle)
-- Conversation resets when user switches solutions (all assistants cleared)
+- Conversation resets when user switches solutions (all assistants cleared via `clearAllMemories()`)
 - Prevents context pollution between different projects
-- Memory IDs scoped to solution name + assistant type
+- Memory IDs scoped to solution name + assistant type suffix
 
 **Flow:**
 1. User sends message → Added to appropriate assistant's memory with solution-scoped ID
-2. LangChain4j collects all messages for `memoryId` (e.g., "MySolution-chat")
+2. LangChain4j collects all messages for `memoryId` (e.g., "MySolution-vibe")
 3. System prompt added automatically
 4. Full context sent to LLM
 5. Response received → Added to memory
-6. If solution switches → All memories cleared for old solution, new `memoryId`s set
+6. If solution switches → `clearAllMemories()` called for old solution, new `memoryId`s set for current assistant
 
-### 3.3a Multi-Assistant Management in ChatView (NEW - Feb 18, 2026)
+### 3.3a Multi-Assistant Management in ChatView (Updated Feb 23, 2026)
 
 **ChatViewPresenter Fields:**
 ```java
 private String solutionName = "default";  // Current solution name
 private IAssistant currentAssistant;       // Active assistant reference
-private IAssistant[] availableAssistants;  // Array of all available assistants
+private IAssistant[] availableAssistants;  // Array of assistants shown in ChatView dropdown
 private String currentMemoryId;            // Format: solutionName + assistantType.getMemorySuffix()
 ```
+
+**Available Assistants in ChatView:**
+Currently only 2 assistants are shown in the ChatView dropdown selector:
+```java
+availableAssistants = new IAssistant[] { 
+    Activator.getDefault().getServoyAiModel().getVibeCodingAssistant(), 
+    Activator.getDefault().getServoyAiModel().getDocumentationAssistant()
+};
+```
+
+**Note:** QuickFix Assistant exists in ServoyAiModel and implements IAssistant, but is NOT yet added to the ChatView dropdown. It's intended for programmatic use (quick fixes) rather than conversational chat. Future enhancement may add it to the UI if needed.
 
 **Assistant Switching Flow:**
 1. User selects assistant from combo → `onAssistantChanged(int index)` called
 2. `currentAssistant = availableAssistants[index]`
 3. Update memory ID: `currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix()`
 4. Clear UI (conversation display)
-5. Log switch: `"Switched to assistant: {displayName} with memory ID: {memoryId}"`
+5. Reload messages from new assistant's memory via `refreshViewFromMemory()`
+6. Log switch: `"Switched to assistant: {displayName} with memory ID: {memoryId}"`
 
 **Message Sending (Polymorphic):**
 ```java
@@ -670,53 +686,54 @@ public void init() {
 }
 ```
 
-**onSolutionActivated(String projectName) workflow (Updated Feb 17, 2026):**
-1. Extract old solution name from current memory ID (remove `-chat` suffix)
-2. Clear ALL assistant memories for old solution: `clearAllMemories(oldSolutionName)`
-   - Clears chat assistant memory (`oldSolution-chat`)
-   - Clears documentation assistant memory (`oldSolution-documentation`)
-3. Update memory ID to new solution with assistant suffix: `currentMemoryId = newSolution + "-chat"`
+**onSolutionActivated(String projectName) workflow (Updated Feb 23, 2026):**
+1. Clear ALL assistant memories for old solution: `clearAllMemories(solutionName)`
+   - Clears VibeCoding assistant memory (`oldSolution-vibe`)
+   - Clears Documentation assistant memory (`oldSolution-documentation`)
+   - Clears QuickFix assistant memory (`oldSolution-quickfix`)
+2. Update solution name: `solutionName = projectName != null ? projectName : "default"`
+3. Update memory ID to new solution with current assistant suffix: `currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix()`
 4. Clear UI conversation history
-5. **Check for `.servoy/` directory in solution root**:
-   - If **NOT exists**: Auto-create with default content from knowledgebase bundle (no dialog)
-   - If **exists**: Use existing content
-6. **Load knowledge base** from `.servoy/` directory:
+5. **Manage knowledge base** from `.servoy/` directory:
    - Clear previous knowledge base
-   - Load embeddings and rules from `.servoy/embeddings/` and `.servoy/rules/`
-7. Clear chat UI and show "New session started" notification
+   - If `.servoy/` exists: Load from `.servoy/embeddings/` and `.servoy/rules/`
+   - If `.servoy/` NOT exists: Load default from bundle resources
+6. Clear chat UI and show "New session started" notification
 
 **Auto-creation logic:**
 ```java
-if (!fileService.servoyDirectoryExists(project)) {
-    // Auto-create .servoy directory with default content (no dialog)
-    fileService.copyResourcesToSolution(project, null);
-}
-// Load from .servoy (either existing or newly created)
+// No auto-creation - let user explicitly manage knowledge base
+loaderService.clearKnowledgeBase();
+
 if (fileService.servoyDirectoryExists(project)) {
-    loaderService.clearKnowledgeBase();
+    // Load from solution-specific .servoy directory
     loaderService.loadFromFileSystem(project.getFolder(".servoy"));
+} else {
+    // Load default knowledge base from bundle resources
+    loaderService.loadFromBundleResources();
 }
 ```
 
 **Benefits:**
-- Each solution gets isolated conversation context
+- Each solution gets isolated conversation context (all assistants)
 - Knowledge base automatically customized per solution
-- New solutions automatically get default knowledge base
-- User never manually manages knowledge base - it "just works"
+- Solutions without `.servoy/` directory get default knowledge base from bundle
+- No manual setup required - system "just works"
 - Switching projects feels like starting fresh chat session
 
 **ChatViewPresenter.java** (Direct Listener Registration)
 - Registers `IActiveProjectListener` proxy in `@PostConstruct init()` using reflection (avoids compile-time dependency)
 - Listens directly to `ServoyModel.activeProjectChanged` events
 - When solution changes, calls `onSolutionActivated(projectName)`:
-  - Extracts old solution name from current memory ID (removes `-chat` suffix)
-  - Clears ALL LangChain4j memories: `servoyAiModel.clearAllMemories(oldSolutionName)`
-    - Clears both chat and documentation assistant memories
-  - Updates `currentMemoryId = newSolution + "-chat"`
+  - Clears ALL LangChain4j memories: `servoyAiModel.clearAllMemories(solutionName)`
+    - Clears VibeCoding, Documentation, and QuickFix assistant memories
+  - Updates `solutionName = projectName != null ? projectName : "default"`
+  - Updates `currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix()`
   - Clears UI conversation history
   - **Manages knowledge base based on `.servoy/` directory:**
-    - If `.servoy/` exists → Clears and loads knowledge base from directory
-    - If `.servoy/` doesn't exist → Clears knowledge base (empty state)
+    - Clears previous knowledge base
+    - If `.servoy/` exists → Loads from `.servoy/` directory (solution-specific)
+    - If `.servoy/` doesn't exist → Loads from bundle resources (default)
   - Shows green notification: "New session started - Solution: {name}"
 - Unregisters listener in `@PreDestroy dispose()` when chat view closes
 
@@ -736,21 +753,21 @@ ChatViewPresenter's listener proxy receives notification
   ↓
 ChatViewPresenter.onSolutionActivated(projectName)
   ↓
-1. Clear LangChain4j memory for old solution
-2. Update currentMemoryId to new solution
-3. Clear UI conversation history
-4. Get IProject for new solution
-5. Check if .servoy/ directory exists
-   IF NOT EXISTS:
-     - Auto-create .servoy/ with default content from knowledgebase bundle (no dialog)
-     - Log: "Creating .servoy directory with default content"
-   (ALWAYS proceeds to loading after this point)
-6. Load knowledge base from .servoy/ directory:
-     - Clear knowledge base (rules + embeddings)
-     - Load from .servoy/rules/ and .servoy/embeddings/
+1. Clear LangChain4j memories for old solution (all assistants)
+2. Update solutionName to new solution
+3. Update currentMemoryId to new solution + current assistant suffix
+4. Clear UI conversation history
+5. Get IProject for new solution
+6. Clear knowledge base (rules + embeddings)
+7. Check if .servoy/ directory exists
+   IF EXISTS:
+     - Load knowledge base from .servoy/rules/ and .servoy/embeddings/
      - Log: "Knowledge base loaded from .servoy directory"
-7. Clear chat UI
-8. Show "New session started" notification
+   IF NOT EXISTS:
+     - Load default knowledge base from bundle resources
+     - Log: "Default knowledge base loaded from bundle"
+8. Clear chat UI
+9. Show "New session started" notification
   ↓
 User closes ChatView
   ↓
@@ -764,7 +781,7 @@ Unregisters listener from ServoyModel
 - Direct communication (no event bus overhead)
 - Simple lifecycle management (register on create, unregister on destroy)
 - Automatic solution-specific knowledge base isolation
-- **Every solution automatically gets knowledge base** (no manual setup required)
+- **Solutions without .servoy/ automatically get default knowledge base from bundle**
 - No cross-contamination of rules/embeddings between solutions
 
 ---
@@ -1721,11 +1738,12 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Core Features:**
 - ✅ AI-powered chat interface with streaming responses
-- ✅ **Multi-assistant view switcher** (NEW - Feb 18, 2026) - Switch between VibeCoding and Documentation assistants in ChatView
+- ✅ **Multi-assistant view switcher** (Feb 18, 2026) - Switch between VibeCoding and Documentation assistants in ChatView
 - ✅ Code completion support via CompletionAssistant (stateless, fast)
+- ✅ Quick fix support via QuickFixAssistant (stateful, programmatic usage)
 - ✅ 40+ specialized tools for Servoy development (12 tool classes)
-- ✅ **Independent memory management** per assistant (vibecoding, documentation)
-- ✅ Solution-specific conversation memory with assistant-scoped IDs (`solution-chat`, `solution-documentation`)
+- ✅ **Single shared memory store** with ID-based isolation per assistant
+- ✅ Solution-specific conversation memory with assistant-scoped IDs (`solution-vibe`, `solution-documentation`, `solution-quickfix`)
 - ✅ Automatic reset of all assistant memories on solution switch
 - ✅ Solution-specific system prompts (loaded from `.servoy/system-prompts/`)
 - ✅ Fallback to bundle default prompts when solution-specific don't exist
@@ -1734,36 +1752,43 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 - ✅ Background jobs for non-blocking operations
 - ✅ Code diff viewer and patch application
 
-**Assistant Types (Updated Feb 18, 2026):**
+**Assistant Types (Updated Feb 23, 2026):**
 - ✅ **VibeCoding Assistant**: Full conversation with 40+ tools, 40 message memory, streaming responses
   - ✅ Accessible via assistant selector dropdown in ChatView
-  - ✅ Independent conversation history
+  - ✅ Independent conversation history (memory ID: `solution-vibe`)
 - ✅ **Completion Assistant**: Fast code completion, stateless (no memory), fast models
   - ✅ Inline editor completion (not in ChatView dropdown)
 - ✅ **Documentation Assistant**: JSDoc generation, 40 message memory, streaming responses
   - ✅ Accessible via assistant selector dropdown in ChatView
-  - ✅ Independent conversation history
+  - ✅ Independent conversation history (memory ID: `solution-documentation`)
   - ✅ Interface and memory management complete
   - ✅ Context menu integration ready
   - ✅ Code context extraction working
   - ⏳ Context menu handler needs implementation for automated doc generation
+- ✅ **QuickFix Assistant**: Quick fixes for code issues, 40 message memory, synchronous responses
+  - ❌ NOT yet in ChatView dropdown (exists in ServoyAiModel only)
+  - ✅ Independent conversation history (memory ID: `solution-quickfix`)
+  - ✅ Interface: `String fix(String prompt)` - non-streaming
+  - ✅ System prompt: `quickfix.txt`
+  - 🔄 **Future:** May be added to ChatView UI for conversational quick fixes
 
-**Multi-Assistant Architecture (NEW - Feb 18, 2026):**
-- ✅ `IAssistant` interface - Common interface for all chat view assistants
-- ✅ `AssistantType` enum - CHAT, DOCUMENTATION with display names and memory suffixes
-- ✅ Assistant selector combo in ChatView (200px width)
+**Multi-Assistant Architecture (Updated Feb 23, 2026):**
+- ✅ `IAssistant` interface - Common interface for all conversational assistants
+- ✅ `AssistantType` enum - VIBE_CODING, DOCUMENTATION, QUICKFIX with display names and memory suffixes
+- ✅ Assistant selector combo in ChatView (200px width) - **Currently shows 2 assistants** (VibeCoding, Documentation)
 - ✅ Dynamic assistant switching with memory ID updates
 - ✅ Polymorphic message sending (`executeRequest()` method)
 - ✅ Clean code - no instanceof checks
 - ✅ Easy extensibility - add new assistants by implementing IAssistant
+- 🔄 **QuickFix Assistant:** Created in ServoyAiModel but not yet added to ChatView dropdown
 
-**Memory Management (Updated Feb 18, 2026):**
-- ✅ Separate `ChatMemoryStore` per assistant type
+**Memory Management (Updated Feb 23, 2026):**
+- ✅ Single shared `ChatMemoryStore` used by all assistants
 - ✅ Solution-scoped memory IDs: `<solution>-<assistant>` format
 - ✅ Independent memory clearing per assistant or all at once
-- ✅ Automatic memory reset on solution switch (all assistants)
+- ✅ Automatic memory reset on solution switch (all assistants cleared)
 - ✅ 40 message window per assistant (automatic trimming)
-- ✅ 40 message window per assistant (automatic trimming)
+- ✅ `refreshViewFromMemory()` reloads UI from memory store (single source of truth)
 
 **Knowledge Base Features:**
 - ✅ **Dual-source loading:** `.servoy/` directory (customized) or bundle resources (default)
@@ -1799,9 +1824,12 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)
-- 3 specialized assistants (vibecoding, completion, documentation) with independent memories
+- 4 specialized assistants: VibeCoding, Completion, Documentation, QuickFix
+  - **ChatView dropdown:** 2 assistants visible (VibeCoding, Documentation)
+  - **Programmatic only:** QuickFix (not yet in UI)
+  - **Inline completion:** Completion (not in ChatView)
 - Clean separation: UI (Views) → Presenters → Services → Tools
-- Stateless LLM with client-side memory management (per assistant)
+- Stateless LLM with client-side memory management (single shared store, ID-based isolation)
 - Direct listener registration for solution activation events
 - Service layer for business logic
 
@@ -1809,5 +1837,5 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **End of Architecture Reference**
 
-**Last Updated:** February 18, 2026  
-**Status:** Production Ready - Multi-Assistant View Switcher Complete, Code Context Complete, Documentation Assistant Ready for Context Menu Integration
+**Last Updated:** February 23, 2026  
+**Status:** Production Ready - Multi-Assistant View Switcher Complete (2 assistants in UI), Memory Refactoring Validated, Code Context Complete, QuickFix Assistant Implemented (backend only), Documentation Assistant Ready for Context Menu Integration
