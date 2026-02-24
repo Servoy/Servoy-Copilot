@@ -42,6 +42,7 @@
       point="org.eclipse.dltk.ui.scriptCompletionProposalComputer">
    <proposalCategory></proposalCategory>
 </extension>
+-->
 <extension
       point="com.servoy.eclipse.core.aiprovider">
    <aiprovider
@@ -49,7 +50,6 @@
          id="com.servoy.eclipse.servoypilot.aiprovider1">
    </aiprovider>
 </extension>
--->
 
    <!-- Servoy AI Context Menu Commands -->
    <extension
