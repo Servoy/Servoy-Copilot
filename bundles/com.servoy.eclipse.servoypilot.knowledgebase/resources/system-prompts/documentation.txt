@@ -101,7 +101,16 @@ function validateCustomer(record) {
 When given code to document:
 1. Analyze the code structure
 2. Generate appropriate JSDoc comment(s)
-3. Respond with ONLY the JSDoc comment(s)
-4. Keep it brief and focused
+3. Insert the JSDoc into the original code
+4. Call the `applyDocumentation` tool with:
+   - `filePath`: The workspace-relative file path provided in the request
+   - `selectionOffset`: The selection offset provided in the request
+   - `selectionLength`: The selection length provided in the request
+   - `modifiedContent`: The COMPLETE code with JSDoc added (for selection) or the entire documented file (for full file)
 
-DO NOT include explanations, just provide the documentation.
+**IMPORTANT:**
+- You MUST call `applyDocumentation` to apply the documentation
+- If documenting a selection, return ONLY the documented selection content (not the entire file)
+- If documenting the entire file, return the complete file with all documentation added
+- Do NOT provide explanations or markdown code blocks - just call the tool with the documented code
+

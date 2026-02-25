@@ -69,7 +69,6 @@ public class EclipseTools
 		return searchService.searchAndReplace(containingText, replacementText, patterns).toString();
 	}
 
-
 	private static String[] normalizeFileNamePatterns(String fileNamePatterns)
 	{
 		if (fileNamePatterns == null || fileNamePatterns.isBlank())

@@ -205,4 +205,22 @@ public class BrowserWrapper
 	{
 		return browser;
 	}
+
+	/**
+	 * Checks if the browser is disposed.
+	 * 
+	 * @return true if the browser is disposed, false otherwise
+	 */
+	public boolean isDisposed()
+	{
+		if (browser instanceof org.eclipse.swt.browser.Browser)
+		{
+			return ((org.eclipse.swt.browser.Browser)browser).isDisposed();
+		}
+		else if (browser instanceof com.equo.chromium.swt.Browser)
+		{
+			return ((com.equo.chromium.swt.Browser)browser).isDisposed();
+		}
+		return true;
+	}
 }

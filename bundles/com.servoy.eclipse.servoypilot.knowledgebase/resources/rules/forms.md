@@ -188,6 +188,16 @@ getFormProperties({name: "CustomerForm"})
 
 ---
 
+## FORM JAVASCRIPT FILE TOOLS (CRUD OPERATIONS)
+
+**Purpose:** Manage form JavaScript files for custom functionality  
+**Location:** `/solution-name/forms/<formName>.js`  
+**Usage:** For custom event handlers, helper functions, and form-specific logic
+
+**[IMPORTANT]** Form JS files can be created via the `events` parameter of `openForm` tool, which auto-generates event handler methods with skeleton code.
+
+---
+
 ## HOW TO PRESENT RESULTS TO USER
 
 ### When Listing Forms (listForms output)
@@ -1016,3 +1026,4 @@ User: "Create InvoiceForm: responsive, 1200x900, bound to invoices table, with c
 - Cross-project form operations
 
 **Note:** Forms must exist before UI components can be added. Creating/opening forms is the first step.
+

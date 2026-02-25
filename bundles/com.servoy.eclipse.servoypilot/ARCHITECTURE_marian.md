@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 23, 2026  
+**Last Updated:** February 25, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -11,6 +11,118 @@
 - ✅ Documentation Assistant ready for context menu integration
 - ✅ QuickFix Assistant implemented (non-ChatView, stateful)
 - ✅ **Delete Icon Removed (Feb 20, 2026):** Message deletion feature completely removed due to UUID/msg-N mismatch bug
+- ✅ **Modified Files Tracking (Feb 24, 2026):** GitHub Copilot-style tracking with Keep/Undo/Remove actions
+- ❌ **Form JS CRUD Tools Removed (Feb 25, 2026):** createFormJS, readFormJS, updateFormJS, deleteFormJS removed from EclipseTools
+
+---
+
+## 🐛 KNOWN BUGS (February 24, 2026)
+
+### **Bug: Compare Editor Not Opening on File Click**
+
+**Status:** 🔍 Under Investigation
+
+**Symptom:**
+- Clicking a file in "Modified files" section does not open compare editor
+- File should show diff between original and modified content
+- Currently just opens file in regular editor (Phase 2 simplification)
+
+**Debug System Added:**
+- JavaScript console.log in file entry onclick handler
+- BrowserFunction System.out.println for bridge tracing
+- ChatViewPresenter System.out.println for handler execution
+
+**Expected Behavior:**
+- Click file → Opens Eclipse compare editor
+- Shows original content (left) vs. modified content (right)
+- User can review changes before Keep/Undo
+
+**Current Workaround:**
+- User can use Eclipse's "Team > Show Local History" for full diff
+- Or manually compare file versions
+
+**Investigation Needed:**
+- Check debug output in console when clicking file
+- Verify BrowserFunction bridge is being called
+- Confirm file path format is correct
+- Test with Eclipse Compare API alternatives
+
+---
+
+## ✅ COMPLETED - MODIFIED FILES TRACKING (February 24, 2026)
+
+**Implementation Complete:** GitHub Copilot-style file modification tracking with Keep/Undo/Remove actions.
+
+### **Architecture: Three-Layer Design**
+
+**Layer 1: Backend Tracking**
+- `FileModificationTracker.java` - Thread-safe singleton
+- Stores: `Map<String, String>` (filePath → originalContent)
+- In-memory tracking (no temp files)
+- Workspace-relative paths: `/ProjectName/forms/file.js`
+- Listener notifications for UI updates
+
+**Layer 2: Presenter Logic**
+- `ChatViewPresenter.java` - Business logic
+- 6 handler methods: onFileClick, onKeepFile, onUndoFile, onRemoveFile, onKeepAll, onUndoAll
+- File restoration using Eclipse IFile API
+- Integration with FileModificationTracker
+
+**Layer 3: UI Display**
+- `ChatView.java` - HTML/CSS/JavaScript UI
+- Collapsible "Modified files" section
+- File list with hover actions (✓ ✗ 🗑️)
+- Keep All / Undo All buttons
+- Theme-aware styling (light/dark)
+
+### **File Modification Flow**
+
+```
+Tool calls (e.g., searchAndReplace, etc.)
+  ↓
+Capture original content before modification
+  ↓
+FileModificationTracker.notifyFileModified(path, original)
+  ↓
+Tracker stores in LinkedHashMap + notifies listeners
+  ↓
+ChatViewPresenter.onFileModified() called
+  ↓
+ChatView.updateModifiedFilesSection() called
+  ↓
+JavaScript updates DOM with file list
+  ↓
+User sees "Modified files" section appear
+```
+
+### **User Interaction Flow**
+
+**Keep File (✓):**
+- User clicks ✓ icon
+- File removed from tracking
+- Changes stay in file
+
+**Undo File (✗):**
+- User clicks ✗ icon
+- Original content restored via Eclipse IFile API
+- File removed from tracking
+
+**Remove File (🗑️):**
+- User clicks 🗑️ icon
+- File removed from tracking (dismiss)
+- Changes stay in file
+
+**Keep All / Undo All:**
+- Batch operations on all tracked files
+- Same logic as individual actions
+
+### **Key Features**
+- ✅ In-memory tracking (no temp files)
+- ✅ Thread-safe operations
+- ✅ Auto-clear on solution/assistant switch
+- ✅ Theme-aware UI (light/dark)
+- ✅ File restoration working (Phase 2)
+- 🐛 Compare editor not opening (known bug)
 
 ---
 

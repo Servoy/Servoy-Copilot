@@ -19,7 +19,6 @@ package com.servoy.eclipse.servoypilot.ai;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
-import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
 import com.servoy.eclipse.servoypilot.tools.core.FormTools;
@@ -117,16 +116,6 @@ public class ServoyAiModel
 		return quickFixAssistant;
 	}
 
-	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
-	{
-		return OpenAiChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
-	}
-
-	private ChatModel createQuickFixGeminiModel(AiConfiguration conf)
-	{
-		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).allowCodeExecution(true).build();
-	}
-
 	public ExplainAssistant getExplainAssistant()
 	{
 		if (explainAssistant == null && conf.isValid())
@@ -139,6 +128,16 @@ public class ServoyAiModel
 			};
 		}
 		return explainAssistant;
+	}
+
+	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
+	{
+		return OpenAiChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
+	}
+
+	private ChatModel createQuickFixGeminiModel(AiConfiguration conf)
+	{
+		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).allowCodeExecution(true).build();
 	}
 
 	public AiConfiguration getConfiguration()
@@ -240,8 +239,8 @@ public class ServoyAiModel
 			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register tools if needed (for now, none)
-		// builder.tools(...);
+		// Register documentation tools
+		builder.tools(new com.servoy.eclipse.servoypilot.tools.DocumentationTools());
 
 		return builder.build();
 	}
@@ -274,7 +273,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(new FileReadingTools()) // Enable file reading for better context understanding
+			.tools(new com.servoy.eclipse.servoypilot.tools.FileReadingTools())
 			.build();
 	}
 

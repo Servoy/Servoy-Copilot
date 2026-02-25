@@ -24,6 +24,9 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
+import com.servoy.eclipse.model.ServoyModelFinder;
+import com.servoy.eclipse.model.extensions.IServoyModel;
+import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.ChatView;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
@@ -102,33 +105,71 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateDocs(SelectionInfo selection)
 	{
-		// Get code context using the visitor
+		// Get code context service
 		CodeContextService service = CodeContextService.getInstance();
+
+		// Extract identifiers and documentation
 		CodeContext context = service.getCodeContext(selection);
 
-		if (context.hasError())
+		if (!context.hasError() && !context.isEmpty())
 		{
-			return;
-		}
+			// Get current solution name and create documentation-specific memory ID
+			String solutionName = getCurrentSolutionName();
+			String memoryId = solutionName + "-documentation";
 
-		if (context.isEmpty())
+			// Get the code text (selection or full file) from service
+			String codeText = service.getCodeText(selection);
+
+			// Get XML-formatted context
+			String xmlContext = context.getFormattedXML();
+
+			// Convert absolute file path to workspace-relative path
+			String workspaceFilePath = convertToWorkspacePath(selection.getFilePath());
+			if (workspaceFilePath == null)
+			{
+				DebugUtils.debug("[GENERATE DOCS] Failed to convert file path to workspace-relative");
+				return;
+			}
+
+			// Build complete user prompt with file path and selection parameters
+			String userPrompt = Activator.getDefault().getDocumentationAssistant().buildPrompt(
+				codeText,
+				xmlContext,
+				workspaceFilePath,
+				selection.getOffset(),
+				selection.getLength());
+
+			// Execute request - AI will call applyDocumentation tool
+			Activator.getDefault().getDocumentationAssistant().executeRequest(memoryId, userPrompt);
+		}
+	}
+
+	/**
+	 * Converts absolute OS file path to workspace-relative path.
+	 * 
+	 * @param absolutePath absolute file path from SelectionInfo
+	 * @return workspace-relative path (e.g., /ProjectName/forms/myForm.js) or null if conversion fails
+	 */
+	private String convertToWorkspacePath(String absolutePath)
+	{
+		if (absolutePath != null)
 		{
-			return;
+			try
+			{
+				org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+					.getRoot()
+					.getFileForLocation(new org.eclipse.core.runtime.Path(absolutePath));
+				if (file != null)
+				{
+					return file.getFullPath().toString();
+				}
+			}
+			catch (Exception e)
+			{
+				DebugUtils.debug("[GENERATE DOCS] Error converting path: " + e.getMessage());
+			}
 		}
-
-		// Get current solution name and create documentation-specific memory ID
-		String solutionName = getCurrentSolutionName();
-		String memoryId = solutionName + "-documentation";
-
-		// Call documentation assistant with XML-formatted context
-		String xmlContext = context.getFormattedXML();
-
-		// TODO: Handle TokenStream response
-		// - Collect tokens into StringBuilder
-		// - Create temp file with generated documentation
-		// - Show comparison editor (GitHub Copilot style)
-		// - Update view with file entry
-		com.servoy.eclipse.servoypilot.Activator.getDefault().getDocumentationAssistant().executeRequest(memoryId, xmlContext);
+		return null;
 	}
 
 	private void handleGenerateTests(SelectionInfo selection)
@@ -153,24 +194,24 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		String filePath = selection.getFilePath();
 		String selectedText = selection.getSelectedText();
 		int length = selection.getLength();
-		
+
 		// Build display message (shown in UI)
 		StringBuilder displayMessage = new StringBuilder();
-		
+
 		// Build full message for AI (includes hidden context)
 		StringBuilder fullMessage = new StringBuilder();
-		
+
 		if (length > 0 && selectedText != null && !selectedText.trim().isEmpty())
 		{
 			// Count lines in selected text
 			int lineCount = selectedText.split("\r\n|\r|\n").length;
-			
+
 			if (lineCount > 100)
 			{
 				// Large selection - treat like whole file with chunked reading
 				displayMessage.append("Please analyze the selected code from `").append(filePath).append("` (")
 					.append(lineCount).append(" lines)");
-				
+
 				// AI gets large file notice to trigger chunked reading
 				fullMessage.append("<large_file_notice>\n");
 				fullMessage.append("Please read and analyze the selected code from `").append(filePath).append("` at offset ")
@@ -185,7 +226,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 				displayMessage.append("```javascript\n");
 				displayMessage.append(selectedText);
 				displayMessage.append("\n```");
-				
+
 				// AI gets the same message
 				fullMessage.append(displayMessage.toString());
 			}
@@ -194,13 +235,13 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		{
 			// For whole file - UI shows simple message
 			displayMessage.append("Please analyze the file `").append(filePath).append("`");
-			
+
 			// AI gets instruction with large file notice to trigger chunked reading
 			fullMessage.append("<large_file_notice>\n");
 			fullMessage.append("Please read and analyze the file `").append(filePath).append("`.\n");
 			fullMessage.append("</large_file_notice>");
 		}
-		
+
 		// Add context hints for AI only (not shown in UI)
 		String contextInfo = context.getFormattedPlainText();
 		if (contextInfo != null && !contextInfo.trim().isEmpty() && !contextInfo.contains("No context information"))
@@ -209,10 +250,10 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			fullMessage.append(contextInfo);
 			fullMessage.append("\n```");
 		}
-		
+
 		String displayText = displayMessage.toString();
 		String fullText = fullMessage.toString();
-		
+
 		// Ensure the chat view is open and visible
 		if (!ChatViewActivator.openAndActivateChatView())
 		{
@@ -227,15 +268,15 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			DebugUtils.debug("[EXPLAIN] Failed to get ChatView instance");
 			return;
 		}
-		
+
 		// Schedule the switch and message send on the UI thread with proper sequencing
 		org.eclipse.swt.widgets.Display.getDefault().asyncExec(() -> {
 			// Ensure assistant selector is populated
 			chatView.getPresenter().populateAssistantSelector();
-			
+
 			// Switch to Explain assistant (will clear view if switching from another)
 			chatView.getPresenter().switchToAssistant(AssistantType.EXPLAIN);
-			
+
 			// Schedule message sending after assistant switch completes
 			org.eclipse.swt.widgets.Display.getCurrent().timerExec(150, () -> {
 				// Send the message - display text in UI, full text (with context) to AI
@@ -252,7 +293,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 	{
 		try
 		{
-			com.servoy.eclipse.model.extensions.IServoyModel servoyModel = com.servoy.eclipse.model.ServoyModelFinder.getServoyModel();
+			IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
 			if (servoyModel != null && servoyModel.getActiveProject() != null)
 			{
 				return servoyModel.getActiveProject().getProject().getName();

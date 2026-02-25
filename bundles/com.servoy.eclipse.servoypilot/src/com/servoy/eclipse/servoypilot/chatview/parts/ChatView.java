@@ -28,6 +28,8 @@ import org.eclipse.e4.ui.services.IServiceConstants;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.browser.Browser;
+import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.ImageTransfer;
@@ -474,6 +476,13 @@ public class ChatView
 		new InsertCodeFunction(browser, "eclipseInsertCode");
 		new NewFileFunction(browser, "eclipseNewFile");
 		new ScrollInteractionFunction(browser, "eclipseScrollInteraction");
+		// Modified files tracking functions
+		new OnFileClickFunction(browser, "onFileClick");
+		new OnKeepFileFunction(browser, "onKeepFile");
+		new OnUndoFileFunction(browser, "onUndoFile");
+		new OnRemoveFileFunction(browser, "onRemoveFile");
+		new OnKeepAllFunction(browser, "onKeepAll");
+		new OnUndoAllFunction(browser, "onUndoAll");
 	}
 
 	private void initializeChatView(BrowserWrapper browser)
@@ -481,19 +490,35 @@ public class ChatView
 		String htmlTemplate = """
 			<!DOCTYPE html>
 			<html>
-			    <head>
+				<head>
 			        <meta charset="UTF-8">
-			        <style>${css}</style>
-			        <style>${fonts}</style>
-			        <script>${js}</script>
-			    </head>
+			    	<style>${css}</style>
+			    	<style>${fonts}</style>
+			    	<style>${modifiedFilesCSS}</style>
+			    	<script>${js}</script>
+			    	<script>${modifiedFilesJS}</script>
+				</head>
 			    <body>
-			        <div id="notification-container"></div>
-			        <div id="content">
-			        </div>
-			        <div id="welcome" style="position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);text-align: center;">
-			            This is the Servoy AI Assistant.<br/> Ask me anything related to Servoy Development
-			        </div>
+			            <div id="notification-container"></div>
+			            <div id="content">
+			            </div>
+			            <!-- Modified Files Section -->
+			            <div id="modified-files-section" class="modified-files-section" style="display: none;">
+			                <div class="modified-files-header">
+			                    <span class="toggle-icon" id="modified-files-toggle" onclick="toggleModifiedFiles()">▼</span>
+			                    <span class="section-title">Modified files</span>
+			                    <div class="header-buttons">
+			                        <button onclick="keepAllFiles()" class="action-btn keep-all-btn" title="Keep all changes">Keep All</button>
+			                        <button onclick="undoAllFiles()" class="action-btn undo-all-btn" title="Undo all changes">Undo All</button>
+			                    </div>
+			                </div>
+			                <div id="modified-files-list" class="modified-files-list">
+			                    <!-- Dynamically populated with file entries -->
+			                </div>
+			            </div>
+			            <div id="welcome" style="position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);text-align: center;">
+							This is the Servoy AI Assistant.<br/> Ask me anything related to Servoy Development
+			            </div>
 			    </body>
 			</html>
 			""";
@@ -501,7 +526,11 @@ public class ChatView
 		String js = loadJavaScripts();
 		String css = loadCss();
 		String fonts = loadFonts();
-		
+		String modifiedFilesCSS = getModifiedFilesCSS();
+		String modifiedFilesJS = getModifiedFilesJavaScript();
+		htmlTemplate = htmlTemplate.replace("${css}", css).replace("${fonts}", fonts).replace("${js}", js)
+			.replace("${modifiedFilesCSS}", modifiedFilesCSS).replace("${modifiedFilesJS}", modifiedFilesJS);
+
 		htmlTemplate = htmlTemplate.replace("${css}", css).replace("${fonts}", fonts).replace("${js}", js);
 
 		// Initialize the browser with base HTML and CSS
@@ -912,6 +941,584 @@ public class ChatView
 			}
 			return null;
 		}
+	}
+
+	// ========== Modified Files Tracking BrowserFunctions ==========
+
+	private class OnFileClickFunction extends BrowserFunctionWrapper
+	{
+		public OnFileClickFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			System.out.println("[DEBUG] OnFileClickFunction called with " + arguments.length + " arguments");
+			if (arguments.length > 0)
+			{
+				System.out.println("[DEBUG] Argument type: " + arguments[0].getClass().getName());
+				System.out.println("[DEBUG] Argument value: " + arguments[0]);
+			}
+			
+			if (arguments.length > 0 && arguments[0] instanceof String filePath)
+			{
+				System.out.println("[DEBUG] Calling presenter.onFileClick with: " + filePath);
+				presenter.onFileClick(filePath);
+			}
+			else
+			{
+				System.out.println("[DEBUG] Invalid argument - not a String or no arguments");
+			}
+			return null;
+		}
+	}
+
+	private class OnKeepFileFunction extends BrowserFunctionWrapper
+	{
+		public OnKeepFileFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String filePath)
+			{
+				presenter.onKeepFile(filePath);
+			}
+			return null;
+		}
+	}
+
+	private class OnUndoFileFunction extends BrowserFunctionWrapper
+	{
+		public OnUndoFileFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String filePath)
+			{
+				presenter.onUndoFile(filePath);
+			}
+			return null;
+		}
+	}
+
+	private class OnRemoveFileFunction extends BrowserFunctionWrapper
+	{
+		public OnRemoveFileFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length > 0 && arguments[0] instanceof String filePath)
+			{
+				presenter.onRemoveFile(filePath);
+			}
+			return null;
+		}
+	}
+
+	private class OnKeepAllFunction extends BrowserFunctionWrapper
+	{
+		public OnKeepAllFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			presenter.onKeepAll();
+			return null;
+		}
+	}
+
+	private class OnUndoAllFunction extends BrowserFunctionWrapper
+	{
+		public OnUndoAllFunction(BrowserWrapper browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			presenter.onUndoAll();
+		 return null;
+		}
+	}
+
+	// ========== Modified Files Section UI Methods ==========
+
+	/**
+	 * Updates the modified files section with current tracked files.
+	 * Called by presenter when files are modified or removed from tracking.
+	 */
+	public void updateModifiedFilesSection()
+	{
+		if (browser != null && !browser.isDisposed())
+		{
+			java.util.Map<String, String> files = FileModificationTracker.getInstance().getModifiedFiles();
+
+			// Convert to JSON array: [{path: "...", name: "..."}]
+			StringBuilder json = new StringBuilder("[");
+			int index = 0;
+			for (String filePath : files.keySet())
+			{
+				if (index > 0)
+				{
+					json.append(",");
+				}
+				String fileName = extractFileName(filePath);
+				json.append("{\"path\":\"").append(escapeJson(filePath)).append("\",");
+				json.append("\"name\":\"").append(escapeJson(fileName)).append("\"}");
+				index++;
+			}
+			json.append("]");
+
+			browser.execute("updateModifiedFilesList('" + json.toString() + "');");
+		}
+	}
+
+	/**
+	 * Clears the modified files section (hides it and removes all entries).
+	 * Called by presenter when all files are cleared from tracking.
+	 */
+	public void clearModifiedFilesSection()
+	{
+		if (browser != null && !browser.isDisposed())
+		{
+			browser.execute("clearModifiedFilesSection();");
+		}
+	}
+
+	/**
+	 * Extracts the file name from a workspace-relative path.
+	 * Example: "/ProjectName/path/to/file.js" -> "file.js"
+	 */
+	private String extractFileName(String filePath)
+	{
+		if (filePath == null || filePath.isEmpty())
+		{
+			return "";
+		}
+		int lastSlash = filePath.lastIndexOf('/');
+		if (lastSlash >= 0 && lastSlash < filePath.length() - 1)
+		{
+			return filePath.substring(lastSlash + 1);
+		}
+		return filePath;
+	}
+
+	/**
+	 * Escapes a string for safe inclusion in JSON.
+	 */
+	private String escapeJson(String str)
+	{
+		if (str == null)
+		{
+			return "";
+		}
+		return str.replace("\\", "\\\\")
+			.replace("\"", "\\\"")
+			.replace("\n", "\\n")
+			.replace("\r", "\\r")
+			.replace("\t", "\\t");
+	}
+
+	/**
+	 * Returns CSS for the modified files section.
+	 * Includes styles for both light and dark themes.
+	 */
+	private String getModifiedFilesCSS()
+	{
+		boolean isDark = IconPreferences.getInstance().getUseDarkThemeIcons();
+
+		if (isDark)
+		{
+			return """
+				/* Modified Files Section - Dark Theme */
+				.modified-files-section {
+				    border-top: 1px solid #3c3c3c;
+				    border-bottom: 1px solid #3c3c3c;
+				    background-color: #252526;
+				    padding: 8px 12px;
+				    margin-bottom: 8px;
+				}
+				.modified-files-header {
+				    display: flex;
+				    align-items: center;
+				    gap: 8px;
+				    user-select: none;
+				}
+				.toggle-icon {
+				    cursor: pointer;
+				    font-size: 12px;
+				    color: #cccccc;
+				    transition: transform 0.2s;
+				}
+				.toggle-icon.collapsed {
+				    transform: rotate(-90deg);
+				}
+				.section-title {
+				    font-weight: 600;
+				    font-size: 13px;
+				    color: #cccccc;
+				    flex: 1;
+				}
+				.header-buttons {
+				    display: flex;
+				    gap: 6px;
+				}
+				.action-btn {
+				    padding: 4px 10px;
+				    font-size: 12px;
+				    border: 1px solid #3c3c3c;
+				    border-radius: 3px;
+				    background-color: #2d2d30;
+				    color: #cccccc;
+				    cursor: pointer;
+				    transition: background-color 0.2s;
+				}
+				.action-btn:hover {
+				    background-color: #3e3e42;
+				}
+				.keep-all-btn {
+				    color: #4ec9b0;
+				    border-color: #4ec9b0;
+				}
+				.keep-all-btn:hover {
+				    background-color: #1e3a35;
+				}
+				.undo-all-btn {
+				    color: #f48771;
+				    border-color: #f48771;
+				}
+				.undo-all-btn:hover {
+				    background-color: #3a1e1e;
+				}
+				.modified-files-list {
+				    margin-top: 8px;
+				    display: flex;
+				    flex-direction: column;
+				    gap: 4px;
+				}
+				.modified-files-list.collapsed {
+				    display: none;
+				}
+				.file-entry {
+				    display: flex;
+				    align-items: center;
+				    padding: 6px 8px;
+				    background-color: #2d2d30;
+				    border: 1px solid #3c3c3c;
+				    border-radius: 3px;
+				    cursor: pointer;
+				    transition: background-color 0.2s;
+				    position: relative;
+				}
+				.file-entry:hover {
+				    background-color: #3e3e42;
+				}
+				.file-entry:hover .file-actions {
+				    display: flex;
+				}
+				.file-name {
+				    flex: 1;
+				    font-size: 13px;
+				    color: #cccccc;
+				    overflow: hidden;
+				    text-overflow: ellipsis;
+				    white-space: nowrap;
+				}
+				.file-actions {
+				    display: none;
+				    gap: 6px;
+				    margin-left: 8px;
+				}
+				.file-action-icon {
+				    width: 20px;
+				    height: 20px;
+				    display: flex;
+				    align-items: center;
+				    justify-content: center;
+				    border-radius: 3px;
+				    cursor: pointer;
+				    font-size: 14px;
+				}
+				.file-action-icon.keep {
+				    color: #4ec9b0;
+				}
+				.file-action-icon.keep:hover {
+				    background-color: #1e3a35;
+				}
+				.file-action-icon.undo {
+				    color: #f48771;
+				}
+				.file-action-icon.undo:hover {
+				    background-color: #3a1e1e;
+				}
+				.file-action-icon.remove {
+				    color: #999999;
+				}
+				.file-action-icon.remove:hover {
+				    background-color: #3e3e42;
+				}
+				""";
+		}
+
+		// Light theme
+		return """
+			/* Modified Files Section - Light Theme */
+			.modified-files-section {
+			    border-top: 1px solid #e0e0e0;
+			    border-bottom: 1px solid #e0e0e0;
+			    background-color: #f8f8f8;
+			    padding: 8px 12px;
+			    margin-bottom: 8px;
+			}
+			.modified-files-header {
+			    display: flex;
+			    align-items: center;
+			    gap: 8px;
+			    user-select: none;
+			}
+			.toggle-icon {
+			    cursor: pointer;
+			    font-size: 12px;
+			    color: #666;
+			    transition: transform 0.2s;
+			}
+			.toggle-icon.collapsed {
+			    transform: rotate(-90deg);
+			}
+			.section-title {
+			    font-weight: 600;
+			    font-size: 13px;
+			    color: #333;
+			    flex: 1;
+			}
+			.header-buttons {
+			    display: flex;
+			    gap: 6px;
+			}
+			.action-btn {
+			    padding: 4px 10px;
+			    font-size: 12px;
+			    border: 1px solid #ccc;
+			    border-radius: 3px;
+			    background-color: #fff;
+			    cursor: pointer;
+			    transition: background-color 0.2s;
+			}
+			.action-btn:hover {
+			    background-color: #e8e8e8;
+			}
+			.keep-all-btn {
+			    color: #0078d4;
+			    border-color: #0078d4;
+			}
+			.keep-all-btn:hover {
+			    background-color: #e6f2ff;
+			}
+			.undo-all-btn {
+			    color: #d13438;
+			    border-color: #d13438;
+			}
+			.undo-all-btn:hover {
+			    background-color: #ffe6e6;
+			}
+			.modified-files-list {
+			    margin-top: 8px;
+			    display: flex;
+			    flex-direction: column;
+			    gap: 4px;
+			}
+			.modified-files-list.collapsed {
+			    display: none;
+			}
+			.file-entry {
+			    display: flex;
+			    align-items: center;
+			    padding: 6px 8px;
+			    background-color: #fff;
+			    border: 1px solid #e0e0e0;
+			    border-radius: 3px;
+			    cursor: pointer;
+			    transition: background-color 0.2s;
+			    position: relative;
+			}
+			.file-entry:hover {
+			    background-color: #f0f0f0;
+			}
+			.file-entry:hover .file-actions {
+			    display: flex;
+			}
+			.file-name {
+			    flex: 1;
+			    font-size: 13px;
+			    color: #333;
+			    overflow: hidden;
+			    text-overflow: ellipsis;
+			    white-space: nowrap;
+			}
+			.file-actions {
+			    display: none;
+			    gap: 6px;
+			    margin-left: 8px;
+			}
+			.file-action-icon {
+			    width: 20px;
+			    height: 20px;
+			    display: flex;
+			    align-items: center;
+			    justify-content: center;
+			    border-radius: 3px;
+			    cursor: pointer;
+			    font-size: 14px;
+			}
+			.file-action-icon.keep {
+			    color: #0078d4;
+			}
+			.file-action-icon.keep:hover {
+			    background-color: #e6f2ff;
+			}
+			.file-action-icon.undo {
+			    color: #d13438;
+			}
+			.file-action-icon.undo:hover {
+			    background-color: #ffe6e6;
+			}
+			.file-action-icon.remove {
+			    color: #666;
+			}
+			.file-action-icon.remove:hover {
+			    background-color: #f0f0f0;
+			}
+			""";
+	}
+
+	/**
+	 * Returns JavaScript for the modified files section functionality.
+	 */
+	private String getModifiedFilesJavaScript()
+	{
+		return """
+			// Modified Files Section JavaScript
+			function updateModifiedFilesList(filesJson) {
+			    const files = JSON.parse(filesJson);
+			    const section = document.getElementById('modified-files-section');
+			    const list = document.getElementById('modified-files-list');
+			    
+			    if (files.length > 0) {
+			        section.style.display = 'block';
+			        list.innerHTML = '';
+			        files.forEach(file => {
+			            const entry = createFileEntry(file);
+			            list.appendChild(entry);
+			        });
+			    } else {
+			        section.style.display = 'none';
+			    }
+			}
+			
+			function createFileEntry(file) {
+			    const entry = document.createElement('div');
+			    entry.className = 'file-entry';
+			    
+			    const fileName = document.createElement('span');
+			    fileName.className = 'file-name';
+			    fileName.textContent = file.name;
+			    fileName.title = file.path;
+			    
+			    const actions = document.createElement('div');
+			    actions.className = 'file-actions';
+			    
+			    const keepIcon = document.createElement('div');
+			    keepIcon.className = 'file-action-icon keep';
+			    keepIcon.innerHTML = '✓';
+			    keepIcon.title = 'Keep changes';
+			    keepIcon.onclick = (e) => {
+			        e.stopPropagation();
+			        window.onKeepFile(file.path);
+			    };
+			    
+			    const undoIcon = document.createElement('div');
+			    undoIcon.className = 'file-action-icon undo';
+			    undoIcon.innerHTML = '✗';
+			    undoIcon.title = 'Undo changes';
+			    undoIcon.onclick = (e) => {
+			        e.stopPropagation();
+			        window.onUndoFile(file.path);
+			    };
+			    
+			    const removeIcon = document.createElement('div');
+			    removeIcon.className = 'file-action-icon remove';
+			    removeIcon.innerHTML = '🗑️';
+			    removeIcon.title = 'Dismiss tracking';
+			    removeIcon.onclick = (e) => {
+			        e.stopPropagation();
+			        window.onRemoveFile(file.path);
+			    };
+			    
+			    actions.appendChild(keepIcon);
+			    actions.appendChild(undoIcon);
+			    actions.appendChild(removeIcon);
+			    
+			    entry.appendChild(fileName);
+			    entry.appendChild(actions);
+			    
+			    entry.onclick = () => {
+			        console.log('[DEBUG] File entry clicked, path:', file.path);
+			        console.log('[DEBUG] Calling window.onFileClick');
+			        window.onFileClick(file.path);
+			        console.log('[DEBUG] window.onFileClick called');
+			    };
+			    
+			    return entry;
+			}
+			
+			function toggleModifiedFiles() {
+			    const toggle = document.getElementById('modified-files-toggle');
+			    const list = document.getElementById('modified-files-list');
+			    
+			    if (list.classList.contains('collapsed')) {
+			        list.classList.remove('collapsed');
+			        toggle.classList.remove('collapsed');
+			        toggle.textContent = '▼';
+			    } else {
+			        list.classList.add('collapsed');
+			        toggle.classList.add('collapsed');
+			        toggle.textContent = '▶';
+			    }
+			}
+			
+			function keepAllFiles() {
+			    window.onKeepAll();
+			}
+			
+			function undoAllFiles() {
+			    window.onUndoAll();
+			}
+			
+			function clearModifiedFilesSection() {
+			    const section = document.getElementById('modified-files-section');
+			    section.style.display = 'none';
+			    const list = document.getElementById('modified-files-list');
+			    list.innerHTML = '';
+			}
+			""";
 	}
 
 }

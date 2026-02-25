@@ -28,9 +28,11 @@ import java.util.function.Consumer;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.jobs.IJobManager;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.e4.core.di.annotations.Creatable;
@@ -105,6 +107,28 @@ public class ChatViewPresenter
 		};
 		// Set default assistant to Chat
 		currentAssistant = availableAssistants[0];
+
+		// Register file modification listener
+		FileModificationTracker.getInstance().setListener(new FileModificationTracker.FileModificationListener()
+		{
+			@Override
+			public void onFileModified(String filePath)
+			{
+				if (chatView != null)
+				{
+					uiSync.asyncExec(() -> chatView.updateModifiedFilesSection());
+				}
+			}
+
+			@Override
+			public void onFilesCleared()
+			{
+				if (chatView != null)
+				{
+					uiSync.asyncExec(() -> chatView.clearModifiedFilesSection());
+				}
+			}
+		});
 
 		// Register solution activation listener
 		try
@@ -200,6 +224,9 @@ public class ChatViewPresenter
 
 			// Update memory ID with new assistant's suffix
 			currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
+
+			// Clear modified files tracking when switching assistants
+			FileModificationTracker.getInstance().clear();
 
 			// Clear UI
 			applyToView(view -> {
@@ -611,6 +638,9 @@ public class ChatViewPresenter
 		// Clear all memories (vibe + documentation) for the old solution
 		Activator.getDefault().getServoyAiModel().clearAllMemories(solutionName);
 
+		// Clear modified files tracking when switching solutions
+		FileModificationTracker.getInstance().clear();
+
 		// Update solution name
 		solutionName = projectName != null ? projectName : "default";
 
@@ -677,5 +707,214 @@ public class ChatViewPresenter
 		ServoyProject servoyProject = ServoyModelFinder.getServoyModel().getServoyProject(projectName);
 
 		return servoyProject != null ? servoyProject.getProject() : null;
+	}
+
+	// ========== Modified Files Tracking Handlers ==========
+
+	/**
+	 * Handler for clicking a file in the modified files list.
+	 * Opens the modified file in an editor.
+	 * Note: For full compare functionality, consider using Eclipse's Team > Show Local History
+	 * 
+	 * @param filePath workspace-relative path (e.g., "/ProjectName/path/file.js")
+	 */
+	public void onFileClick(String filePath)
+	{
+		System.out.println("[DEBUG] onFileClick called with filePath: " + filePath);
+		logger.info("Opening file for review: " + filePath);
+
+		uiSync.asyncExec(() -> {
+			try
+			{
+				System.out.println("[DEBUG] Starting file opening in UI thread");
+				
+				String originalContent = FileModificationTracker.getInstance().getOriginalContent(filePath);
+				if (originalContent == null)
+				{
+					System.out.println("[DEBUG] No original content found for: " + filePath);
+					logger.error("No original content found for file: " + filePath);
+					return;
+				}
+				System.out.println("[DEBUG] Original content found, length: " + originalContent.length());
+
+				IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
+				if (!file.exists())
+				{
+					System.out.println("[DEBUG] File does not exist: " + filePath);
+					logger.error("File does not exist: " + filePath);
+					return;
+				}
+				System.out.println("[DEBUG] File exists: " + file.getFullPath());
+
+				// Open the file in an editor
+				IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+				if (page != null)
+				{
+					System.out.println("[DEBUG] Opening editor for file: " + file.getName());
+					org.eclipse.ui.ide.IDE.openEditor(page, file);
+					System.out.println("[DEBUG] Editor opened successfully");
+					logger.info("File opened in editor: " + filePath);
+				}
+				else
+				{
+					System.out.println("[DEBUG] No active workbench page found");
+				}
+			}
+			catch (Exception e)
+			{
+				System.out.println("[DEBUG] Exception in onFileClick: " + e.getClass().getName() + " - " + e.getMessage());
+				e.printStackTrace();
+				logger.error("Error opening file: " + filePath, e);
+			}
+		});
+	}
+
+	/**
+	 * Handler for keeping changes to a file.
+	 * Removes file from tracking (file is already modified).
+	 * 
+	 * @param filePath workspace-relative path
+	 */
+	public void onKeepFile(String filePath)
+	{
+		FileModificationTracker.getInstance().keepFile(filePath);
+		logger.info("File kept: " + filePath);
+	}
+
+	/**
+	 * Handler for undoing changes to a file.
+	 * Restores original content and removes from tracking.
+	 * 
+	 * @param filePath workspace-relative path
+	 */
+	public void onUndoFile(String filePath)
+	{
+		logger.info("Undoing file: " + filePath);
+
+		uiSync.asyncExec(() -> {
+			try
+			{
+				String originalContent = FileModificationTracker.getInstance().getOriginalContent(filePath);
+				if (originalContent == null)
+				{
+					logger.error("No original content found for file: " + filePath);
+					FileModificationTracker.getInstance().keepFile(filePath);
+					return;
+				}
+
+				IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
+				if (file.exists())
+				{
+					// Restore original content
+					try (InputStream stream = new ByteArrayInputStream(originalContent.getBytes(StandardCharsets.UTF_8)))
+					{
+						file.setContents(stream, true, true, null);
+						logger.info("File restored to original content: " + filePath);
+					}
+				}
+				else
+				{
+					logger.error("File does not exist, cannot restore: " + filePath);
+				}
+
+				// Remove from tracking
+				FileModificationTracker.getInstance().keepFile(filePath);
+			}
+			catch (Exception e)
+			{
+				logger.error("Error restoring file: " + filePath, e);
+				// Still remove from tracking even if restoration failed
+				FileModificationTracker.getInstance().keepFile(filePath);
+			}
+		});
+	}
+
+	/**
+	 * Handler for removing/dismissing a file from tracking.
+	 * File stays in its current modified state.
+	 * 
+	 * @param filePath workspace-relative path
+	 */
+	public void onRemoveFile(String filePath)
+	{
+		FileModificationTracker.getInstance().removeFile(filePath);
+		logger.info("File dismissed from tracking: " + filePath);
+	}
+
+	/**
+	 * Handler for keeping all modified files.
+	 * Clears all tracking (files are already modified).
+	 */
+	public void onKeepAll()
+	{
+		FileModificationTracker.getInstance().keepAll();
+		logger.info("All files kept");
+	}
+
+	/**
+	 * Handler for undoing all modified files.
+	 * Restores all files to original content and clears tracking.
+	 */
+	public void onUndoAll()
+	{
+		logger.info("Undoing all files");
+
+		uiSync.asyncExec(() -> {
+			java.util.Map<String, String> files = FileModificationTracker.getInstance().getModifiedFiles();
+
+			for (java.util.Map.Entry<String, String> entry : files.entrySet())
+			{
+				String filePath = entry.getKey();
+				String originalContent = entry.getValue();
+
+				try
+				{
+					IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
+					if (file.exists())
+					{
+						// Restore original content
+						try (InputStream stream = new ByteArrayInputStream(originalContent.getBytes(StandardCharsets.UTF_8)))
+						{
+							file.setContents(stream, true, true, null);
+							logger.info("File restored to original content: " + filePath);
+						}
+					}
+					else
+					{
+						logger.error("File does not exist, cannot restore: " + filePath);
+					}
+				}
+				catch (Exception e)
+				{
+					logger.error("Error restoring file: " + filePath, e);
+				}
+			}
+
+			// Clear all tracking after restoration attempts
+			FileModificationTracker.getInstance().keepAll();
+			logger.info("All files restoration complete");
+		});
+	}
+
+	/**
+	 * Reads the content of a file as a String.
+	 * 
+	 * @param file the IFile to read
+	 * @return the file content as a String
+	 */
+	private String readFileContent(IFile file)
+	{
+		if (file != null && file.exists())
+		{
+			try (InputStream is = file.getContents())
+			{
+				return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+			}
+			catch (Exception e)
+			{
+				logger.error("Error reading file content: " + file.getFullPath(), e);
+			}
+		}
+		return "";
 	}
 }

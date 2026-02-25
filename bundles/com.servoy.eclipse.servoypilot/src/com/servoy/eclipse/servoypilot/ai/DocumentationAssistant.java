@@ -29,4 +29,38 @@ public interface DocumentationAssistant extends IAssistant
 	{
 		return AssistantType.DOCUMENTATION.getDisplayName();
 	}
+
+	/**
+	 * Builds the complete user prompt for documentation generation.
+	 * 
+	 * @param codeText the selected code (or full file content) to document
+	 * @param xmlContext the extracted API documentation context in XML format
+	 * @param workspaceFilePath workspace-relative file path (e.g., /ProjectName/forms/myForm.js)
+	 * @param selectionOffset selection start offset
+	 * @param selectionLength selection length
+	 * @return the complete user prompt combining code, context, and tool parameters
+	 */
+	default String buildPrompt(String codeText, String xmlContext, String workspaceFilePath, int selectionOffset, int selectionLength)
+	{
+		StringBuilder prompt = new StringBuilder();
+		prompt.append("Please generate JSDoc documentation for the following code:\n\n");
+		prompt.append("```javascript\n");
+		prompt.append(codeText);
+		prompt.append("\n```\n\n");
+		
+		if (xmlContext != null && !xmlContext.trim().isEmpty())
+		{
+			prompt.append("API Documentation Context:\n");
+			prompt.append(xmlContext);
+			prompt.append("\n\n");
+		}
+		
+		prompt.append("Generate comprehensive JSDoc comments for all functions in the code above.\n\n");
+		prompt.append("When done, call applyDocumentation with these parameters:\n");
+		prompt.append("- filePath: ").append(workspaceFilePath).append("\n");
+		prompt.append("- selectionOffset: ").append(selectionOffset).append("\n");
+		prompt.append("- selectionLength: ").append(selectionLength).append("\n");
+		
+		return prompt.toString();
+	}
 }

@@ -96,6 +96,21 @@ public class CodeContextService
 	}
 
 	/**
+	 * Gets the code text from selection (or entire file if no selection).
+	 * 
+	 * @param selectionInfo the selection info
+	 * @return the selected text or full file content, empty string if null
+	 */
+	public String getCodeText(SelectionInfo selectionInfo)
+	{
+		if (selectionInfo != null)
+		{
+			return selectionInfo.getSelectedText();
+		}
+		return "";
+	}
+
+	/**
 	 * Extracts code context for a selection.
 	 * 
 	 * @param selectionInfo the selection to analyze
