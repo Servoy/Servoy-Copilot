@@ -28,7 +28,6 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
-import com.servoy.eclipse.servoypilot.chatview.parts.ChatView;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
@@ -254,35 +253,8 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		String displayText = displayMessage.toString();
 		String fullText = fullMessage.toString();
 
-		// Ensure the chat view is open and visible
-		if (!ChatViewActivator.openAndActivateChatView())
-		{
-			DebugUtils.debug("[EXPLAIN] Failed to open chat view");
-			return;
-		}
-
-		// Get ChatView instance
-		ChatView chatView = ChatViewActivator.getChatView();
-		if (chatView == null)
-		{
-			DebugUtils.debug("[EXPLAIN] Failed to get ChatView instance");
-			return;
-		}
-
-		// Schedule the switch and message send on the UI thread with proper sequencing
-		org.eclipse.swt.widgets.Display.getDefault().asyncExec(() -> {
-			// Ensure assistant selector is populated
-			chatView.getPresenter().populateAssistantSelector();
-
-			// Switch to Explain assistant (will clear view if switching from another)
-			chatView.getPresenter().switchToAssistant(AssistantType.EXPLAIN);
-
-			// Schedule message sending after assistant switch completes
-			org.eclipse.swt.widgets.Display.getCurrent().timerExec(150, () -> {
-				// Send the message - display text in UI, full text (with context) to AI
-				chatView.getPresenter().onSendUserMessageWithContext(displayText, fullText);
-			});
-		});
+		// Ensure the chat view is open and switch to the Explain assistant, sending the full message with context
+		ChatViewActivator.openAndSwitchToAssistant(AssistantType.EXPLAIN, displayText, fullText);
 	}
 
 	/**
