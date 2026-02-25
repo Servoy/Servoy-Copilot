@@ -61,7 +61,8 @@ public class InlineQuickFixPreviewManager
 		int startOffset;
 		int originalLength;
 		String modifiedLine;
-		public String lineDelimiter;
+		String lineDelimiter;
+		String originalLine;
 	}
 
 	public void preview(ITextEditor editor, QuickFixProposal proposal) throws Exception
@@ -128,6 +129,7 @@ public class InlineQuickFixPreviewManager
 			change.startOffset = lineOffset;
 			change.originalLength = previewBlock.length() + lineDelimiter.length();
 			change.modifiedLine = modifiedLine;
+			change.originalLine = originalLine;
 			previewChanges.add(change);
 		}
 
@@ -182,16 +184,26 @@ public class InlineQuickFixPreviewManager
 
 	private void reject(ITextEditor editor)
 	{
-		//TODO fix the caret position, do not replace the whole text, just remove the proposed fix
 		try
 		{
 			ScriptEditor scriptEditor = (ScriptEditor)editor;
 			ISourceViewer viewer = scriptEditor.getViewer();
-			viewer.getDocument().set(originalContent);
+			IDocument document = viewer.getDocument();
+
+			for (int i = previewChanges.size() - 1; i >= 0; i--)
+			{
+				PreviewChange change = previewChanges.get(i);
+				int line = document.getLineOfOffset(change.startOffset);
+				int offset = document.getLineOffset(line);
+				document.replace(
+					offset,
+					change.originalLength,
+					change.originalLine + change.lineDelimiter);
+			}
 		}
 		catch (Exception e)
 		{
-			ServoyLog.logError("Error on quickfix proposal rejection: ", e);
+			ServoyLog.logError("Cannot reject quickfix proposal", e);
 		}
 
 		cleanup(editor);
@@ -244,7 +256,8 @@ public class InlineQuickFixPreviewManager
 			floatingBar.dispose();
 		}
 
-		floatingBar = new Composite(text, SWT.DOUBLE_BUFFERED);
+		floatingBar = new Composite(text.getShell(), SWT.DOUBLE_BUFFERED | SWT.NO_TRIM | SWT.ON_TOP);
+		floatingBar.moveAbove(null);
 
 		RowLayout layout = new RowLayout(SWT.HORIZONTAL);
 		layout.marginTop = 3;
@@ -307,6 +320,8 @@ public class InlineQuickFixPreviewManager
 		text.addListener(SWT.MouseWheel, e -> positionFloatingBar(text));
 		text.addListener(SWT.Resize, e -> positionFloatingBar(text));
 		text.addListener(SWT.KeyDown, e -> positionFloatingBar(text));
+		text.getHorizontalBar().addListener(SWT.Selection, e -> positionFloatingBar(text));
+		text.getVerticalBar().addListener(SWT.Selection, e -> positionFloatingBar(text));
 
 		floatingBar.setVisible(true);
 	}
@@ -378,7 +393,6 @@ public class InlineQuickFixPreviewManager
 		return button;
 	}
 
-
 	private void positionFloatingBar(StyledText text)
 	{
 		if (floatingBar == null || floatingBar.isDisposed())
@@ -392,14 +406,16 @@ public class InlineQuickFixPreviewManager
 		}
 
 		int firstLine = addedLines.iterator().next();
-
 		try
 		{
-			int y = text.getLinePixel(firstLine) - text.getLineHeight();
-			Rectangle clientArea = text.getClientArea();
-			Point size = floatingBar.getSize();
-			int x = clientArea.width - size.x - 10;
-			floatingBar.setLocation(x, y);
+			int lineHeight = text.getLineHeight();
+			int yInText = text.getLinePixel(firstLine);
+			Point displayPoint = text.toDisplay(0, yInText);
+			Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
+			int x = displayPoint.x + text.getClientArea().width - size.x - 10;
+			int y = displayPoint.y - size.y - 10;
+
+			floatingBar.setBounds(x, y, size.x, lineHeight + 10);
 		}
 		catch (Exception ignore)
 		{
