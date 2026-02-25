@@ -28,8 +28,6 @@ import org.eclipse.e4.ui.services.IServiceConstants;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.browser.Browser;
-import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.ImageTransfer;
@@ -86,7 +84,7 @@ public class ChatView
 	@Inject
 	private ChatViewPresenter presenter;
 
-	private Browser browser;
+	private BrowserWrapper browser;
 	private Text inputArea;
 	private Combo assistantSelector;
 	private boolean autoScrollEnabled = true;
@@ -203,6 +201,10 @@ public class ChatView
 	public void dispose()
 	{
 		Activator.getDefault().removeChatModelChangeListener(chatModelListener);
+		if (browser != null)
+		{
+			browser.dispose();
+		}
 	}
 
 	public void clearChatView()
@@ -456,16 +458,15 @@ public class ChatView
 		}
 	}
 
-	private Browser createChatView(Composite parent)
+	private BrowserWrapper createChatView(Composite parent)
 	{
-		Browser browser = new Browser(parent, SWT.NONE);
-//		browser.setData("AUTOSCALE_DISABLED", Boolean.TRUE); 
+		BrowserWrapper browser = new BrowserWrapper(parent, SWT.NONE);
 		initializeChatView(browser);
 		initializeFunctions(browser);
 		return browser;
 	}
 
-	private void initializeFunctions(Browser browser)
+	private void initializeFunctions(BrowserWrapper browser)
 	{
 		new CopyCodeFunction(browser, "eclipseCopyCode");
 		new ApplyPatchFunction(browser, "eclipseApplyPatch");
@@ -475,21 +476,24 @@ public class ChatView
 		new ScrollInteractionFunction(browser, "eclipseScrollInteraction");
 	}
 
-	private void initializeChatView(Browser browser)
+	private void initializeChatView(BrowserWrapper browser)
 	{
 		String htmlTemplate = """
 			<!DOCTYPE html>
 			<html>
-			    <style>${css}</style>
-			    <style>${fonts}</style>
-			    <script>${js}</script>
+			    <head>
+			        <meta charset="UTF-8">
+			        <style>${css}</style>
+			        <style>${fonts}</style>
+			        <script>${js}</script>
+			    </head>
 			    <body>
-			            <div id="notification-container"></div>
-			            <div id="content">
-			            </div>
-			            <div id="welcome" style="position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);text-align: center;">
-							This is the Servoy AI Assistant.<br/> Ask me anything related to Servoy Development
-			            </div>
+			        <div id="notification-container"></div>
+			        <div id="content">
+			        </div>
+			        <div id="welcome" style="position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);text-align: center;">
+			            This is the Servoy AI Assistant.<br/> Ask me anything related to Servoy Development
+			        </div>
 			    </body>
 			</html>
 			""";
@@ -497,6 +501,7 @@ public class ChatView
 		String js = loadJavaScripts();
 		String css = loadCss();
 		String fonts = loadFonts();
+		
 		htmlTemplate = htmlTemplate.replace("${css}", css).replace("${fonts}", fonts).replace("${js}", js);
 
 		// Initialize the browser with base HTML and CSS
@@ -790,9 +795,9 @@ public class ChatView
 	 * allowing the IDE to copy code. It is invoked from JavaScript when the user
 	 * interacts with the chat view to copy a code block.
 	 */
-	private class CopyCodeFunction extends BrowserFunction
+	private class CopyCodeFunction extends BrowserFunctionWrapper
 	{
-		public CopyCodeFunction(Browser browser, String name)
+		public CopyCodeFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
@@ -814,9 +819,9 @@ public class ChatView
 	 * allowing the IDE to copy code. It is invoked from JavaScript when the user
 	 * interacts with the chat view to copy a code block.
 	 */
-	private class ApplyPatchFunction extends BrowserFunction
+	private class ApplyPatchFunction extends BrowserFunctionWrapper
 	{
-		public ApplyPatchFunction(Browser browser, String name)
+		public ApplyPatchFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
@@ -833,9 +838,9 @@ public class ChatView
 		}
 	}
 
-	private class InsertCodeFunction extends BrowserFunction
+	private class InsertCodeFunction extends BrowserFunctionWrapper
 	{
-		public InsertCodeFunction(Browser browser, String name)
+		public InsertCodeFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
@@ -852,9 +857,9 @@ public class ChatView
 		}
 	}
 
-	private class DiffCodeFunction extends BrowserFunction
+	private class DiffCodeFunction extends BrowserFunctionWrapper
 	{
-		public DiffCodeFunction(Browser browser, String name)
+		public DiffCodeFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
@@ -871,9 +876,9 @@ public class ChatView
 		}
 	}
 
-	private class NewFileFunction extends BrowserFunction
+	private class NewFileFunction extends BrowserFunctionWrapper
 	{
-		public NewFileFunction(Browser browser, String name)
+		public NewFileFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
@@ -891,9 +896,9 @@ public class ChatView
 		}
 	}
 
-	private class ScrollInteractionFunction extends BrowserFunction
+	private class ScrollInteractionFunction extends BrowserFunctionWrapper
 	{
-		public ScrollInteractionFunction(Browser browser, String name)
+		public ScrollInteractionFunction(BrowserWrapper browser, String name)
 		{
 			super(browser, name);
 		}
