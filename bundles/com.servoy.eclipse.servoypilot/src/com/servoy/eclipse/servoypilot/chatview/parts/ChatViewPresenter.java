@@ -53,6 +53,7 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.ai.IAssistant;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
@@ -100,7 +101,7 @@ public class ChatViewPresenter
 	{
 		// Initialize available assistants
 		availableAssistants = new IAssistant[] { Activator.getDefault().getServoyAiModel().getVibeCodingAssistant(), Activator.getDefault().getServoyAiModel()
-			.getDocumentationAssistant()
+			.getDocumentationAssistant(), Activator.getDefault().getServoyAiModel().getExplainAssistant()
 		};
 		// Set default assistant to Chat
 		currentAssistant = availableAssistants[0];
@@ -226,6 +227,46 @@ public class ChatViewPresenter
 		}
 	}
 
+	/**
+	 * Programmatically switch to a specific assistant type.
+	 * @param assistantType The type of assistant to switch to
+	 * @return true if the assistant was found and switched, false otherwise
+	 */
+	public boolean switchToAssistant(AssistantType assistantType)
+	{
+		if (availableAssistants == null || assistantType == null)
+		{
+			return false;
+		}
+
+		// Find the index of the requested assistant type
+		for (int i = 0; i < availableAssistants.length; i++)
+		{
+			if (availableAssistants[i].getType() == assistantType)
+			{
+				final int index = i;
+
+				// Check if already on the requested assistant
+				if (currentAssistant != null && currentAssistant.getType() == assistantType)
+				{
+					// Already on this assistant, but ensure UI is synchronized
+					applyToView(view -> view.setAssistantSelectorIndex(index));
+					return true; // No need to trigger full assistant change
+				}
+
+				// Update the UI combo box
+				applyToView(view -> view.setAssistantSelectorIndex(index));
+
+				// Trigger the assistant change logic
+				onAssistantChanged(index);
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	public void applyToView(Consumer< ? super ChatView> consumer)
 	{
 		consumer.accept(chatView);
@@ -302,24 +343,41 @@ public class ChatViewPresenter
 
 	public void onSendUserMessage(String text)
 	{
+		onSendUserMessageWithContext(text, text);
+	}
+
+	/**
+	 * Send a message where the displayed text differs from what's sent to the AI.
+	 * Useful for hiding verbose context from the UI while providing it to the assistant.
+	 * 
+	 * @param displayText Text shown in the chat UI
+	 * @param fullTextForAI Complete text (including hidden context) sent to the AI
+	 */
+	public void onSendUserMessageWithContext(String displayText, String fullTextForAI)
+	{
 		// Generate temporary IDs for streaming display
 		String userMsgId = UUID.randomUUID().toString();
 		String assistantMsgId = UUID.randomUUID().toString();
 
-		// Show user message immediately (temporary, will be replaced by refresh)
+		// Detect if AI will need to read files (for large file analysis)
+		boolean willReadFiles = fullTextForAI != null && fullTextForAI.contains("<large_file_notice>");
+
+		// Show user message immediately with displayText only
 		applyToView(part -> {
 			part.clearUserInput();
 			part.addMessage(userMsgId, "user");
-			part.setMessageHtml(userMsgId, text);
+			part.setMessageHtml(userMsgId, displayText);
 			part.addMessage(assistantMsgId, "assistant");
-			part.setMessageHtml(assistantMsgId, "...");
+			// Show different initial message if file reading is expected
+			part.setMessageHtml(assistantMsgId, willReadFiles ? "Reading file content..." : "...");
 		});
 
 		// Accumulate streaming tokens
 		StringBuilder accumulatedResponse = new StringBuilder();
 
 		// LangChain4j automatically adds user message to store before calling LLM
-		currentAssistant.executeRequest(currentMemoryId, text)
+		// Send fullTextForAI (with context) to the assistant
+		currentAssistant.executeRequest(currentMemoryId, fullTextForAI)
 			.onPartialResponse(partial -> {
 				// Accumulate tokens and update display
 				accumulatedResponse.append(partial);

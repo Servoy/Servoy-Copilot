@@ -16,38 +16,17 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
-public enum AssistantType
+public interface ExplainAssistant extends IAssistant
 {
-	VIBE_CODING("VibeCoding Assistant", "-vibe"),
-	DOCUMENTATION("Documentation Assistant", "-documentation"),
-	QUICKFIX("QuickFix Assistant", "-quickfix"),
-	EXPLAIN("Explain Assistant", "-explain");
-
-	private final String displayName;
-	private final String memorySuffix;
-
-	AssistantType(String displayName, String memorySuffix)
+	@Override
+	default AssistantType getType()
 	{
-		this.displayName = displayName;
-		this.memorySuffix = memorySuffix;
+		return AssistantType.EXPLAIN;
 	}
 
-	public String getDisplayName()
+	@Override
+	default String getDisplayName()
 	{
-		return displayName;
-	}
-
-	public String getMemorySuffix()
-	{
-		return memorySuffix;
-	}
-
-	public static AssistantType fromIndex(int index)
-	{
-		if (index >= 0 && index < values().length)
-		{
-			return values()[index];
-		}
-		return VIBE_CODING; // Default
+		return AssistantType.EXPLAIN.getDisplayName();
 	}
 }

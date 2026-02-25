@@ -82,6 +82,11 @@ public class SystemPrompts
 		return prompts.get("quickfix.txt");
 	}
 
+	public String getExplainPrompt()
+	{
+		return prompts.get("explain.txt");
+	}
+
 	public String getPrompt(String name)
 	{
 		return prompts.get(name);

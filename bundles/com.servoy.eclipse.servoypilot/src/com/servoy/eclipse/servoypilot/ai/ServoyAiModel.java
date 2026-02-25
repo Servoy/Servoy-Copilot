@@ -19,6 +19,7 @@ package com.servoy.eclipse.servoypilot.ai;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
+import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
 import com.servoy.eclipse.servoypilot.tools.core.FormTools;
@@ -51,6 +52,7 @@ public class ServoyAiModel
 	private CompletionAssistent completionAssistant;
 	private DocumentationAssistant documentationAssistant;
 	private QuickFixAssistant quickFixAssistant;
+	private ExplainAssistant explainAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -123,6 +125,20 @@ public class ServoyAiModel
 	private ChatModel createQuickFixGeminiModel(AiConfiguration conf)
 	{
 		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).allowCodeExecution(true).build();
+	}
+
+	public ExplainAssistant getExplainAssistant()
+	{
+		if (explainAssistant == null && conf.isValid())
+		{
+			explainAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createExplainServices(createOpenAIModel(conf));
+				case GEMINI -> createExplainServices(createGeminiModel(conf));
+				case NONE -> null;
+			};
+		}
+		return explainAssistant;
 	}
 
 	public AiConfiguration getConfiguration()
@@ -242,6 +258,23 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
+			.build();
+	}
+
+	private ExplainAssistant createExplainServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getExplainPrompt();
+
+		return AiServices.builder(ExplainAssistant.class)
+			.streamingChatModel(model)
+			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+				.id(memoryId)
+				.alwaysKeepSystemMessageFirst(true)
+				.maxMessages(MAX_MESSAGES)
+				.chatMemoryStore(sharedMemoryStore)
+				.build())
+			.systemMessageProvider(memoryId -> systemPrompt)
+			.tools(new FileReadingTools()) // Enable file reading for better context understanding
 			.build();
 	}
 

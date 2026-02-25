@@ -53,6 +53,14 @@ public class ServoyAiContextMenu extends CompoundContributionItem
 			"com.servoy.eclipse.servoypilot.context.debug",
 			CommandContributionItem.STYLE_PUSH);
 		subMenuManager.add(new CommandContributionItem(debugParam));
+		
+		// Explain command
+		CommandContributionItemParameter explainParam = new CommandContributionItemParameter(
+			window,
+			null,
+			"com.servoy.eclipse.servoypilot.context.explain",
+			CommandContributionItem.STYLE_PUSH);
+		subMenuManager.add(new CommandContributionItem(explainParam));
 
 		// Review command
 		CommandContributionItemParameter reviewParam = new CommandContributionItemParameter(

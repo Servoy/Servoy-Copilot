@@ -226,6 +226,21 @@ public class ChatView
 		});
 	}
 
+	public void setAssistantSelectorIndex(int index)
+	{
+		uiSync.asyncExec(() -> {
+			if (assistantSelector != null && !assistantSelector.isDisposed())
+			{
+				assistantSelector.select(index);
+			}
+		});
+	}
+
+	public ChatViewPresenter getPresenter()
+	{
+		return presenter;
+	}
+
 	public void setInputEnabled(boolean enabled)
 	{
 		uiSync.asyncExec(() -> {
@@ -528,7 +543,9 @@ public class ChatView
 	public void setMessageHtml(String messageId, String messageBody)
 	{
 		uiSync.asyncExec(() -> {
-			MarkdownParser parser = new MarkdownParser(messageBody);
+			String msg = messageBody == null ? "" : messageBody;
+
+			MarkdownParser parser = new MarkdownParser(msg);
 
 			String fixedHtml = escapeHtmlQuotes(fixLineBreaks(parser.parseToHtml()));
 			// inject and highlight html message

@@ -27,6 +27,7 @@ import org.osgi.framework.BundleContext;
 
 import com.servoy.eclipse.servoypilot.ai.CompletionAssistent;
 import com.servoy.eclipse.servoypilot.ai.DocumentationAssistant;
+import com.servoy.eclipse.servoypilot.ai.ExplainAssistant;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
@@ -113,6 +114,11 @@ public class Activator implements BundleActivator
 	public DocumentationAssistant getDocumentationAssistant()
 	{
 		return getServoyAiModel().getDocumentationAssistant();
+	}
+
+	public ExplainAssistant getExplainAssistant()
+	{
+		return getServoyAiModel().getExplainAssistant();
 	}
 
 }

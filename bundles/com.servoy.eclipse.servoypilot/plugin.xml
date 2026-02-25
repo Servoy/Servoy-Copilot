@@ -78,6 +78,11 @@
             id="com.servoy.eclipse.servoypilot.context.generateTests"
             name="Generate Tests">
       </command>
+      <command
+            category="com.servoy.eclipse.servoypilot.commands.category"
+            id="com.servoy.eclipse.servoypilot.context.explain"
+            name="Explain">
+      </command>
    </extension>
 
    <!-- Servoy AI Context Menu Handlers -->
@@ -98,6 +103,10 @@
       <handler
             class="com.servoy.eclipse.servoypilot.context.ServoyAiContextMenuHandler"
             commandId="com.servoy.eclipse.servoypilot.context.generateTests">
+      </handler>
+      <handler
+            class="com.servoy.eclipse.servoypilot.context.ServoyAiContextMenuHandler"
+            commandId="com.servoy.eclipse.servoypilot.context.explain">
       </handler>
    </extension>
 
