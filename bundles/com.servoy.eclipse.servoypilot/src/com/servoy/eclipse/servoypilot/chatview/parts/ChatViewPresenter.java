@@ -56,7 +56,6 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
-import com.servoy.eclipse.servoypilot.ai.IAssistant;
 import com.servoy.eclipse.servoypilot.services.InstructionsLoadService;
 import com.servoy.eclipse.servoypilot.services.InstructionsSaveService;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
@@ -93,8 +92,8 @@ public class ChatViewPresenter
 	private String solutionName = "default"; // Current solution name
 	private String currentMemoryId = "default-vibe"; // Memory ID for chat assistant conversation isolation
 	private IActiveProjectListener activeProjectListener; // Solution activation listener
-	private IAssistant currentAssistant; // Currently active assistant
-	private IAssistant[] availableAssistants; // Array of available assistants for combo population
+	private AssistantType currentAssistant; // Currently active assistant
+	private AssistantType[] availableAssistants = AssistantType.values(); // Array of available assistants for combo population
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
 
@@ -102,11 +101,6 @@ public class ChatViewPresenter
 	public void init()
 	{
 		// Initialize available assistants
-		availableAssistants = new IAssistant[] { Activator.getDefault().getServoyAiModel().getVibeCodingAssistant(), Activator.getDefault().getServoyAiModel()
-			.getDocumentationAssistant(), Activator.getDefault().getServoyAiModel().getExplainAssistant()
-		};
-		// Set default assistant to Chat
-		currentAssistant = availableAssistants[0];
 
 		// Register file modification listener
 		FileModificationTracker.getInstance().setListener(new FileModificationTracker.FileModificationListener()
@@ -223,7 +217,7 @@ public class ChatViewPresenter
 			currentAssistant = availableAssistants[selectedIndex];
 
 			// Update memory ID with new assistant's suffix
-			currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
+			currentMemoryId = solutionName + currentAssistant.getMemorySuffix();
 
 			// Clear modified files tracking when switching assistants
 			FileModificationTracker.getInstance().clear();
@@ -269,12 +263,12 @@ public class ChatViewPresenter
 		// Find the index of the requested assistant type
 		for (int i = 0; i < availableAssistants.length; i++)
 		{
-			if (availableAssistants[i].getType() == assistantType)
+			if (availableAssistants[i] == assistantType)
 			{
 				final int index = i;
 
 				// Check if already on the requested assistant
-				if (currentAssistant != null && currentAssistant.getType() == assistantType)
+				if (currentAssistant != null && currentAssistant == assistantType)
 				{
 					// Already on this assistant, but ensure UI is synchronized
 					applyToView(view -> view.setAssistantSelectorIndex(index));
@@ -404,7 +398,7 @@ public class ChatViewPresenter
 
 		// LangChain4j automatically adds user message to store before calling LLM
 		// Send fullTextForAI (with context) to the assistant
-		currentAssistant.executeRequest(currentMemoryId, fullTextForAI)
+		currentAssistant.getModel().executeRequest(currentMemoryId, fullTextForAI)
 			.onPartialResponse(partial -> {
 				// Accumulate tokens and update display
 				accumulatedResponse.append(partial);
@@ -645,7 +639,7 @@ public class ChatViewPresenter
 		solutionName = projectName != null ? projectName : "default";
 
 		// Update memory ID with current assistant suffix
-		currentMemoryId = solutionName + currentAssistant.getType().getMemorySuffix();
+		currentMemoryId = solutionName + currentAssistant.getMemorySuffix();
 
 		// Manage knowledge base: load from .servoy if exists, otherwise load default from bundle
 		IProject project = getProjectByName(projectName);
@@ -727,7 +721,6 @@ public class ChatViewPresenter
 			try
 			{
 				System.out.println("[DEBUG] Starting compare editor opening in UI thread");
-				
 				String originalContent = FileModificationTracker.getInstance().getOriginalContent(filePath);
 				if (originalContent == null)
 				{
@@ -751,12 +744,12 @@ public class ChatViewPresenter
 				System.out.println("[DEBUG] Current content length: " + currentContent.length());
 
 				// Use CompareEditorService for reusable compare functionality
-				com.servoy.eclipse.servoypilot.services.CompareEditorService compareService = 
-					com.servoy.eclipse.servoypilot.services.CompareEditorService.getInstance();
-				
+				com.servoy.eclipse.servoypilot.services.CompareEditorService compareService = com.servoy.eclipse.servoypilot.services.CompareEditorService
+					.getInstance();
+
 				System.out.println("[DEBUG] Opening compare editor via CompareEditorService");
 				boolean success = compareService.openCompareEditor(file.getName(), originalContent, currentContent);
-				
+
 				if (success)
 				{
 					System.out.println("[DEBUG] Compare editor opened successfully");

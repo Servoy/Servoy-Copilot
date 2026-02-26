@@ -16,6 +16,8 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
+import com.servoy.eclipse.servoypilot.Activator;
+
 public enum AssistantType
 {
 	VIBE_CODING("VibeCoding Assistant", "-vibe"),
@@ -49,5 +51,21 @@ public enum AssistantType
 			return values()[index];
 		}
 		return VIBE_CODING; // Default
+	}
+
+	public IAssistant getModel()
+	{
+		switch (this)
+		{
+			case VIBE_CODING :
+				return Activator.getDefault().getServoyAiModel().getVibeCodingAssistant();
+			case DOCUMENTATION :
+				return Activator.getDefault().getServoyAiModel().getDocumentationAssistant();
+			case QUICKFIX :
+				return Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+			case EXPLAIN :
+				return Activator.getDefault().getServoyAiModel().getExplainAssistant();
+		}
+		return null;
 	}
 }
