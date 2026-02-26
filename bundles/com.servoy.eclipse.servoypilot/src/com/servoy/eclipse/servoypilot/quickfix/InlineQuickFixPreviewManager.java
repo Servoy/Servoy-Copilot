@@ -411,6 +411,12 @@ public class InlineQuickFixPreviewManager
 			int lineHeight = text.getLineHeight();
 			int yInText = text.getLinePixel(firstLine);
 			Point displayPoint = text.toDisplay(0, yInText);
+			if (yInText < 0 || yInText > text.getClientArea().height - lineHeight)
+			{
+				floatingBar.setVisible(false); // hide if line not visible
+				return;
+			}
+			floatingBar.setVisible(true);
 			Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
 			int x = displayPoint.x + text.getClientArea().width - size.x - 10;
 			int y = displayPoint.y - size.y - 10;
