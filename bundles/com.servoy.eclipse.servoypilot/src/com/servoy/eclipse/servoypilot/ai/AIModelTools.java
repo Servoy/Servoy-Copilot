@@ -39,7 +39,8 @@ public class AIModelTools
 		{
 			try
 			{
-				cachedOpenAIModels = OpenAiModelCatalog.builder().apiKey(apiKey).build().listModels();
+				cachedOpenAIModels = OpenAiModelCatalog.builder().apiKey(apiKey).build().listModels().stream().filter(AIModelTools::isOpenAiChatCompatible)
+					.toList();
 
 			}
 			catch (Exception e)
@@ -54,13 +55,34 @@ public class AIModelTools
 		return List.of();
 	}
 
+	// Helper method based on 2026 naming standards
+	private static boolean isOpenAiChatCompatible(ModelDescription description)
+	{
+		String modelId = description.name().toLowerCase();
+		// Flagship chat models
+		if (modelId.startsWith("gpt-") || modelId.startsWith("o1") || modelId.startsWith("o3"))
+		{
+			// Exclude the 'instruct' and 'codex' variants which use the old completion API
+			return !modelId.contains("-instruct") && !modelId.contains("-codex");
+		}
+
+		// Fine-tuned chat models usually start with 'ft:gpt-'
+		if (modelId.startsWith("ft:gpt-"))
+		{
+			return true;
+		}
+
+		return false;
+	}
+
 	public static List<ModelDescription> getGeminiModels(String apiKey)
 	{
 		if (cachedGeminiModels == null)
 		{
 			try
 			{
-				cachedGeminiModels = GoogleAiGeminiModelCatalog.builder().apiKey(apiKey).build().listModels();
+				cachedGeminiModels = GoogleAiGeminiModelCatalog.builder().apiKey(apiKey).build().listModels().stream()
+					.filter(AIModelTools::isGeminiChatCompatible).toList();
 
 			}
 			catch (Exception e)
@@ -73,5 +95,46 @@ public class AIModelTools
 			return cachedGeminiModels;
 		}
 		return List.of();
+	}
+
+	private static boolean isGeminiChatCompatible(ModelDescription model)
+	{
+		String id = model.name().toLowerCase();
+		String display = (model.displayName() != null) ? model.displayName().toLowerCase() : "";
+
+		// 1. REMOVE IMAGE GENERATORS (Nano Banana)
+		if (id.contains("-image") || display.contains("banana") || display.contains("image"))
+		{
+			return false;
+		}
+
+		// 2. REMOVE TEXT-TO-SPEECH (TTS)
+		if (id.contains("-tts"))
+		{
+			return false;
+		}
+
+		// 3. REMOVE NATIVE AUDIO (Gemini Live Models)
+		// These expect WebSocket/Streaming audio and don't play nice with standard Chat interfaces
+		if (id.contains("-audio") || id.contains("-live"))
+		{
+			return false;
+		}
+
+		// 4. REMOVE EMBEDDINGS
+		if (id.contains("embedding"))
+		{
+			return false;
+		}
+
+		// 5. REMOVE GEMMA (dont support the tooling)
+		if (id.startsWith("gemma"))
+		{
+			return false;
+		}
+
+		// 6. WHITELIST: Standard reasoning/chat models
+		// We want Gemini Pro, Flash, and the "it" (instruction) version of Gemma
+		return id.contains("pro") || id.contains("flash") || id.contains("-it");
 	}
 }
