@@ -1,5 +1,7 @@
 package com.servoy.eclipse.servoypilot.chatview.parts;
 
+import com.servoy.eclipse.ui.browser.IBrowser;
+
 /**
  * Abstract wrapper class for BrowserFunction that handles both SWT and Chromium browser types.
  * Subclasses only need to implement the function(Object[]) method.
@@ -12,10 +14,10 @@ public abstract class BrowserFunctionWrapper
 	 * @param browserWrapper the browser wrapper instance
 	 * @param name the name of the JavaScript function
 	 */
-	public BrowserFunctionWrapper(BrowserWrapper browserWrapper, String name)
+	public BrowserFunctionWrapper(IBrowser browserWrapper, String name)
 	{
 		Object browser = browserWrapper.getBrowserInstance();
-		
+
 		if (browser instanceof org.eclipse.swt.browser.Browser)
 		{
 			new org.eclipse.swt.browser.BrowserFunction((org.eclipse.swt.browser.Browser)browser, name)

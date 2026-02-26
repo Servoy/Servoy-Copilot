@@ -28,8 +28,6 @@ import org.eclipse.e4.ui.services.IServiceConstants;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.browser.Browser;
-import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.ImageTransfer;
@@ -57,6 +55,8 @@ import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.ui.browser.BrowserFactory;
+import com.servoy.eclipse.ui.browser.IBrowser;
 import com.servoy.eclipse.ui.tweaks.IconPreferences;
 
 import jakarta.annotation.PostConstruct;
@@ -86,7 +86,7 @@ public class ChatView
 	@Inject
 	private ChatViewPresenter presenter;
 
-	private BrowserWrapper browser;
+	private IBrowser browser;
 	private Text inputArea;
 	private Combo assistantSelector;
 	private boolean autoScrollEnabled = true;
@@ -460,15 +460,15 @@ public class ChatView
 		}
 	}
 
-	private BrowserWrapper createChatView(Composite parent)
+	private IBrowser createChatView(Composite parent)
 	{
-		BrowserWrapper browser = new BrowserWrapper(parent, SWT.NONE);
+		IBrowser browser = BrowserFactory.createBrowser(parent);
 		initializeChatView(browser);
 		initializeFunctions(browser);
 		return browser;
 	}
 
-	private void initializeFunctions(BrowserWrapper browser)
+	private void initializeFunctions(IBrowser browser)
 	{
 		new CopyCodeFunction(browser, "eclipseCopyCode");
 		new ApplyPatchFunction(browser, "eclipseApplyPatch");
@@ -485,7 +485,7 @@ public class ChatView
 		new OnUndoAllFunction(browser, "onUndoAll");
 	}
 
-	private void initializeChatView(BrowserWrapper browser)
+	private void initializeChatView(IBrowser browser)
 	{
 		String htmlTemplate = """
 			<!DOCTYPE html>
@@ -826,7 +826,7 @@ public class ChatView
 	 */
 	private class CopyCodeFunction extends BrowserFunctionWrapper
 	{
-		public CopyCodeFunction(BrowserWrapper browser, String name)
+		public CopyCodeFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -850,7 +850,7 @@ public class ChatView
 	 */
 	private class ApplyPatchFunction extends BrowserFunctionWrapper
 	{
-		public ApplyPatchFunction(BrowserWrapper browser, String name)
+		public ApplyPatchFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -869,7 +869,7 @@ public class ChatView
 
 	private class InsertCodeFunction extends BrowserFunctionWrapper
 	{
-		public InsertCodeFunction(BrowserWrapper browser, String name)
+		public InsertCodeFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -888,7 +888,7 @@ public class ChatView
 
 	private class DiffCodeFunction extends BrowserFunctionWrapper
 	{
-		public DiffCodeFunction(BrowserWrapper browser, String name)
+		public DiffCodeFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -907,7 +907,7 @@ public class ChatView
 
 	private class NewFileFunction extends BrowserFunctionWrapper
 	{
-		public NewFileFunction(BrowserWrapper browser, String name)
+		public NewFileFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -927,7 +927,7 @@ public class ChatView
 
 	private class ScrollInteractionFunction extends BrowserFunctionWrapper
 	{
-		public ScrollInteractionFunction(BrowserWrapper browser, String name)
+		public ScrollInteractionFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -947,7 +947,7 @@ public class ChatView
 
 	private class OnFileClickFunction extends BrowserFunctionWrapper
 	{
-		public OnFileClickFunction(BrowserWrapper browser, String name)
+		public OnFileClickFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -961,7 +961,7 @@ public class ChatView
 				System.out.println("[DEBUG] Argument type: " + arguments[0].getClass().getName());
 				System.out.println("[DEBUG] Argument value: " + arguments[0]);
 			}
-			
+
 			if (arguments.length > 0 && arguments[0] instanceof String filePath)
 			{
 				System.out.println("[DEBUG] Calling presenter.onFileClick with: " + filePath);
@@ -977,7 +977,7 @@ public class ChatView
 
 	private class OnKeepFileFunction extends BrowserFunctionWrapper
 	{
-		public OnKeepFileFunction(BrowserWrapper browser, String name)
+		public OnKeepFileFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -995,7 +995,7 @@ public class ChatView
 
 	private class OnUndoFileFunction extends BrowserFunctionWrapper
 	{
-		public OnUndoFileFunction(BrowserWrapper browser, String name)
+		public OnUndoFileFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -1013,7 +1013,7 @@ public class ChatView
 
 	private class OnRemoveFileFunction extends BrowserFunctionWrapper
 	{
-		public OnRemoveFileFunction(BrowserWrapper browser, String name)
+		public OnRemoveFileFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -1031,7 +1031,7 @@ public class ChatView
 
 	private class OnKeepAllFunction extends BrowserFunctionWrapper
 	{
-		public OnKeepAllFunction(BrowserWrapper browser, String name)
+		public OnKeepAllFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -1046,7 +1046,7 @@ public class ChatView
 
 	private class OnUndoAllFunction extends BrowserFunctionWrapper
 	{
-		public OnUndoAllFunction(BrowserWrapper browser, String name)
+		public OnUndoAllFunction(IBrowser browser, String name)
 		{
 			super(browser, name);
 		}
@@ -1055,7 +1055,7 @@ public class ChatView
 		public Object function(Object[] arguments)
 		{
 			presenter.onUndoAll();
-		 return null;
+			return null;
 		}
 	}
 
@@ -1420,7 +1420,7 @@ public class ChatView
 			    const files = JSON.parse(filesJson);
 			    const section = document.getElementById('modified-files-section');
 			    const list = document.getElementById('modified-files-list');
-			    
+
 			    if (files.length > 0) {
 			        section.style.display = 'block';
 			        list.innerHTML = '';
@@ -1432,19 +1432,19 @@ public class ChatView
 			        section.style.display = 'none';
 			    }
 			}
-			
+
 			function createFileEntry(file) {
 			    const entry = document.createElement('div');
 			    entry.className = 'file-entry';
-			    
+
 			    const fileName = document.createElement('span');
 			    fileName.className = 'file-name';
 			    fileName.textContent = file.name;
 			    fileName.title = file.path;
-			    
+
 			    const actions = document.createElement('div');
 			    actions.className = 'file-actions';
-			    
+
 			    const keepIcon = document.createElement('div');
 			    keepIcon.className = 'file-action-icon keep';
 			    keepIcon.innerHTML = '✓';
@@ -1453,7 +1453,7 @@ public class ChatView
 			        e.stopPropagation();
 			        window.onKeepFile(file.path);
 			    };
-			    
+
 			    const undoIcon = document.createElement('div');
 			    undoIcon.className = 'file-action-icon undo';
 			    undoIcon.innerHTML = '✗';
@@ -1462,7 +1462,7 @@ public class ChatView
 			        e.stopPropagation();
 			        window.onUndoFile(file.path);
 			    };
-			    
+
 			    const removeIcon = document.createElement('div');
 			    removeIcon.className = 'file-action-icon remove';
 			    removeIcon.innerHTML = '🗑️';
@@ -1471,28 +1471,28 @@ public class ChatView
 			        e.stopPropagation();
 			        window.onRemoveFile(file.path);
 			    };
-			    
+
 			    actions.appendChild(keepIcon);
 			    actions.appendChild(undoIcon);
 			    actions.appendChild(removeIcon);
-			    
+
 			    entry.appendChild(fileName);
 			    entry.appendChild(actions);
-			    
+
 			    entry.onclick = () => {
 			        console.log('[DEBUG] File entry clicked, path:', file.path);
 			        console.log('[DEBUG] Calling window.onFileClick');
 			        window.onFileClick(file.path);
 			        console.log('[DEBUG] window.onFileClick called');
 			    };
-			    
+
 			    return entry;
 			}
-			
+
 			function toggleModifiedFiles() {
 			    const toggle = document.getElementById('modified-files-toggle');
 			    const list = document.getElementById('modified-files-list');
-			    
+
 			    if (list.classList.contains('collapsed')) {
 			        list.classList.remove('collapsed');
 			        toggle.classList.remove('collapsed');
@@ -1503,15 +1503,15 @@ public class ChatView
 			        toggle.textContent = '▶';
 			    }
 			}
-			
+
 			function keepAllFiles() {
 			    window.onKeepAll();
 			}
-			
+
 			function undoAllFiles() {
 			    window.onUndoAll();
 			}
-			
+
 			function clearModifiedFilesSection() {
 			    const section = document.getElementById('modified-files-section');
 			    section.style.display = 'none';
