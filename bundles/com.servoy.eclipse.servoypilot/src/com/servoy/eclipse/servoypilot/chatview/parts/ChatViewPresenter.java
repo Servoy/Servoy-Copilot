@@ -92,7 +92,7 @@ public class ChatViewPresenter
 	private String solutionName = "default"; // Current solution name
 	private String currentMemoryId = "default-vibe"; // Memory ID for chat assistant conversation isolation
 	private IActiveProjectListener activeProjectListener; // Solution activation listener
-	private AssistantType currentAssistant; // Currently active assistant
+	private AssistantType currentAssistant = AssistantType.VIBE_CODING; // Currently active assistant
 	private AssistantType[] availableAssistants = AssistantType.values(); // Array of available assistants for combo population
 
 	public static final String JOB_PREFIX = "ServoyAI: ";
