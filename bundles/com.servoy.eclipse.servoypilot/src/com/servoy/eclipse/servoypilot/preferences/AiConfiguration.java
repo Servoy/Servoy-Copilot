@@ -24,6 +24,15 @@ public class AiConfiguration
 
 	public ModelKind getSelectedModel()
 	{
+		if (!isValid())
+		{
+			return ModelKind.NONE;
+		}
+		return getSelectedModelImpl();
+	}
+
+	private ModelKind getSelectedModelImpl()
+	{
 		String model = Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.DEFAULT_MODEL);
 		if (model == null || model.isEmpty())
 		{
@@ -34,7 +43,7 @@ public class AiConfiguration
 
 	public String getApiKey()
 	{
-		switch (getSelectedModel())
+		switch (getSelectedModelImpl())
 		{
 			case OPENAI :
 				return Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.OPENAI_API_KEY);
@@ -47,7 +56,7 @@ public class AiConfiguration
 
 	public String getModel()
 	{
-		switch (getSelectedModel())
+		switch (getSelectedModelImpl())
 		{
 			case OPENAI :
 				return Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.OPENAI_MODEL);
@@ -60,7 +69,9 @@ public class AiConfiguration
 
 	public boolean isValid()
 	{
-		return getApiKey() != null && !getApiKey().isEmpty() && getModel() != null && !getModel().isEmpty();
+		String apiKey = getApiKey();
+		String model = getModel();
+		return apiKey != null && !apiKey.isEmpty() && model != null && !model.isEmpty();
 	}
 
 }
