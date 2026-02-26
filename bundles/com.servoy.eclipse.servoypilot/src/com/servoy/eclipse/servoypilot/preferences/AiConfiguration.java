@@ -25,7 +25,7 @@ public class AiConfiguration
 	public ModelKind getSelectedModel()
 	{
 		String model = Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.DEFAULT_MODEL);
-		if (!isValid() || model == null || model.isEmpty())
+		if (model == null || model.isEmpty())
 		{
 			return ModelKind.NONE;
 		}
