@@ -156,7 +156,8 @@ public class ServoyAiModel
 		return GoogleAiGeminiStreamingChatModel.builder()
 			.apiKey(conf.getApiKey())
 			.modelName(conf.getModel())
-			.allowCodeExecution(true)
+			.allowCodeExecution(false)
+			.allowGoogleSearch(false)
 			.build();
 	}
 

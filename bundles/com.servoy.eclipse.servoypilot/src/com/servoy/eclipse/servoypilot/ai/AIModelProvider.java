@@ -53,7 +53,7 @@ public class AIModelProvider implements com.servoy.eclipse.core.ai.AIModelProvid
 
 	private GoogleAiGeminiChatModel createGeminiModel(AiConfiguration conf)
 	{
-		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).build(); // hard coded once per chat model, completion must be fast
+		return GoogleAiGeminiChatModel.builder().allowCodeExecution(false).allowGoogleSearch(false).apiKey(conf.getApiKey()).modelName(conf.getModel()).build(); // hard coded once per chat model, completion must be fast
 	}
 
 }
