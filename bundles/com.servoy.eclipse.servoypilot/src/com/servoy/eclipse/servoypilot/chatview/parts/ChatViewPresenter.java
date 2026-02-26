@@ -721,12 +721,12 @@ public class ChatViewPresenter
 	public void onFileClick(String filePath)
 	{
 		System.out.println("[DEBUG] onFileClick called with filePath: " + filePath);
-		logger.info("Opening file for review: " + filePath);
+		logger.info("Opening compare editor for file: " + filePath);
 
 		uiSync.asyncExec(() -> {
 			try
 			{
-				System.out.println("[DEBUG] Starting file opening in UI thread");
+				System.out.println("[DEBUG] Starting compare editor opening in UI thread");
 				
 				String originalContent = FileModificationTracker.getInstance().getOriginalContent(filePath);
 				if (originalContent == null)
@@ -746,25 +746,31 @@ public class ChatViewPresenter
 				}
 				System.out.println("[DEBUG] File exists: " + file.getFullPath());
 
-				// Open the file in an editor
-				IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-				if (page != null)
+				// Get current (modified) content
+				String currentContent = new String(file.getContents().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+				System.out.println("[DEBUG] Current content length: " + currentContent.length());
+
+				// Use CompareEditorService for reusable compare functionality
+				com.servoy.eclipse.servoypilot.services.CompareEditorService compareService = 
+					com.servoy.eclipse.servoypilot.services.CompareEditorService.getInstance();
+				
+				System.out.println("[DEBUG] Opening compare editor via CompareEditorService");
+				boolean success = compareService.openCompareEditor(file.getName(), originalContent, currentContent);
+				
+				if (success)
 				{
-					System.out.println("[DEBUG] Opening editor for file: " + file.getName());
-					org.eclipse.ui.ide.IDE.openEditor(page, file);
-					System.out.println("[DEBUG] Editor opened successfully");
-					logger.info("File opened in editor: " + filePath);
+					System.out.println("[DEBUG] Compare editor opened successfully");
 				}
 				else
 				{
-					System.out.println("[DEBUG] No active workbench page found");
+					System.out.println("[DEBUG] Compare editor failed to open");
 				}
 			}
 			catch (Exception e)
 			{
 				System.out.println("[DEBUG] Exception in onFileClick: " + e.getClass().getName() + " - " + e.getMessage());
 				e.printStackTrace();
-				logger.error("Error opening file: " + filePath, e);
+				logger.error("Error opening compare editor for file: " + filePath, e);
 			}
 		});
 	}

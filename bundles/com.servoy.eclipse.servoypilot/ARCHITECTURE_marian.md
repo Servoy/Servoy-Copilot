@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 25, 2026  
+**Last Updated:** February 26, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -8,44 +8,55 @@
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
-- ✅ Documentation Assistant ready for context menu integration
+- ✅ **Documentation Assistant (Feb 26, 2026):** Tool-based workflow (NO code in user message)
+  - NEW: `getCurrentSelection()` tool retrieves code + API context
+  - AI calls tool to get selection dynamically (not passed in prompt)
+  - AI generates JSDoc using retrieved context
+  - AI calls `applyDocumentation(filePath, offset, length, content)` to apply changes
+  - Clean chat UI - no huge code blocks in messages
+  - File modification tracking integration
+- ✅ **Explain Assistant (Feb 25, 2026):** Context menu integration (from Cristi)
+  - FileReadingTools for chunked file reading
+  - Automatic assistant switching
+  - Separate display/AI messages
 - ✅ QuickFix Assistant implemented (non-ChatView, stateful)
+- ✅ **Browser Abstraction Layer (Feb 25, 2026):** BrowserWrapper + BrowserFunctionWrapper
+  - Supports SWT Browser (Windows/Mac) and Chromium (Linux)
+  - All BrowserFunctions migrated to wrapper classes
 - ✅ **Delete Icon Removed (Feb 20, 2026):** Message deletion feature completely removed due to UUID/msg-N mismatch bug
 - ✅ **Modified Files Tracking (Feb 24, 2026):** GitHub Copilot-style tracking with Keep/Undo/Remove actions
+- ✅ **Compare Editor Service (Feb 26, 2026):** Centralized compare editor functionality
+  - CompareEditorService in services package
+  - Reusable across all agents
+  - FileCompareEditorInput with reflection-based DiffNode creation
+- ✅ **UUID Protection Rules (Feb 26, 2026):** Added to ALL system prompts
+  - RULE ZERO in all 5 prompts (vibe-coding, documentation, explain, quickfix, completion)
+  - Text-based emphasis (no emoticons for LLM compatibility)
+  - Critical protection against UUID modification/creation/deletion
+- ✅ **CodeContextService Moved (Feb 26, 2026):** Relocated to services package
+  - More logical organization (context analysis is a service)
+  - Peer to CompareEditorService and other services
 - ❌ **Form JS CRUD Tools Removed (Feb 25, 2026):** createFormJS, readFormJS, updateFormJS, deleteFormJS removed from EclipseTools
 
 ---
 
-## 🐛 KNOWN BUGS (February 24, 2026)
+## 🐛 KNOWN BUGS (February 26, 2026)
 
-### **Bug: Compare Editor Not Opening on File Click**
+### ✅ **FIXED: Compare Editor Not Opening on File Click (Feb 26, 2026)**
 
-**Status:** 🔍 Under Investigation
+**Status:** ✅ RESOLVED
 
-**Symptom:**
-- Clicking a file in "Modified files" section does not open compare editor
-- File should show diff between original and modified content
-- Currently just opens file in regular editor (Phase 2 simplification)
+**Fix Applied:**
+- Created `CompareEditorService` singleton in services package
+- `FileCompareEditorInput` uses reflection to create Eclipse DiffNode
+- Added `org.eclipse.compare.structuremergeviewer` to Import-Package in MANIFEST.MF
+- Fixed DiffNode constructor call (searches for correct signature via reflection)
+- ChatViewPresenter now uses CompareEditorService
 
-**Debug System Added:**
-- JavaScript console.log in file entry onclick handler
-- BrowserFunction System.out.println for bridge tracing
-- ChatViewPresenter System.out.println for handler execution
-
-**Expected Behavior:**
-- Click file → Opens Eclipse compare editor
-- Shows original content (left) vs. modified content (right)
-- User can review changes before Keep/Undo
-
-**Current Workaround:**
-- User can use Eclipse's "Team > Show Local History" for full diff
-- Or manually compare file versions
-
-**Investigation Needed:**
-- Check debug output in console when clicking file
-- Verify BrowserFunction bridge is being called
-- Confirm file path format is correct
-- Test with Eclipse Compare API alternatives
+**Current Behavior:**
+- Click file → Opens Eclipse compare editor ✅
+- Shows original content (left) vs. modified content (right) ✅
+- User can review changes before Keep/Undo ✅
 
 ---
 
@@ -362,32 +373,100 @@ The system works correctly despite the over-engineering. The obsolete architectu
 
 ---
 
+## ✅ COMPLETED - DOCUMENTATION ASSISTANT (February 25, 2026)
+
+**Implementation Complete:** Full workflow for generating JSDoc documentation via AI tool.
+
+### **Architecture Overview:**
+
+**1. Context Menu Handler** (`ServoyAiContextMenuHandler.handleGenerateDocs`):
+- Extracts code context (identifiers + API docs)
+- Converts file path to workspace-relative format
+- Builds complete prompt with selection parameters
+- Calls DocumentationAssistant.executeRequest()
+
+**2. Documentation Assistant** (`DocumentationAssistant.java`):
+- Interface extends `IAssistant`
+- `buildPrompt(codeText, xmlContext, filePath, offset, length)` method
+- Constructs prompt with:
+  - Code to document
+  - API documentation context (XML)
+  - Tool parameters (filePath, offset, length)
+
+**3. Documentation Tools** (`DocumentationTools.java`):
+- `applyDocumentation(filePath, selectionOffset, selectionLength, modifiedContent)` tool
+- Backs up original file (once per file via FileModificationTracker)
+- Applies content to selection range or full file
+- Returns success/error messages to AI
+
+**4. System Prompt** (`documentation.txt`):
+- Instructions for generating JSDoc
+- Servoy-specific conventions (@param {JSEvent}, @param {JSRecord}, etc.)
+- Tool usage instructions
+
+### **Complete Workflow:**
+
+```
+1. User: Right-click code → "Generate Docs"
+2. Handler: 
+   - CodeContextService.getCodeContext(selection) → Extract identifiers + docs
+   - CodeContextService.getCodeText(selection) → Get code text
+   - Convert path to workspace-relative
+   - Build prompt with all parameters
+3. AI:
+   - Receives code + API context + tool parameters
+   - Generates JSDoc documentation
+   - Calls applyDocumentation(filePath, offset, length, documentedCode)
+4. Tool:
+   - FileModificationTracker.notifyFileModified() → Backup original
+   - Apply documented code (replace selection or full file)
+   - Return success
+5. UI:
+   - File appears in "Modified files" section
+   - User can Keep/Undo/Remove changes
+   - Click file to see diff (when compare editor bug fixed)
+```
+
+### **Key Features:**
+- ✅ Handles selection and full file documentation
+- ✅ Automatic file backup (only once per file)
+- ✅ Thread-safe file modification tracking
+- ✅ Workspace-relative paths
+- ✅ AI controls merge logic (no complex manual merging)
+- ✅ Clear error messages returned to AI
+- ✅ Integration with Modified Files Tracking
+
+### **Testing Status:**
+⏳ **Ready for testing** - All code implemented and compiling
+
+---
+
 ## ⚠️ TODO - AGENTS IMPLEMENTATION USING CODE CONTEXT INFRASTRUCTURE
 
-**Now that code context extraction is complete (Phases 1-4) and documentation assistant skeleton is ready:**
-
-**CURRENT STATUS (Feb 17, 2026):**
-- ✅ **Generate Docs Agent (Documentation Assistant)**: Skeleton complete
-  - Interface, memory management, system prompt implemented
-  - Context menu integration ready
-  - **BLOCKED**: Needs UI implementation (Documentation View)
+**CURRENT STATUS (Feb 25, 2026):**
+- ✅ **Generate Docs Agent (Documentation Assistant)**: COMPLETE
+  - Full workflow implemented
+  - DocumentationTools integrated
+  - File modification tracking working
+  - **Ready for testing**
 - ⏳ **Debug Agent**: Not started
 - ⏳ **Review Agent**: Not started
 - ⏳ **Generate Tests Agent**: Not started
 
 **REQUIRED ACTIONS:**
 
-1. **Complete Documentation Assistant UI** (`ServoyAiContextMenuHandler.java`):
-   - ✅ Skeleton complete with context extraction
-   - ✅ Memory management implemented
-   - ❌ UI implementation pending (see CRITICAL TODO above)
-   - Once UI ready: Handle TokenStream, create temp files, show comparison editor
+1. **Test Documentation Assistant**:
+   - Select code in JavaScript editor
+   - Right-click → "Servoy AI" → "Generate Docs"
+   - Verify AI generates and applies JSDoc
+   - Verify file appears in "Modified files" section
+   - Test Keep/Undo/Remove actions
 
-2. **Implement remaining agents** (after UI pattern established):
+2. **Implement remaining agents** (after Documentation Assistant validated):
    - Debug Agent: Analyze code for bugs, suggest fixes
    - Review Agent: Code review with best practices
    - Generate Tests Agent: Generate unit tests based on code analysis
-   - Each will follow Documentation Assistant pattern (own interface, memory, prompt, view)
+   - Each will follow Documentation Assistant pattern (own interface, memory, prompt, tool)
 
 3. **Create knowledge base entries for agents** (Phase 6.2):
    - Add embeddings for code context queries
@@ -404,8 +483,8 @@ The system works correctly despite the over-engineering. The obsolete architectu
 - ✅ XML formatting ready for LLM consumption
 - ✅ Context menu infrastructure in place
 - ✅ Selection and full-file analysis working
-- ✅ Documentation assistant skeleton complete
-- ❌ **BLOCKED**: UI implementation required before agents are functional
+- ✅ Documentation assistant COMPLETE
+- ✅ DocumentationTools implemented and registered
 
 **Benefits:**
 - Agents will have deep understanding of Servoy APIs being used
@@ -441,17 +520,21 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |-- Activator.java                        # Plugin lifecycle
 |   |-- ai/
 |   |   |-- IAssistant.java                   # Common interface for all conversational assistants (Feb 18, 2026)
-|   |   |-- AssistantType.java                # Enum: VIBE_CODING, DOCUMENTATION, QUICKFIX with display names and memory suffixes (Updated Feb 23, 2026)
+|   |   |-- AssistantType.java                # Enum: VIBE_CODING, DOCUMENTATION, QUICKFIX, EXPLAIN with display names and memory suffixes
 |   |   |-- VibeCodingAssistant.java          # LangChain4j interface for chat assistant (extends IAssistant)
 |   |   |-- DocumentationAssistant.java       # LangChain4j interface for documentation assistant (extends IAssistant)
-|   |   |-- QuickFixAssistant.java            # LangChain4j interface for quick fix assistant (extends IAssistant) - NEW Feb 23, 2026
+|   |   |-- ExplainAssistant.java             # LangChain4j interface for explain assistant (extends IAssistant) - NEW Feb 25, 2026
+|   |   |-- QuickFixAssistant.java            # LangChain4j interface for quick fix assistant (extends IAssistant)
 |   |   |-- CompletionAssistent.java          # LangChain4j interface for code completion (stateless)
 |   |   |-- AIModelProvider.java              # Model provider interface
 |   |   |-- AIModelTools.java                 # Model-related tools
 |   |   +-- ServoyAiModel.java                # AI model initialization, single shared memory store management
 |   |-- chatview/parts/
-|   |   |-- ChatView.java                     # SWT/Browser UI with assistant selector combo (UPDATED - Feb 18, 2026)
-|   |   |-- ChatViewPresenter.java            # Multi-assistant management, conversation logic (UPDATED - Feb 23, 2026)
+|   |   |-- ChatView.java                     # SWT/BrowserWrapper UI with assistant selector combo
+|   |   |-- ChatViewPresenter.java            # Multi-assistant management, conversation logic
+|   |   |-- BrowserWrapper.java               # Browser abstraction (SWT/Chromium) - NEW Feb 25, 2026
+|   |   |-- BrowserFunctionWrapper.java       # BrowserFunction abstraction - NEW Feb 25, 2026
+|   |   |-- FileModificationTracker.java      # File modification tracking singleton
 |   |   |-- CodeEditingService.java           # Diff generation (JGit)
 |   |   +-- ApplyPatchWizardHelper.java       # Code patch application UI
 |   |-- context/                              # Code context gathering
@@ -479,6 +562,8 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   +-- ValueListService.java             # ValueList operations
 |   |-- tools/                                # AI Tools (Function Calling)
 |   |   |-- EclipseTools.java                 # File search, find, replace
+|   |   |-- DocumentationTools.java           # Apply documentation to files - NEW Feb 25, 2026
+|   |   |-- FileReadingTools.java             # Chunked file reading for large files - NEW Feb 25, 2026
 |   |   |-- core/                             # Servoy core objects
 |   |   |   |-- FormTools.java                # Forms: get, open, delete
 |   |   |   |-- RelationTools.java            # Relations: get, open, delete
@@ -488,6 +573,10 @@ com.servoy.eclipse.servoypilot/               # Main plugin
 |   |   |   |-- ButtonComponentTools.java     # Buttons: list, add, update, delete, info
 |   |   |   +-- LabelComponentTools.java      # Labels: list, add, update, delete, info
 |   |   +-- utility/                          # Utility tools
+|   |       |-- DatabaseTools.java            # Database: list tables, get info
+|   |       |-- TargetTools.java              # Target: get/set active solution/module
+|   |       |-- CodeContextTools.java         # Code context: analyze selected code
+|   |       +-- KnowledgeTools.java           # RAG: getKnowledge for rules retrieval
 |   |       |-- DatabaseTools.java            # Database: list tables, get info
 |   |       |-- TargetTools.java              # Target: get/set active solution/module
 |   |       |-- CodeContextTools.java         # Code context: analyze selected code (NEW)
@@ -571,6 +660,28 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
  └─ Load Instructions
 ```
 
+**Browser Abstraction Layer (NEW - Feb 25, 2026):**
+
+The ChatView uses `BrowserWrapper` and `BrowserFunctionWrapper` to support both:
+- **SWT Browser** (Windows, macOS)
+- **Chromium Browser** (Linux - via Equo Chromium dependency)
+
+**BrowserWrapper:**
+- Automatically selects browser type based on platform
+- Delegates all operations to underlying browser
+- Methods: `setText()`, `execute()`, `setUrl()`, `getText()`, `isDisposed()`
+- Handles large content (>500KB) via temp files on Chromium
+
+**BrowserFunctionWrapper:**
+- Abstract base class for all JavaScript bridge functions
+- Subclasses implement `function(Object[] arguments)` method
+- Automatically creates correct BrowserFunction type based on wrapped browser
+
+**Migration from direct Browser usage:**
+- All BrowserFunction inner classes now extend BrowserFunctionWrapper
+- All Browser references changed to BrowserWrapper
+- Enables cross-platform compatibility without code changes
+
 **Key Features:**
 - **Multi-assistant support** - Switch between Chat and Documentation assistants (NEW - Feb 18, 2026)
 - Markdown rendering with syntax highlighting
@@ -593,9 +704,9 @@ com.servoy.eclipse.servoypilot.knowledgebase/ # Knowledge base (RAG system)
 - Manage single shared memory store (`sharedMemoryStore`) used by all assistants
 - Register tools appropriate for each assistant type
 
-**Four Assistant Types (Updated Feb 23, 2026):**
+**Five Assistant Types (Updated Feb 25, 2026):**
 
-The system provides four specialized assistants. Three implement the `IAssistant` interface for unified management:
+The system provides five specialized assistants. Four implement the `IAssistant` interface for unified management:
 
 ```java
 public interface IAssistant {
@@ -609,10 +720,10 @@ public interface IAssistant {
 1. **VibeCoding Assistant** (`VibeCodingAssistant.java extends IAssistant`):
    - Interface: `TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request)`
    - Purpose: General conversation and Servoy development assistance
-   - System Prompt: `chat.txt` (~2.4K tokens)
+   - System Prompt: `vibe-coding.txt` (~2.4K tokens)
    - Tools: Full toolset (12 tool classes, 40+ individual tools)
    - Memory: 40 messages max, solution-scoped with `-vibe` suffix
-   - UI: ChatView (shared with Documentation assistant)
+   - UI: ChatView (shared with other assistants)
    - LangChain4j generates implementation for annotated interface method
 
 2. **Completion Assistant** (`CompletionAssistent.java`):
@@ -629,12 +740,21 @@ public interface IAssistant {
    - Interface: `TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request)`
    - Purpose: Generate JSDoc documentation from code context
    - System Prompt: `documentation.txt`
-   - Tools: None currently (works with provided XML context)
+   - Tools: **DocumentationTools** - `applyDocumentation()` for file modification
    - Memory: 40 messages max, solution-scoped with `-documentation` suffix
-   - UI: ChatView (shared with VibeCoding assistant)
+   - UI: Context menu → "Generate Docs" (not in ChatView dropdown yet)
    - LangChain4j generates implementation for annotated interface method
 
-4. **QuickFix Assistant** (`QuickFixAssistant.java extends IAssistant`) ✨ **NEW**:
+4. **Explain Assistant** (`ExplainAssistant.java extends IAssistant`) ✨ **NEW Feb 25**:
+   - Interface: `TokenStream executeRequest(@MemoryId String memoryId, @UserMessage String request)`
+   - Purpose: Explain code with intelligent file reading
+   - System Prompt: `explain.txt`
+   - Tools: **FileReadingTools** - chunked reading for large files
+   - Memory: 40 messages max, solution-scoped with `-explain` suffix
+   - UI: Context menu → "Explain" (auto-switches to Explain assistant in ChatView)
+   - LangChain4j generates implementation for annotated interface method
+
+5. **QuickFix Assistant** (`QuickFixAssistant.java extends IAssistant`):
    - Interface: `String fix(String prompt)` (non-streaming, synchronous)
    - Purpose: Quick fixes for code issues and errors
    - System Prompt: `quickfix.txt`
@@ -652,6 +772,7 @@ public interface IAssistant {
 public enum AssistantType {
     VIBE_CODING("VibeCoding Assistant", "-vibe"),
     DOCUMENTATION("Documentation Assistant", "-documentation"),
+    EXPLAIN("Explain Assistant", "-explain"),
     QUICKFIX("QuickFix Assistant", "-quickfix");
     
     public String getDisplayName();
@@ -999,7 +1120,7 @@ Unregisters listener from ServoyModel
 
 ### 3.6 Tooling (Function Calling)
 
-The AI is empowered with **12 tool classes** containing **40+ individual tools**. Each tool is a Java method annotated with `@Tool` (LangChain4j).
+The AI is empowered with **14 tool classes** containing **45+ individual tools**. Each tool is a Java method annotated with `@Tool` (LangChain4j).
 
 **Tool Categories:**
 
@@ -1008,26 +1129,52 @@ The AI is empowered with **12 tool classes** containing **40+ individual tools**
    - Find files (glob patterns)
    - Search and replace (bulk text replacement)
 
-2. **Servoy Core Objects** (`tools/core/`)
+2. **Documentation Tools** (`DocumentationTools`) - NEW Feb 25, 2026
+   - `applyDocumentation(filePath, offset, length, content)` - Apply JSDoc to files
+   - Backs up original file automatically
+   - Handles selection range or full file replacement
+   - Integrates with FileModificationTracker
+
+3. **File Reading Tools** (`FileReadingTools`) - NEW Feb 25, 2026
+   - `readFile(filePath)` - Read complete file (100KB limit)
+   - `readFileLines(filePath, startLine, endLine)` - Read specific line range (max 500 lines)
+   - `getFileInfo(filePath)` - Get file metadata without reading content
+   - Used by Explain Assistant for chunked reading
+
+4. **Servoy Core Objects** (`tools/core/`)
    - **FormTools**: `getForms()`, `openForm(...)`, `deleteForms(...)`
    - **RelationTools**: `getRelations()`, `openRelation(...)`, `deleteRelations(...)`
    - **ValueListTools**: `getValueLists()`, `openValueList(...)`, `deleteValueLists(...)`
    - **StyleTools**: `getStyles()`, `openStyle(...)`, `deleteStyle(...)`
 
-3. **Servoy Components** (`tools/component/`)
+5. **Servoy Components** (`tools/component/`)
    - **ButtonComponentTools**: `listButtons()`, `addButton()`, `updateButton()`, `deleteButton()`, `getButtonInfo()`
    - **LabelComponentTools**: `listLabels()`, `addLabel()`, `updateLabel()`, `deleteLabel()`, `getLabelInfo()`
 
-4. **Utility Tools** (`tools/utility/`)
+6. **Utility Tools** (`tools/utility/`)
    - **DatabaseTools**: `listTables()`, `getTableInfo()`
    - **TargetTools**: `getTarget()`, `setTarget()` (manages active solution/module)
-   - **CodeContextTools**: `getCodeContext()` ✨ **NEW**
+   - **KnowledgeTools**: `getKnowledge()` (RAG - retrieves rules via embeddings)
+
+7. **Documentation Tools** (`tools/`)
+   - **DocumentationTools**: `getCurrentSelection()`, `applyDocumentation()` ✨ **NEW (Feb 26)**
+     - `getCurrentSelection()` - Retrieves current editor selection with code and API documentation context
+     - Uses CodeContextService (in services package) for identifier extraction
+     - Returns formatted output: FILE, OFFSET, LENGTH, CODE, API DOCUMENTATION
+     - `applyDocumentation()` - Applies generated JSDoc to file at specified offset/length
+     - Integrates with FileModificationTracker for backup and tracking
+
+8. **Services (NOT Tools)** (`services/`)
+   - **CodeContextService**: Code analysis and context extraction (moved from context package, Feb 26)
      - Analyzes selected code or entire file (when no selection)
      - Extracts API context: types, documentation for all identifiers
      - Supports: Servoy API, Web Components, Web Services, Solution Functions
-     - Returns XML-formatted context for LLM consumption
-     - Enables context-aware assistance (debugging, reviews, doc generation)
-   - **KnowledgeTools**: `getKnowledge()` (RAG - retrieves rules via embeddings)
+     - Returns structured CodeContext with documentation
+     - Used by DocumentationTools and context menu handlers
+   - **CompareEditorService**: Opens Eclipse compare editors ✨ **NEW (Feb 26)**
+     - Singleton service accessible to all agents
+     - `openCompareEditor(fileName, original, modified)` - Opens side-by-side comparison
+     - Used by ChatViewPresenter for modified files tracking
 
 **Tool Execution Flow:**
 1. User asks question in chat
@@ -1059,12 +1206,14 @@ User Selection → SelectionTracker → CodeContextService → AST Analysis → 
    - Returns `SelectionInfo` (file path, offset, length, text, source module)
    - Lifecycle: initialized on first use, disposed on plugin shutdown
 
-2. **CodeContextService** ✅ COMPLETE
+2. **CodeContextService** ✅ COMPLETE (Moved to services package Feb 26, 2026)
+   - **Location:** `services/CodeContextService.java` (previously in context package)
    - Parses JavaScript using DLTK's `JavaScriptParserUtil`
    - Runs `TypeInferencer2` with custom `IdentifierCollectingVisitor`
    - Extracts context for each identifier (name, type, documentation)
    - Returns `CodeContext` with complete documentation
    - Handles errors gracefully (syntax errors, missing types)
+   - **Used by:** DocumentationTools, ServoyAiContextMenuHandler, any agent needing code analysis
 
 3. **IdentifierCollectingVisitor (AST Visitor)**
    - Extends DLTK's `TypeInferencerVisitor`
@@ -1555,7 +1704,66 @@ public class TextFieldComponentTools {
 3. Prompts will be loaded when solution is activated
 4. Only that solution will use the custom prompts
 
-### 8.4 Customizing Solution-Specific Knowledge Base
+### 8.4 UUID Protection Rules (February 26, 2026)
+
+**Critical System Requirement:** UUIDs in Servoy code MUST NEVER be modified, created, or deleted by AI.
+
+**Why:** UUIDs are Servoy system identifiers that link code to metadata (forms, relations, valueLists, etc.). Modifying them breaks the system with no recovery.
+
+**Implementation:** Added RULE ZERO to ALL system prompts with maximum emphasis.
+
+**Affected Prompts:**
+1. `vibe-coding.txt` - Main conversational assistant
+2. `documentation.txt` - JSDoc generation assistant
+3. `explain.txt` - Code explanation assistant
+4. `quickfix.txt` - Quick fix engine
+5. `completion.txt` - Code completion engine
+
+**Rule Format (Text-Based, No Emoticons):**
+```
+# *** CRITICAL RULES - NEVER VIOLATE THESE ***
+
+## !!!!! UUID PROTECTION RULES - ABSOLUTELY MANDATORY !!!!!
+
+### RULE ZERO: NEVER MODIFY OR CREATE UUIDs
+
+**THIS IS THE MOST IMPORTANT RULE. VIOLATION WILL BREAK THE SYSTEM.**
+
+1. **NEVER EVER modify any UUID value in the code**
+   - UUIDs look like: `"550e8400-e29b-41d4-a716-446655440000"`
+   - UUIDs are typically 36 characters with hyphens: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+   - DO NOT change even a single character of any UUID
+
+2. **NEVER create, generate, or add new UUIDs**
+   - You are NOT authorized to create UUIDs
+   - UUIDs are system-generated identifiers managed by Servoy
+
+3. **NEVER remove UUIDs from the code**
+   - Every UUID serves a critical system purpose
+
+4. **WHAT TO DO when you see UUIDs:**
+   - [YES] COPY them EXACTLY as-is
+   - [YES] PRESERVE the exact formatting and position
+   - [YES] IGNORE them - treat them as read-only system data
+   - [NO] NEVER modify, create, remove, or change UUIDs
+
+5. **WHY THIS MATTERS:**
+   - UUIDs are database identifiers linking code to Servoy metadata
+   - Changing a UUID breaks connections to forms, relations, valueLists, etc.
+   - The system WILL FAIL if UUIDs are modified
+   - There is NO recovery from UUID corruption
+```
+
+**Design Decisions:**
+- **Text-based emphasis:** Uses `***`, `!!!!!`, `[YES]`, `[NO]` instead of emoticons (better LLM compatibility)
+- **Positioned as RULE ZERO:** Appears before all other rules in each prompt
+- **Repeated across all prompts:** Ensures every AI interaction respects this rule
+- **Prominent formatting:** All-caps, bold, multiple exclamation marks for maximum visibility
+- **Example-driven:** Shows correct behavior with code examples
+
+**Future Enhancement:** Code-level validation to detect UUID modifications in tool outputs (additional safety layer beyond prompts).
+
+### 8.5 Customizing Solution-Specific Knowledge Base
 
 1. Use "Reset Instructions" menu to create `.servoy/` directory in solution
 2. Edit files in `.servoy/rules/` or `.servoy/embeddings/` as needed
@@ -1936,18 +2144,143 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)
-- 4 specialized assistants: VibeCoding, Completion, Documentation, QuickFix
+- 5 specialized assistants: VibeCoding, Completion, Documentation, Explain, QuickFix
   - **ChatView dropdown:** 2 assistants visible (VibeCoding, Documentation)
+  - **Context menu:** Explain (auto-switches to ChatView), Generate Docs (uses tool)
   - **Programmatic only:** QuickFix (not yet in UI)
   - **Inline completion:** Completion (not in ChatView)
 - Clean separation: UI (Views) → Presenters → Services → Tools
 - Stateless LLM with client-side memory management (single shared store, ID-based isolation)
 - Direct listener registration for solution activation events
 - Service layer for business logic
+- **Browser abstraction:** BrowserWrapper + BrowserFunctionWrapper for cross-platform support
+
+---
+
+## 🧪 TESTING DOCUMENTATION ASSISTANT (February 26, 2026)
+
+### **Updated Workflow (Tool-Based):**
+- ✅ Generic user message (NO code in chat)
+- ✅ AI calls `getCurrentSelection()` tool to retrieve code
+- ✅ AI receives code + API documentation context
+- ✅ AI generates JSDoc
+- ✅ AI calls `applyDocumentation()` to apply changes
+- ✅ Clean chat UI - no huge code blocks
+
+### **Prerequisites:**
+1. Valid AI API key configured (OpenAI or Gemini)
+2. Active Servoy solution open
+3. JavaScript file with functions to document
+
+### **Test Scenario 1: Document Selected Functions**
+
+**Steps:**
+1. Open a JavaScript file (e.g., form JS file)
+2. Select 1-3 functions (including function body)
+3. Right-click → "Servoy AI" → "Generate Docs"
+4. **Observe:** ChatView opens with generic message "Please generate JSDoc documentation for the current selection."
+5. **Observe:** AI calls `getCurrentSelection()` tool (visible in chat)
+6. Wait for AI to process (may take 10-30 seconds)
+
+**Expected Results:**
+- ✅ ChatView shows clean message (no code block)
+- ✅ AI calls `getCurrentSelection()` tool
+- ✅ AI receives code + API documentation
+- ✅ AI calls `applyDocumentation` tool
+- ✅ File modified with JSDoc comments above functions
+- ✅ File appears in "Modified files" section at bottom
+- ✅ **Click file → Compare editor opens showing original vs modified** ✨ FIXED (Feb 26)
+- ✅ Can click Keep/Undo/Remove buttons
+
+**Verify:**
+- JSDoc format is correct (`/** ... */`)
+- @param tags match function parameters (uses API context for types)
+- @returns tag matches return type
+- Descriptions are relevant to code
+- UUIDs in code are NEVER modified (RULE ZERO protection)
+
+### **Test Scenario 2: Document Entire File**
+
+**Steps:**
+1. Open a JavaScript file
+2. Click anywhere (no selection)
+3. Right-click → "Servoy AI" → "Generate Docs"
+4. **Observe:** AI retrieves entire file content via `getCurrentSelection()`
+5. Wait for processing
+
+**Expected Results:**
+- ✅ AI documents ALL functions in file
+- ✅ File appears in "Modified files" section
+- ✅ Can review changes in compare editor
+
+### **Test Scenario 3: Compare Editor (NEW - Feb 26)**
+
+**Steps:**
+1. Generate documentation (scenario 1 or 2)
+2. Click file name in "Modified files" section
+3. Compare editor opens
+
+**Expected Results:**
+- ✅ Eclipse compare editor opens (side-by-side view)
+- ✅ Left side: Original content (before JSDoc)
+- ✅ Right side: Modified content (with JSDoc)
+- ✅ Differences highlighted in yellow/green
+- ✅ Labels show "Original" vs "Modified"
+
+### **Test Scenario 4: Keep Changes**
+
+**Steps:**
+1. Generate documentation
+2. Review in compare editor
+3. Click [✓] (Keep) icon next to file in "Modified files"
+
+**Expected Results:**
+- ✅ File removed from "Modified files" list
+- ✅ Changes remain in file
+- ✅ Cannot undo anymore (changes kept)
+
+### **Test Scenario 5: Undo Changes**
+
+**Steps:**
+1. Generate documentation
+2. Click [✗] (Undo) icon next to file
+
+**Expected Results:**
+- ✅ Original content restored
+- ✅ File removed from "Modified files" list
+- ✅ No JSDoc comments in file
+
+### **Test Scenario 6: UUID Protection**
+
+**Steps:**
+1. Open a JavaScript file with UUID annotations (e.g., `@UUID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+2. Select functions with UUIDs
+3. Right-click → "Servoy AI" → "Generate Docs"
+
+**Expected Results:**
+- ✅ UUIDs are preserved EXACTLY (not modified)
+- ✅ UUIDs are not documented (ignored by AI)
+- ✅ JSDoc added AROUND UUIDs, not replacing them
+- ✅ System prompt RULE ZERO enforces UUID protection
+
+### **Troubleshooting:**
+- **No response:** Check AI API key in preferences
+- **Tool not called:** Check console for errors - AI should call `getCurrentSelection()` first
+- **File not appearing:** Check FileModificationTracker is working
+- **Bad JSDoc format:** Try different selection or adjust prompt
+- **Compare editor doesn't open:** Check console for errors, verify CompareEditorService is loaded
+- **UUIDs modified:** CRITICAL BUG - report immediately (RULE ZERO violation)
 
 ---
 
 **End of Architecture Reference**
 
-**Last Updated:** February 23, 2026  
-**Status:** Production Ready - Multi-Assistant View Switcher Complete (2 assistants in UI), Memory Refactoring Validated, Code Context Complete, QuickFix Assistant Implemented (backend only), Documentation Assistant Ready for Context Menu Integration
+**Last Updated:** February 25, 2026  
+**Status:** Production Ready
+- ✅ Multi-Assistant View Switcher Complete (5 assistants: VibeCoding, Documentation, Explain, QuickFix, Completion)
+- ✅ Memory Refactoring Validated (single shared store, ID-based isolation)
+- ✅ Code Context Complete (Phases 1-4)
+- ✅ **Documentation Assistant COMPLETE** - Ready for testing
+- ✅ Explain Assistant Complete (from Cristi)
+- ✅ Browser Abstraction Layer (cross-platform support)
+- ✅ Modified Files Tracking (Keep/Undo/Remove)

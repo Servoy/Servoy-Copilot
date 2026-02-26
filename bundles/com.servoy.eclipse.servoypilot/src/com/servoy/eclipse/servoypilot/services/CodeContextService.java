@@ -14,7 +14,7 @@
  with this program; if not, see http://www.gnu.org/licenses or write to the Free
  Software Foundation,Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
  */
-package com.servoy.eclipse.servoypilot.context;
+package com.servoy.eclipse.servoypilot.services;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -54,6 +54,7 @@ import org.eclipse.dltk.javascript.ui.scriptdoc.ScriptdocContentAccess;
 import com.servoy.eclipse.debug.script.TypeCreator;
 import com.servoy.eclipse.debug.script.TypeProviderFactory;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.context.IdentifierCollectingVisitor;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.IdentifierContext;
 import com.servoy.eclipse.servoypilot.context.dto.IdentifierContext.IdentifierKind;
@@ -147,34 +148,34 @@ public class CodeContextService
 						inferencer.setModelElement(module);
 						inferencer.doInferencing(script);
 
-					// Extract context for each identifier (with deduplication)
-					Map<String, IdentifierContext> uniqueIdentifiers = new HashMap<>();
+						// Extract context for each identifier (with deduplication)
+						Map<String, IdentifierContext> uniqueIdentifiers = new HashMap<>();
 
-					collector.identifiers.forEach((node, pair) -> {
-						IdentifierContext identifierContext = extractIdentifierContext(node, pair, collector);
-						if (identifierContext != null)
+						collector.identifiers.forEach((node, pair) -> {
+							IdentifierContext identifierContext = extractIdentifierContext(node, pair, collector);
+							if (identifierContext != null)
+							{
+								// Use name+type as unique key to avoid duplicates
+								String key = identifierContext.getName() + ":" + identifierContext.getTypeName();
+								uniqueIdentifiers.putIfAbsent(key, identifierContext);
+							}
+						});
+
+						// Convert to list
+						List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
+
+						// Print simple list of all identifiers with classification
+						System.out.println("Detected identifiers:");
+						for (IdentifierContext ctx : identifierContexts)
 						{
-							// Use name+type as unique key to avoid duplicates
-							String key = identifierContext.getName() + ":" + identifierContext.getTypeName();
-							uniqueIdentifiers.putIfAbsent(key, identifierContext);
+							System.out.println("  " + ctx.getName() + " -> " + ctx.getKind() + " (" + ctx.getTypeName() + ")");
 						}
-					});
 
-					// Convert to list
-					List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
+						System.out.println("--------------------------------");
+						System.out.println("Total: " + identifierContexts.size() + " identifiers");
+						System.out.println("================================\n");
 
-					// Print simple list of all identifiers with classification
-					System.out.println("Detected identifiers:");
-					for (IdentifierContext ctx : identifierContexts)
-					{
-						System.out.println("  " + ctx.getName() + " -> " + ctx.getKind() + " (" + ctx.getTypeName() + ")");
-					}
-
-					System.out.println("--------------------------------");
-					System.out.println("Total: " + identifierContexts.size() + " identifiers");
-					System.out.println("================================\n");
-
-					return CodeContext.success(selectionInfo, identifierContexts);
+						return CodeContext.success(selectionInfo, identifierContexts);
 					}
 					return CodeContext.error(selectionInfo, "Failed to parse JavaScript file");
 				}

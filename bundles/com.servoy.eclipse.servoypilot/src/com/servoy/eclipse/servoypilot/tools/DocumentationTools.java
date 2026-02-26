@@ -18,6 +18,7 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -25,23 +26,118 @@ import org.eclipse.core.runtime.Path;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
+import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
+import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.services.CodeContextService;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 
 /**
- * AI tools for applying generated documentation to source files.
+ * AI tools for documentation generation workflow.
  * 
- * Handles file backup, content replacement (selection or full file), and modification tracking.
+ * Provides tools to:
+ * 1. Retrieve current editor selection with code and API documentation
+ * 2. Apply generated JSDoc documentation back to the file
  */
 public class DocumentationTools
 {
-	@Tool("Apply generated documentation to a file or selection range")
+	@Tool("Get the current editor selection (or entire file if no selection) with code and API documentation context")
+	public String getCurrentSelection()
+	{
+		try
+		{
+			// Get current selection from tracker
+			SelectionTracker tracker = SelectionTracker.getInstance();
+			Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
+
+			if (!selectionOpt.isPresent())
+			{
+				return "Error: No active editor or selection available";
+			}
+
+			SelectionInfo selection = selectionOpt.get();
+
+			// Get code context (identifiers + API documentation)
+			CodeContextService contextService = CodeContextService.getInstance();
+			CodeContext context = contextService.getCodeContext(selection);
+
+			if (context.hasError())
+			{
+				return "Error extracting context: " + context.getErrorMessage();
+			}
+
+			// Get code text
+			String codeText = contextService.getCodeText(selection);
+
+			// Convert file path to workspace-relative
+			String workspacePath = convertToWorkspacePath(selection.getFilePath());
+			if (workspacePath == null)
+			{
+				return "Error: Could not convert file path to workspace-relative format";
+			}
+
+			// Build response with all information
+			StringBuilder response = new StringBuilder();
+			response.append("FILE: ").append(workspacePath).append("\n");
+			response.append("OFFSET: ").append(selection.getOffset()).append("\n");
+			response.append("LENGTH: ").append(selection.getLength()).append("\n");
+			response.append("\n--- CODE ---\n");
+			response.append(codeText);
+			response.append("\n--- END CODE ---\n\n");
+
+			// Add API documentation context if available
+			String xmlContext = context.getFormattedXML();
+			if (xmlContext != null && !xmlContext.trim().isEmpty())
+			{
+				response.append("--- API DOCUMENTATION ---\n");
+				response.append(xmlContext);
+				response.append("\n--- END API DOCUMENTATION ---\n");
+			}
+
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting current selection", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * Convert absolute file path to workspace-relative path
+	 */
+	private String convertToWorkspacePath(String absolutePath)
+	{
+		if (absolutePath != null)
+		{
+			// Check if already workspace-relative
+			if (absolutePath.startsWith("/") && !absolutePath.startsWith("//"))
+			{
+				IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(absolutePath));
+				if (file != null && file.exists())
+				{
+					return absolutePath;
+				}
+			}
+
+			// Try converting from absolute path
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(new Path(absolutePath));
+			if (file != null)
+			{
+				return file.getFullPath().toString();
+			}
+		}
+		return null;
+	}
+
+	@Tool("Apply generated JSDoc documentation to the current selection or file")
 	public String applyDocumentation(
 		@P("Workspace-relative file path (e.g., /ProjectName/forms/myForm.js)") String filePath,
 		@P("Selection start offset (0 for full file)") int selectionOffset,
 		@P("Selection length (file length for full file)") int selectionLength,
-		@P("Modified content to apply (documentation + code)") String modifiedContent)
+		@P("Modified content with JSDoc documentation") String modifiedContent)
 	{
 		if (filePath == null || filePath.trim().isEmpty())
 		{

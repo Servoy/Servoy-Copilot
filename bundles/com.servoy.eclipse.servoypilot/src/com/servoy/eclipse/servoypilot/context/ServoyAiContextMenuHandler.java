@@ -26,10 +26,10 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
-import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
@@ -104,43 +104,14 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateDocs(SelectionInfo selection)
 	{
-		// Get code context service
-		CodeContextService service = CodeContextService.getInstance();
+		// Build simple generic message (no code included)
+		String displayMessage = "Please generate JSDoc documentation for the current selection.";
 
-		// Extract identifiers and documentation
-		CodeContext context = service.getCodeContext(selection);
-
-		if (!context.hasError() && !context.isEmpty())
-		{
-			// Get current solution name and create documentation-specific memory ID
-			String solutionName = getCurrentSolutionName();
-			String memoryId = solutionName + "-documentation";
-
-			// Get the code text (selection or full file) from service
-			String codeText = service.getCodeText(selection);
-
-			// Get XML-formatted context
-			String xmlContext = context.getFormattedXML();
-
-			// Convert absolute file path to workspace-relative path
-			String workspaceFilePath = convertToWorkspacePath(selection.getFilePath());
-			if (workspaceFilePath == null)
-			{
-				DebugUtils.debug("[GENERATE DOCS] Failed to convert file path to workspace-relative");
-				return;
-			}
-
-			// Build complete user prompt with file path and selection parameters
-			String userPrompt = Activator.getDefault().getDocumentationAssistant().buildPrompt(
-				codeText,
-				xmlContext,
-				workspaceFilePath,
-				selection.getOffset(),
-				selection.getLength());
-
-			// Execute request - AI will call applyDocumentation tool
-			Activator.getDefault().getDocumentationAssistant().executeRequest(memoryId, userPrompt);
-		}
+		// Open ChatView, switch to Documentation Assistant, and send message
+		ChatViewActivator.openAndSwitchToAssistant(
+			AssistantType.DOCUMENTATION,
+			displayMessage,
+			displayMessage); // Same message for display and AI
 	}
 
 	/**
@@ -155,17 +126,39 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		{
 			try
 			{
+				DebugUtils.debug("[GENERATE DOCS] Converting path: " + absolutePath);
+
+				// Check if already workspace-relative (starts with /)
+				if (absolutePath.startsWith("/") && !absolutePath.startsWith("//"))
+				{
+					// Might already be workspace-relative, try to verify
+					org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+						.getRoot()
+						.getFile(new org.eclipse.core.runtime.Path(absolutePath));
+					if (file != null && file.exists())
+					{
+						DebugUtils.debug("[GENERATE DOCS] Path is already workspace-relative: " + absolutePath);
+						return absolutePath;
+					}
+				}
+
+				// Try converting as absolute path
 				org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
 					.getRoot()
 					.getFileForLocation(new org.eclipse.core.runtime.Path(absolutePath));
 				if (file != null)
 				{
-					return file.getFullPath().toString();
+					String workspacePath = file.getFullPath().toString();
+					DebugUtils.debug("[GENERATE DOCS] Converted to workspace path: " + workspacePath);
+					return workspacePath;
 				}
+
+				DebugUtils.debug("[GENERATE DOCS] getFileForLocation returned null for: " + absolutePath);
 			}
 			catch (Exception e)
 			{
 				DebugUtils.debug("[GENERATE DOCS] Error converting path: " + e.getMessage());
+				e.printStackTrace();
 			}
 		}
 		return null;
