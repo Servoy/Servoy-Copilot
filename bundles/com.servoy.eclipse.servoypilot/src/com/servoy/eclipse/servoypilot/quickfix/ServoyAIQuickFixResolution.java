@@ -17,11 +17,13 @@
 
 package com.servoy.eclipse.servoypilot.quickfix;
 
-import java.util.concurrent.CompletableFuture;
-
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IAnnotationResolution;
 import org.eclipse.jface.text.BadLocationException;
@@ -88,24 +90,49 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 
 	public void run(ITextEditor editor, QuickFixRequest request)
 	{
-		final String[] quickfix = new String[1];
-		CompletableFuture.runAsync(() -> {
-			QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-			quickfix[0] = quickFixAssistant.fix(request.markerMessage);
-		}).thenRun(() -> {
-			Display.getDefault().asyncExec(() -> {
-				QuickFixProposal proposal = new QuickFixProposal(request.startOffset, request.endOffset, quickfix[0]);
-				InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
+		QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+		Job job = new Job("Servoy AI QuickFix")
+		{
+			@Override
+			protected IStatus run(IProgressMonitor monitor)
+			{
 				try
 				{
-					inlinePreviewManager.preview(editor, proposal);
+					monitor.beginTask("Running AI QuickFix...", IProgressMonitor.UNKNOWN);
+					String quickFix = quickFixAssistant.fix(request.markerMessage);
+					if (monitor.isCanceled())
+					{
+						return Status.CANCEL_STATUS;
+					}
+					monitor.worked(1);
+
+					Display.getDefault().asyncExec(() -> {
+						QuickFixProposal proposal = new QuickFixProposal(request.startOffset, request.endOffset, quickFix);
+						InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
+						try
+						{
+							inlinePreviewManager.preview(editor, proposal);
+						}
+						catch (Exception e)
+						{
+							ServoyLog.logError("Error applying quick fix", e);
+						}
+					});
+					monitor.done();
 				}
 				catch (Exception e)
 				{
-					ServoyLog.logError("Error applying quick fix", e);
+					return new Status(IStatus.ERROR, "Error applying quick fix", "QuickFix failed", e);
 				}
-			});
-		});
+				finally
+				{
+					monitor.done();
+				}
+				return Status.OK_STATUS;
+			}
+		};
+		job.setUser(true);
+		job.schedule();
 	}
 
 	private QuickFixRequest buildRequest(
