@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** February 26, 2026  
+**Last Updated:** March 2, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -36,11 +36,53 @@
 - ✅ **CodeContextService Moved (Feb 26, 2026):** Relocated to services package
   - More logical organization (context analysis is a service)
   - Peer to CompareEditorService and other services
+- ✅ **Chat View Fixes (Mar 2, 2026):** Multiple UI and workflow improvements
+  - Race condition fix: clearChatView() now synchronous (no async reinitialization)
+  - Streaming placeholder changed from duplicate user message to "_Thinking..._"
+  - Empty message filtering in refreshViewFromMemory() prevents blank lines
+  - Editor selection clearing after documentation application
+  - Solution activation notification moved to top notification bar (not chat content)
 - ❌ **Form JS CRUD Tools Removed (Feb 25, 2026):** createFormJS, readFormJS, updateFormJS, deleteFormJS removed from EclipseTools
 
 ---
 
-## 🐛 KNOWN BUGS (February 26, 2026)
+## 🐛 KNOWN BUGS (March 2, 2026)
+
+### ✅ **FIXED: Multiple Chat View Issues (Mar 2, 2026)**
+
+**Issues Resolved:**
+1. ✅ Race condition causing message history to disappear when switching assistants
+2. ✅ Duplicate user message showing during AI response streaming
+3. ✅ Empty lines appearing in chat view when switching back to assistant
+4. ✅ Editor selection remaining active after documentation application
+5. ✅ "New session started" notification appearing in chat content area
+
+**Root Causes & Fixes:**
+
+1. **Race Condition with Message History:**
+   - **Problem:** `clearChatView()` was async reinitializing the entire browser, racing with `refreshViewFromMemory()`
+   - **Fix:** Changed to synchronous DOM clearing: `browser.execute("...innerHTML = ''")`
+   - **File:** `ChatView.java:219`
+
+2. **Duplicate User Message:**
+   - **Problem:** Assistant message placeholder was set to user's message text instead of "Thinking..."
+   - **Fix:** Changed `setMessageHtml(assistantMsgId, userMessage)` to `setMessageHtml(assistantMsgId, "_Thinking..._")`
+   - **File:** `ChatViewPresenter.java:384`
+
+3. **Empty Lines in Chat:**
+   - **Problem:** Empty AI messages stored in memory were being rendered as blank divs
+   - **Fix:** Added filter `if (text == null || text.trim().isEmpty()) continue;` in `refreshViewFromMemory()`
+   - **File:** `ChatViewPresenter.java:338-341`
+
+4. **Editor Selection After Documentation:**
+   - **Problem:** Selection remained spanning newly added JSDoc + partial code
+   - **Fix:** Added `clearEditorSelection()` method in `DocumentationTools` to reset selection
+   - **File:** `DocumentationTools.java:199-247`
+
+5. **Solution Activation Notification:**
+   - **Problem:** Green notification HTML was added as chat message instead of top notification bar
+   - **Fix:** Changed from `addMessage()` to `showNotification()` with 5-second duration
+   - **File:** `ChatViewPresenter.java:663-667`
 
 ### ✅ **FIXED: Compare Editor Not Opening on File Click (Feb 26, 2026)**
 
