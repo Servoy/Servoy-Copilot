@@ -18,6 +18,7 @@ package com.servoy.eclipse.servoypilot.util;
 
 import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.e4.ui.workbench.modeling.EPartService;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
@@ -59,7 +60,7 @@ public class ChatViewActivator
 						// View not open, show it
 						viewPart = page.showView(CHAT_VIEW_ID);
 					}
-					
+
 					// Activate the view (bring to front)
 					if (viewPart != null)
 					{
@@ -95,19 +96,19 @@ public class ChatViewActivator
 			{
 				return null;
 			}
-			
+
 			IWorkbenchPage page = window.getActivePage();
 			if (page == null)
 			{
 				return null;
 			}
-			
+
 			IViewPart viewPart = page.findView(CHAT_VIEW_ID);
 			if (viewPart == null)
 			{
 				return null;
 			}
-			
+
 			// Try getting the E4 Part Service to access the actual object
 			try
 			{
@@ -129,7 +130,7 @@ public class ChatViewActivator
 			{
 				DebugUtils.debug("Error using E4PartService: " + e.getMessage());
 			}
-			
+
 			// Fallback: try direct instanceof check
 			if (viewPart instanceof ChatView)
 			{
@@ -152,7 +153,7 @@ public class ChatViewActivator
 	 * @param fullText Optional full text to send to the AI (null to skip sending message)
 	 * @return true if the view was opened and assistant switched successfully, false otherwise
 	 */
-	public static boolean openAndSwitchToAssistant(AssistantType assistantType, String displayText, String fullText)
+	public static boolean openAndSwitchToAssistant(AssistantType assistantType, String displayText)
 	{
 		// Ensure the chat view is open and visible
 		if (!openAndActivateChatView())
@@ -170,7 +171,7 @@ public class ChatViewActivator
 		}
 
 		// Schedule the switch and message send on the UI thread with proper sequencing
-		org.eclipse.swt.widgets.Display.getDefault().asyncExec(() -> {
+		Display.getDefault().asyncExec(() -> {
 			// Ensure assistant selector is populated
 			chatView.getPresenter().populateAssistantSelector();
 
@@ -178,12 +179,12 @@ public class ChatViewActivator
 			chatView.getPresenter().switchToAssistant(assistantType);
 
 			// If message provided, schedule message sending after assistant switch completes
-			if (displayText != null && fullText != null)
+			if (displayText != null)
 			{
 				// Schedule message sending after assistant switch completes
-				org.eclipse.swt.widgets.Display.getCurrent().timerExec(150, () -> {
+				Display.getCurrent().timerExec(150, () -> {
 					// Send the message - display text in UI, full text (with context) to AI
-					chatView.getPresenter().onSendUserMessageWithContext(displayText, fullText);
+					chatView.getPresenter().onSendUserMessage(displayText);
 				});
 			}
 		});

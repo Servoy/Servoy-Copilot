@@ -87,26 +87,26 @@ public class Activator implements BundleActivator
 	public void clearServoyAiModel()
 	{
 		servoyAIModel = null;
-		fireChatModelChanged();
+		fireServoyAiModelChanged();
 	}
 
-	public void addChatModelChangeListener(Runnable listener)
+	public void addServoyAiModelChangeListener(Runnable listener)
 	{
 		servoyAIModelChangeListeners.add(listener);
 	}
 
-	public void removeChatModelChangeListener(Runnable listener)
+	public void removeServoyAiModelChangeListener(Runnable listener)
 	{
 		servoyAIModelChangeListeners.remove(listener);
 	}
 
-	private void fireChatModelChanged()
+	private void fireServoyAiModelChanged()
 	{
 		servoyAIModelChangeListeners.forEach(Runnable::run);
 	}
 
 
-	public CompletionAssistent getCompletionChatModel()
+	public CompletionAssistent getCompletionAssistant()
 	{
 		return getServoyAiModel().getCompletionAssistant();
 	}

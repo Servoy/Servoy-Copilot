@@ -362,35 +362,19 @@ public class ChatViewPresenter
 		});
 	}
 
-	public void onSendUserMessage(String text)
-	{
-		onSendUserMessageWithContext(text, text);
-	}
-
-	/**
-	 * Send a message where the displayed text differs from what's sent to the AI.
-	 * Useful for hiding verbose context from the UI while providing it to the assistant.
-	 * 
-	 * @param displayText Text shown in the chat UI
-	 * @param fullTextForAI Complete text (including hidden context) sent to the AI
-	 */
-	public void onSendUserMessageWithContext(String displayText, String fullTextForAI)
+	public void onSendUserMessage(String userMessage)
 	{
 		// Generate temporary IDs for streaming display
 		String userMsgId = UUID.randomUUID().toString();
 		String assistantMsgId = UUID.randomUUID().toString();
 
-		// Detect if AI will need to read files (for large file analysis)
-		boolean willReadFiles = fullTextForAI != null && fullTextForAI.contains("<large_file_notice>");
-
 		// Show user message immediately with displayText only
 		applyToView(part -> {
 			part.clearUserInput();
 			part.addMessage(userMsgId, "user");
-			part.setMessageHtml(userMsgId, displayText);
+			part.setMessageHtml(userMsgId, userMessage);
 			part.addMessage(assistantMsgId, "assistant");
-			// Show different initial message if file reading is expected
-			part.setMessageHtml(assistantMsgId, willReadFiles ? "Reading file content..." : "...");
+			part.setMessageHtml(assistantMsgId, userMessage);
 		});
 
 		// Accumulate streaming tokens
@@ -398,7 +382,7 @@ public class ChatViewPresenter
 
 		// LangChain4j automatically adds user message to store before calling LLM
 		// Send fullTextForAI (with context) to the assistant
-		currentAssistant.getModel().executeRequest(currentMemoryId, fullTextForAI)
+		currentAssistant.getModel().executeRequest(currentMemoryId, userMessage)
 			.onPartialResponse(partial -> {
 				// Accumulate tokens and update display
 				accumulatedResponse.append(partial);
@@ -714,55 +698,37 @@ public class ChatViewPresenter
 	 */
 	public void onFileClick(String filePath)
 	{
-		System.out.println("[DEBUG] onFileClick called with filePath: " + filePath);
 		logger.info("Opening compare editor for file: " + filePath);
 
 		uiSync.asyncExec(() -> {
 			try
 			{
-				System.out.println("[DEBUG] Starting compare editor opening in UI thread");
 				String originalContent = FileModificationTracker.getInstance().getOriginalContent(filePath);
 				if (originalContent == null)
 				{
-					System.out.println("[DEBUG] No original content found for: " + filePath);
 					logger.error("No original content found for file: " + filePath);
 					return;
 				}
-				System.out.println("[DEBUG] Original content found, length: " + originalContent.length());
 
 				IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
 				if (!file.exists())
 				{
-					System.out.println("[DEBUG] File does not exist: " + filePath);
 					logger.error("File does not exist: " + filePath);
 					return;
 				}
-				System.out.println("[DEBUG] File exists: " + file.getFullPath());
 
 				// Get current (modified) content
 				String currentContent = new String(file.getContents().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-				System.out.println("[DEBUG] Current content length: " + currentContent.length());
 
 				// Use CompareEditorService for reusable compare functionality
 				com.servoy.eclipse.servoypilot.services.CompareEditorService compareService = com.servoy.eclipse.servoypilot.services.CompareEditorService
 					.getInstance();
 
 				System.out.println("[DEBUG] Opening compare editor via CompareEditorService");
-				boolean success = compareService.openCompareEditor(file.getName(), originalContent, currentContent);
-
-				if (success)
-				{
-					System.out.println("[DEBUG] Compare editor opened successfully");
-				}
-				else
-				{
-					System.out.println("[DEBUG] Compare editor failed to open");
-				}
+				compareService.openCompareEditor(file.getName(), originalContent, currentContent);
 			}
 			catch (Exception e)
 			{
-				System.out.println("[DEBUG] Exception in onFileClick: " + e.getClass().getName() + " - " + e.getMessage());
-				e.printStackTrace();
 				logger.error("Error opening compare editor for file: " + filePath, e);
 			}
 		});
@@ -893,27 +859,5 @@ public class ChatViewPresenter
 			FileModificationTracker.getInstance().keepAll();
 			logger.info("All files restoration complete");
 		});
-	}
-
-	/**
-	 * Reads the content of a file as a String.
-	 * 
-	 * @param file the IFile to read
-	 * @return the file content as a String
-	 */
-	private String readFileContent(IFile file)
-	{
-		if (file != null && file.exists())
-		{
-			try (InputStream is = file.getContents())
-			{
-				return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-			}
-			catch (Exception e)
-			{
-				logger.error("Error reading file content: " + file.getFullPath(), e);
-			}
-		}
-		return "";
 	}
 }

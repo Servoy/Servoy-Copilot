@@ -24,8 +24,6 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
-import com.servoy.eclipse.model.ServoyModelFinder;
-import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
@@ -90,15 +88,11 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleDebug(SelectionInfo selection)
 	{
-		DebugUtils.debug("[DEBUG] Analyzing code for debugging assistance...");
-		DebugUtils.debug("[DEBUG] This will help identify issues in the selected code.");
 		// TODO: Implement actual debug analysis
 	}
 
 	private void handleReview(SelectionInfo selection)
 	{
-		DebugUtils.debug("[REVIEW] Reviewing code for quality and best practices...");
-		DebugUtils.debug("[REVIEW] This will provide suggestions for improvement.");
 		// TODO: Implement code review functionality
 	}
 
@@ -110,58 +104,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		// Open ChatView, switch to Documentation Assistant, and send message
 		ChatViewActivator.openAndSwitchToAssistant(
 			AssistantType.DOCUMENTATION,
-			displayMessage,
-			displayMessage); // Same message for display and AI
-	}
-
-	/**
-	 * Converts absolute OS file path to workspace-relative path.
-	 * 
-	 * @param absolutePath absolute file path from SelectionInfo
-	 * @return workspace-relative path (e.g., /ProjectName/forms/myForm.js) or null if conversion fails
-	 */
-	private String convertToWorkspacePath(String absolutePath)
-	{
-		if (absolutePath != null)
-		{
-			try
-			{
-				DebugUtils.debug("[GENERATE DOCS] Converting path: " + absolutePath);
-
-				// Check if already workspace-relative (starts with /)
-				if (absolutePath.startsWith("/") && !absolutePath.startsWith("//"))
-				{
-					// Might already be workspace-relative, try to verify
-					org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
-						.getRoot()
-						.getFile(new org.eclipse.core.runtime.Path(absolutePath));
-					if (file != null && file.exists())
-					{
-						DebugUtils.debug("[GENERATE DOCS] Path is already workspace-relative: " + absolutePath);
-						return absolutePath;
-					}
-				}
-
-				// Try converting as absolute path
-				org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
-					.getRoot()
-					.getFileForLocation(new org.eclipse.core.runtime.Path(absolutePath));
-				if (file != null)
-				{
-					String workspacePath = file.getFullPath().toString();
-					DebugUtils.debug("[GENERATE DOCS] Converted to workspace path: " + workspacePath);
-					return workspacePath;
-				}
-
-				DebugUtils.debug("[GENERATE DOCS] getFileForLocation returned null for: " + absolutePath);
-			}
-			catch (Exception e)
-			{
-				DebugUtils.debug("[GENERATE DOCS] Error converting path: " + e.getMessage());
-				e.printStackTrace();
-			}
-		}
-		return null;
+			displayMessage);
 	}
 
 	private void handleGenerateTests(SelectionInfo selection)
@@ -247,27 +190,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		String fullText = fullMessage.toString();
 
 		// Ensure the chat view is open and switch to the Explain assistant, sending the full message with context
-		ChatViewActivator.openAndSwitchToAssistant(AssistantType.EXPLAIN, displayText, fullText);
-	}
-
-	/**
-	 * Get the current active solution name
-	 * @return solution name or "default" if none active
-	 */
-	private String getCurrentSolutionName()
-	{
-		try
-		{
-			IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
-			if (servoyModel != null && servoyModel.getActiveProject() != null)
-			{
-				return servoyModel.getActiveProject().getProject().getName();
-			}
-		}
-		catch (Exception e)
-		{
-			// Fallback to default if error
-		}
-		return "default";
+		ChatViewActivator.openAndSwitchToAssistant(AssistantType.EXPLAIN, fullText);
 	}
 }

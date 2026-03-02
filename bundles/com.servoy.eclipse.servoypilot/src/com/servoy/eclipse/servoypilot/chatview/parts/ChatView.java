@@ -195,7 +195,7 @@ public class ChatView
 		// Adjust the weights of the SashForm to allocate space
 		sashForm.setWeights(new int[] { 3, 1 }); // 3:1 ratio for browser and input field
 
-		Activator.getDefault().addChatModelChangeListener(chatModelListener);
+		Activator.getDefault().addServoyAiModelChangeListener(chatModelListener);
 	}
 
 	@Focus
@@ -207,7 +207,7 @@ public class ChatView
 	@PreDestroy
 	public void dispose()
 	{
-		Activator.getDefault().removeChatModelChangeListener(chatModelListener);
+		Activator.getDefault().removeServoyAiModelChangeListener(chatModelListener);
 		if (browser != null)
 		{
 			browser.dispose();
