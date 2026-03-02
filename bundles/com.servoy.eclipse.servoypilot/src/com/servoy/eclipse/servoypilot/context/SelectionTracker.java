@@ -16,13 +16,15 @@
  */
 package com.servoy.eclipse.servoypilot.context;
 
+import java.lang.reflect.Field;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-import org.eclipse.dltk.core.DLTKCore;
 import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.dltk.ui.DLTKUIPlugin;
+import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextSelection;
+import org.eclipse.jface.text.TextSelection;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
@@ -50,6 +52,7 @@ public class SelectionTracker implements ISelectionListener
 	private ITextSelection currentSelection;
 	private IEditorPart activeEditor;
 	private String currentFilePath;
+	private String currentFullDocumentText;
 	private volatile boolean initialized = false;
 
 	private SelectionTracker()
@@ -156,11 +159,35 @@ public class SelectionTracker implements ISelectionListener
 						offset,
 						length,
 						text,
-						module
-					);
+						module);
 				}
 			}
 		}
+
+		if (currentSelection != null)
+		{
+			// Return selection info with descriptive file path for console/view selections
+			String viewSource = currentFilePath != null ? currentFilePath : "<Console View Selection>";
+			int offset = currentSelection.getOffset();
+			int length = currentSelection.getLength();
+			String text = currentSelection.getText();
+
+			// If nothing is selected (length == 0), use the full document text from Console
+			if (length == 0 && currentFullDocumentText != null)
+			{
+				offset = 0;
+				length = currentFullDocumentText.length();
+				text = currentFullDocumentText;
+			}
+
+			return SelectionInfo.create(
+				viewSource,
+				offset,
+				length,
+				text,
+				null);
+		}
+
 		return Optional.empty();
 	}
 
@@ -206,8 +233,50 @@ public class SelectionTracker implements ISelectionListener
 						currentFilePath = module.getPath().toString();
 					}
 				}
+				currentFullDocumentText = null;
+			}
+			else if (!currentSelection.isEmpty() && editor == null)
+			{
+				currentFilePath = "<Console View Selection>";
+				currentFullDocumentText = extractFullDocumentText(currentSelection);
+			}
+			else
+			{
+				currentFilePath = null;
+				currentFullDocumentText = null;
 			}
 		}
+	}
+
+	/**
+	 * Extracts the full document text from a TextSelection using reflection.
+	 * This is needed for Console selections where getText() returns empty when nothing is selected,
+	 * but the underlying document contains all the console output.
+	 * 
+	 * @param selection the text selection
+	 * @return full document text if available, null otherwise
+	 */
+	private String extractFullDocumentText(ITextSelection selection)
+	{
+		if (selection instanceof TextSelection)
+		{
+			try
+			{
+				// Access the private fDocument field in TextSelection
+				Field field = TextSelection.class.getDeclaredField("fDocument");
+				field.setAccessible(true);
+				IDocument doc = (IDocument)field.get(selection);
+				if (doc != null)
+				{
+					return doc.get(); // Get full document content
+				}
+			}
+			catch (Exception e)
+			{
+				// Reflection failed, return null
+			}
+		}
+		return null;
 	}
 
 	/**

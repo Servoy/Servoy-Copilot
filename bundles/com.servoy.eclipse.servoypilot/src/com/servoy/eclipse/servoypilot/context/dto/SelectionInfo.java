@@ -60,6 +60,10 @@ public final class SelectionInfo
 		{
 			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule));
 		}
+		if (offset >= 0 && length >= 0 && filePath != null && !filePath.trim().isEmpty() && sourceModule == null)
+		{
+			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", null));
+		}
 		return Optional.empty();
 	}
 

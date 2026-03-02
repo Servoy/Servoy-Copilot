@@ -177,7 +177,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		CodeContextService service = CodeContextService.getInstance();
 		CodeContext context = service.getCodeContext(selection);
 
-		if (context.hasError() || context.isEmpty())
+		if (context.hasError() || (context.isEmpty() && !context.getSelectionInfo().getFilePath().contains("Console")))
 		{
 			return;
 		}

@@ -55,6 +55,7 @@ import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
 import com.servoy.eclipse.servoypilot.Activator;
+import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.ui.browser.BrowserFactory;
 import com.servoy.eclipse.ui.browser.IBrowser;
 import com.servoy.eclipse.ui.tweaks.IconPreferences;
@@ -113,6 +114,10 @@ public class ChatView
 	public void createPartControl(Composite parent)
 	{
 		presenter.setChatView(this);
+		
+		// Initialize SelectionTracker to start monitoring selections
+		SelectionTracker.getInstance();
+		
 		// Create a SashForm to act as the split pane
 		SashForm sashForm = new SashForm(parent, SWT.VERTICAL);
 		sashForm.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -207,6 +212,9 @@ public class ChatView
 		{
 			browser.dispose();
 		}
+		
+		// Dispose SelectionTracker to clean up selection listeners
+		SelectionTracker.getInstance().dispose();
 	}
 
 	public void clearChatView()

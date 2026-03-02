@@ -133,6 +133,11 @@ public class CodeContextService
 				{
 					ISourceModule module = selectionInfo.getSourceModule();
 
+					if (module == null)
+					{
+						return CodeContext.success(selectionInfo, null);
+					}
+
 					// Parse the JavaScript file
 					final Script script = JavaScriptParserUtil.parse(module, null);
 					if (script != null)
