@@ -17,6 +17,8 @@
 
 package com.servoy.eclipse.servoypilot.quickfix;
 
+import java.util.concurrent.CompletableFuture;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
@@ -25,6 +27,7 @@ import org.eclipse.dltk.ui.text.IAnnotationResolution;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IRegion;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IMarkerResolution;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
@@ -85,18 +88,24 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 
 	public void run(ITextEditor editor, QuickFixRequest request)
 	{
-		QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-		String quickFix = quickFixAssistant.fix(request.markerMessage);
-		QuickFixProposal proposal = new QuickFixProposal(request.startOffset, request.endOffset, quickFix);
-		InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
-		try
-		{
-			inlinePreviewManager.preview(editor, proposal);
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("Error applying quick fix", e);
-		}
+		final String[] quickfix = new String[1];
+		CompletableFuture.runAsync(() -> {
+			QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+			quickfix[0] = quickFixAssistant.fix(request.markerMessage);
+		}).thenRun(() -> {
+			Display.getDefault().asyncExec(() -> {
+				QuickFixProposal proposal = new QuickFixProposal(request.startOffset, request.endOffset, quickfix[0]);
+				InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
+				try
+				{
+					inlinePreviewManager.preview(editor, proposal);
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logError("Error applying quick fix", e);
+				}
+			});
+		});
 	}
 
 	private QuickFixRequest buildRequest(
