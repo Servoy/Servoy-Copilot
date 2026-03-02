@@ -147,48 +147,42 @@ public class ChatViewActivator
 
 	/**
 	 * Opens the chat view, switches to the specified assistant, and optionally sends a message.
+	 * <p>
+	 * Note: This method schedules the assistant switch asynchronously. The return value indicates
+	 * whether the operation was successfully scheduled, not whether it completed successfully.
 	 * 
 	 * @param assistantType The assistant type to switch to
 	 * @param displayText Optional text to display in the UI (null to skip sending message)
-	 * @param fullText Optional full text to send to the AI (null to skip sending message)
-	 * @return true if the view was opened and assistant switched successfully, false otherwise
+	 * @return true if the operation was successfully scheduled, false if preconditions failed
 	 */
 	public static boolean openAndSwitchToAssistant(AssistantType assistantType, String displayText)
 	{
-		// Ensure the chat view is open and visible
-		if (!openAndActivateChatView())
+		if (openAndActivateChatView())
 		{
-			DebugUtils.debug("[" + assistantType + "] Failed to open chat view");
-			return false;
-		}
-
-		// Get ChatView instance
-		ChatView chatView = getChatView();
-		if (chatView == null)
-		{
-			DebugUtils.debug("[" + assistantType + "] Failed to get ChatView instance");
-			return false;
-		}
-
-		// Schedule the switch and message send on the UI thread with proper sequencing
-		Display.getDefault().asyncExec(() -> {
-			// Ensure assistant selector is populated
-			chatView.getPresenter().populateAssistantSelector();
-
-			// Switch to specified assistant (will clear view if switching from another)
-			chatView.getPresenter().switchToAssistant(assistantType);
-
-			// If message provided, schedule message sending after assistant switch completes
-			if (displayText != null)
+			ChatView chatView = getChatView();
+			if (chatView != null)
 			{
-				// Schedule message sending after assistant switch completes
-				Display.getCurrent().timerExec(150, () -> {
-					// Send the message - display text in UI, full text (with context) to AI
-					chatView.getPresenter().onSendUserMessage(displayText);
-				});
-			}
-		});
+				// Schedule the switch and message send on the UI thread with proper sequencing
+				Display.getDefault().asyncExec(() -> {
+					// Ensure assistant selector is populated
+					chatView.getPresenter().populateAssistantSelector();
 
-		return true;
+					// Switch to specified assistant (will clear view if switching from another)
+					chatView.getPresenter().switchToAssistant(assistantType);
+
+					// If message provided, schedule message sending after assistant switch completes
+					if (displayText != null)
+					{
+						// Schedule message sending after assistant switch completes
+						Display.getCurrent().timerExec(150, () -> {
+							// Send the message - display text in UI, full text (with context) to AI
+							chatView.getPresenter().onSendUserMessage(displayText);
+						});
+					}
+				});
+				return true;
+			}
+		}
+		return false;
 	}
 }

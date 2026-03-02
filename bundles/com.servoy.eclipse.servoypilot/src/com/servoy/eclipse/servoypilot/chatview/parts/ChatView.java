@@ -219,7 +219,9 @@ public class ChatView
 
 	public void clearChatView()
 	{
-		uiSync.asyncExec(() -> initializeChatView(browser));
+		// Synchronously clear the message container (no asyncExec needed)
+		// This prevents race conditions with refreshViewFromMemory()
+		browser.execute("var content = document.getElementById('content'); if (content) { content.innerHTML = ''; }");
 	}
 
 	public void clearUserInput()

@@ -23,6 +23,14 @@ import java.util.Optional;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.jface.text.TextSelection;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.part.FileEditorInput;
+import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
@@ -197,6 +205,9 @@ public class DocumentationTools
 				false,
 				null);
 
+			// Clear selection in active editor to avoid confusing partial selection
+			clearEditorSelection(file, selectionOffset);
+
 			ServoyLog.logInfo("Documentation applied to file: " + filePath +
 				" (offset=" + selectionOffset + ", length=" + selectionLength + ")");
 
@@ -207,5 +218,59 @@ public class DocumentationTools
 			ServoyLog.logError("Error applying documentation to file: " + filePath, e);
 			return "Error: " + e.getMessage();
 		}
+	}
+
+	/**
+	 * Clear selection in the active editor and set cursor to original selection start.
+	 * This prevents the selection from spanning newly added documentation.
+	 */
+	private void clearEditorSelection(IFile file, int originalOffset)
+	{
+		Display.getDefault().asyncExec(() -> {
+			try
+			{
+				IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+				if (window == null)
+				{
+					return;
+				}
+
+				IWorkbenchPage page = window.getActivePage();
+				if (page == null)
+				{
+					return;
+				}
+
+				IEditorPart editor = page.getActiveEditor();
+				if (editor == null)
+				{
+					return;
+				}
+
+				// Check if this editor is for our file
+				if (editor.getEditorInput() instanceof FileEditorInput)
+				{
+					FileEditorInput fileInput = (FileEditorInput)editor.getEditorInput();
+					if (fileInput.getFile().equals(file))
+					{
+						// Get text editor
+						ITextEditor textEditor = editor.getAdapter(ITextEditor.class);
+						if (textEditor != null)
+						{
+							var selectionProvider = textEditor.getSelectionProvider();
+							if (selectionProvider != null)
+							{
+								// Set cursor to original selection start (no selection, just cursor position)
+								selectionProvider.setSelection(new TextSelection(originalOffset, 0));
+							}
+						}
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				ServoyLog.logError("Error clearing editor selection", e);
+			}
+		});
 	}
 }

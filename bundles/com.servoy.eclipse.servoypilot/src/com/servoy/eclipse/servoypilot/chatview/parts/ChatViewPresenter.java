@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -339,6 +340,12 @@ public class ChatViewPresenter
 				continue; // Skip unknown types
 			}
 
+			// Skip empty messages to prevent blank lines in UI
+			if (text == null || text.trim().isEmpty())
+			{
+				continue;
+			}
+
 			// Generate UI message ID
 			String messageId = "msg-" + filteredIndex;
 			filteredIndex++;
@@ -368,20 +375,19 @@ public class ChatViewPresenter
 		String userMsgId = UUID.randomUUID().toString();
 		String assistantMsgId = UUID.randomUUID().toString();
 
-		// Show user message immediately with displayText only
+		// Show user message immediately
 		applyToView(part -> {
 			part.clearUserInput();
 			part.addMessage(userMsgId, "user");
 			part.setMessageHtml(userMsgId, userMessage);
 			part.addMessage(assistantMsgId, "assistant");
-			part.setMessageHtml(assistantMsgId, userMessage);
+			part.setMessageHtml(assistantMsgId, "Thinking..."); // Show placeholder while waiting for response
 		});
 
 		// Accumulate streaming tokens
 		StringBuilder accumulatedResponse = new StringBuilder();
 
 		// LangChain4j automatically adds user message to store before calling LLM
-		// Send fullTextForAI (with context) to the assistant
 		currentAssistant.getModel().executeRequest(currentMemoryId, userMessage)
 			.onPartialResponse(partial -> {
 				// Accumulate tokens and update display
@@ -658,15 +664,11 @@ public class ChatViewPresenter
 		applyToView(view -> {
 			view.clearChatView();
 
-			// Add a system notification message
-			String notificationId = UUID.randomUUID().toString();
-			view.addMessage(notificationId, "system");
-			view.setMessageHtml(notificationId,
-				"<div style='padding: 10px; background-color: #e8f5e9; border-left: 4px solid #4caf50; margin: 10px 0;'>" +
-					"<strong>New session started</strong><br/>" +
-					"Solution: <strong>" + projectName + "</strong><br/>" +
-					"Conversation history has been reset." +
-					"</div>");
+			// Show notification at the top (not in chat content)
+			view.showNotification(
+				"New session started - Solution: " + projectName + " - Conversation history has been reset.",
+				Duration.ofSeconds(5),
+				ChatView.NotificationType.INFO);
 		});
 	}
 
