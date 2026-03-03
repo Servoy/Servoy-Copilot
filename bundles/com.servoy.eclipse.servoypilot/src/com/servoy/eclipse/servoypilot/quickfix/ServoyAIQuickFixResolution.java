@@ -235,6 +235,7 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 
 	public boolean canFix()
 	{
-		return true; // TODO check here if we have an ai fix?
+		//we assume the AI always returns something that can be applied (even if it's not correct)
+		return true;
 	}
 }

@@ -122,11 +122,11 @@
       </menuContribution>
    </extension>
 
-	<!--extension point="org.eclipse.ui.ide.markerResolution">
+	<extension point="org.eclipse.ui.ide.markerResolution">
 		<markerResolutionGenerator
-			markerType="org.eclipse.core.resources.problemmarker"
+			markerType="org.eclipse.dltk.javascript.core.jsproblem"
 			class="com.servoy.eclipse.servoypilot.quickfix.ServoyAIQuickFixGenerator" />
-	</extension-->
+	</extension>
 	
 	<extension point="org.eclipse.dltk.ui.correctionProcessor">
      <correctionProcessor

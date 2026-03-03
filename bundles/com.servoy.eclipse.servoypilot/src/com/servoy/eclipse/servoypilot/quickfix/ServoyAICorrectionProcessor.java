@@ -29,13 +29,13 @@ public class ServoyAICorrectionProcessor implements IScriptCorrectionProcessor
 	@Override
 	public boolean canFix(IScriptAnnotation annotation)
 	{
-		return true; // TODO check here if we have an AI quick fix for this annotation?
+		return true;
 	}
 
 	@Override
 	public boolean canFix(IMarker marker)
 	{
-		return true; // TODO check here if we have an AI quick fix for this marker?
+		return true;
 	}
 
 	@Override
@@ -54,10 +54,7 @@ public class ServoyAICorrectionProcessor implements IScriptCorrectionProcessor
 			offset,
 			annotation);
 
-		if (resolution.canFix())
-		{
-			context.addResolution(resolution, annotation);
-		}
+		context.addResolution(resolution, annotation);
 	}
 
 	@Override
@@ -93,11 +90,6 @@ public class ServoyAICorrectionProcessor implements IScriptCorrectionProcessor
 			resource.getProject(),
 			(IFile)resource,
 			marker);
-
-		if (resolution.canFix()) //TODO do we need canFix ?
-		{
-			context.addResolution(resolution, marker);
-		}
+		context.addResolution(resolution, marker);
 	}
 }
-
