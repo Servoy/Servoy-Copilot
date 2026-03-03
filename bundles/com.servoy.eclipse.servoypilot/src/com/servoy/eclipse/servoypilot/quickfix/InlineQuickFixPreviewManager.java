@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
@@ -39,9 +40,13 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
+import com.servoy.eclipse.servoypilot.services.CompareEditorService;
 
 public class InlineQuickFixPreviewManager
 {
@@ -55,6 +60,7 @@ public class InlineQuickFixPreviewManager
 	private final List<PreviewChange> previewChanges = new ArrayList<>();
 
 	private final List<Color> colors = new ArrayList<>();
+	private FileCompareEditorInput compareEditorInput;
 
 	private static class PreviewChange
 	{
@@ -310,7 +316,7 @@ public class InlineQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				toggleDiffEditor();
+				toggleDiffEditor(scriptEditor);
 			});
 
 		floatingBar.pack();
@@ -436,9 +442,48 @@ public class InlineQuickFixPreviewManager
 		}
 	}
 
-	private void toggleDiffEditor()
+	private void toggleDiffEditor(ITextEditor editor)
 	{
-		// TODO Auto-generated method stub
+		if (compareEditorInput == null)
+		{
+			IEditorInput input = editor.getEditorInput();
+			IFile file = input.getAdapter(IFile.class);
+			if (file == null && input instanceof IFileEditorInput)
+			{
+				file = ((IFileEditorInput)input).getFile();
+			}
+			IDocument document = editor.getDocumentProvider()
+				.getDocument(editor.getEditorInput());
 
+			CompareEditorService compareService = CompareEditorService.getInstance();
+			try
+			{
+				compareEditorInput = compareService.openCompareEditor(file.getName(), originalContent, buildModifiedContent(document));
+			}
+			catch (Exception e)
+			{
+				ServoyLog.logError("Error opening diff editor", e);
+			}
+		}
+		else
+		{
+			CompareEditorService.getInstance().closeCompareEditor(compareEditorInput);
+			compareEditorInput = null;
+		}
+	}
+
+	private String buildModifiedContent(IDocument document) throws Exception
+	{
+		StringBuilder builder = new StringBuilder(document.get());
+		// apply in reverse order
+		for (int i = previewChanges.size() - 1; i >= 0; i--)
+		{
+			PreviewChange change = previewChanges.get(i);
+			builder.replace(
+				change.startOffset,
+				change.startOffset + change.originalLength,
+				change.modifiedLine + change.lineDelimiter);
+		}
+		return builder.toString();
 	}
 }

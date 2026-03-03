@@ -16,6 +16,10 @@
  */
 package com.servoy.eclipse.servoypilot.services;
 
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.PlatformUI;
+
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
 
@@ -47,14 +51,14 @@ public class CompareEditorService
 	 * @param fileName the file name (for display)
 	 * @param originalContent the original content (left side)
 	 * @param modifiedContent the modified content (right side)
-	 * @return true if compare editor opened successfully, false otherwise
+	 * @return FileCompareEditorInput if compare editor opened successfully, null otherwise
 	 */
-	public boolean openCompareEditor(String fileName, String originalContent, String modifiedContent)
+	public FileCompareEditorInput openCompareEditor(String fileName, String originalContent, String modifiedContent)
 	{
 		if (fileName == null || originalContent == null || modifiedContent == null)
 		{
 			ServoyLog.logError("CompareEditorService: Invalid parameters - fileName, originalContent, and modifiedContent are required", null);
-			return false;
+			return null;
 		}
 
 		try
@@ -67,14 +71,30 @@ public class CompareEditorService
 
 			// Open compare editor
 			org.eclipse.compare.CompareUI.openCompareEditor(compareInput);
-			
+
 			ServoyLog.logInfo("Compare editor opened for file: " + fileName);
-			return true;
+			return compareInput;
 		}
 		catch (Exception e)
 		{
 			ServoyLog.logError("Error opening compare editor for file: " + fileName, e);
-			return false;
+			return null;
 		}
+	}
+
+	public boolean closeCompareEditor(FileCompareEditorInput compareInput)
+	{
+		IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+		for (IEditorPart editor : page.getEditors())
+		{
+			if (editor.getEditorInput().equals(compareInput))
+			{
+				page.closeEditor(editor, false);
+				ServoyLog.logInfo("Compare editor closed.");
+				return true;
+			}
+		}
+		ServoyLog.logInfo("No matching compare editor to close.");
+		return false;
 	}
 }
