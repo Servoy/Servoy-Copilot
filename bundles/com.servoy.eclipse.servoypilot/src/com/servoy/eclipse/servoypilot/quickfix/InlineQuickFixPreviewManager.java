@@ -24,7 +24,6 @@ import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
-import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
@@ -45,8 +44,10 @@ import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
+import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 
 public class InlineQuickFixPreviewManager
 {
@@ -71,7 +72,11 @@ public class InlineQuickFixPreviewManager
 		String originalLine;
 	}
 
-	public void preview(ITextEditor editor, QuickFixProposal proposal) throws Exception
+	public void preview(
+		ITextEditor editor,
+		String fixedStatementSource,
+		QuickFixRequest request,
+		String fixPrompt) throws Exception
 	{
 		if (!(editor instanceof ScriptEditor))
 		{
@@ -87,6 +92,7 @@ public class InlineQuickFixPreviewManager
 
 		StyledText textWidget = viewer.getTextWidget();
 		IDocument document = viewer.getDocument();
+
 		originalContent = document.get();
 
 		addedLines.clear();
@@ -95,73 +101,80 @@ public class InlineQuickFixPreviewManager
 
 		Display display = textWidget.getDisplay();
 		Color addedColor = new Color(display, 230, 255, 230);
-		colors.add(addedColor);
 		Color removedColor = new Color(display, 255, 230, 230);
+		colors.add(addedColor);
 		colors.add(removedColor);
 
-		for (TextEdit edit : proposal.getEdits())
+		int startLine = document.getLineOfOffset(request.statement.sourceStart());
+		int endLine = document.getLineOfOffset(request.statement.sourceEnd());
+
+		int startOffset = document.getLineOffset(startLine);
+		int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
+
+		String originalStatement = document.get(startOffset, endOffset - startOffset);
+
+		String lineDelimiter = document.getLineDelimiter(startLine);
+		if (lineDelimiter == null)
 		{
-			int startLine = document.getLineOfOffset(edit.getOffset());
-
-			int lineOffset = document.getLineOffset(startLine);
-			int lineLength = document.getLineLength(startLine);
-
-			String lineDelimiter = document.getLineDelimiter(startLine);
-			if (lineDelimiter == null)
-			{
-				lineDelimiter = "\n";
-			}
-
-			String originalLine = document.get(
-				lineOffset,
-				lineLength - lineDelimiter.length());
-
-			int relativeOffset = edit.getOffset() - lineOffset;
-			String modifiedLine = originalLine.substring(0, relativeOffset) + edit.getReplacement() + originalLine.substring(relativeOffset + edit.getLength());
-			String previewBlock = originalLine + lineDelimiter +
-				modifiedLine;
-
-			// replace ONLY the original line content (including delimiter)
-			document.replace(
-				lineOffset,
-				lineLength,
-				previewBlock + lineDelimiter);
-
-			removedLines.add(startLine);
-			addedLines.add(startLine + 1);
-
-			PreviewChange change = new PreviewChange();
-			change.lineDelimiter = lineDelimiter;
-			change.startOffset = lineOffset;
-			change.originalLength = previewBlock.length() + lineDelimiter.length();
-			change.modifiedLine = modifiedLine;
-			change.originalLine = originalLine;
-			previewChanges.add(change);
+			lineDelimiter = "\n";
 		}
 
+		String previewBlock = originalStatement +
+			fixedStatementSource +
+			lineDelimiter;
+
+		document.replace(startOffset, endOffset - startOffset, previewBlock);
+
+		int originalLineCount = countLines(originalStatement, lineDelimiter);
+		int fixedLineCount = countLines(fixedStatementSource, lineDelimiter);
+
+		removedLines.clear();
+		addedLines.clear();
+
+		for (int i = 0; i < originalLineCount; i++)
+		{
+			removedLines.add(startLine + i);
+		}
+
+		for (int i = 0; i < fixedLineCount; i++)
+		{
+			addedLines.add(startLine + originalLineCount + i);
+		}
+
+		PreviewChange change = new PreviewChange();
+		change.startOffset = startOffset;
+		change.originalLength = previewBlock.length();
+		change.modifiedLine = fixedStatementSource;
+		change.originalLine = originalStatement;
+		change.lineDelimiter = lineDelimiter;
+		previewChanges.add(change);
+
 		backgroundListener = event -> {
-			try
+			int lineIndex = textWidget.getLineAtOffset(event.lineOffset) + 1;
+			if (removedLines.contains(lineIndex))
 			{
-				int lineIndex = document.getLineOfOffset(event.lineOffset);
-				if (removedLines.contains(lineIndex))
-				{
-					event.lineBackground = removedColor;
-				}
-				else if (addedLines.contains(lineIndex))
-				{
-					event.lineBackground = addedColor;
-				}
+				event.lineBackground = removedColor;
 			}
-			catch (BadLocationException e)
+			else if (addedLines.contains(lineIndex))
 			{
-				ServoyLog.logError(e);
+				event.lineBackground = addedColor;
 			}
 		};
 
 		textWidget.addLineBackgroundListener(backgroundListener);
 		textWidget.redraw();
 
-		showAcceptRejectUI(editor);
+		showAcceptRejectUI(editor, fixPrompt);
+	}
+
+	private int countLines(String text, String lineDelimiter)
+	{
+		if (text == null || text.isEmpty())
+		{
+			return 0;
+		}
+		int len = text.split(lineDelimiter, -1).length;
+		return text.endsWith(lineDelimiter) ? len - 1 : len;
 	}
 
 	private void accept(ITextEditor editor)
@@ -204,7 +217,7 @@ public class InlineQuickFixPreviewManager
 				document.replace(
 					offset,
 					change.originalLength,
-					change.originalLine + change.lineDelimiter);
+					change.originalLine);
 			}
 		}
 		catch (Exception e)
@@ -247,7 +260,7 @@ public class InlineQuickFixPreviewManager
 		}
 	}
 
-	private void showAcceptRejectUI(ITextEditor editor)
+	private void showAcceptRejectUI(ITextEditor editor, String fixPrompt)
 	{
 		if (!(editor instanceof ScriptEditor))
 		{
@@ -316,7 +329,7 @@ public class InlineQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				toggleDiffEditor(scriptEditor);
+				toggleDiffEditor(scriptEditor, fixPrompt);
 			});
 
 		floatingBar.pack();
@@ -442,7 +455,7 @@ public class InlineQuickFixPreviewManager
 		}
 	}
 
-	private void toggleDiffEditor(ITextEditor editor)
+	private void toggleDiffEditor(ITextEditor editor, String fixPrompt)
 	{
 		if (compareEditorInput == null)
 		{
@@ -459,6 +472,7 @@ public class InlineQuickFixPreviewManager
 			try
 			{
 				compareEditorInput = compareService.openCompareEditor(file.getName(), originalContent, buildModifiedContent(document));
+				ChatViewActivator.openAndSwitchToAssistant(AssistantType.QUICKFIX, fixPrompt);
 			}
 			catch (Exception e)
 			{

@@ -17,6 +17,9 @@
 
 package com.servoy.eclipse.servoypilot.quickfix;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
@@ -24,6 +27,8 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.dltk.javascript.ast.FunctionStatement;
+import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IAnnotationResolution;
 import org.eclipse.jface.text.BadLocationException;
@@ -37,6 +42,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
+import com.servoy.eclipse.servoypilot.services.ParserService;
 
 public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotationResolution
 {
@@ -99,7 +105,16 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 				try
 				{
 					monitor.beginTask("Running AI QuickFix...", IProgressMonitor.UNKNOWN);
-					String quickFix = quickFixAssistant.fix(request.markerMessage);
+
+					String fixPrompt = buildFixPrompt(editor, request, null);
+					String quickFix = quickFixAssistant.fix(fixPrompt);
+
+					if (!ParserService.getInstance().isValidStatement(quickFix))
+					{
+						//TODO send feedback to AI service about invalid quick fix?
+						return new Status(IStatus.ERROR, "Invalid quick fix generated", "The AI generated code that could not be parsed as a valid statement.");
+					}
+
 					if (monitor.isCanceled())
 					{
 						return Status.CANCEL_STATUS;
@@ -107,11 +122,10 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 					monitor.worked(1);
 
 					Display.getDefault().asyncExec(() -> {
-						QuickFixProposal proposal = new QuickFixProposal(request.startOffset, request.endOffset, quickFix);
 						InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
 						try
 						{
-							inlinePreviewManager.preview(editor, proposal);
+							inlinePreviewManager.preview(editor, quickFix, request, fixPrompt);
 						}
 						catch (Exception e)
 						{
@@ -175,7 +189,7 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 				}
 			}
 
-			String problemCode = document.get(start, end - start);
+			Statement problemCode = ParserService.getInstance().getStatementAtOffset(fullSource, start);
 
 			IFile file = (IFile)marker.getResource();
 			String fileName = file.getName();
@@ -212,7 +226,7 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 				return null;
 			}
 
-			String problemCode = document.get(start, end - start);
+			Statement problemCode = ParserService.getInstance().getStatementAtOffset(fullSource, start);
 
 			IFile file = resource;
 			String fileName = file.getName();
@@ -237,5 +251,132 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 	{
 		//we assume the AI always returns something that can be applied (even if it's not correct)
 		return true;
+	}
+
+	//TODO move to separate service/tool?
+	private String buildFixPrompt(
+		ITextEditor editor,
+		QuickFixRequest request, String apiSignature) throws Exception
+	{
+		IDocument document = editor.getDocumentProvider().getDocument(editor.getEditorInput());
+
+		//TODO refactor the code that computes the start,end and line number
+		int lineNumber = -1;
+		String message = "";
+		if (marker != null)
+		{
+			lineNumber = marker.getAttribute(IMarker.LINE_NUMBER, -1) - 1;
+			message = marker.getAttribute(IMarker.MESSAGE, "");
+		}
+		else if (annotation != null)
+		{
+			lineNumber = document.getLineOfOffset(annotation.getSourceStart());
+			message = annotation.getText();
+		}
+
+		if (lineNumber < 0)
+		{
+			return null;
+		}
+
+		String context = getContext(request, document, lineNumber);
+		StringBuilder prompt = new StringBuilder();
+
+		prompt.append("You are generating a minimal Servoy Javascript quickfix, a statement.\n\n");
+		prompt.append("Language: Servoy JavaScript\n"); //TODO is it needed?
+		prompt.append("Environment: Eclipse DLTK ScriptEditor\n\n");//TODO is it needed?
+
+		prompt.append("Marker:\n");
+		prompt.append("- Message: ").append(message).append("\n");
+		prompt.append("- Line: ").append(lineNumber + 1).append("\n\n");
+
+		if (apiSignature != null && !apiSignature.isEmpty())
+		{
+			prompt.append("API Signature:\n");
+			prompt.append(apiSignature).append("\n\n");
+		}
+
+		prompt.append("Code context:\n");
+		prompt.append("```javascript\n");
+		prompt.append(context);
+		prompt.append("\n```");
+		String result = stripCurlyBracesFromDocumentation(prompt.toString()); //escape curly braces to avoid issues with prompt templates
+		return result;
+	}
+
+	public String getContext(QuickFixRequest request, IDocument document, int lineNumber) throws BadLocationException
+	{
+		String context;
+
+		//TODO make these configurable
+		final int CONTEXT_LINES_AROUND_ERROR = 10; // lines before/after the error if function too large
+		final int MAX_FULL_FUNCTION_LINES = 40; // max lines to return entire function
+
+		FunctionStatement parentFunction = ParserService.getInstance().getParentFunction(request.statement);
+		if (parentFunction == null)
+		{
+			// if statement is top-level, fallback to surrounding lines
+			int totalLines = document.getNumberOfLines();
+			int startLine = Math.max(0, lineNumber - 10);
+			int endLine = Math.min(totalLines - 1, lineNumber + 10);
+			int startOffset = document.getLineOffset(startLine);
+			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
+
+			context = document.get(startOffset, endOffset - startOffset);
+		}
+		else
+		{
+			int functionStart = parentFunction.sourceStart();
+			int functionEnd = parentFunction.sourceEnd();
+
+			int startLine = document.getLineOfOffset(functionStart);
+			int endLine = document.getLineOfOffset(functionEnd - 1);
+			int functionLineCount = endLine - startLine + 1;
+
+			if (functionLineCount <= MAX_FULL_FUNCTION_LINES)
+			{
+				// return entire function
+				int startOffset = document.getLineOffset(startLine);
+				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
+				context = document.get(startOffset, endOffset - startOffset);
+			}
+			else
+			{
+				startLine = Math.max(startLine, lineNumber - CONTEXT_LINES_AROUND_ERROR);
+				endLine = Math.min(endLine, lineNumber + CONTEXT_LINES_AROUND_ERROR);
+
+				int startOffset = document.getLineOffset(startLine);
+				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
+				context = document.get(startOffset, endOffset - startOffset);
+			}
+		}
+		return context;
+	}
+
+	// this is a workaround to avoid issues with curly braces in JSDoc, because it throws 
+	// java.lang.IllegalArgumentException at dev.langchain4j.model.input.DefaultPromptTemplateFactory$DefaultTemplate.ensureAllVariablesProvided
+	private String stripCurlyBracesFromDocumentation(String source)
+	{
+
+		if (source == null || source.isEmpty())
+		{
+			return source;
+		}
+		Pattern jsDocPattern = Pattern.compile("(?s)/\\*\\*.*?\\*/");
+		Matcher matcher = jsDocPattern.matcher(source);
+
+		StringBuffer result = new StringBuffer();
+
+		while (matcher.find())
+		{
+			String jsDoc = matcher.group();
+			String cleanedJsDoc = jsDoc.replaceAll("\\{[^}]*\\}", "");
+
+			matcher.appendReplacement(result, Matcher.quoteReplacement(cleanedJsDoc));
+		}
+
+		matcher.appendTail(result);
+
+		return result.toString();
 	}
 }

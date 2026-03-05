@@ -108,8 +108,8 @@ public class ServoyAiModel
 		{
 			quickFixAssistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createQuickFixServices(createQuickFixOpenAIModel(conf));
-				case GEMINI -> createQuickFixServices(createQuickFixGeminiModel(conf));
+				case OPENAI -> createQuickFixServices(createQuickFixOpenAIModel(conf), createOpenAIModel(conf));
+				case GEMINI -> createQuickFixServices(createQuickFixGeminiModel(conf), createGeminiModel(conf));
 				case NONE -> null;
 			};
 		}
@@ -246,12 +246,13 @@ public class ServoyAiModel
 		return builder.build();
 	}
 
-	private QuickFixAssistant createQuickFixServices(ChatModel model)
+	private QuickFixAssistant createQuickFixServices(ChatModel model, StreamingChatModel streamingModel)
 	{
 		String systemPrompt = SystemPrompts.INSTANCE.getQuickFixPrompt();
 
 		return AiServices.builder(QuickFixAssistant.class)
 			.chatModel(model)
+			.streamingChatModel(streamingModel)
 			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 				.id(memoryId)
 				.maxMessages(MAX_MESSAGES)

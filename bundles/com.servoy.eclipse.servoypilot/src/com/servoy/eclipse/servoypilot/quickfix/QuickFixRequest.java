@@ -17,20 +17,22 @@
 
 package com.servoy.eclipse.servoypilot.quickfix;
 
+import org.eclipse.dltk.javascript.ast.Statement;
+
 public class QuickFixRequest
 {
 	String fileContent;
 	String markerMessage;
-	String markerType;
 	int startOffset;
 	int endOffset;
 	String projectContext;
+	Statement statement;
 
-	public QuickFixRequest(String fullSource, String problemCode, String message, int start, int end, String fileName)
+	public QuickFixRequest(String fullSource, Statement problemCode, String message, int start, int end, String fileName)
 	{
 		this.fileContent = fullSource;
 		this.markerMessage = message;
-		this.markerType = problemCode;
+		this.statement = problemCode;
 		this.startOffset = start;
 		this.endOffset = end;
 		this.projectContext = fileName;
