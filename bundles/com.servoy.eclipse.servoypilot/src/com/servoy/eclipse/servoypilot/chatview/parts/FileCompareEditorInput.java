@@ -46,8 +46,8 @@ public class FileCompareEditorInput extends CompareEditorInput
 		this.modifiedContent = modifiedContent;
 
 		CompareConfiguration config = getCompareConfiguration();
-		config.setLeftLabel("Original");
-		config.setRightLabel("Modified");
+		config.setLeftLabel("Modified");
+		config.setRightLabel("Original");
 		config.setLeftEditable(false);
 		config.setRightEditable(false);
 	}
@@ -56,23 +56,23 @@ public class FileCompareEditorInput extends CompareEditorInput
 	protected Object prepareInput(IProgressMonitor monitor) throws InvocationTargetException, InterruptedException
 	{
 		// Create compare elements using only public API
-		CompareElement left = new CompareElement(fileName + " (Original)", originalContent);
-		CompareElement right = new CompareElement(fileName + " (Modified)", modifiedContent);
+		CompareElement left = new CompareElement(fileName + " (Modified)", modifiedContent);
+		CompareElement right = new CompareElement(fileName + " (Original)", originalContent);
 
 		// Use reflection to create DiffNode with proper constructor
 		// DiffNode(int kind, IDiffContainer parent, ITypedElement left, ITypedElement right)
 		try
 		{
-			Class<?> diffNodeClass = Class.forName("org.eclipse.compare.structuremergeviewer.DiffNode");
-			Class<?> diffContainerClass = Class.forName("org.eclipse.compare.structuremergeviewer.IDiffContainer");
-			
+			Class< ? > diffNodeClass = Class.forName("org.eclipse.compare.structuremergeviewer.DiffNode");
+			Class< ? > diffContainerClass = Class.forName("org.eclipse.compare.structuremergeviewer.IDiffContainer");
+
 			// Find constructor: DiffNode(ITypedElement left, ITypedElement right)
 			// This is a simpler constructor that doesn't require parent container
-			java.lang.reflect.Constructor<?> constructor = null;
-			for (java.lang.reflect.Constructor<?> c : diffNodeClass.getConstructors())
+			java.lang.reflect.Constructor< ? > constructor = null;
+			for (java.lang.reflect.Constructor< ? > c : diffNodeClass.getConstructors())
 			{
-				Class<?>[] paramTypes = c.getParameterTypes();
-				if (paramTypes.length == 2 && 
+				Class< ? >[] paramTypes = c.getParameterTypes();
+				if (paramTypes.length == 2 &&
 					ITypedElement.class.isAssignableFrom(paramTypes[0]) &&
 					ITypedElement.class.isAssignableFrom(paramTypes[1]))
 				{
@@ -80,20 +80,20 @@ public class FileCompareEditorInput extends CompareEditorInput
 					break;
 				}
 			}
-			
+
 			if (constructor != null)
 			{
 				return constructor.newInstance(left, right);
 			}
-			
+
 			// Fallback: try the full constructor with kind and parent
 			// DiffNode(int kind, IDiffContainer parent, ITypedElement left, ITypedElement right)
 			constructor = diffNodeClass.getConstructor(
-				int.class, 
+				int.class,
 				diffContainerClass,
-				ITypedElement.class, 
+				ITypedElement.class,
 				ITypedElement.class);
-			
+
 			// CHANGE = 2 (from Differencer.CHANGE)
 			return constructor.newInstance(2, null, left, right);
 		}

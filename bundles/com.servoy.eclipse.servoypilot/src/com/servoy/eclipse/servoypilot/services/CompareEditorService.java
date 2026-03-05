@@ -49,8 +49,8 @@ public class CompareEditorService
 	 * Opens Eclipse compare editor showing original vs modified content.
 	 * 
 	 * @param fileName the file name (for display)
-	 * @param originalContent the original content (left side)
-	 * @param modifiedContent the modified content (right side)
+	 * @param originalContent the original content (right side)
+	 * @param modifiedContent the modified content (left side)
 	 * @return FileCompareEditorInput if compare editor opened successfully, null otherwise
 	 */
 	public FileCompareEditorInput openCompareEditor(String fileName, String originalContent, String modifiedContent)
