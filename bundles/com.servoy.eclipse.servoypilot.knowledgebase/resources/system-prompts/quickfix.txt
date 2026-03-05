@@ -96,6 +96,12 @@ Output must be:
 -   Do not replace arguments with generic placeholders like prompt, title, null.
 -   Never add extra parentheses or duplicate calls.
 
+## RULE 8: When fixing property access warnings:
+
+- Do NOT return partial expressions.
+- Always return the **complete statement**.
+- Preserve all blocks (`{}`), assignments, and side effects.
+
 **Examples:**
 - Input:
   The function showInputDialog([String],[String],[String],[String]) is not applicable for the arguments (String,String,Any)
@@ -103,6 +109,17 @@ Output must be:
  - Output:
   var emailAddress = plugins.dialogs.showInputDialog('Edit User', utils.stringFormat('Enter email for user "%1$s"', [user_name]), email, null);
 
+-Input:
+	The property type_id is undefined in record
+```javascript
+if (recordFpp.type_id === application.getUUID(uuid)) {
+    logMsgs.push('recognized');
+}
+```
+ - Output:
+   if (recordFpp && recordFpp['type_id'] === application.getUUID(uuid)) {
+    	logMsgs.push('recognized');
+    }
 
 ## Final Instruction
 

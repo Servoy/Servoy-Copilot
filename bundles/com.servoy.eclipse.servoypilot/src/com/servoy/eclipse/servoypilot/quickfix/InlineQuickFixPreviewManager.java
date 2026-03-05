@@ -125,8 +125,8 @@ public class InlineQuickFixPreviewManager
 
 		document.replace(startOffset, endOffset - startOffset, previewBlock);
 
-		int originalLineCount = countLines(originalStatement, lineDelimiter);
-		int fixedLineCount = countLines(fixedStatementSource, lineDelimiter);
+		int originalLineCount = countLines(originalStatement);
+		int fixedLineCount = countLines(fixedStatementSource);
 
 		removedLines.clear();
 		addedLines.clear();
@@ -167,14 +167,14 @@ public class InlineQuickFixPreviewManager
 		showAcceptRejectUI(editor, fixPrompt);
 	}
 
-	private int countLines(String text, String lineDelimiter)
+	private int countLines(String text)
 	{
 		if (text == null || text.isEmpty())
 		{
 			return 0;
 		}
-		int len = text.split(lineDelimiter, -1).length;
-		return text.endsWith(lineDelimiter) ? len - 1 : len;
+		int len = text.split("\\r?\\n", -1).length;
+		return text.endsWith("\n") ? len - 1 : len;
 	}
 
 	private void accept(ITextEditor editor)
