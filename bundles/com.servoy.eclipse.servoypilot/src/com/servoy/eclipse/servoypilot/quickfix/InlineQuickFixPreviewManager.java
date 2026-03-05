@@ -253,6 +253,12 @@ public class InlineQuickFixPreviewManager
 			disposeFloatingBar();
 
 			textWidget.redraw();
+
+			if (compareEditorInput != null)
+			{
+				CompareEditorService.getInstance().closeCompareEditor(compareEditorInput);
+				compareEditorInput = null;
+			}
 		}
 		catch (Exception e)
 		{
