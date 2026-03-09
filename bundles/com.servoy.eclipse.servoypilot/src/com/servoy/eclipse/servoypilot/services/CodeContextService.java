@@ -119,6 +119,18 @@ public class CodeContextService
 	 */
 	public CodeContext getCodeContext(SelectionInfo selectionInfo)
 	{
+		return getCodeContext(selectionInfo, null);
+	}
+
+	/**
+	 * Extracts code context for a selection with optional filtering.
+	 * 
+	 * @param selectionInfo the selection to analyze
+	 * @param filterIdentifiers optional array of identifier names to extract documentation for (null = extract all)
+	 * @return CodeContext with extracted information, or error context if parsing fails
+	 */
+	public CodeContext getCodeContext(SelectionInfo selectionInfo, String[] filterIdentifiers)
+	{
 		if (selectionInfo != null)
 		{
 			if (selectionInfo.hasSelection())
@@ -157,27 +169,27 @@ public class CodeContextService
 						Map<String, IdentifierContext> uniqueIdentifiers = new HashMap<>();
 
 						collector.identifiers.forEach((node, pair) -> {
-							IdentifierContext identifierContext = extractIdentifierContext(node, pair, collector);
-							if (identifierContext != null)
+							// Check if we should extract documentation for this identifier
+							String identifierName = pair.getRight();
+							boolean shouldExtract = (filterIdentifiers == null) || containsIdentifier(filterIdentifiers, identifierName);
+
+							if (shouldExtract)
 							{
-								// Use name+type as unique key to avoid duplicates
-								String key = identifierContext.getName() + ":" + identifierContext.getTypeName();
-								uniqueIdentifiers.putIfAbsent(key, identifierContext);
+								IdentifierContext identifierContext = extractIdentifierContext(node, pair, collector);
+								if (identifierContext != null)
+								{
+									// Use name+type as unique key to avoid duplicates
+									String key = identifierContext.getName() + ":" + identifierContext.getTypeName();
+									uniqueIdentifiers.putIfAbsent(key, identifierContext);
+								}
 							}
 						});
 
 						// Convert to list
 						List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
 
-						// Print simple list of all identifiers with classification
-						System.out.println("Detected identifiers:");
-						for (IdentifierContext ctx : identifierContexts)
-						{
-							System.out.println("  " + ctx.getName() + " -> " + ctx.getKind() + " (" + ctx.getTypeName() + ")");
-						}
-
-						System.out.println("--------------------------------");
-						System.out.println("Total: " + identifierContexts.size() + " identifiers");
+						// Print simple summary
+						System.out.println("Detected " + identifierContexts.size() + " identifiers");
 						System.out.println("================================\n");
 
 						return CodeContext.success(selectionInfo, identifierContexts);
@@ -321,7 +333,6 @@ public class CodeContextService
 						if (doc != null && !doc.trim().isEmpty())
 						{
 							String formattedDoc = formatSolutionFunctionDoc(doc);
-							System.out.println(member.getElementName() + " -> SOLUTION_FUNCTION\n" + formattedDoc + "\n");
 							return formattedDoc;
 						}
 					}
@@ -396,7 +407,6 @@ public class CodeContextService
 					String funcDoc = extractFunctionDocumentation(docFile, propertyName, identifierName);
 					if (!funcDoc.isEmpty())
 					{
-						System.out.println(identifierName + "." + propertyName + " -> SERVOY_API\n" + funcDoc + "\n");
 						sb.append(funcDoc).append("\n\n");
 					}
 				}
@@ -677,7 +687,6 @@ public class CodeContextService
 			String memberDoc = extractWebObjectMemberDocumentation(webObjectType, propertyName, identifierName);
 			if (!memberDoc.isEmpty())
 			{
-				System.out.println(identifierName + "." + propertyName + " -> WEB_" + objectKind.toUpperCase() + "\n" + memberDoc + "\n");
 				sb.append(memberDoc).append("\n\n");
 			}
 		}
@@ -885,5 +894,59 @@ public class CodeContextService
 			}
 			return true;
 		}
+	}
+
+	/**
+	 * Check if an identifier is in the filter list.
+	 * Supports nested identifier matching by extracting the base identifier from the filter.
+	 * 
+	 * Examples:
+	 * - Filter "databaseManager.getFoundSet" → base "databaseManager" → matches identifier "databaseManager"
+	 * - Filter "foundset.loadAllRecords" → base "foundset" → matches identifier "foundset"
+	 * - Filter "plugins.dialogs.showInfoDialog" → base "plugins.dialogs" → matches identifier "plugins.dialogs"
+	 * - Filter "JSEvent" → base "JSEvent" → matches identifier "JSEvent" (exact match)
+	 * 
+	 * @param filterIdentifiers the filter array
+	 * @param identifierName the identifier to check
+	 * @return true if identifier should be included
+	 */
+	private boolean containsIdentifier(String[] filterIdentifiers, String identifierName)
+	{
+		if (filterIdentifiers != null && identifierName != null)
+		{
+			for (String filter : filterIdentifiers)
+			{
+				if (filter != null)
+				{
+					// Exact match (e.g., "JSEvent" matches "JSEvent")
+					if (filter.equals(identifierName))
+					{
+						return true;
+					}
+					
+					// Extract base identifier from filter (everything before last dot)
+					int lastDotIndex = filter.lastIndexOf('.');
+					if (lastDotIndex > 0)
+					{
+						String baseIdentifier = filter.substring(0, lastDotIndex);
+						// Match if extracted base equals the identifier
+						// e.g., "databaseManager.getFoundSet" → base "databaseManager" matches identifier "databaseManager"
+						if (baseIdentifier.equals(identifierName))
+						{
+							return true;
+						}
+					}
+					
+					// Fallback: nested match using startsWith
+					// e.g., "databaseManager.getFoundSet" matches "databaseManager"
+					// This handles edge cases where the above logic might not catch
+					if (filter.startsWith(identifierName + "."))
+					{
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 }
