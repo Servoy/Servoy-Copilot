@@ -34,8 +34,10 @@ public final class SelectionInfo
 	private final ISourceModule sourceModule;
 	private final int startLine;
 	private final int endLine;
+	private final boolean isFullFile;
 
-	private SelectionInfo(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule, int startLine, int endLine)
+	private SelectionInfo(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule, int startLine, int endLine,
+		boolean isFullFile)
 	{
 		this.filePath = filePath;
 		this.offset = offset;
@@ -44,6 +46,7 @@ public final class SelectionInfo
 		this.sourceModule = sourceModule;
 		this.startLine = startLine;
 		this.endLine = endLine;
+		this.isFullFile = isFullFile;
 	}
 
 	/**
@@ -58,14 +61,19 @@ public final class SelectionInfo
 	 * @param endLine the end line number (0-based)
 	 * @return Optional containing SelectionInfo, or empty if invalid parameters
 	 */
-	public static Optional<SelectionInfo> create(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule, 
-		int startLine, int endLine)
+	public static Optional<SelectionInfo> create(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule,
+		int startLine, int endLine, boolean isFullFile)
 	{
-		if (filePath != null && !filePath.trim().isEmpty() && 
-			offset >= 0 && length >= 0 && 
+		if (filePath != null && !filePath.trim().isEmpty() &&
+			offset >= 0 && length >= 0 &&
 			startLine >= 0 && endLine >= startLine)
 		{
-			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule, startLine, endLine));
+			return Optional
+				.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule, startLine, endLine, isFullFile));
+		}
+		if (offset >= 0 && length >= 0 && filePath != null && !filePath.trim().isEmpty() && sourceModule == null)
+		{
+			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", null, startLine, endLine, isFullFile));
 		}
 		return Optional.empty();
 	}
@@ -114,5 +122,10 @@ public final class SelectionInfo
 	public String toString()
 	{
 		return "SelectionInfo{filePath='" + filePath + "', offset=" + offset + ", length=" + length + "}";
+	}
+
+	public boolean isFullFileSelected()
+	{
+		return isFullFile;
 	}
 }

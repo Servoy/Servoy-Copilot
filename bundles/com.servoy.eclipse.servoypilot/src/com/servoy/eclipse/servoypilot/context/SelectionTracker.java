@@ -99,14 +99,14 @@ public class SelectionTracker implements ISelectionListener
 					if (selectionService != null)
 					{
 						selectionService.addSelectionListener(this);
-						
+
 						// Get initial selection
 						ISelection selection = selectionService.getSelection();
 						if (selection instanceof ITextSelection textSelection)
 						{
 							updateSelection(textSelection, window.getActivePage() != null ? window.getActivePage().getActiveEditor() : null);
 						}
-						
+
 						initialized = true;
 					}
 				}
@@ -123,6 +123,7 @@ public class SelectionTracker implements ISelectionListener
 	 */
 	public Optional<SelectionInfo> getCurrentSelection()
 	{
+		boolean isFullFileSelected = false;
 		if (currentSelection != null && activeEditor != null && currentFilePath != null)
 		{
 			IEditorInput input = activeEditor.getEditorInput();
@@ -136,7 +137,7 @@ public class SelectionTracker implements ISelectionListener
 					String text = currentSelection.getText();
 					int startLine = currentSelection.getStartLine();
 					int endLine = currentSelection.getEndLine();
-					
+
 					// If no selection (length == 0), use entire file range
 					if (length == 0)
 					{
@@ -151,6 +152,7 @@ public class SelectionTracker implements ISelectionListener
 								// Calculate total lines from source
 								startLine = 0;
 								endLine = source.split("\r\n|\r|\n", -1).length - 1;
+								isFullFileSelected = true;
 							}
 						}
 						catch (Exception e)
@@ -158,7 +160,7 @@ public class SelectionTracker implements ISelectionListener
 							// Fall through to return empty
 						}
 					}
-					
+
 					return SelectionInfo.create(
 						currentFilePath,
 						offset,
@@ -166,7 +168,8 @@ public class SelectionTracker implements ISelectionListener
 						text,
 						module,
 						startLine,
-						endLine);
+						endLine,
+						isFullFileSelected);
 				}
 			}
 		}
@@ -190,6 +193,7 @@ public class SelectionTracker implements ISelectionListener
 				// Calculate total lines
 				startLine = 0;
 				endLine = currentFullDocumentText.split("\r\n|\r|\n", -1).length - 1;
+				isFullFileSelected = true;
 			}
 
 			return SelectionInfo.create(
@@ -199,7 +203,8 @@ public class SelectionTracker implements ISelectionListener
 				text,
 				null,
 				startLine,
-				endLine);
+				endLine,
+				isFullFileSelected);
 		}
 
 		return Optional.empty();
@@ -302,6 +307,7 @@ public class SelectionTracker implements ISelectionListener
 		if (selectionService != null && initialized)
 		{
 			selectionService.removeSelectionListener(this);
+			instance = null;
 			initialized = false;
 		}
 	}
