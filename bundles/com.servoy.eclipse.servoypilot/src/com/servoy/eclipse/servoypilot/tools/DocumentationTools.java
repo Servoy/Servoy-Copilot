@@ -42,7 +42,6 @@ import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.exceptions.ValidationException;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.services.documentation.DocumentationValidator;
-import com.servoy.eclipse.servoypilot.services.documentation.JSDocManipulator;
 import com.servoy.eclipse.servoypilot.tools.dto.DocumentationItem;
 
 import dev.langchain4j.agent.tool.P;
@@ -92,7 +91,7 @@ public class DocumentationTools
 				response.append("TOTAL_LINES: ").append(selection.getEndLine() - selection.getStartLine() + 1).append("\n");
 				response.append("CONTENT_HASH: ").append(contentHash).append("\n");
 				response.append("\n--- CODE ---\n");
-				
+
 				// Add line numbers to code
 				String[] lines = codeText.split("\r\n|\r|\n", -1);
 				int lineNumber = selection.getStartLine();
@@ -101,7 +100,7 @@ public class DocumentationTools
 					response.append(lineNumber).append(": ").append(line).append("\n");
 					lineNumber++;
 				}
-				
+
 				response.append("--- END CODE ---\n");
 
 				return response.toString();
@@ -120,7 +119,7 @@ public class DocumentationTools
 	public String getDocumentationForIdentifiers(
 		@P("Array of identifier names to look up (e.g., ['foundset', 'record', 'plugins.ngdesktop'])") String[] identifiers)
 	{
-			if (identifiers != null && identifiers.length > 0)
+		if (identifiers != null && identifiers.length > 0)
 		{
 
 			try
@@ -342,7 +341,7 @@ public class DocumentationTools
 					// Validate line range
 					if (item.startLine() < 0 || item.endLine() >= lineList.size())
 					{
-						String error = "Line range out of bounds: " + item.startLine() + "-" + item.endLine() + 
+						String error = "Line range out of bounds: " + item.startLine() + "-" + item.endLine() +
 							" (file has " + lineList.size() + " lines)";
 						errors.add(error);
 						ServoyLog.logInfo(error);
@@ -375,8 +374,8 @@ public class DocumentationTools
 						String startLineContent = lineList.get(item.startLine()).trim();
 						if (!startLineContent.startsWith(item.startSentence()))
 						{
-							String error = "Start validation failed at line " + item.startLine() + 
-								": expected start with '" + item.startSentence() + "' but got '" + 
+							String error = "Start validation failed at line " + item.startLine() +
+								": expected start with '" + item.startSentence() + "' but got '" +
 								startLineContent.substring(0, Math.min(20, startLineContent.length())) + "...'";
 							errors.add(error);
 							ServoyLog.logInfo(error);
@@ -387,8 +386,8 @@ public class DocumentationTools
 						String endLineContent = lineList.get(item.endLine()).trim();
 						if (!endLineContent.endsWith(item.endSentence()))
 						{
-							String error = "End validation failed at line " + item.endLine() + 
-								": expected end with '" + item.endSentence() + "' but got '..." + 
+							String error = "End validation failed at line " + item.endLine() +
+								": expected end with '" + item.endSentence() + "' but got '..." +
 								endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'";
 							errors.add(error);
 							ServoyLog.logInfo(error);
@@ -435,7 +434,7 @@ public class DocumentationTools
 						}
 						catch (ValidationException ve)
 						{
-							String error = "JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() + 
+							String error = "JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() +
 								": " + ve.getMessage();
 							errors.add(error);
 							ServoyLog.logInfo(error);
