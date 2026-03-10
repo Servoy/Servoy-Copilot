@@ -52,6 +52,7 @@ public class ServoyAiModel
 	private DocumentationAssistant documentationAssistant;
 	private QuickFixAssistant quickFixAssistant;
 	private ExplainAssistant explainAssistant;
+	private ReviewAssistant reviewAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -128,6 +129,20 @@ public class ServoyAiModel
 			};
 		}
 		return explainAssistant;
+	}
+
+	public ReviewAssistant getReviewAssistant()
+	{
+		if (reviewAssistant == null && conf.isValid())
+		{
+			reviewAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createReviewServices(createOpenAIModel(conf));
+				case GEMINI -> createReviewServices(createGeminiModel(conf));
+				case NONE -> null;
+			};
+		}
+		return reviewAssistant;
 	}
 
 	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
@@ -267,6 +282,23 @@ public class ServoyAiModel
 		String systemPrompt = SystemPrompts.INSTANCE.getExplainPrompt();
 
 		return AiServices.builder(ExplainAssistant.class)
+			.streamingChatModel(model)
+			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+				.id(memoryId)
+				.alwaysKeepSystemMessageFirst(true)
+				.maxMessages(MAX_MESSAGES)
+				.chatMemoryStore(sharedMemoryStore)
+				.build())
+			.systemMessageProvider(memoryId -> systemPrompt)
+			.tools(new com.servoy.eclipse.servoypilot.tools.FileReadingTools())
+			.build();
+	}
+
+	private ReviewAssistant createReviewServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getReviewPrompt();
+
+		return AiServices.builder(ReviewAssistant.class)
 			.streamingChatModel(model)
 			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 				.id(memoryId)

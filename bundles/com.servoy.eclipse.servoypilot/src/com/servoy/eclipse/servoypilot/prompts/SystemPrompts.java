@@ -87,6 +87,11 @@ public class SystemPrompts
 		return prompts.get("explain.txt");
 	}
 
+	public String getReviewPrompt()
+	{
+		return prompts.get("review.txt");
+	}
+
 	public String getPrompt(String name)
 	{
 		return prompts.get(name);
