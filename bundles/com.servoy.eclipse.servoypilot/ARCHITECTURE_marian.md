@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** March 5, 2026  
+**Last Updated:** March 9, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -8,18 +8,28 @@
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
+- ✅ **Documentation Assistant LINE-BASED REFACTOR (Mar 9, 2026):** Signature matching replaced with line-based positioning
+  - **BREAKING CHANGE:** Moved from signature matching to line-based positioning with INSERT/REPLACE semantics
+  - **NEW ARCHITECTURE:** Uses Eclipse ITextSelection line numbers (0-based) directly from editor
+  - **LINE-BASED POSITIONING:** AI specifies startLine/endLine with validation strings (startSentence/endSentence)
+  - **INSERT MODE:** Empty validation strings → inserts JSDoc before specified line
+  - **REPLACE MODE:** Validation strings check content → replaces line range with new JSDoc
+  - **NO STRING MATCHING:** Eliminates whitespace fragility and multi-line function issues
+  - **VARIABLE DOCUMENTATION:** Full support for file-level variables with proper JSDoc format (description first, then @type)
+  - **PACKAGE:** `tools/dto/DocumentationItem` updated to line-based structure
+  - **TOOLS UPDATED:** `getCurrentSelection()` returns code with line numbers, `applyDocumentations()` uses line ranges
+  - **SYSTEM PROMPT REWRITTEN:** documentation.txt updated with line-based format, variable documentation guidance, emoji-free text markers
+  - 50-80% token reduction vs. full-file approach (retained from previous refactor)
+  - Eliminates signature matching fragility (whitespace, multi-line declarations)
+  - System prompt uses text-based markers ([DO], [DON'T], [YES], [NO]) instead of emojis
 - ✅ **Documentation Assistant REFACTORED (Mar 5, 2026):** Structured JSDoc insertion with AST matching
   - **BREAKING CHANGE:** Moved from full-file replacement to structured output
   - **NEW ARCHITECTURE:** AI returns JSON list of documentation items (not full code)
-  - **AST-BASED MATCHING:** DLTK parser with strict signature matching
+  - **AST-BASED MATCHING:** DLTK parser with strict signature matching (DEPRECATED - replaced by line-based Mar 9)
   - **NEW TOOL:** `applyDocumentations(filePath, items)` - accepts structured list
   - **PACKAGE REORGANIZATION:** `services/documentation/` for service logic, `exceptions/` for custom exceptions
   - **TRIPLE VALIDATION:** UUID preservation + JSDoc syntax + auto-restore on failure
-  - 50-80% token reduction vs. full-file approach
-  - Eliminates UUID corruption risk (only JSDoc modified, code untouched)
-  - System prompt completely rewritten (6-step workflow with structured output)
   - Brief AI summaries enforced (1-2 sentences, no JSDoc repetition)
-  - 🔄 **TODO: Test structured documentation workflow with real Servoy code**
 - ✅ **Documentation Assistant Pull-Based Refactor (Mar 3, 2026):** Pull-based documentation retrieval
   - **WORKFLOW:** AI retrieves code first, then selectively requests API docs
   - `getCurrentSelection()` returns code only (no embedded documentation)
@@ -1563,165 +1573,281 @@ To add new identifier types:
 
 ---
 
-### 3.9 Structured Documentation Architecture (March 5, 2026)
+### 3.9 Line-Based Documentation Architecture (March 9, 2026)
 
-**Status:** ✅ IMPLEMENTATION COMPLETE - 🔄 **TODO: Testing Required**
+**Status:** ✅ IMPLEMENTATION COMPLETE - ✅ TESTED AND WORKING
 
 #### Overview
 
-Refactored Documentation Assistant from **full-file replacement** to **structured JSDoc insertion** using AST-based matching. Eliminates UUID corruption risk and improves token efficiency by 50-80%.
+Refactored Documentation Assistant from **signature-based matching** to **line-based positioning** using Eclipse's ITextSelection API. Eliminates whitespace fragility, handles multi-line functions naturally, and supports variable documentation.
 
-#### Key Changes
+#### Evolution
 
-**Before (Full-File Replacement):**
-- AI returned entire modified file content
-- Tool replaced selection with full content
-- Risk: UUID corruption, token-expensive, hard to validate
+**March 5, 2026 (Signature-Based):**
+- AI returned JSON array with function signatures
+- Tool used string matching to find declarations
+- Issue: Fragile to whitespace differences
+- Issue: Failed on multi-line function declarations
 
-**After (Structured Insertion):**
-- AI returns JSON array of documentation items
-- Tool uses AST matching to find exact locations
-- Inserts/replaces JSDoc at matched declarations only
-- Safe: Only JSDoc modified, code untouched
+**March 9, 2026 (Line-Based):**
+- AI returns JSON array with line numbers
+- Tool uses direct line positioning from Eclipse editor
+- Robust: No string matching, no whitespace sensitivity
+- Natural: Multi-line functions handled automatically
+- Enhanced: Full variable documentation support
 
 #### Architecture Components
 
 **Package Structure:**
 ```
 tools/
-  ├── DocumentationTools.java              # AI tool class with @Tool methods
-  └── dto/
-      ├── DocumentationItem.java           # Tool parameter (type, name, signature, jsdoc)
-      ├── DocumentationResponse.java       # Wrapper for items list
-      └── ApplyResult.java                  # Operation result tracking
+  DocumentationTools.java           # Main tool with 3 @Tool methods
+  dto/
+    DocumentationItem.java          # Record: startLine, endLine, startSentence, endSentence, jsdoc
 
-services/documentation/                    # Service logic (NEW)
-  ├── DocumentationASTHelper.java         # AST parsing & strict signature matching
-  ├── JSDocManipulator.java                # JSDoc find/replace/insert logic
-  ├── DocumentationValidator.java         # UUID + JSDoc syntax validation
-  ├── ASTNodeLocation.java                 # Internal DTO for AST nodes
-  └── DocumentationApplication.java       # Item-location pairing
+context/dto/
+  SelectionInfo.java                # Extended with startLine, endLine fields (0-based)
 
-exceptions/                                 # Custom exceptions (NEW)
-  └── ValidationException.java            # Validation failure exception
+context/
+  SelectionTracker.java             # Captures line numbers from ITextSelection
+
+services/documentation/
+  JSDocManipulator.java             # Line-based JSDoc operations (no AST)
+  DocumentationValidator.java       # UUID preservation + JSDoc syntax validation
+
+exceptions/
+  ValidationException.java          # Custom exception for validation failures
+```
+**Package Structure:**
+```
+tools/
+  DocumentationTools.java           # Main tool with 3 @Tool methods
+  dto/
+    DocumentationItem.java          # Record: startLine, endLine, startSentence, endSentence, jsdoc
+
+context/dto/
+  SelectionInfo.java                # Extended with startLine, endLine fields (0-based)
+
+context/
+  SelectionTracker.java             # Captures line numbers from ITextSelection
+
+services/documentation/
+  JSDocManipulator.java             # Line-based JSDoc operations (no AST)
+  DocumentationValidator.java       # UUID preservation + JSDoc syntax validation
+
+exceptions/
+  ValidationException.java          # Custom exception for validation failures
 ```
 
 #### Workflow
 
 **6-Step Process (System Prompt):**
 
-1. **Call `getCurrentSelection()`** → Get code only (no docs)
-2. **Analyze code** → Identify functions/variables to document
+1. **Call `getCurrentSelection()`** → Get code with line numbers
+2. **Analyze code** → Identify functions/variables to document, note line numbers
 3. **Call `getDocumentationForIdentifiers(["id1", "id2"])`** → Pull API docs (optional, if Servoy types)
 4. **Generate JSDoc** → Create documentation with accurate types
-5. **Return structured list** → Call `applyDocumentations(filePath, items)` with JSON array
+5. **Return line-based list** → Call `applyDocumentations(filePath, hash, items)` with line numbers
 6. **Provide brief summary** → 1-2 sentences to user (no JSDoc repetition)
 
-**Structured Output Format:**
+**getCurrentSelection() Output Format:**
+```
+FILE: /MyProject/forms/customers.js
+START_LINE: 0
+END_LINE: 10
+TOTAL_LINES: 11
+CONTENT_HASH: 123456789
+
+--- CODE ---
+0: var customers;
+1: 
+2: /**
+3:  * Old incomplete JSDoc
+4:  */
+5: function onLoad(event) {
+6:     var foundset = databaseManager.getFoundSet('db:/test/table');
+7:     return foundset;
+8: }
+9: 
+10: var count = 0;
+--- END CODE ---
+```
+
+**Structured Output Format (AI Response):**
 ```json
 [
   {
-    "type": "function",
-    "name": "myFunction",
-    "signature": "myFunction(param1, param2)",
-    "startLine": 45,
-    "jsdoc": "/**\n * Description\n * @param {Type} param1\n */"
+    "startLine": 0,
+    "endLine": 0,
+    "startSentence": "",
+    "endSentence": "",
+    "jsdoc": "/**\n * Main customer foundset.\n * @type {JSFoundSet}\n */"
+  },
+  {
+    "startLine": 2,
+    "endLine": 4,
+    "startSentence": "/**",
+    "endSentence": "*/",
+    "jsdoc": "/**\n * Handles form load event.\n * @param {JSEvent} event\n * @returns {JSFoundSet}\n */"
   }
 ]
 ```
 
-#### AST-Based Matching
+#### Line-Based Positioning
 
-**DocumentationASTHelper:**
-- Parses JavaScript file once using DLTK (`JavaScriptParserUtil.parse()`)
-- Collects all top-level function/variable declarations from AST
-- **Strict matching only:**
-  - Functions: Exact signature match (e.g., `myFunction(param1, param2)`) or error
-  - Variables: Exact name match or error
-  - No fuzzy matching - clear error if no match
+**INSERT Mode (No Existing JSDoc):**
+- `startLine == endLine`
+- `startSentence == ""` and `endSentence == ""`
+- Inserts JSDoc **before** the specified line
+- Example: Line 5 has function → insert JSDoc at line 5 (pushes function down)
 
-**JSDocManipulator:**
-- Finds existing JSDoc blocks above declarations
-- Replaces existing JSDoc if present
-- Inserts new JSDoc if absent
-- Preserves indentation automatically
+**REPLACE Mode (Existing JSDoc):**
+- `startLine` and `endLine` specify range to replace
+- `startSentence` and `endSentence` validate correct location
+- Tool checks line startLine starts with startSentence
+- Tool checks line endLine ends with endSentence
+- If validation passes → replace lines startLine through endLine with new JSDoc
+- If validation fails → error message with details
+
+**Example:**
+```javascript
+// Lines 2-4 have old JSDoc, line 5 has function
+2: /**
+3:  * Old incomplete JSDoc
+4:  */
+5: function onLoad(event) {
+
+// AI sends: startLine=2, endLine=4, startSentence="/**", endSentence="*/"
+// Tool validates: line 2 starts with "/**" ✓, line 4 ends with "*/" ✓
+// Tool replaces lines 2-4 with new JSDoc
+```
+
+#### JSDocManipulator (String-Based, No AST)
+
+**Key Methods:**
+- `extractIndentation(String line)` → String - Gets leading whitespace
+- `linesToString(List<String>)` → String - Joins lines with \n
+- `stringToLines(String)` → List<String> - Splits into line list
+
+**Why No AST:**
+- Direct line manipulation is simpler and faster
+- No parsing overhead
+- Handles syntax errors gracefully (can still insert JSDoc)
+- Works with any JavaScript code (even incomplete)
 
 #### Validation
 
 **Triple Validation (DocumentationValidator):**
 
 1. **UUID Preservation (CRITICAL):**
-   - Extracts all `@UUID` annotations from original and modified content
-   - Compares: must match exactly
-   - If UUIDs differ → Restore original file + return error
+   - Extracts all `@UUID` annotations from original content
+   - Extracts UUIDs from each replaced JSDoc range
+   - Restores original UUIDs in new JSDoc if AI changed them
+   - **Silently fixes UUID corruption** - no error, just restoration
+   - If final validation fails → error with details
 
 2. **JSDoc Syntax:**
-   - Validates all JSDoc blocks start with `/**` and end with `*/`
-   - Checks `@param` tags have type annotations
-   - If invalid → Restore original file + return error
+   - Validates JSDoc blocks start with `/**` and end with `*/`
+   - Checks basic structure
+   - If invalid → error message
 
-3. **Auto-Restore:**
-   - On any validation failure, original file restored from FileModificationTracker backup
-   - AI receives detailed error message for retry
+3. **Location Validation:**
+   - For REPLACE mode: Validates startSentence/endSentence match
+   - For INSERT mode: Validates line numbers in bounds
+   - If validation fails → detailed error with line numbers
 
-#### Tool Method
+#### Tool Methods
 
-**New:** `applyDocumentations(String filePath, List<DocumentationItem> items)`
+**Tool 1:** `getCurrentSelection()`
+- Returns code with 0-based line numbers
+- Includes START_LINE, END_LINE, TOTAL_LINES, CONTENT_HASH
+- Line-numbered code output for easy reference
+
+**Tool 2:** `getDocumentationForIdentifiers(String[] identifiers)`
+- Same as before (no changes)
+- Returns API documentation for Servoy types
+
+**Tool 3:** `applyDocumentations(String filePath, String expectedHash, List<DocumentationItem> items)`
 
 **Process:**
-1. Parse file once with DLTK AST
-2. Collect all function/variable declarations
-3. Match each item by signature (strict)
-4. Sort by line number (descending) to avoid line shifts
-5. Insert/replace JSDoc at matched locations
-6. Validate UUIDs and JSDoc syntax
-7. Return success or error message
-
-**Old (Kept for Reference):** `applyDocumentation(filePath, offset, length, modifiedContent)` - Full file replacement
+1. Get file and current content
+2. Verify content hash (change detection)
+3. Backup original file (FileModificationTracker)
+4. Split content into line list
+5. Sort items bottom-to-top (avoid line number shifts)
+6. For each item:
+   - If INSERT mode: Insert JSDoc before specified line
+   - If REPLACE mode: Validate + replace specified line range
+   - Extract original UUIDs from replaced range
+   - Restore UUIDs in new JSDoc
+7. Join lines back to string
+8. Write modified content
+9. Clear editor selection
+10. Return success or detailed error
 
 #### Benefits
 
+**Robustness:**
+- ✅ Zero whitespace fragility (no string matching)
+- ✅ Multi-line functions handled automatically
+- ✅ Direct line reference from Eclipse editor
+- ✅ Works with syntax errors (no AST parsing)
+
 **Safety:**
-- ✅ Zero UUID corruption risk (only JSDoc modified)
-- ✅ Strict matching (exact signature required)
-- ✅ Triple validation with auto-rollback
+- ✅ Zero UUID corruption risk (preservation + restoration)
+- ✅ Location validation (startSentence/endSentence)
+- ✅ Change detection (content hash)
+- ✅ Atomic file operations
 
 **Efficiency:**
-- ✅ 50-80% token reduction vs. full-file approach
-- ✅ Scalable (handles 1000+ line files)
-- ✅ Single AST parse for all items
+- ✅ 50-80% token reduction vs. full-file approach (maintained from previous)
+- ✅ No AST parsing overhead
+- ✅ Simple string operations
 
 **Maintainability:**
 - ✅ Clean package structure (tools/services/exceptions)
-- ✅ Testable (isolated service classes)
-- ✅ Extensible (easy to add nested functions, classes, etc.)
+- ✅ Simple line-based logic (no complex AST)
+- ✅ Easy to understand and debug
+
+**Variable Documentation:**
+- ✅ Full support for file-level variables
+- ✅ Proper JSDoc format (description first, then @type)
+- ✅ Configuration objects supported
+- ✅ Constants supported
 
 #### System Prompt Updates
 
 **File:** `resources/system-prompts/documentation.txt`
 
-**Major Changes:**
-- STEP 5 rewritten: Return structured JSON list instead of full code
-- STEP 6 added: Provide brief summaries (1-2 sentences max)
-- Tool 3 updated: Document `applyDocumentations()` with structured parameters
-- All 3 examples updated: Show structured approach
-- Error handling updated: Cover signature mismatch scenarios
+**Major Changes (March 9, 2026):**
+- STEP 1 updated: getCurrentSelection() returns line-numbered code
+- STEP 5 rewritten: Return line-based JSON list with INSERT/REPLACE semantics
+- STEP 6 kept: Provide brief summaries (1-2 sentences max)
+- Tool 1 updated: Document line-numbered output format
+- Tool 3 updated: Document line-based applyDocumentations() parameters
+- All examples updated: Show line-based approach (with note about old format)
+- Error handling updated: Cover line validation scenarios
+- **NEW:** "WHAT TO DOCUMENT" section with clear DO/DON'T guidance
+- **NEW:** Variable JSDoc format examples (description first, @type second)
+- **Text-based markers:** [DO], [DON'T], [YES], [NO] instead of emojis
+- **19 Important Rules:** Updated to emphasize line-based positioning
 
 #### Testing Status
 
-🔄 **TODO by Marian:**
-- [ ] Test with single function documentation
-- [ ] Test with multiple functions in one file
-- [ ] Test with functions + variables
-- [ ] Test replacing existing JSDoc
-- [ ] Test multi-line function signatures
-- [ ] Test signature mismatch scenarios
-- [ ] Test UUID validation
-- [ ] Test JSDoc syntax validation
-- [ ] Verify Keep/Undo/Remove actions work
-- [ ] Compare editor integration check
+✅ **TESTED AND WORKING (March 9, 2026):**
+- ✅ Variable documentation with correct JSDoc format
+- ✅ INSERT mode (new JSDoc before function/variable)
+- ✅ REPLACE mode (replacing existing JSDoc)
+- ✅ UUID preservation working correctly
+- ✅ Change detection working
+- ✅ File modification tracking integration
+- ✅ Multi-line not an issue (line-based approach)
 
-#### Known Limitations
+**Issues Found & Fixed:**
+- ✅ Variable format: Changed from `@description` tag to description-first format
+- ✅ Emojis removed: Replaced with text-based markers ([DO], [YES], etc.)
+
+---#### Known Limitations
 
 **Current (MVP):**
 - Top-level declarations only (functions and variables)

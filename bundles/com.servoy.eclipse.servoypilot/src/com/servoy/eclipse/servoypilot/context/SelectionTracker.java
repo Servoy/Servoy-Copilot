@@ -134,6 +134,8 @@ public class SelectionTracker implements ISelectionListener
 					int offset = currentSelection.getOffset();
 					int length = currentSelection.getLength();
 					String text = currentSelection.getText();
+					int startLine = currentSelection.getStartLine();
+					int endLine = currentSelection.getEndLine();
 					
 					// If no selection (length == 0), use entire file range
 					if (length == 0)
@@ -146,6 +148,9 @@ public class SelectionTracker implements ISelectionListener
 								offset = 0;
 								length = source.length();
 								text = source;
+								// Calculate total lines from source
+								startLine = 0;
+								endLine = source.split("\r\n|\r|\n", -1).length - 1;
 							}
 						}
 						catch (Exception e)
@@ -159,7 +164,9 @@ public class SelectionTracker implements ISelectionListener
 						offset,
 						length,
 						text,
-						module);
+						module,
+						startLine,
+						endLine);
 				}
 			}
 		}
@@ -171,6 +178,8 @@ public class SelectionTracker implements ISelectionListener
 			int offset = currentSelection.getOffset();
 			int length = currentSelection.getLength();
 			String text = currentSelection.getText();
+			int startLine = currentSelection.getStartLine();
+			int endLine = currentSelection.getEndLine();
 
 			// If nothing is selected (length == 0), use the full document text from Console
 			if (length == 0 && currentFullDocumentText != null)
@@ -178,6 +187,9 @@ public class SelectionTracker implements ISelectionListener
 				offset = 0;
 				length = currentFullDocumentText.length();
 				text = currentFullDocumentText;
+				// Calculate total lines
+				startLine = 0;
+				endLine = currentFullDocumentText.split("\r\n|\r|\n", -1).length - 1;
 			}
 
 			return SelectionInfo.create(
@@ -185,7 +197,9 @@ public class SelectionTracker implements ISelectionListener
 				offset,
 				length,
 				text,
-				null);
+				null,
+				startLine,
+				endLine);
 		}
 
 		return Optional.empty();

@@ -17,19 +17,44 @@
 package com.servoy.eclipse.servoypilot.tools.dto;
 
 /**
- * Represents a single documentation item for signature-based JSDoc generation.
- * Used by AI to return documentation items - signature to search for and JSDoc to apply.
+ * Represents a single documentation item for line-based JSDoc generation.
+ * 
+ * Used by AI to specify:
+ * - Line range to insert/replace
+ * - Validation strings (start/end sentence)
+ * - JSDoc to apply
+ * 
+ * Semantics:
+ * - INSERT: startLine == endLine && startSentence.isEmpty() && endSentence.isEmpty()
+ * - REPLACE: startSentence/endSentence used to validate correct location
  */
-public record DocumentationItem(String signature, String jsdoc)
+public record DocumentationItem(
+	int startLine,
+	int endLine,
+	String startSentence,
+	String endSentence,
+	String jsdoc)
 {
 	/**
 	 * Canonical constructor with validation.
 	 */
 	public DocumentationItem
 	{
-		if (signature == null || signature.isBlank())
+		if (startLine < 0)
 		{
-			throw new IllegalArgumentException("Signature cannot be null or blank");
+			throw new IllegalArgumentException("startLine cannot be negative: " + startLine);
+		}
+		if (endLine < startLine)
+		{
+			throw new IllegalArgumentException("endLine (" + endLine + ") cannot be less than startLine (" + startLine + ")");
+		}
+		if (startSentence == null)
+		{
+			throw new IllegalArgumentException("startSentence cannot be null (use empty string for insert)");
+		}
+		if (endSentence == null)
+		{
+			throw new IllegalArgumentException("endSentence cannot be null (use empty string for insert)");
 		}
 		if (jsdoc == null || jsdoc.isBlank())
 		{
@@ -40,5 +65,16 @@ public record DocumentationItem(String signature, String jsdoc)
 			throw new IllegalArgumentException("JSDoc must start with /** and end with */ - got: " +
 				jsdoc.trim().substring(0, Math.min(50, jsdoc.trim().length())));
 		}
+	}
+	
+	/**
+	 * Check if this is an insert operation (vs replace).
+	 * Insert means: same line, no validation strings.
+	 */
+	public boolean isInsert()
+	{
+		return startLine == endLine && 
+			   startSentence.isEmpty() && 
+			   endSentence.isEmpty();
 	}
 }

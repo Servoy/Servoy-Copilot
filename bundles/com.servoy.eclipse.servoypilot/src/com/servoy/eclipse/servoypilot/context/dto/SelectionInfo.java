@@ -32,14 +32,18 @@ public final class SelectionInfo
 	private final int length;
 	private final String selectedText;
 	private final ISourceModule sourceModule;
+	private final int startLine;
+	private final int endLine;
 
-	private SelectionInfo(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule)
+	private SelectionInfo(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule, int startLine, int endLine)
 	{
 		this.filePath = filePath;
 		this.offset = offset;
 		this.length = length;
 		this.selectedText = selectedText;
 		this.sourceModule = sourceModule;
+		this.startLine = startLine;
+		this.endLine = endLine;
 	}
 
 	/**
@@ -50,19 +54,18 @@ public final class SelectionInfo
 	 * @param length the selection length (0 for full file)
 	 * @param selectedText the actual selected text (entire file content if no selection)
 	 * @param sourceModule the DLTK source module
+	 * @param startLine the start line number (0-based)
+	 * @param endLine the end line number (0-based)
 	 * @return Optional containing SelectionInfo, or empty if invalid parameters
 	 */
-	public static Optional<SelectionInfo> create(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule)
+	public static Optional<SelectionInfo> create(String filePath, int offset, int length, String selectedText, ISourceModule sourceModule, 
+		int startLine, int endLine)
 	{
 		if (filePath != null && !filePath.trim().isEmpty() && 
 			offset >= 0 && length >= 0 && 
-			sourceModule != null)
+			startLine >= 0 && endLine >= startLine)
 		{
-			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule));
-		}
-		if (offset >= 0 && length >= 0 && filePath != null && !filePath.trim().isEmpty() && sourceModule == null)
-		{
-			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", null));
+			return Optional.of(new SelectionInfo(filePath, offset, length, selectedText != null ? selectedText : "", sourceModule, startLine, endLine));
 		}
 		return Optional.empty();
 	}
@@ -90,6 +93,16 @@ public final class SelectionInfo
 	public ISourceModule getSourceModule()
 	{
 		return sourceModule;
+	}
+
+	public int getStartLine()
+	{
+		return startLine;
+	}
+
+	public int getEndLine()
+	{
+		return endLine;
 	}
 
 	public boolean hasSelection()

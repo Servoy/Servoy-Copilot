@@ -84,15 +84,25 @@ public class DocumentationTools
 					return "Error: Could not convert file path to workspace-relative format";
 				}
 
-				// Build response with code only (no API documentation)
+				// Build response with line numbers
 				StringBuilder response = new StringBuilder();
 				response.append("FILE: ").append(workspacePath).append("\n");
-				response.append("OFFSET: ").append(selection.getOffset()).append("\n");
-				response.append("LENGTH: ").append(selection.getLength()).append("\n");
+				response.append("START_LINE: ").append(selection.getStartLine()).append("\n");
+				response.append("END_LINE: ").append(selection.getEndLine()).append("\n");
+				response.append("TOTAL_LINES: ").append(selection.getEndLine() - selection.getStartLine() + 1).append("\n");
 				response.append("CONTENT_HASH: ").append(contentHash).append("\n");
 				response.append("\n--- CODE ---\n");
-				response.append(codeText);
-				response.append("\n--- END CODE ---\n");
+				
+				// Add line numbers to code
+				String[] lines = codeText.split("\r\n|\r|\n", -1);
+				int lineNumber = selection.getStartLine();
+				for (String line : lines)
+				{
+					response.append(lineNumber).append(": ").append(line).append("\n");
+					lineNumber++;
+				}
+				
+				response.append("--- END CODE ---\n");
 
 				return response.toString();
 			}
@@ -110,20 +120,11 @@ public class DocumentationTools
 	public String getDocumentationForIdentifiers(
 		@P("Array of identifier names to look up (e.g., ['foundset', 'record', 'plugins.ngdesktop'])") String[] identifiers)
 	{
-		if (identifiers != null && identifiers.length > 0)
+			if (identifiers != null && identifiers.length > 0)
 		{
 
 			try
 			{
-				// Print requested identifiers to console
-				System.out.println("=== DOCUMENTATION LOOKUP REQUESTED ===");
-				System.out.println("AI requested documentation for " + identifiers.length + " identifiers:");
-				for (int i = 0; i < identifiers.length; i++)
-				{
-					System.out.println("  [" + (i + 1) + "] " + identifiers[i]);
-				}
-				System.out.println("======================================");
-
 				// Get current selection from tracker
 				SelectionTracker tracker = SelectionTracker.getInstance();
 				Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
@@ -135,25 +136,6 @@ public class DocumentationTools
 
 				SelectionInfo selection = selectionOpt.get();
 				CodeContextService contextService = CodeContextService.getInstance();
-				// DEBUG: First call getCodeContext WITHOUT filter to see what automatic extraction finds
-				// TODO: Comment out or remove this debug block after testing
-				System.out.println("\n=== DEBUG: AUTOMATIC IDENTIFIER EXTRACTION (NO FILTER) ===");
-				CodeContext autoContext = contextService.getCodeContext(selection, null);
-				System.out.println("Automatically extracted identifiers from code:");
-				if (autoContext.getIdentifiers() != null && !autoContext.getIdentifiers().isEmpty())
-				{
-					for (var idCtx : autoContext.getIdentifiers())
-					{
-						System.out.println("  - " + idCtx.getName() + " [type: " + idCtx.getTypeName() + "] (kind: " + idCtx.getKind() + ")");
-					}
-					System.out.println("Total automatically extracted: " + autoContext.getIdentifiers().size());
-				}
-				else
-				{
-					System.out.println("  (none found)");
-				}
-				System.out.println("===========================================================\n");
-				// END DEBUG
 
 				// Get code context with filter - only extract docs for requested identifiers
 				CodeContext context = contextService.getCodeContext(selection, identifiers);
@@ -178,7 +160,6 @@ public class DocumentationTools
 
 				// Filter context to match requested identifiers
 				int foundCount = 0;
-				System.out.println("\n=== DOCUMENTATION RETRIEVAL ===");
 				for (String requestedId : identifiers)
 				{
 					boolean found = false;
@@ -206,7 +187,6 @@ public class DocumentationTools
 								response.append(xml).append("\n");
 								found = true;
 								foundCount++;
-								System.out.println("  ✓ " + requestedId + " → " + xml.length() + " chars");
 								break;
 							}
 						}
@@ -217,11 +197,8 @@ public class DocumentationTools
 					{
 						response.append("<type>").append(requestedId).append(": NOT FOUND</type>\n");
 						response.append("<description>No documentation available for this identifier</description>\n\n");
-						System.out.println("  ✗ " + requestedId + " → NOT FOUND");
 					}
 				}
-				System.out.println("Total: " + foundCount + "/" + identifiers.length);
-				System.out.println("================================\n");
 
 				response.append("--- END DOCUMENTATION ---\n\n");
 				response.append("Found documentation for ").append(foundCount).append(" out of ").append(identifiers.length).append(" identifiers.");
@@ -272,19 +249,19 @@ public class DocumentationTools
 	}
 
 	/**
-	 * Apply JSDoc documentation items using signature-based search.
-	 * Works on any file regardless of syntax errors.
+	 * Apply JSDoc documentation items using line-based positioning.
+	 * Supports insert and replace operations with validation.
 	 * 
 	 * @param filePath Workspace-relative file path
 	 * @param expectedHash Content hash from getCurrentSelection() for change detection
-	 * @param items List of documentation items (signature + jsdoc)
+	 * @param items List of documentation items (line range + jsdoc)
 	 * @return Success message or error message
 	 */
-	@Tool("Apply JSDoc documentation using signature-based search")
+	@Tool("Apply JSDoc documentation using line-based positioning")
 	public String applyDocumentations(
 		@P("Workspace-relative file path") String filePath,
 		@P("Content hash from getCurrentSelection()") String expectedHash,
-		@P("List of documentation items (signature + jsdoc)") List<DocumentationItem> items)
+		@P("List of documentation items (line range + jsdoc)") List<DocumentationItem> items)
 	{
 		// Validation
 		if (filePath == null || filePath.isBlank())
@@ -304,10 +281,7 @@ public class DocumentationTools
 
 		try
 		{
-			System.out.println("\n=== APPLY DOCUMENTATIONS (SIGNATURE-BASED) ===");
-			System.out.println("File: " + filePath);
-			System.out.println("Expected hash: " + expectedHash);
-			System.out.println("Number of items: " + items.size());
+			ServoyLog.logInfo("Applying " + items.size() + " documentation items to: " + filePath);
 
 			// Get file
 			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
@@ -316,7 +290,7 @@ public class DocumentationTools
 				return "Error: File does not exist: " + filePath;
 			}
 
-			// Get selection info
+			// Get selection info for hash validation
 			SelectionTracker tracker = SelectionTracker.getInstance();
 			Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
 			if (!selectionOpt.isPresent())
@@ -344,123 +318,152 @@ public class DocumentationTools
 			// Backup original
 			FileModificationTracker.getInstance().notifyFileModified(filePath, originalContent);
 
-			// Process items with signature search
+			// Process items with line-based approach
 			List<String> errors = new ArrayList<>();
 			int successCount = 0;
-			JSDocManipulator manipulator = new JSDocManipulator();
 			DocumentationValidator validator = new DocumentationValidator();
 
-			// Use mutable content for updates
-			String content = originalContent;
+			// Split content into lines
+			String[] lines = originalContent.split("\r\n|\r|\n", -1);
+			List<String> lineList = new ArrayList<>();
+			for (String line : lines)
+			{
+				lineList.add(line);
+			}
 
-			// Sort items by signature position (bottom-to-top) to avoid offset shifts
+			// Sort items bottom-to-top to avoid line number shifts
 			List<DocumentationItem> sortedItems = new ArrayList<>(items);
-			final String contentForSort = content;
-			sortedItems.sort((a, b) -> {
-				int posA = manipulator.findSignaturePosition(contentForSort, a.signature(), selStart, selEnd);
-				int posB = manipulator.findSignaturePosition(contentForSort, b.signature(), selStart, selEnd);
-				return Integer.compare(posB, posA); // Descending
-			});
+			sortedItems.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
 
 			for (DocumentationItem item : sortedItems)
 			{
-				System.out.println("\n--- Processing: " + item.signature() + " ---");
-
 				try
 				{
-					// Find signature in selection
-					int sigPos = manipulator.findSignaturePosition(content, item.signature(), selStart, selEnd);
-					if (sigPos < 0)
+					// Validate line range
+					if (item.startLine() < 0 || item.endLine() >= lineList.size())
 					{
-						String error = "Signature not found in selection: " + item.signature();
+						String error = "Line range out of bounds: " + item.startLine() + "-" + item.endLine() + 
+							" (file has " + lineList.size() + " lines)";
 						errors.add(error);
-						System.out.println("  ✗ " + error);
+						ServoyLog.logInfo(error);
 						continue;
 					}
 
-					System.out.println("  ✓ Signature found at position " + sigPos);
-
-					// Find existing JSDoc above signature
-					int jsdocStart = manipulator.findJSDocStart(content, sigPos);
-					int jsdocEnd = jsdocStart >= 0 ? manipulator.findJSDocEnd(content, jsdocStart) : -1;
-
-					// Extract original UUIDs for restoration
-					List<String> originalUUIDs = new ArrayList<>();
-					if (jsdocStart >= 0 && jsdocEnd > jsdocStart)
+					if (item.isInsert())
 					{
-						String originalJSDoc = content.substring(jsdocStart, jsdocEnd);
-						originalUUIDs = validator.extractUUIDs(originalJSDoc);
-						System.out.println("  Found existing JSDoc with " + originalUUIDs.size() + " UUID(s)");
-					}
-					else
-					{
-						System.out.println("  No existing JSDoc found");
-					}
+						// INSERT operation
+						// Extract indentation from target line
+						String targetLine = lineList.get(item.startLine());
+						String indentation = extractIndentation(targetLine);
 
-					// Restore UUIDs in new JSDoc if AI changed them
-					String fixedJSDoc = validator.restoreUUIDs(item.jsdoc(), originalUUIDs);
-
-					// Extract indentation from signature line
-					int lineStart = content.lastIndexOf('\n', sigPos) + 1;
-					String signatureLine = content.substring(lineStart, Math.min(sigPos + 50, content.length()));
-					String indentation = manipulator.extractIndentation(signatureLine);
-
-					// Format JSDoc with indentation
-					String[] jsdocLines = fixedJSDoc.split("\n");
-					StringBuilder formattedJSDoc = new StringBuilder();
-					for (int i = 0; i < jsdocLines.length; i++)
-					{
-						if (i > 0)
+						// Format JSDoc with indentation
+						String[] jsdocLines = item.jsdoc().split("\n");
+						List<String> formattedLines = new ArrayList<>();
+						for (String jsdocLine : jsdocLines)
 						{
-							formattedJSDoc.append("\n");
+							formattedLines.add(indentation + jsdocLine);
 						}
-						formattedJSDoc.append(indentation).append(jsdocLines[i]);
-					}
 
-					// Insert or replace JSDoc
-					if (jsdocStart >= 0 && jsdocEnd > jsdocStart)
-					{
-						// Replace existing JSDoc
-						content = content.substring(0, jsdocStart) +
-							formattedJSDoc.toString() + "\n" +
-							content.substring(jsdocEnd);
-						System.out.println("  ✓ Replaced existing JSDoc");
-					}
-					else
-					{
-						// Insert new JSDoc before signature
-						content = content.substring(0, sigPos) +
-							formattedJSDoc.toString() + "\n" +
-							content.substring(sigPos);
-						System.out.println("  ✓ Inserted new JSDoc");
-					}
-
-					// Validate the specific JSDoc we just added
-					try
-					{
-						validator.validateJSDocSyntax(fixedJSDoc);
-						System.out.println("  ✓ JSDoc syntax valid");
+						// Insert JSDoc lines before target line
+						lineList.addAll(item.startLine(), formattedLines);
 						successCount++;
 					}
-					catch (ValidationException ve)
+					else
 					{
-						String error = "JSDoc validation failed for " + item.signature() + ": " + ve.getMessage();
-						errors.add(error);
-						System.out.println("  ✗ " + error);
-						// Restore just this JSDoc - continue processing others
+						// REPLACE operation with validation
+						// Validate start sentence
+						String startLineContent = lineList.get(item.startLine()).trim();
+						if (!startLineContent.startsWith(item.startSentence()))
+						{
+							String error = "Start validation failed at line " + item.startLine() + 
+								": expected start with '" + item.startSentence() + "' but got '" + 
+								startLineContent.substring(0, Math.min(20, startLineContent.length())) + "...'";
+							errors.add(error);
+							ServoyLog.logInfo(error);
+							continue;
+						}
+
+						// Validate end sentence
+						String endLineContent = lineList.get(item.endLine()).trim();
+						if (!endLineContent.endsWith(item.endSentence()))
+						{
+							String error = "End validation failed at line " + item.endLine() + 
+								": expected end with '" + item.endSentence() + "' but got '..." + 
+								endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'";
+							errors.add(error);
+							ServoyLog.logInfo(error);
+							continue;
+						}
+
+						// Extract original UUIDs from replaced range
+						StringBuilder replacedContent = new StringBuilder();
+						for (int i = item.startLine(); i <= item.endLine(); i++)
+						{
+							replacedContent.append(lineList.get(i)).append("\n");
+						}
+						List<String> originalUUIDs = validator.extractUUIDs(replacedContent.toString());
+
+						// Restore UUIDs in new JSDoc
+						String fixedJSDoc = validator.restoreUUIDs(item.jsdoc(), originalUUIDs);
+
+						// Extract indentation from first line in range
+						String firstLine = lineList.get(item.startLine());
+						String indentation = extractIndentation(firstLine);
+
+						// Format JSDoc with indentation
+						String[] jsdocLines = fixedJSDoc.split("\n");
+						List<String> formattedLines = new ArrayList<>();
+						for (String jsdocLine : jsdocLines)
+						{
+							formattedLines.add(indentation + jsdocLine);
+						}
+
+						// Remove old lines
+						for (int i = item.endLine(); i >= item.startLine(); i--)
+						{
+							lineList.remove(i);
+						}
+
+						// Insert new JSDoc
+						lineList.addAll(item.startLine(), formattedLines);
+
+						// Validate JSDoc syntax
+						try
+						{
+							validator.validateJSDocSyntax(fixedJSDoc);
+							successCount++;
+						}
+						catch (ValidationException ve)
+						{
+							String error = "JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() + 
+								": " + ve.getMessage();
+							errors.add(error);
+							ServoyLog.logInfo(error);
+						}
 					}
 				}
 				catch (Exception e)
 				{
-					String error = "Failed to process " + item.signature() + ": " + e.getMessage();
+					String error = "Failed to process lines " + item.startLine() + "-" + item.endLine() + ": " + e.getMessage();
 					errors.add(error);
-					System.out.println("  ✗ " + error);
+					ServoyLog.logError(error, e);
 				}
+			}
+
+			// Rebuild content from lines
+			StringBuilder newContent = new StringBuilder();
+			for (int i = 0; i < lineList.size(); i++)
+			{
+				if (i > 0)
+				{
+					newContent.append("\n");
+				}
+				newContent.append(lineList.get(i));
 			}
 
 			// Write modified content
 			file.setContents(
-				new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
+				new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
 				true,
 				false,
 				null);
@@ -468,14 +471,10 @@ public class DocumentationTools
 			// Clear selection in editor after modifications
 			clearEditorSelection(file, selStart);
 
-			System.out.println("\n=== RESULTS ===");
-			System.out.println("Success: " + successCount + "/" + items.size());
-			System.out.println("Errors: " + errors.size());
-			System.out.println("===============\n");
-
 			// Build response
 			if (!errors.isEmpty())
 			{
+				ServoyLog.logInfo("Partial success: Applied " + successCount + "/" + items.size() + " items, " + errors.size() + " errors");
 				StringBuilder response = new StringBuilder();
 				response.append("Partial success: Applied ").append(successCount).append(" out of ").append(items.size())
 					.append(" documentation items.\n\nErrors encountered:\n");
@@ -486,6 +485,7 @@ public class DocumentationTools
 				return response.toString();
 			}
 
+			ServoyLog.logInfo("Successfully applied " + successCount + " documentation items to: " + filePath);
 			return String.format("Success: Applied %d documentation items to %s", successCount, filePath);
 		}
 		catch (Exception e)
@@ -495,84 +495,23 @@ public class DocumentationTools
 		}
 	}
 
-	@Tool("Apply generated JSDoc documentation to the current selection or file")
-	public String applyDocumentation(
-		@P("Workspace-relative file path (e.g., /ProjectName/forms/myForm.js)") String filePath,
-		@P("Selection start offset (0 for full file)") int selectionOffset,
-		@P("Selection length (file length for full file)") int selectionLength,
-		@P("Modified content with JSDoc documentation") String modifiedContent)
+	/**
+	 * Extract indentation (leading whitespace) from a line.
+	 */
+	private String extractIndentation(String line)
 	{
-		if (filePath == null || filePath.trim().isEmpty())
+		if (line == null || line.isEmpty())
 		{
-			return "Error: File path is required";
+			return "";
 		}
 
-		if (selectionOffset < 0 || selectionLength < 0)
+		int i = 0;
+		while (i < line.length() && Character.isWhitespace(line.charAt(i)))
 		{
-			return "Error: Invalid selection range (offset=" + selectionOffset + ", length=" + selectionLength + ")";
+			i++;
 		}
 
-		if (modifiedContent == null)
-		{
-			return "Error: Modified content is required";
-		}
-
-		try
-		{
-			// Get file from workspace
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
-			if (!file.exists())
-			{
-				return "Error: File does not exist: " + filePath;
-			}
-
-			// Read current content
-			String currentContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
-
-			// Backup original content (only once per file)
-			FileModificationTracker.getInstance().notifyFileModified(filePath, currentContent);
-
-			// Apply modification
-			String newContent;
-			if (selectionOffset == 0 && selectionLength >= currentContent.length())
-			{
-				// Full file replacement
-				newContent = modifiedContent;
-			}
-			else
-			{
-				// Replace selection range
-				if (selectionOffset + selectionLength > currentContent.length())
-				{
-					return "Error: Selection range exceeds file length (file=" + currentContent.length() +
-						", selection end=" + (selectionOffset + selectionLength) + ")";
-				}
-
-				String before = currentContent.substring(0, selectionOffset);
-				String after = currentContent.substring(selectionOffset + selectionLength);
-				newContent = before + modifiedContent + after;
-			}
-
-			// Write back to file
-			file.setContents(
-				new ByteArrayInputStream(newContent.getBytes(StandardCharsets.UTF_8)),
-				true,
-				false,
-				null);
-
-			// Clear selection in active editor to avoid confusing partial selection
-			clearEditorSelection(file, selectionOffset);
-
-			ServoyLog.logInfo("Documentation applied to file: " + filePath +
-				" (offset=" + selectionOffset + ", length=" + selectionLength + ")");
-
-			return "Success: Documentation applied to " + filePath;
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("Error applying documentation to file: " + filePath, e);
-			return "Error: " + e.getMessage();
-		}
+		return line.substring(0, i);
 	}
 
 	/**
