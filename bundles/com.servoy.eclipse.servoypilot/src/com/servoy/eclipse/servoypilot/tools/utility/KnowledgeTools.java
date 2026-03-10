@@ -131,8 +131,14 @@ public class KnowledgeTools
 				{
 					response.append("  - \"").append(query).append("\"\n");
 				}
-				response.append("\nThese don't match any known Servoy categories.\n");
-				response.append("Either this is not a Servoy-related request, or you need to rephrase your action queries.\n");
+				response.append("\nNo specific Servoy tools or documentation found for these queries.\n\n");
+				response.append("IMPORTANT GUIDANCE:\n");
+				response.append("- If this is a GENERAL PROGRAMMING question (JavaScript, algorithms, debugging, etc.),\n");
+				response.append("  you can answer using your general knowledge without Servoy-specific tools.\n");
+				response.append("- If this requires SERVOY-SPECIFIC features (forms, relations, valueLists, etc.),\n");
+				response.append("  but we don't have tools yet, inform the user this feature is not yet available.\n");
+				response.append("- If this is COMPLETELY UNRELATED to programming/Servoy (weather, cooking, etc.),\n");
+				response.append("  politely inform the user you're specialized for Servoy development.\n");
 			}
 			else
 			{
