@@ -203,7 +203,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		// Build display message (shown in UI)
 		StringBuilder displayMessage = new StringBuilder();
 
-		if (isFromView && selectedText != null && !selectedText.trim().isEmpty())
+		if (isFromView && assistantType.getMemorySuffix().equals("-explain") && selectedText != null && !selectedText.trim().isEmpty())
 		{
 			// Error from Console/Error Log - use plain text format
 			displayMessage.append("Please analyze this error from `").append(filePath).append("`:\n\n");
