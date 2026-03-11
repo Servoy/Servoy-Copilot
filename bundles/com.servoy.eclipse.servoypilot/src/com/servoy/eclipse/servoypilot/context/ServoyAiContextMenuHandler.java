@@ -24,12 +24,12 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
+import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
-import com.servoy.eclipse.servoypilot.util.DebugUtils;
 
 /**
  * Handler for Servoy AI context menu commands.
@@ -74,12 +74,8 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 						handleExplain(selectionInfo);
 						break;
 					default :
-						DebugUtils.debug("Unknown command: " + commandId);
+						ServoyLog.logInfo("Unknown command: " + commandId);
 				}
-			}
-			else
-			{
-				DebugUtils.debug("ServoyAI Context Menu: No selection available");
 			}
 		}
 
@@ -140,8 +136,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateTests(SelectionInfo selection)
 	{
-		DebugUtils.debug("[GENERATE TESTS] Generating unit tests for selected code...");
-		DebugUtils.debug("[GENERATE TESTS] This will create test cases.");
 		// TODO: Implement test generation
 	}
 

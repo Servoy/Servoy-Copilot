@@ -98,9 +98,7 @@ public class Activator implements BundleActivator
 		}
 		
 		registerSolutionActivationListener();
-		loadKnowledgeBasesForCurrentSolution();
-
-		ServoyLog.logInfo("[KnowledgeBase] Plugin started - service accessible via Activator.getDefault()");
+		ServoyLog.logInfo("[KnowledgeBase] Plugin started - KB will load on first getKnowledge call (lazy loading)");
 	}
 	
 	/**
@@ -149,8 +147,7 @@ public class Activator implements BundleActivator
 	
 	/**
 	 * Handles solution activation event.
-	 * Clears existing knowledge base and loads packages for new solution.
-	 * Resets context to active solution.
+	 * Clears existing knowledge base - will be reloaded on-demand via lazy loading in getKnowledge tool.
 	 * 
 	 * @param activeProject The newly activated solution (or null if no solution active)
 	 */
@@ -159,42 +156,21 @@ public class Activator implements BundleActivator
 		if (activeProject != null)
 		{
 			String solutionName = activeProject.getProject().getName();
+			System.out.println(">>> [Activator.handleSolutionActivation] Solution: " + solutionName + " - CLEARING KB (lazy load later)");
 			ServoyLog.logInfo("[KnowledgeBase] Solution activated: " + solutionName);
 
 			try
 			{
-				// Reset context to active solution
-				resetContextToActiveSolution();
-
-				// Reload knowledge bases
+				// Clear knowledge base - will be loaded on-demand when getKnowledge is called
+				System.out.println(">>> [Activator.handleSolutionActivation] Clearing KB");
 				ServoyEmbeddingService.getInstance().reloadAllKnowledgeBasesFromReaders(new IPackageReader[0]);
-				KnowledgeBaseManager.loadKnowledgeBasesForSolution(activeProject);
+				System.out.println(">>> [Activator.handleSolutionActivation] KB cleared - will lazy load on first getKnowledge call");
 			}
 			catch (Exception e)
 			{
-				ServoyLog.logError("[KnowledgeBase] Error loading knowledge bases for solution: " + e.getMessage(), e);
+				System.out.println(">>> [Activator.handleSolutionActivation] ERROR: " + e.getMessage());
+				ServoyLog.logError("[KnowledgeBase] Error clearing knowledge base for solution: " + e.getMessage(), e);
 			}
-		}
-	}
-	
-	/**
-	 * Loads knowledge bases for currently active solution at plugin startup.
-	 */
-	private void loadKnowledgeBasesForCurrentSolution()
-	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelFinder.getServoyModel().getActiveProject();
-			if (activeProject != null)
-			{
-				String solutionName = activeProject.getProject().getName();
-				ServoyLog.logInfo("[KnowledgeBase] Loading knowledge bases for current solution: " + solutionName);
-				KnowledgeBaseManager.loadKnowledgeBasesForSolution(activeProject);
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[KnowledgeBase] Error loading knowledge bases at startup: " + e.getMessage(), e);
 		}
 	}
 
@@ -226,31 +202,5 @@ public class Activator implements BundleActivator
 		Activator.plugin = null;
 		
 		ServoyLog.logInfo("[KnowledgeBase] Plugin stopped");
-	}
-
-	/**
-	 * Resets the module context to active solution.
-	 * Called when solution changes to ensure context starts fresh.
-	 */
-	private void resetContextToActiveSolution()
-	{
-		try
-		{
-			// Use reflection to access ContextService from the mcp plugin
-			// This avoids compile-time dependency on the mcp plugin
-			org.osgi.framework.Bundle mcpBundle = org.eclipse.core.runtime.Platform.getBundle("com.servoy.eclipse.knowledgebase.mcp");
-			if (mcpBundle != null && mcpBundle.getState() == org.osgi.framework.Bundle.ACTIVE)
-			{
-				Class< ? > contextServiceClass = mcpBundle.loadClass("com.servoy.eclipse.knowledgebase.mcp.services.ContextService");
-				Object contextServiceInstance = contextServiceClass.getMethod("getInstance").invoke(null);
-				contextServiceClass.getMethod("resetToActiveSolution").invoke(contextServiceInstance);
-				ServoyLog.logInfo("[KnowledgeBase] Context reset to active solution");
-			}
-		}
-		catch (Exception e)
-		{
-			// Silently ignore - mcp plugin may not be loaded yet
-			ServoyLog.logInfo("[KnowledgeBase] Could not reset context (mcp plugin not active): " + e.getMessage());
-		}
 	}
 }

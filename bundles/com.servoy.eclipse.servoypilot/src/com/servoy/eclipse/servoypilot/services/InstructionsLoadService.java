@@ -52,7 +52,6 @@ public class InstructionsLoadService
 			// Clear embeddings
 			ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
 			embeddingService.clearEmbeddings();
-
 			ServoyLog.logInfo("[InstructionsLoaderService] Knowledge base cleared");
 		}
 		catch (Exception e)
@@ -85,14 +84,14 @@ public class InstructionsLoadService
 						SystemPrompts.INSTANCE.loadFromPath(systemPromptsFolder);
 					}
 
-					// Load rules from file system
-					loadRulesFromFolder(rulesFolder);
+				// Load rules from file system
+				loadRulesFromFolder(rulesFolder);
 
-					// Load embeddings from file system
-					loadEmbeddingsFromFolder(embeddingsFolder);
+				// Load embeddings from file system
+				loadEmbeddingsFromFolder(embeddingsFolder);
 
-					ServoyLog.logInfo("[InstructionsLoaderService] Knowledge base loaded from: " + servoyFolder.getFullPath());
-					return;
+				ServoyLog.logInfo("[InstructionsLoaderService] Knowledge base loaded from: " + servoyFolder.getFullPath());
+				return;
 				}
 
 				if (!rulesFolder.exists())

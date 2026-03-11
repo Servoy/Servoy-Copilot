@@ -39,7 +39,6 @@ import org.sablo.specification.Package.IPackageReader;
 
 import com.servoy.eclipse.knowledgebase.service.RulesCache;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService;
-import com.servoy.eclipse.knowledgebase.util.DebugUtils;
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -66,16 +65,6 @@ public class KnowledgeBaseManager
 	}
 
 	/**
-	 * Get the rules cache.
-	 * 
-	 * @return RulesCache class (static methods)
-	 */
-	public static Class<RulesCache> getRulesCache()
-	{
-		return RulesCache.class;
-	}
-
-	/**
 	 * Load knowledge bases for the active solution.
 	 * Called automatically when solution activates.
 	 * 
@@ -89,89 +78,36 @@ public class KnowledgeBaseManager
 	 */
 	public static void loadKnowledgeBasesForSolution(Object solution)
 	{
-		DebugUtils.logMethodEntry("KnowledgeBaseManager", "loadKnowledgeBasesForSolution", solution);
-		
 		if (solution instanceof ServoyProject servoyProject)
 		{
-			DebugUtils.log("KnowledgeBaseManager", "Solution is ServoyProject: " + servoyProject.getProject().getName());
+			String solutionName = servoyProject.getProject().getName();
 			
-			DebugUtils.log("KnowledgeBaseManager", "Discovering knowledge base packages...");
 			IPackageReader[] packageReaders = discoverKnowledgeBasePackagesInSolution(servoyProject);
 			
-			DebugUtils.log("KnowledgeBaseManager", "Discovered " + packageReaders.length + " knowledge base packages");
-			for (int i = 0; i < packageReaders.length; i++)
+			if (packageReaders.length == 0)
 			{
-				DebugUtils.log("KnowledgeBaseManager", "  Package " + (i+1) + ": " + packageReaders[i].getPackageName());
+				packageReaders = loadDefaultKnowledgeBaseFromBundle();
 			}
 			
 			try
 			{
-				DebugUtils.log("KnowledgeBaseManager", "Getting embedding service instance...");
 				ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
 				
-				DebugUtils.log("KnowledgeBaseManager", "Calling reloadAllKnowledgeBasesFromReaders()...");
 				embeddingService.reloadAllKnowledgeBasesFromReaders(packageReaders);
 				
 				int embeddingCount = embeddingService.getEmbeddingCount();
 				int ruleCount = RulesCache.getRuleCount();
-				
-				DebugUtils.log("KnowledgeBaseManager", "Knowledge base loading complete:");
-				DebugUtils.log("KnowledgeBaseManager", "  - Embeddings: " + embeddingCount);
-				DebugUtils.log("KnowledgeBaseManager", "  - Rules: " + ruleCount);
-				DebugUtils.log("KnowledgeBaseManager", "  - Available intents: " + String.join(", ", RulesCache.getAvailableIntents()));
 				
 				if (packageReaders.length > 0)
 				{
 					ServoyLog.logInfo("[KnowledgeBaseManager] Knowledge bases loaded successfully - " + 
 						embeddingCount + " embeddings, " + ruleCount + " rules");
 				}
-				
-				DebugUtils.logMethodExit("KnowledgeBaseManager", "loadKnowledgeBasesForSolution", 
-					"Success - " + embeddingCount + " embeddings, " + ruleCount + " rules");
 			}
 			catch (Exception e)
 			{
-				DebugUtils.logException("KnowledgeBaseManager", "Error loading knowledge bases", e);
 				ServoyLog.logError("[KnowledgeBaseManager] Error loading/clearing knowledge bases: " + 
 					e.getMessage(), e);
-			}
-		}
-		else
-		{
-			DebugUtils.log("KnowledgeBaseManager", "Solution is not a ServoyProject instance: " + 
-				(solution != null ? solution.getClass().getName() : "null"));
-		}
-	}
-
-	/**
-	 * Reload all knowledge bases from active solution.
-	 * Called manually by user via UI action.
-	 * Clears existing knowledge and reloads fresh from active solution's .servoy directory.
-	 */
-	public static void reloadAllKnowledgeBases()
-	{
-		ServoyLog.logInfo("[KnowledgeBaseManager] reloadAllKnowledgeBases called (manual trigger)");
-		ServoyEmbeddingService.getInstance().reloadAllKnowledgeBasesFromReaders(new IPackageReader[0]);
-		
-		ServoyProject activeProject = ServoyModelFinder.getServoyModel().getActiveProject();
-		if (activeProject != null)
-		{
-			IPackageReader[] packageReaders = discoverKnowledgeBasePackagesInSolution(activeProject);
-			try
-			{
-				ServoyEmbeddingService embeddingService = ServoyEmbeddingService.getInstance();
-				embeddingService.reloadAllKnowledgeBasesFromReaders(packageReaders);
-				
-				int embeddingCount = embeddingService.getEmbeddingCount();
-				int ruleCount = RulesCache.getRuleCount();
-				
-				ServoyLog.logInfo("[KnowledgeBaseManager] Reload complete - Loaded " + embeddingCount + 
-					" embeddings and " + ruleCount + " rules from " + packageReaders.length + " package(s)");
-			}
-			
-			catch (Exception e)
-			{
-				ServoyLog.logError("[KnowledgeBaseManager] Error reloading knowledge bases: " + e.getMessage(), e);
 			}
 		}
 	}
@@ -206,5 +142,38 @@ public class KnowledgeBaseManager
 		ServoyFolderPackageReader reader = new ServoyFolderPackageReader(servoyFolder, solutionName);
 		
 		return new IPackageReader[] { reader };
+	}
+	
+	/**
+	 * Load default knowledge base from bundle resources.
+	 * Called when no .servoy directory exists in the solution.
+	 * 
+	 * @return Array with single package reader for bundle resources
+	 */
+	private static IPackageReader[] loadDefaultKnowledgeBaseFromBundle()
+	{
+		try
+		{
+			System.out.println(">>> [KnowledgeBaseManager.loadDefaultKnowledgeBaseFromBundle] START");
+			
+			// Get bundle - works even during STARTING state (before start() completes)
+			org.osgi.framework.Bundle knowledgebaseBundle = org.eclipse.core.runtime.Platform.getBundle("com.servoy.eclipse.servoypilot.knowledgebase");
+			if (knowledgebaseBundle != null)
+			{
+				ServoyLog.logInfo("[KnowledgeBaseManager] Loading default knowledge base from bundle resources");
+				IPackageReader bundleReader = new ServoyBundlePackageReader(knowledgebaseBundle, "resources");
+				return new IPackageReader[] { bundleReader };
+			}
+			else
+			{
+				ServoyLog.logInfo("[KnowledgeBaseManager] Knowledgebase bundle not found - cannot load default KB");
+				return new IPackageReader[0];
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("[KnowledgeBaseManager] Error loading default KB from bundle: " + e.getMessage(), e);
+			return new IPackageReader[0];
+		}
 	}
 }

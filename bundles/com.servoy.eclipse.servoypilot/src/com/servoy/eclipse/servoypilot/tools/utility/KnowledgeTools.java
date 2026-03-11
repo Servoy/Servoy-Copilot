@@ -21,8 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.core.runtime.ILog;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.knowledgebase.KnowledgeBaseManager;
@@ -30,6 +28,7 @@ import com.servoy.eclipse.knowledgebase.service.RulesCache;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService;
 import com.servoy.eclipse.knowledgebase.service.ServoyEmbeddingService.SearchResult;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.model.util.ServoyLog;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -43,8 +42,6 @@ import dev.langchain4j.agent.tool.Tool;
  */
 public class KnowledgeTools
 {
-	private static final ILog logger = ILog.of(KnowledgeTools.class);
-
 	/**
 	 * Retrieves Servoy documentation and tool instructions for specified action queries.
 	 * 
@@ -68,8 +65,7 @@ public class KnowledgeTools
 		"Provide action phrases like 'create form', 'add buttons', 'create relation' as either " +
 		"a JSON array or comma-separated string. Each query should be a simple 2-4 word phrase.")
 	public String getKnowledge(
-		@P(value = "Action queries - either JSON array [\"query1\", \"query2\"] or comma-separated \"query1, query2\"", 
-		   required = true) String queries)
+		@P(value = "Action queries - either JSON array [\"query1\", \"query2\"] or comma-separated \"query1, query2\"", required = true) String queries)
 	{
 		// Parse queries from input
 		List<String> queryList = parseQueries(queries);
@@ -81,8 +77,33 @@ public class KnowledgeTools
 
 		try
 		{
-			// Get embedding service
+			// LAZY LOADING: Check if KB is loaded, if not load it now
 			ServoyEmbeddingService embeddingService = KnowledgeBaseManager.getEmbeddingService();
+
+			if (!embeddingService.hasEmbeddings())
+			{
+				ServoyLog.logInfo("[KnowledgeTools] Loading knowledge base for current solution");
+				// Load KB for current solution
+				ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+				if (activeProject != null)
+				{
+					try
+					{
+						KnowledgeBaseManager.loadKnowledgeBasesForSolution(activeProject);
+						ServoyLog.logInfo("[KnowledgeTools] Knowledge base loaded successfully");
+					}
+					catch (Exception e)
+					{
+						ServoyLog.logError("[KnowledgeTools] Failed to load knowledge base: " + e.getMessage(), e);
+						return "Error: Failed to load knowledge base. " + e.getMessage();
+					}
+				}
+				else
+				{
+					ServoyLog.logError("[KnowledgeTools] No active Servoy solution found");
+					return "Error: No active Servoy solution. Please activate a solution first.";
+				}
+			}
 
 			// Track matched categories and their contexts
 			Map<String, CategoryMatch> categoryMatches = new LinkedHashMap<>();
@@ -191,7 +212,7 @@ public class KnowledgeTools
 		}
 		catch (Exception e)
 		{
-			logger.error("Error in getKnowledge: " + e.getMessage(), e);
+			ServoyLog.logError("[KnowledgeTools] Error in getKnowledge: " + e.getMessage(), e);
 			return "Error processing queries: " + e.getMessage();
 		}
 	}

@@ -631,36 +631,6 @@ public class ChatViewPresenter
 		// Update memory ID with current assistant suffix
 		currentMemoryId = solutionName + currentAssistant.getMemorySuffix();
 
-		// Manage knowledge base: load from .servoy if exists, otherwise load default from bundle
-		IProject project = getProjectByName(projectName);
-		if (project != null)
-		{
-			InstructionsSaveService fileService = new InstructionsSaveService();
-			InstructionsLoadService loaderService = new InstructionsLoadService();
-
-			try
-			{
-				loaderService.clearKnowledgeBase();
-
-				if (fileService.servoyDirectoryExists(project))
-				{
-					// Load from solution-specific .servoy directory
-					loaderService.loadFromFileSystem(project.getFolder(".servoy"));
-					logger.info("Knowledge base loaded from .servoy directory for solution: " + projectName);
-				}
-				else
-				{
-					// Load default knowledge base from bundle resources
-					loaderService.loadFromBundleResources();
-					logger.info("Default knowledge base loaded from bundle for solution: " + projectName);
-				}
-			}
-			catch (Exception e)
-			{
-				logger.error("Error loading knowledge base for solution: " + projectName, e);
-			}
-		}
-
 		applyToView(view -> {
 			view.clearChatView();
 

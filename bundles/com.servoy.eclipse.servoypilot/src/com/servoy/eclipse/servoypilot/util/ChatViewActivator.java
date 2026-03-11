@@ -22,9 +22,9 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
-import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
 
+import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.ChatView;
 
@@ -70,13 +70,9 @@ public class ChatViewActivator
 				}
 			}
 		}
-		catch (PartInitException e)
-		{
-			DebugUtils.debug("Failed to open Servoy AI Chat view: " + e.getMessage());
-		}
 		catch (Exception e)
 		{
-			DebugUtils.debug("Unexpected error opening chat view: " + e.getMessage());
+			ServoyLog.logError(e);
 		}
 
 		return false;
@@ -109,29 +105,19 @@ public class ChatViewActivator
 				return null;
 			}
 
-			// Try getting the E4 Part Service to access the actual object
-			try
+			EPartService partService = window.getService(EPartService.class);
+			if (partService != null)
 			{
-				EPartService partService = window.getService(EPartService.class);
-				if (partService != null)
+				MPart mPart = partService.findPart(CHAT_VIEW_ID);
+				if (mPart != null)
 				{
-					MPart mPart = partService.findPart(CHAT_VIEW_ID);
-					if (mPart != null)
+					Object obj = mPart.getObject();
+					if (obj instanceof ChatView)
 					{
-						Object obj = mPart.getObject();
-						if (obj instanceof ChatView)
-						{
-							return (ChatView)obj;
-						}
+						return (ChatView)obj;
 					}
 				}
 			}
-			catch (Exception e)
-			{
-				DebugUtils.debug("Error using E4PartService: " + e.getMessage());
-			}
-
-			// Fallback: try direct instanceof check
 			if (viewPart instanceof ChatView)
 			{
 				return (ChatView)viewPart;
@@ -139,7 +125,7 @@ public class ChatViewActivator
 		}
 		catch (Exception e)
 		{
-			DebugUtils.debug("Error getting ChatView instance: " + e.getMessage());
+			ServoyLog.logError(e);
 		}
 
 		return null;

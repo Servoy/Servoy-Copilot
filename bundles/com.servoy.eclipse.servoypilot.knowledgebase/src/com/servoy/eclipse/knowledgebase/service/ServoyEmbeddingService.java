@@ -97,6 +97,7 @@ public class ServoyEmbeddingService
 			modelStream.close();
 
 			modelSession = env.createSession(modelBytes);
+			
 			URL tokenizerURL = modelsBundle.getEntry("models/bge-small-en-v1.5/tokenizer.onnx");
 			if (tokenizerURL == null)
 			{
@@ -109,8 +110,8 @@ public class ServoyEmbeddingService
 			OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
 			sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
 			tokenizerSession = env.createSession(tokenizerBytes, sessionOptions);
-			ServoyLog.logInfo("[ServoyEmbeddings] ONNX model and tokenizer loaded successfully");
 			
+			ServoyLog.logInfo("[ServoyEmbeddings] ONNX model and tokenizer loaded successfully");		
 			ServoyLog.logInfo("[ServoyEmbeddings] Embedding service ready! Knowledge bases will be loaded from workspace packages.");
 		}
 		catch (Throwable e)

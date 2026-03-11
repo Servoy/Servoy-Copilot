@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Set;
 
 import com.servoy.eclipse.servoypilot.services.DatabaseSchemaService;
-import com.servoy.eclipse.servoypilot.util.DebugUtils;
 import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.persistence.ITable;
@@ -52,7 +51,7 @@ public class DatabaseTools
 				if (server != null)
 				{
 					List<String> tables = DatabaseSchemaService.getTableNames(server);
-					
+
 					StringBuilder result = new StringBuilder();
 					result.append("Database Server: ").append(serverName).append("\n");
 					result.append("Tables (").append(tables.size()).append("):\n\n");
@@ -61,7 +60,7 @@ public class DatabaseTools
 					{
 						result.append("(No tables found)\n");
 					}
-					
+
 					for (String tableName : tables)
 					{
 						result.append("  - ").append(tableName).append("\n");
@@ -69,7 +68,7 @@ public class DatabaseTools
 
 					return result.toString();
 				}
-				
+
 				return "Error: Database server '" + serverName + "' not found";
 			}
 			catch (Exception e)
@@ -77,7 +76,7 @@ public class DatabaseTools
 				return "Error listing tables: " + e.getMessage();
 			}
 		}
-		
+
 		return "Error: serverName parameter is required";
 	}
 
@@ -96,11 +95,11 @@ public class DatabaseTools
 				try
 				{
 					IServerInternal server = DatabaseSchemaService.getServer(serverName);
-					
+
 					if (server != null)
 					{
 						ITable table = DatabaseSchemaService.getTable(server, tableName);
-						
+
 						if (table != null)
 						{
 							StringBuilder result = new StringBuilder();
@@ -109,7 +108,7 @@ public class DatabaseTools
 							result.append("Columns:\n\n");
 
 							Collection<Column> columns = DatabaseSchemaService.getColumns(table);
-							
+
 							if (columns != null && !columns.isEmpty())
 							{
 								int colNum = 1;
@@ -136,12 +135,12 @@ public class DatabaseTools
 										{
 											colTypeName = "ERROR: " + typeEx.getMessage();
 										}
-										
+
 										result.append("   Type: ").append(colTypeName).append("\n");
 
 										boolean isPK = pkNames.contains(colName);
 										result.append("   Primary Key: ").append(isPK).append("\n\n");
-										
+
 										colNum++;
 									}
 									catch (Exception colEx)
@@ -153,17 +152,17 @@ public class DatabaseTools
 										colNum++;
 									}
 								}
-								
+
 								return result.toString();
 							}
-							
+
 							result.append("(No columns found)\n");
 							return result.toString();
 						}
-						
+
 						return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
 					}
-					
+
 					return "Error: Database server '" + serverName + "' not found";
 				}
 				catch (Exception e)
@@ -171,10 +170,10 @@ public class DatabaseTools
 					return "Error getting table info: " + e.getMessage();
 				}
 			}
-			
+
 			return "Error: tableName parameter is required";
 		}
-		
+
 		return "Error: serverName parameter is required";
 	}
 }
