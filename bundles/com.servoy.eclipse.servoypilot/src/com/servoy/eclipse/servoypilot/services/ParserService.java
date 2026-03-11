@@ -68,8 +68,10 @@ public class ParserService
 		}
 	}
 
-	public Statement getStatementAtOffset(String source, int offset) throws Exception
+	public Statement getStatementAtOffset(String source, int startOffset) throws Exception
 	{
+		int offset = skipWhitespaceForward(source, startOffset);
+
 		Script script = JavaScriptParserUtil.parse(source, null);
 		if (script == null)
 		{
@@ -141,5 +143,15 @@ public class ParserService
 			parent = parent.getParent();
 		}
 		return null;
+	}
+
+	private int skipWhitespaceForward(String source, int offset)
+	{
+		int len = source.length();
+		while (offset < len && Character.isWhitespace(source.charAt(offset)))
+		{
+			offset++;
+		}
+		return offset;
 	}
 }
