@@ -96,43 +96,33 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		handleSelectionInfo(AssistantType.REVIEW, selection, new ISelectionAIHandler()
 		{
 			@Override
-			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				// Small selection - show the actual code in the UI
 				displayMessage.append("Please review this code from `").append(selection.getFilePath()).append("`:\n\n");
 				displayMessage.append("```javascript\n");
 				displayMessage.append(selection.getSelectedText());
 				displayMessage.append("\n```");
-
-				// AI gets the same message
-				fullMessage.append(displayMessage.toString());
 			}
 
 			@Override
-			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				// Large selection - treat like whole file with chunked reading
 				displayMessage.append("Please review the selected code from `").append(selection.getFilePath()).append("` (")
 					.append(lineCount).append(" lines)");
-
-				// AI gets large file notice to trigger chunked reading
-				fullMessage.append("<large_file_notice>\n");
-				fullMessage.append("Please read and review the selected code from `").append(selection.getFilePath()).append("` at offset ")
+				displayMessage.append("<large_file_notice>\n");
+				displayMessage.append("Please read and review the selected code from `").append(selection.getFilePath()).append("` at offset ")
 					.append(selection.getOffset()).append(" (").append(lineCount).append(" lines, ")
 					.append(selection.getLength()).append(" characters).\n");
-				fullMessage.append("</large_file_notice>");
+				displayMessage.append("</large_file_notice>");
 			}
 
 			@Override
-			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
 			{
-				// For whole file - UI shows simple message
 				displayMessage.append("Please review the file `").append(selection.getFilePath()).append("`");
-
-				// AI gets instruction with large file notice to trigger chunked reading
-				fullMessage.append("<large_file_notice>\n");
-				fullMessage.append("Please read and review the file `").append(selection.getFilePath()).append("`.\n");
-				fullMessage.append("</large_file_notice>");
+				displayMessage.append("<large_file_notice>\n");
+				displayMessage.append("Please read and review the file `").append(selection.getFilePath()).append("`.\n");
+				displayMessage.append("</large_file_notice>");
 			}
 		});
 	}
@@ -160,43 +150,33 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		handleSelectionInfo(AssistantType.EXPLAIN, selection, new ISelectionAIHandler()
 		{
 			@Override
-			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				// Small selection - show the actual code in the UI
 				displayMessage.append("Please explain this code from `").append(selection.getFilePath()).append("`:\n\n");
 				displayMessage.append("```javascript\n");
 				displayMessage.append(selection.getSelectedText());
 				displayMessage.append("\n```");
-
-				// AI gets the same message
-				fullMessage.append(displayMessage.toString());
 			}
 
 			@Override
-			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				// Large selection - treat like whole file with chunked reading
 				displayMessage.append("Please analyze the selected code from `").append(selection.getFilePath()).append("` (")
 					.append(lineCount).append(" lines)");
-
-				// AI gets large file notice to trigger chunked reading
-				fullMessage.append("<large_file_notice>\n");
-				fullMessage.append("Please read and analyze the selected code from `").append(selection.getFilePath()).append("` at offset ")
+				displayMessage.append("<large_file_notice>\n");
+				displayMessage.append("Please read and analyze the selected code from `").append(selection.getFilePath()).append("` at offset ")
 					.append(selection.getOffset()).append(" (").append(lineCount).append(" lines, ")
 					.append(selection.getLength()).append(" characters).\n");
-				fullMessage.append("</large_file_notice>");
+				displayMessage.append("</large_file_notice>");
 			}
 
 			@Override
-			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage, StringBuilder fullMessage)
+			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
 			{
-				// For whole file - UI shows simple message
 				displayMessage.append("Please analyze the file `").append(selection.getFilePath()).append("`");
-
-				// AI gets instruction with large file notice to trigger chunked reading
-				fullMessage.append("<large_file_notice>\n");
-				fullMessage.append("Please read and analyze the file `").append(selection.getFilePath()).append("`.\n");
-				fullMessage.append("</large_file_notice>");
+				displayMessage.append("<large_file_notice>\n");
+				displayMessage.append("Please read and analyze the file `").append(selection.getFilePath()).append("`.\n");
+				displayMessage.append("</large_file_notice>");
 			}
 		});
 	}
@@ -212,56 +192,71 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			return;
 		}
 
+		// Get file path and selection info
+		String filePath = selection.getFilePath();
 		String selectedText = selection.getSelectedText();
-		int length = selection.getLength();
+		boolean isFullFileSelected = selection.isFullFileSelected();
+
+		// Detect if selection is from a view (Console, Error Log) or a file
+		boolean isFromView = filePath.startsWith("<") && filePath.endsWith(">");
 
 		// Build display message (shown in UI)
 		StringBuilder displayMessage = new StringBuilder();
 
-		// Build full message for AI (includes hidden context)
-		StringBuilder fullMessage = new StringBuilder();
-
-		if (length > 0 && selectedText != null && !selectedText.trim().isEmpty())
+		if (isFromView && selectedText != null && !selectedText.trim().isEmpty())
 		{
-			// Count lines in selected text
-			int lineCount = selectedText.split("\r\n|\r|\n").length;
+			// Error from Console/Error Log - use plain text format
+			displayMessage.append("Please analyze this error from `").append(filePath).append("`:\n\n");
+			displayMessage.append(selectedText);
+
+			// Mark as error for QuickFix integration
+			displayMessage.append("\n\n<error_context>\n");
+			displayMessage.append("This is an error message that may need a fix.\n");
+			displayMessage.append("</error_context>");
+		}
+		// Handle code from files (full file or selection)
+		else if (selectedText != null && !selectedText.trim().isEmpty())
+		{
+			// Count lines once for all code paths
+			int lineCount = (int)selectedText.lines().count();
 
 			if (lineCount > 100)
 			{
-				selectionAIHandler.largeTextSelection(selection, lineCount, displayMessage, fullMessage);
+				// Large file/selection - use chunked reading with progress messages
+				if (isFullFileSelected)
+				{
+					selectionAIHandler.fileSelection(selection, displayMessage);
+				}
+				else
+				{
+					selectionAIHandler.largeTextSelection(selection, lineCount, displayMessage);
+				}
 			}
 			else
 			{
-				selectionAIHandler.smallTextSelection(selection, lineCount, displayMessage, fullMessage);
+				selectionAIHandler.smallTextSelection(selection, lineCount, displayMessage);
 			}
-		}
-		else
-		{
-			selectionAIHandler.fileSelection(selection, displayMessage, fullMessage);
 		}
 
 		// Add context hints for AI only (not shown in UI)
 		String contextInfo = context.getFormattedPlainText();
 		if (contextInfo != null && !contextInfo.trim().isEmpty() && !contextInfo.contains("No context information"))
 		{
-			fullMessage.append("\n\n**Context hints:**\n```\n");
-			fullMessage.append(contextInfo);
-			fullMessage.append("\n```");
+			displayMessage.append("\n\n**Context hints:**\n```\n");
+			displayMessage.append(contextInfo);
+			displayMessage.append("\n```");
 		}
 
-		String displayText = displayMessage.toString();
-		String fullText = fullMessage.toString();
-
 		// Ensure the chat view is open and switch to the Explain assistant, sending the full message with context
-		ChatViewActivator.openAndSwitchToAssistant(assistantType, fullText);
+		ChatViewActivator.openAndSwitchToAssistant(assistantType, displayMessage.toString());
 	}
 
 	private interface ISelectionAIHandler
 	{
-		void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage);
+		void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage);
 
-		void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage, StringBuilder fullMessage);
+		void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage);
 
-		void fileSelection(SelectionInfo selection, StringBuilder displayMessage, StringBuilder fullMessage);
+		void fileSelection(SelectionInfo selection, StringBuilder displayMessage);
 	}
 }
