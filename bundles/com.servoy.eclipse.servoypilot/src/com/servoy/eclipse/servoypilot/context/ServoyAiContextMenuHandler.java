@@ -92,6 +92,12 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		handleSelectionInfo(AssistantType.REVIEW, selection, new ISelectionAIHandler()
 		{
 			@Override
+			public void viewTextSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				// ignore
+			}
+
+			@Override
 			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
 				displayMessage.append("Please review this code from `").append(selection.getFilePath()).append("`:\n\n");
@@ -141,8 +147,29 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleExplain(SelectionInfo selection)
 	{
+		// Get code context early
+		CodeContextService service = CodeContextService.getInstance();
+		CodeContext context = service.getCodeContext(selection);
+
+		if (context.hasError() || (context.isEmpty() && !context.getSelectionInfo().getFilePath().contains("Console")))
+		{
+			return;
+		}
 		handleSelectionInfo(AssistantType.EXPLAIN, selection, new ISelectionAIHandler()
 		{
+			@Override
+			public void viewTextSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				// Error from Console/Error Log - use plain text format
+				displayMessage.append("Please analyze this error from `").append(selection.getFilePath()).append("`:\n\n");
+				displayMessage.append(selection.getSelectedText());
+
+				// Mark as error for QuickFix integration
+				displayMessage.append("\n\n<error_context>\n");
+				displayMessage.append("This is an error message that may need a fix.\n");
+				displayMessage.append("</error_context>");
+			}
+
 			@Override
 			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
@@ -177,15 +204,6 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleSelectionInfo(AssistantType assistantType, SelectionInfo selection, ISelectionAIHandler selectionAIHandler)
 	{
-		// Get code context early
-		CodeContextService service = CodeContextService.getInstance();
-		CodeContext context = service.getCodeContext(selection);
-
-		if (context.hasError() || (context.isEmpty() && !context.getSelectionInfo().getFilePath().contains("Console")))
-		{
-			return;
-		}
-
 		// Get file path and selection info
 		String filePath = selection.getFilePath();
 		String selectedText = selection.getSelectedText();
@@ -197,16 +215,9 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		// Build display message (shown in UI)
 		StringBuilder displayMessage = new StringBuilder();
 
-		if (isFromView && assistantType.getMemorySuffix().equals("-explain") && selectedText != null && !selectedText.trim().isEmpty())
+		if (isFromView && selectedText != null && !selectedText.trim().isEmpty())
 		{
-			// Error from Console/Error Log - use plain text format
-			displayMessage.append("Please analyze this error from `").append(filePath).append("`:\n\n");
-			displayMessage.append(selectedText);
-
-			// Mark as error for QuickFix integration
-			displayMessage.append("\n\n<error_context>\n");
-			displayMessage.append("This is an error message that may need a fix.\n");
-			displayMessage.append("</error_context>");
+			selectionAIHandler.viewTextSelection(selection, displayMessage);
 		}
 		// Handle code from files (full file or selection)
 		else if (selectedText != null && !selectedText.trim().isEmpty())
@@ -232,6 +243,8 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			}
 		}
 
+		CodeContextService service = CodeContextService.getInstance();
+		CodeContext context = service.getCodeContext(selection);
 		// Add context hints for AI only (not shown in UI)
 		String contextInfo = context.getFormattedPlainText();
 		if (contextInfo != null && !contextInfo.trim().isEmpty() && !contextInfo.contains("No context information"))
@@ -247,6 +260,8 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private interface ISelectionAIHandler
 	{
+		void viewTextSelection(SelectionInfo selection, StringBuilder displayMessage);
+
 		void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage);
 
 		void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage);
