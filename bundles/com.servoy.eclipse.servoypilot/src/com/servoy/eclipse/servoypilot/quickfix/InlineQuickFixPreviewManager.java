@@ -113,7 +113,7 @@ public class InlineQuickFixPreviewManager
 
 		for (SourceEdit edit : sourceEdits.edits())
 		{
-			int startLine = edit.lineStart() - 1;
+			int startLine = edit.startLine() - 1;
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
 			int endLine = document.getLineOfOffset(statement.sourceEnd());
 

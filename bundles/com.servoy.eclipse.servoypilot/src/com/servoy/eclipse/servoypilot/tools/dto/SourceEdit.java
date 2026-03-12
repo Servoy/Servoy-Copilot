@@ -21,51 +21,86 @@ import java.util.Objects;
 
 public record SourceEdit(
 	String filePath,
-	int lineStart,
-	int lineEnd,
-	int stringStart,
-	int stringEnd,
+	int startLine,
+	int endLine,
+	String startSentence,
+	String endSentence,
 	String replacement)
 {
 
 	public SourceEdit
 	{
-		if (lineStart < 0)
+		if (filePath == null || filePath.isBlank())
 		{
-			throw new IllegalArgumentException("lineStart cannot be negative: " + lineStart);
+			throw new IllegalArgumentException("filePath cannot be null or blank");
 		}
-		if (lineEnd < lineStart)
+
+		if (startLine < 0)
 		{
-			throw new IllegalArgumentException("lineEnd (" + lineEnd + ") cannot be less than lineStart (" + lineStart + ")");
+			throw new IllegalArgumentException("startLine cannot be negative: " + startLine);
 		}
-		if (stringStart < 0)
+
+		if (endLine < startLine)
 		{
-			throw new IllegalArgumentException("stringStart cannot be null (use empty string for insert)");
+			throw new IllegalArgumentException(
+				"endLine (" + endLine + ") cannot be less than startLine (" + startLine + ")");
 		}
-		if (stringEnd < 0)
+
+		if (startSentence == null)
 		{
-			throw new IllegalArgumentException("stringEnd cannot be null (use empty string for insert)");
+			throw new IllegalArgumentException(
+				"startSentence cannot be null (use empty string for insert)");
+		}
+
+		if (endSentence == null)
+		{
+			throw new IllegalArgumentException(
+				"endSentence cannot be null (use empty string for insert)");
 		}
 	}
 
+	/**
+	 * Insert means:
+	 * - same line
+	 * - no validation strings
+	 */
 	public boolean isInsert()
 	{
-		return stringStart == stringEnd && replacement != null && !replacement.isEmpty();
+		return startLine == endLine &&
+			startSentence.isEmpty() &&
+			endSentence.isEmpty() &&
+			replacement != null &&
+			!replacement.isEmpty();
 	}
 
+	/**
+	 * Replacement means:
+	 * - start and end anchors exist
+	 * - replacement text exists
+	 */
 	public boolean isReplacement()
 	{
-		return stringEnd > stringStart && replacement != null && !replacement.isEmpty();
+		return !startSentence.isEmpty() &&
+			!endSentence.isEmpty() &&
+			replacement != null &&
+			!replacement.isEmpty();
 	}
 
+	/**
+	 * Delete means:
+	 * - start and end anchors exist
+	 * - replacement is empty
+	 */
 	public boolean isDelete()
 	{
-		return stringEnd > stringStart && (replacement == null || replacement.isEmpty());
+		return !startSentence.isEmpty() &&
+			!endSentence.isEmpty() &&
+			(replacement == null || replacement.isEmpty());
 	}
 
 	public boolean affectsSingleLine()
 	{
-		return lineStart == lineEnd;
+		return startLine == endLine;
 	}
 
 	public boolean hasReplacement()
@@ -78,8 +113,9 @@ public record SourceEdit(
 	{
 		return "SourceEdit[" +
 			"file=" + filePath +
-			", lines=" + lineStart + "-" + lineEnd +
-			", chars=" + stringStart + "-" + stringEnd +
+			", lines=" + startLine + "-" + endLine +
+			", startSentence=" + startSentence +
+			", endSentence=" + endSentence +
 			", replacement=" + Objects.toString(replacement) +
 			"]";
 	}

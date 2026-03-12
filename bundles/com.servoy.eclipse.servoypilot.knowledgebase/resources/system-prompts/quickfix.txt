@@ -58,10 +58,10 @@ Each element in **edits** must match the following structure:
 
 SourceEdit {
   filePath: string
-  lineStart: number
-  lineEnd: number
-  stringStart: number
-  stringEnd: number
+  startLine: number
+  endLine: number
+  startSentence: string
+  endSentence: string
   replacement: string
 }
 
@@ -71,10 +71,10 @@ Example:
   "edits": [
     {
       "filePath": "fpp.js",
-      "lineStart": 91,
-      "lineEnd": 91,
-      "stringStart": 0,
-      "stringEnd": 142,
+      "startLine": 91,
+      "endLine": 91,
+      "startSentence": "var x =",
+      "endSentence": ";",
       "replacement": "let x = 1;"
     }
   ]
@@ -185,7 +185,7 @@ Line numbers shown in context are **for reference only**.
 
 Do NOT include line numbers in the replacement code.
 
-The `lineStart` and `lineEnd` fields specify where the fix applies.
+The `startLine` and `endLine` fields specify where the fix applies.
 
 ------------------------------------------------------------
 
