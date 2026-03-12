@@ -24,6 +24,7 @@ import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
+import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
@@ -47,6 +48,9 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
+import com.servoy.eclipse.servoypilot.services.ParserService;
+import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 
 public class InlineQuickFixPreviewManager
@@ -74,7 +78,7 @@ public class InlineQuickFixPreviewManager
 
 	public void preview(
 		ITextEditor editor,
-		String fixedStatementSource,
+		QuickFixResult sourceEdits,
 		QuickFixRequest request,
 		String fixPrompt) throws Exception
 	{
@@ -104,50 +108,53 @@ public class InlineQuickFixPreviewManager
 		Color removedColor = new Color(display, 255, 230, 230);
 		colors.add(addedColor);
 		colors.add(removedColor);
-
-		int startLine = document.getLineOfOffset(request.statement.sourceStart());
-		int endLine = document.getLineOfOffset(request.statement.sourceEnd());
-
-		int startOffset = document.getLineOffset(startLine);
-		int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-
-		String originalStatement = document.get(startOffset, endOffset - startOffset);
-
-		String lineDelimiter = document.getLineDelimiter(startLine);
-		if (lineDelimiter == null)
-		{
-			lineDelimiter = "\n";
-		}
-
-		String previewBlock = originalStatement +
-			fixedStatementSource +
-			lineDelimiter;
-
-		document.replace(startOffset, endOffset - startOffset, previewBlock);
-
-		int originalLineCount = countLines(originalStatement);
-		int fixedLineCount = countLines(fixedStatementSource);
-
 		removedLines.clear();
 		addedLines.clear();
 
-		for (int i = 0; i < originalLineCount; i++)
+		for (SourceEdit edit : sourceEdits.edits())
 		{
-			removedLines.add(startLine + i);
-		}
+			int startLine = edit.lineStart() - 1;
+			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
+			int endLine = document.getLineOfOffset(statement.sourceEnd());
 
-		for (int i = 0; i < fixedLineCount; i++)
-		{
-			addedLines.add(startLine + originalLineCount + i);
-		}
+			int startOffset = document.getLineOffset(startLine);
+			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
-		PreviewChange change = new PreviewChange();
-		change.startOffset = startOffset;
-		change.originalLength = previewBlock.length();
-		change.modifiedLine = fixedStatementSource;
-		change.originalLine = originalStatement;
-		change.lineDelimiter = lineDelimiter;
-		previewChanges.add(change);
+			String originalStatement = document.get(startOffset, endOffset - startOffset);
+
+			String lineDelimiter = document.getLineDelimiter(startLine);
+			if (lineDelimiter == null)
+			{
+				lineDelimiter = "\n";
+			}
+
+			//TODO handle inserts and deletes correctly, the following code is for replacements only
+			String previewBlock = originalStatement +
+				edit.replacement() +
+				lineDelimiter;
+
+			document.replace(startOffset, endOffset - startOffset, previewBlock);
+
+			int originalLineCount = countLines(originalStatement);
+			int fixedLineCount = countLines(edit.replacement());
+			for (int i = 0; i < originalLineCount; i++)
+			{
+				removedLines.add(startLine + i);
+			}
+
+			for (int i = 0; i < fixedLineCount; i++)
+			{
+				addedLines.add(startLine + originalLineCount + i);
+			}
+
+			PreviewChange change = new PreviewChange();
+			change.startOffset = startOffset;
+			change.originalLength = previewBlock.length();
+			change.modifiedLine = edit.replacement();
+			change.originalLine = originalStatement;
+			change.lineDelimiter = lineDelimiter;
+			previewChanges.add(change);
+		}
 
 		backgroundListener = event -> {
 			int lineIndex = textWidget.getLineAtOffset(event.lineOffset) + 1;

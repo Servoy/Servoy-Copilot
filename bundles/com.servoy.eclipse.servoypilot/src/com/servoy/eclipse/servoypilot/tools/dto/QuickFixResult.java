@@ -1,5 +1,5 @@
 /*
- This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
  the terms of the GNU Affero General Public License as published by the Free
@@ -13,26 +13,17 @@
  You should have received a copy of the GNU Affero General Public License along
  with this program; if not, see http://www.gnu.org/licenses or write to the Free
  Software Foundation,Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
+*/
+
+package com.servoy.eclipse.servoypilot.tools.dto;
+
+import java.util.List;
+
+/**
+ * Wrapper object approach to avoid the PojoCollectionOutputParser crash in LangChain4j
+ * @author merae
  */
-package com.servoy.eclipse.servoypilot.ai;
-
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
-
-import dev.langchain4j.service.UserMessage;
-
-public interface QuickFixAssistant extends IAssistant
+public record QuickFixResult(
+	List<SourceEdit> edits)
 {
-	@Override
-	default AssistantType getType()
-	{
-		return AssistantType.QUICKFIX;
-	}
-
-	@Override
-	default String getDisplayName()
-	{
-		return AssistantType.QUICKFIX.getDisplayName();
-	}
-
-	QuickFixResult fix(@UserMessage String prompt);
 }

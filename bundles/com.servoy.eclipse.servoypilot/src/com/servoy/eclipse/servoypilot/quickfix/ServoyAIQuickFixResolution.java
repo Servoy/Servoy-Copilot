@@ -27,7 +27,6 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.dltk.javascript.ast.FunctionStatement;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IAnnotationResolution;
@@ -43,6 +42,8 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.services.ParserService;
+import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotationResolution
 {
@@ -107,14 +108,22 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 					monitor.beginTask("Running AI QuickFix...", IProgressMonitor.UNKNOWN);
 
 					String fixPrompt = buildFixPrompt(editor, request, null);
-					String quickFix = quickFixAssistant.fix(fixPrompt);
 
-					if (!ParserService.getInstance().isValidStatement(quickFix))
+					QuickFixResult fix = quickFixAssistant.fix(fixPrompt);
+					if (fix == null || fix.edits() == null || fix.edits().isEmpty())
 					{
-						//TODO send feedback to AI service about invalid quick fix?
-						return new Status(IStatus.ERROR, "Invalid quick fix generated", "The AI generated code that could not be parsed as a valid statement.");
+						return new Status(IStatus.ERROR, "No quick fix generated", "The AI did not return any quick fix.");
 					}
 
+					for (SourceEdit edit : fix.edits())
+					{
+						if (!ParserService.getInstance().isValidStatement(edit.replacement()))
+						{
+							//TODO send feedback to AI service about invalid quick fix?
+							return new Status(IStatus.ERROR, "Invalid quick fix generated",
+								"The AI generated code that could not be parsed as a valid statement: " + edit.replacement());
+						}
+					}
 					if (monitor.isCanceled())
 					{
 						return Status.CANCEL_STATUS;
@@ -125,7 +134,8 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 						InlineQuickFixPreviewManager inlinePreviewManager = new InlineQuickFixPreviewManager();
 						try
 						{
-							inlinePreviewManager.preview(editor, quickFix, request, fixPrompt);
+							//TODO check if the fix is for the current editor
+							inlinePreviewManager.preview(editor, fix, request, fixPrompt);
 						}
 						catch (Exception e)
 						{
@@ -278,79 +288,31 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 		{
 			return null;
 		}
-
-		String context = getContext(request, document, lineNumber);
 		StringBuilder prompt = new StringBuilder();
 
 		prompt.append("You are generating a minimal Servoy Javascript quickfix, a statement.\n\n");
-		prompt.append("Language: Servoy JavaScript\n"); //TODO is it needed?
-		prompt.append("Environment: Eclipse DLTK ScriptEditor\n\n");//TODO is it needed?
+		prompt.append("File: ").append(resource).append("\n");
+		prompt.append("Language: Servoy JavaScript\n");
+		prompt.append("Environment: Eclipse DLTK ScriptEditor\n\n");
 
-		prompt.append("Marker:\n");
+		prompt.append("Context:\n");
 		prompt.append("- Message: ").append(message).append("\n");
 		prompt.append("- Line: ").append(lineNumber + 1).append("\n\n");
+		prompt.append("- CharacterOffset: ").append(request.startOffset).append("\n\n");
+		prompt.append("- Problem statement: ").append(request.statement != null ? request.statement.toString() : "N/A").append("\n\n");
 
-		if (apiSignature != null && !apiSignature.isEmpty())
-		{
-			prompt.append("API Signature:\n");
-			prompt.append(apiSignature).append("\n\n");
-		}
+		prompt.append("If needed, inspect the context around the statement before generating a fix, using the tool:\n");
+		prompt.append("codeContext(filePath, lineNumber, characterOffset)\n");
+		prompt.append("This returns the surrounding code around the requested line.\n\n");
 
-		prompt.append("Code context:\n");
-		prompt.append("```javascript\n");
-		prompt.append(context);
-		prompt.append("\n```");
-		String result = stripCurlyBracesFromDocumentation(prompt.toString()); //escape curly braces to avoid issues with prompt templates
-		return result;
-	}
+		//TODO for this it should use the documentation tools
+//		if (apiSignature != null && !apiSignature.isEmpty())
+//		{
+//			prompt.append("API Signature:\n");
+//			prompt.append(apiSignature).append("\n\n");
+//		}
 
-	public String getContext(QuickFixRequest request, IDocument document, int lineNumber) throws BadLocationException
-	{
-		String context;
-
-		//TODO make these configurable
-		final int CONTEXT_LINES_AROUND_ERROR = 10; // lines before/after the error if function too large
-		final int MAX_FULL_FUNCTION_LINES = 40; // max lines to return entire function
-
-		FunctionStatement parentFunction = ParserService.getInstance().getParentFunction(request.statement);
-		if (parentFunction == null)
-		{
-			// if statement is top-level, fallback to surrounding lines
-			int totalLines = document.getNumberOfLines();
-			int startLine = Math.max(0, lineNumber - 10);
-			int endLine = Math.min(totalLines - 1, lineNumber + 10);
-			int startOffset = document.getLineOffset(startLine);
-			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-
-			context = document.get(startOffset, endOffset - startOffset);
-		}
-		else
-		{
-			int functionStart = parentFunction.sourceStart();
-			int functionEnd = parentFunction.sourceEnd();
-
-			int startLine = document.getLineOfOffset(functionStart);
-			int endLine = document.getLineOfOffset(functionEnd - 1);
-			int functionLineCount = endLine - startLine + 1;
-
-			if (functionLineCount <= MAX_FULL_FUNCTION_LINES)
-			{
-				// return entire function
-				int startOffset = document.getLineOffset(startLine);
-				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-				context = document.get(startOffset, endOffset - startOffset);
-			}
-			else
-			{
-				startLine = Math.max(startLine, lineNumber - CONTEXT_LINES_AROUND_ERROR);
-				endLine = Math.min(endLine, lineNumber + CONTEXT_LINES_AROUND_ERROR);
-
-				int startOffset = document.getLineOffset(startLine);
-				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-				context = document.get(startOffset, endOffset - startOffset);
-			}
-		}
-		return context;
+		return prompt.toString();
 	}
 
 	// this is a workaround to avoid issues with curly braces in JSDoc, because it throws 

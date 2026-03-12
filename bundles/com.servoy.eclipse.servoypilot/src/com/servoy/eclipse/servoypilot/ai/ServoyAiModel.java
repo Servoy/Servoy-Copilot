@@ -18,6 +18,7 @@ package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
+import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
@@ -274,6 +275,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
+			.tools(new CodeContextTools())
 			.build();
 	}
 
