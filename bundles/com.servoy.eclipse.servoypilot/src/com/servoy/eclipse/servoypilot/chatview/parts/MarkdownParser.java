@@ -473,15 +473,16 @@ public class MarkdownParser
 
 			// Removed newline after <pre><code> tag to fix the extra line issue
 			out.append("""
-				<div class="codeBlock %s">
+				<div class="codeBlock %s" id="block-%s">
 				<div class="codeBlockButtons">
 				<input type="button" onClick="eclipseCopyCode(document.getElementById('%s').innerText)" value="Copy" />
 				<input class="code-only" type="button" onClick="eclipseInsertCode(document.getElementById('%s').innerText)" value="Insert" />
 				<input class="code-only" type="button" onClick="eclipseNewFile(document.getElementById('%s').innerText, '%s')" value="New File" />
 				<input class="code-only" type="button" onClick="eclipseDiffCode(document.getElementById('%s').innerText)" value="Diff" />
 				<input class="diff-only" type="button" onClick="eclipseApplyPatch(document.getElementById('%s').innerText)" value="Apply"/>
+				<input class="error-fix-only" type="button" data-block-id="%s" value="Quick Fix" style="display:none;" />
 				</div>
-				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockId, codeBlockId, lang, codeBlockId, codeBlockId, lang,
+				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockId, codeBlockId, codeBlockId, lang, codeBlockId, codeBlockId, codeBlockId, lang,
 				codeBlockId));
 			state.add(ParserState.CODE_BLOCK);
 		}

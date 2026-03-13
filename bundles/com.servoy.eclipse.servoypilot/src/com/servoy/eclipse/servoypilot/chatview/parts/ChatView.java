@@ -485,6 +485,7 @@ public class ChatView
 		new DiffCodeFunction(browser, "eclipseDiffCode");
 		new InsertCodeFunction(browser, "eclipseInsertCode");
 		new NewFileFunction(browser, "eclipseNewFile");
+		new ApplyErrorFixFunction(browser, "eclipseApplyErrorFix");
 		new ScrollInteractionFunction(browser, "eclipseScrollInteraction");
 		// Modified files tracking functions
 		new OnFileClickFunction(browser, "onFileClick");
@@ -507,6 +508,36 @@ public class ChatView
 			    	<style>${modifiedFilesCSS}</style>
 			    	<script>${js}</script>
 			    	<script>${modifiedFilesJS}</script>
+			    	<script>
+			    		// Initialize error fix buttons after content loads
+			    		function initErrorFixButtons() {
+			    			document.querySelectorAll('error_fix_data').forEach(function(errorData) {
+			    				var prevElem = errorData.previousElementSibling;
+			    				if (prevElem && prevElem.classList.contains('codeBlock')) {
+			    					var btn = prevElem.querySelector('.error-fix-only');
+			    					if (btn) {
+			    						var file = errorData.getAttribute('file');
+			    						var line = parseInt(errorData.getAttribute('line'));
+			    						var errorText = errorData.getAttribute('error_text');
+			    						var fixText = errorData.getAttribute('fix_text');
+
+			    						btn.onclick = function() {
+			    							eclipseApplyErrorFix(file, line, errorText, fixText);
+			    						};
+			    						btn.style.display = 'inline-block';
+			    					}
+			    				}
+			    			});
+			    		}
+
+			    		// Call after content is rendered
+			    		if (typeof MutationObserver !== 'undefined') {
+			    			var observer = new MutationObserver(function() {
+			    				initErrorFixButtons();
+			    			});
+			    			observer.observe(document.body, { childList: true, subtree: true });
+			    		}
+			    	</script>
 				</head>
 			    <body>
 			            <div id="notification-container"></div>
@@ -604,6 +635,116 @@ public class ChatView
 	}
 
 	/**
+	 * Appends content to an existing message.
+	 * 
+	 * @param messageId The ID of the message to append to
+	 * @param currentContent The current full content of the message
+	 * @param additionalContent The content to append (markdown format)
+	 */
+	public void appendToMessage(String messageId, String currentContent, String additionalContent)
+	{
+		String newContent = currentContent + additionalContent;
+		setMessageHtml(messageId, newContent);
+	}
+
+	/**
+	 * Appends content with error fix context to enable Apply Error Fix button.
+	 * 
+	 * @param messageId The ID of the message to append to
+	 * @param currentContent The current full content of the message
+	 * @param additionalMarkdown The markdown content to append
+	 * @param filePath Error file path
+	 * @param lineNumber Error line number
+	 * @param errorText Text to find and replace
+	 * @param fixText Replacement text
+	 */
+	public void appendMessageWithErrorContext(String messageId, String currentContent, String additionalMarkdown,
+		String filePath, int lineNumber, String errorText, String fixText)
+	{
+		String newContent = currentContent + additionalMarkdown;
+		setMessageHtml(messageId, newContent);
+
+		// Inject error_fix_data element and wire up button
+		uiSync.asyncExec(() -> {
+			String escapedFile = filePath.replace("\\", "\\\\").replace("'", "\\'");
+			String escapedError = errorText.replace("\\", "\\\\").replace("'", "\\'");
+			String escapedFix = fixText.replace("\\", "\\\\").replace("'", "\\'");
+
+			browser.execute(String.format(
+				"var target = document.getElementById('message-content-%s') || document.getElementById('message-%s');" +
+					"if (target) {" +
+					"  var lastBlock = target.querySelector('.codeBlock:last-of-type');" +
+					"  if (lastBlock) {" +
+					"    var errorData = document.createElement('error_fix_data');" +
+					"    errorData.setAttribute('file', '%s');" +
+					"    errorData.setAttribute('line', '%d');" +
+					"    errorData.setAttribute('error_text', '%s');" +
+					"    errorData.setAttribute('fix_text', '%s');" +
+					"    errorData.style.display = 'none';" +
+					"    lastBlock.parentNode.insertBefore(errorData, lastBlock.nextSibling);" +
+					"    if (typeof initErrorFixButtons === 'function') initErrorFixButtons();" +
+					"  }" +
+					"}",
+				messageId, messageId, escapedFile, lineNumber, escapedError, escapedFix));
+		});
+	}
+
+	/**
+	 * Injects error_fix_data element into a message to enable the "Apply Error Fix" button.
+	 * This method only injects the data WITHOUT modifying the message HTML content.
+	 * 
+	 * @param messageId The ID of the message
+	 * @param filePath The file path where the fix should be applied
+	 * @param lineNumber The line number
+	 * @param errorText The incorrect code (what needs to be replaced)
+	 * @param fixText The correct code (what to replace it with)
+	 * @param codeBlockIndex The index of the code block (0-based) to associate with this fix (0 = first, 1 = second, etc.)
+	 */
+	public void injectErrorFixData(String messageId, String filePath, int lineNumber, String errorText, String fixText, int codeBlockIndex)
+	{
+		uiSync.asyncExec(() -> {
+			String escapedFile = filePath.replace("\\", "\\\\").replace("'", "\\'");
+			String escapedError = errorText.replace("\\", "\\\\").replace("'", "\\'");
+			String escapedFix = fixText.replace("\\", "\\\\").replace("'", "\\'");
+
+			browser.execute(String.format(
+				"var target = document.getElementById('message-content-%s') || document.getElementById('message-%s');" +
+					"if (target) {" +
+					"  var codeBlocks = target.querySelectorAll('.codeBlock');" +
+					"  if (codeBlocks && codeBlocks.length > %d) {" +
+					"    var targetBlock = codeBlocks[%d];" +
+					"    var errorData = document.createElement('error_fix_data');" +
+					"    errorData.setAttribute('file', '%s');" +
+					"    errorData.setAttribute('line', '%d');" +
+					"    errorData.setAttribute('error_text', '%s');" +
+					"    errorData.setAttribute('fix_text', '%s');" +
+					"    errorData.style.display = 'none';" +
+					"    targetBlock.parentNode.insertBefore(errorData, targetBlock.nextSibling);" +
+					"    console.log('Injected fix_data after code block ' + %d);" +
+					"    if (typeof initErrorFixButtons === 'function') initErrorFixButtons();" +
+					"  } else {" +
+					"    console.error('Code block ' + %d + ' not found. Total blocks: ' + (codeBlocks ? codeBlocks.length : 0));" +
+					"  }" +
+					"}",
+				messageId, messageId, codeBlockIndex, codeBlockIndex,
+				escapedFile, lineNumber, escapedError, escapedFix,
+				codeBlockIndex, codeBlockIndex));
+		});
+	}
+
+	/**
+	 * Removes a DOM element by ID.
+	 * 
+	 * @param elementId The ID of the element to remove
+	 */
+	public void removeElementById(String elementId)
+	{
+		uiSync.asyncExec(() -> {
+			browser.execute("var elem = document.getElementById('" + elementId + "'); if (elem) { elem.remove(); }");
+		});
+	}
+
+	/**
 	 * Replaces newline characters with line break escape sequences in the given
 	 * string.
 	 *
@@ -652,6 +793,51 @@ public class ChatView
 			{
 				browser.execute("window.scrollTo(0, document.body.scrollHeight);");
 			}
+		});
+	}
+
+	/**
+	 * Shows tool execution progress indicator.
+	 * 
+	 * @param messageId The message where progress should be shown
+	 * @param progressText The progress text (e.g., "Reading lines 1-100...")
+	 * @param chunkNumber The current chunk number
+	 */
+	public void showToolProgress(String messageId, String progressText, int chunkNumber)
+	{
+		uiSync.asyncExec(() -> {
+			// Remove existing progress indicator if present
+			browser.execute("var existing = document.getElementById('tool-progress-" + messageId + "'); if (existing) existing.remove();");
+
+			// Create new progress indicator with blue styling
+			String script = String.format(
+				"var progress = document.createElement('div');" +
+					"progress.id = 'tool-progress-%s';" +
+					"progress.className = 'tool-progress';" +
+					"progress.style.cssText = 'color: #0066cc; font-style: italic; margin: 8px 0; padding: 8px; background: #e6f2ff; border-left: 3px solid #0066cc; border-radius: 4px;';" +
+					"progress.textContent = '%s';" +
+					"var target = document.getElementById('message-content-%s');" +
+					"if (target) { target.parentNode.insertBefore(progress, target); }",
+				messageId, progressText.replace("'", "\\'"), messageId);
+			browser.execute(script);
+
+			// Auto-scroll if enabled
+			if (autoScrollEnabled)
+			{
+				browser.execute("window.scrollTo(0, document.body.scrollHeight);");
+			}
+		});
+	}
+
+	/**
+	 * Hides tool execution progress indicator.
+	 * 
+	 * @param messageId The message where progress was shown
+	 */
+	public void hideToolProgress(String messageId)
+	{
+		uiSync.asyncExec(() -> {
+			browser.execute("var progress = document.getElementById('tool-progress-" + messageId + "'); if (progress) progress.remove();");
 		});
 	}
 
@@ -930,6 +1116,28 @@ public class ChatView
 				String codeBlock = (String)arguments[0];
 				String lang = (String)arguments[1];
 				presenter.onNewFile(codeBlock, lang);
+			}
+			return null;
+		}
+	}
+
+	private class ApplyErrorFixFunction extends BrowserFunctionWrapper
+	{
+		public ApplyErrorFixFunction(IBrowser browser, String name)
+		{
+			super(browser, name);
+		}
+
+		@Override
+		public Object function(Object[] arguments)
+		{
+			if (arguments.length >= 4 && Arrays.stream(arguments).allMatch(s -> s instanceof String || s instanceof Number))
+			{
+				String filePath = (String)arguments[0];
+				int lineNumber = ((Number)arguments[1]).intValue();
+				String errorText = (String)arguments[2];
+				String fixText = (String)arguments[3];
+				presenter.onApplyErrorFix(filePath, lineNumber, errorText, fixText);
 			}
 			return null;
 		}

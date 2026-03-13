@@ -109,22 +109,15 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			@Override
 			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				displayMessage.append("Please review the selected code from `").append(selection.getFilePath()).append("` (")
-					.append(lineCount).append(" lines)");
-				displayMessage.append("<large_file_notice>\n");
-				displayMessage.append("Please read and review the selected code from `").append(selection.getFilePath()).append("` at offset ")
+				displayMessage.append("Please read and review the selected code from `").append(selection.getFilePath()).append("` at line ")
 					.append(selection.getOffset()).append(" (").append(lineCount).append(" lines, ")
 					.append(selection.getLength()).append(" characters).\n");
-				displayMessage.append("</large_file_notice>");
 			}
 
 			@Override
 			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
 			{
-				displayMessage.append("Please review the file `").append(selection.getFilePath()).append("`");
-				displayMessage.append("<large_file_notice>\n");
 				displayMessage.append("Please read and review the file `").append(selection.getFilePath()).append("`.\n");
-				displayMessage.append("</large_file_notice>");
 			}
 		});
 	}
@@ -151,10 +144,11 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		CodeContextService service = CodeContextService.getInstance();
 		CodeContext context = service.getCodeContext(selection);
 
-		if (context.hasError() || (context.isEmpty() && !context.getSelectionInfo().getFilePath().contains("Console")))
+		if (context.hasError())
 		{
 			return;
 		}
+
 		handleSelectionInfo(AssistantType.EXPLAIN, selection, new ISelectionAIHandler()
 		{
 			@Override
@@ -182,22 +176,15 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			@Override
 			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
 			{
-				displayMessage.append("Please analyze the selected code from `").append(selection.getFilePath()).append("` (")
-					.append(lineCount).append(" lines)");
-				displayMessage.append("<large_file_notice>\n");
-				displayMessage.append("Please read and analyze the selected code from `").append(selection.getFilePath()).append("` at offset ")
+				displayMessage.append("Please read and analyze the selected code from `").append(selection.getFilePath()).append("` at line ")
 					.append(selection.getOffset()).append(" (").append(lineCount).append(" lines, ")
 					.append(selection.getLength()).append(" characters).\n");
-				displayMessage.append("</large_file_notice>");
 			}
 
 			@Override
 			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
 			{
-				displayMessage.append("Please analyze the file `").append(selection.getFilePath()).append("`");
-				displayMessage.append("<large_file_notice>\n");
 				displayMessage.append("Please read and analyze the file `").append(selection.getFilePath()).append("`.\n");
-				displayMessage.append("</large_file_notice>");
 			}
 		});
 	}
@@ -254,7 +241,7 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			displayMessage.append("\n```");
 		}
 
-		// Ensure the chat view is open and switch to the Explain assistant, sending the full message with context
+		// Ensure the chat view is open and switch the assistant, sending the message with context
 		ChatViewActivator.openAndSwitchToAssistant(assistantType, displayMessage.toString());
 	}
 

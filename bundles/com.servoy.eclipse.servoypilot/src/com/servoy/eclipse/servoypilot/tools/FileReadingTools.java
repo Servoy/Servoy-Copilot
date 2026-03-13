@@ -19,14 +19,14 @@ package com.servoy.eclipse.servoypilot.tools;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 
 import com.servoy.eclipse.model.ServoyModelFinder;
@@ -42,6 +42,32 @@ import dev.langchain4j.agent.tool.Tool;
 public class FileReadingTools
 {
 	private static final int MAX_FILE_SIZE = 100000; // 100KB limit for safety
+	private static final int CACHE_SIZE = 50; // Cache up to 50 files
+
+	// LRU cache for file contents (key: file path, value: lines array + timestamp)
+	private static final Map<String, CachedFileContent> fileCache = new LinkedHashMap<String, CachedFileContent>(CACHE_SIZE, 0.75f, true)
+	{
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, CachedFileContent> eldest)
+		{
+			return size() > CACHE_SIZE;
+		}
+	};
+
+	/**
+	 * Cached file content with timestamp for invalidation
+	 */
+	private static class CachedFileContent
+	{
+		final String[] lines;
+		final long timestamp;
+
+		CachedFileContent(String[] lines, long timestamp)
+		{
+			this.lines = lines;
+			this.timestamp = timestamp;
+		}
+	}
 
 	@Tool("Reads the full content of a file from the workspace. Use this to understand complete file structure.")
 	public String readFile(
@@ -67,11 +93,22 @@ public class FileReadingTools
 				return createErrorResponse("File too large (" + size + " bytes). Use readFileLines to read specific sections.");
 			}
 
-			// Read file content
+			// Read file content WITH LINE NUMBERS for easier AI parsing
 			try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getContents(), StandardCharsets.UTF_8)))
 			{
-				String content = reader.lines().collect(Collectors.joining("\n"));
-				int lineCount = content.split("\n").length;
+				String[] lines = reader.lines().toArray(String[]::new);
+				int lineCount = lines.length;
+				
+				// Add line numbers to each line
+				StringBuilder numberedContent = new StringBuilder();
+				for (int i = 0; i < lines.length; i++)
+				{
+					numberedContent.append(i + 1).append(": ").append(lines[i]);
+					if (i < lines.length - 1)
+					{
+						numberedContent.append("\n");
+					}
+				}
 
 				// Build JSON manually to avoid Jackson access restrictions
 				return buildJsonResponse(true, null, 
@@ -79,7 +116,7 @@ public class FileReadingTools
 					"project", file.getProject().getName(),
 					"lines", String.valueOf(lineCount),
 					"size", String.valueOf(size),
-					"content", content);
+					"content", numberedContent.toString());
 			}
 		}
 		catch (Exception e)
@@ -107,13 +144,8 @@ public class FileReadingTools
 				file.refreshLocal(IResource.DEPTH_ZERO, null);
 			}
 
-			// Read all lines
-			String[] allLines;
-			try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getContents(), StandardCharsets.UTF_8)))
-			{
-				allLines = reader.lines().toArray(String[]::new);
-			}
-
+			// Use cached file reading
+			String[] allLines = getCachedFileLines(file);
 			int totalLines = allLines.length;
 
 			// Parse line range (1-based indexing)
@@ -128,11 +160,12 @@ public class FileReadingTools
 
 			end = Math.min(end, totalLines);
 
-			// Extract lines
+			// Extract lines WITH LINE NUMBERS for easier AI parsing
 			StringBuilder content = new StringBuilder();
 			for (int i = start; i < end; i++)
 			{
-				content.append(allLines[i]);
+				int lineNumber = i + 1; // Convert to 1-based line number
+				content.append(lineNumber).append(": ").append(allLines[i]);
 				if (i < end - 1)
 				{
 					content.append("\n");
@@ -152,6 +185,353 @@ public class FileReadingTools
 		catch (Exception e)
 		{
 			return createErrorResponse("Error reading file lines: " + e.getMessage());
+		}
+	}
+
+	@Tool("Reads lines around a specific line number (smart windowing). " +
+		"Perfect for analyzing errors at a specific line without reading the entire file. " +
+		"Returns lines from centerLine-windowSize to centerLine+windowSize.")
+	public String readFileContext(
+		@P(value = "File path relative to workspace or project", required = true) String filePath,
+		@P(value = "The line number to center the reading window on (1-based)", required = true) int centerLine,
+		@P(value = "Number of lines to read before and after centerLine. Default is 30.", required = false) Integer windowSize)
+	{
+		try
+		{
+			IFile file = resolveFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return createErrorResponse("File not found: " + filePath);
+			}
+
+			if (!file.isSynchronized(IResource.DEPTH_ZERO))
+			{
+				file.refreshLocal(IResource.DEPTH_ZERO, null);
+			}
+
+		// Use cached file reading
+		String[] allLines = getCachedFileLines(file);
+			int totalLines = allLines.length;
+			if (centerLine < 1 || centerLine > totalLines)
+			{
+				return createErrorResponse("Center line " + centerLine + " is out of bounds (file has " + totalLines + " lines)");
+			}
+
+			// Default window size is 30 lines before and after
+			int window = (windowSize != null && windowSize > 0) ? windowSize : 30;
+
+			// Calculate range (1-based line numbers, convert to 0-based array indices)
+			int startLine = Math.max(1, centerLine - window);
+			int endLine = Math.min(totalLines, centerLine + window);
+
+			// Convert to 0-based indices for array access
+			int startIndex = startLine - 1;
+			int endIndex = endLine;
+
+			// Extract lines WITH LINE NUMBERS
+			StringBuilder content = new StringBuilder();
+			for (int i = startIndex; i < endIndex; i++)
+			{
+				int lineNumber = i + 1; // Convert back to 1-based line number
+				content.append(lineNumber).append(": ").append(allLines[i]);
+				if (i < endIndex - 1)
+				{
+					content.append("\n");
+				}
+			}
+
+			// Build JSON response
+			return buildJsonResponse(true, null,
+				"filePath", file.getFullPath().toString(),
+				"project", file.getProject().getName(),
+				"totalLines", String.valueOf(totalLines),
+				"centerLine", String.valueOf(centerLine),
+				"windowSize", String.valueOf(window),
+				"startLine", String.valueOf(startLine),
+				"endLine", String.valueOf(endLine),
+				"linesReturned", String.valueOf(endLine - startLine + 1),
+				"content", content.toString());
+		}
+		catch (Exception e)
+		{
+			return createErrorResponse("Error reading file context: " + e.getMessage());
+		}
+	}
+
+	@Tool("Gets an outline of functions/methods in a file without reading full content. " +
+		"Returns function names with their starting line numbers. " +
+		"Useful for navigating large files or tracing stack traces.")
+	public String getFileOutline(
+		@P(value = "File path relative to workspace or project", required = true) String filePath)
+	{
+		try
+		{
+			IFile file = resolveFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return createErrorResponse("File not found: " + filePath);
+			}
+
+			if (!file.isSynchronized(IResource.DEPTH_ZERO))
+			{
+				file.refreshLocal(IResource.DEPTH_ZERO, null);
+			}
+
+			// Use cached file reading
+			String[] allLines = getCachedFileLines(file);
+
+			// Find function definitions using regex patterns
+			// Supports: function name(...), name: function(...), var name = function(...)
+			java.util.regex.Pattern functionPattern = java.util.regex.Pattern.compile(
+				"^\\s*(?:function\\s+(\\w+)|(?:var|let|const)\\s+(\\w+)\\s*=\\s*function|(?:async\\s+)?function\\s+(\\w+)|(\\w+)\\s*:\\s*function)");
+
+			StringBuilder outline = new StringBuilder();
+			int functionCount = 0;
+
+			for (int i = 0; i < allLines.length; i++)
+			{
+				String line = allLines[i];
+				java.util.regex.Matcher matcher = functionPattern.matcher(line);
+				
+				if (matcher.find())
+				{
+					// Extract function name (can be in different capture groups)
+					String functionName = null;
+					for (int g = 1; g <= matcher.groupCount(); g++)
+					{
+						if (matcher.group(g) != null)
+						{
+							functionName = matcher.group(g);
+							break;
+						}
+					}
+
+					if (functionName != null)
+					{
+						int lineNumber = i + 1;
+						outline.append("Line ").append(lineNumber).append(": ").append(functionName).append("()\n");
+						functionCount++;
+					}
+				}
+			}
+
+			if (functionCount == 0)
+			{
+				outline.append("No functions found in file.");
+			}
+
+			return buildJsonResponse(true, null,
+				"filePath", file.getFullPath().toString(),
+				"project", file.getProject().getName(),
+				"totalLines", String.valueOf(allLines.length),
+				"functionsFound", String.valueOf(functionCount),
+				"outline", outline.toString().trim());
+		}
+		catch (Exception e)
+		{
+			return createErrorResponse("Error getting file outline: " + e.getMessage());
+		}
+	}
+
+	@Tool("Reads a complete function/method definition from a file by function name. " +
+		"Finds the function and returns all its lines. " +
+		"Useful for understanding a specific function mentioned in stack traces.")
+	public String readFunction(
+		@P(value = "File path relative to workspace or project", required = true) String filePath,
+		@P(value = "Name of the function to read (without parentheses)", required = true) String functionName)
+	{
+		try
+		{
+			IFile file = resolveFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return createErrorResponse("File not found: " + filePath);
+			}
+
+			if (!file.isSynchronized(IResource.DEPTH_ZERO))
+			{
+				file.refreshLocal(IResource.DEPTH_ZERO, null);
+			}
+
+			// Use cached file reading
+			String[] allLines = getCachedFileLines(file);
+
+			// Find function start
+			java.util.regex.Pattern functionPattern = java.util.regex.Pattern.compile(
+				"^\\s*(?:function\\s+" + java.util.regex.Pattern.quote(functionName) + 
+				"|(?:var|let|const)\\s+" + java.util.regex.Pattern.quote(functionName) + "\\s*=\\s*function" +
+				"|(?:async\\s+)?function\\s+" + java.util.regex.Pattern.quote(functionName) +
+				"|" + java.util.regex.Pattern.quote(functionName) + "\\s*:\\s*function)");
+
+			int functionStartLine = -1;
+			for (int i = 0; i < allLines.length; i++)
+			{
+				if (functionPattern.matcher(allLines[i]).find())
+				{
+					functionStartLine = i;
+					break;
+				}
+			}
+
+			if (functionStartLine == -1)
+			{
+				return createErrorResponse("Function '" + functionName + "' not found in file");
+			}
+
+			// Find function end by counting braces
+			int braceCount = 0;
+			int functionEndLine = functionStartLine;
+			boolean inFunction = false;
+
+			for (int i = functionStartLine; i < allLines.length; i++)
+			{
+				String line = allLines[i];
+				
+				for (char c : line.toCharArray())
+				{
+					if (c == '{')
+					{
+						braceCount++;
+						inFunction = true;
+					}
+					else if (c == '}')
+					{
+						braceCount--;
+						if (inFunction && braceCount == 0)
+						{
+							functionEndLine = i;
+							break;
+						}
+					}
+				}
+				
+				if (inFunction && braceCount == 0)
+				{
+					break;
+				}
+			}
+
+			// Extract function lines WITH LINE NUMBERS
+			StringBuilder content = new StringBuilder();
+			for (int i = functionStartLine; i <= functionEndLine; i++)
+			{
+				int lineNumber = i + 1;
+				content.append(lineNumber).append(": ").append(allLines[i]);
+				if (i < functionEndLine)
+				{
+					content.append("\n");
+				}
+			}
+
+			return buildJsonResponse(true, null,
+				"filePath", file.getFullPath().toString(),
+				"project", file.getProject().getName(),
+				"functionName", functionName,
+				"startLine", String.valueOf(functionStartLine + 1),
+				"endLine", String.valueOf(functionEndLine + 1),
+				"linesReturned", String.valueOf(functionEndLine - functionStartLine + 1),
+				"content", content.toString());
+		}
+		catch (Exception e)
+		{
+			return createErrorResponse("Error reading function: " + e.getMessage());
+		}
+	}
+
+	@Tool("Reads multiple non-contiguous line ranges from a file in a single call. " +
+		"Useful for reading several error locations or stack trace lines at once without multiple tool calls. " +
+		"Provide ranges as comma-separated pairs: '10-20,50-60,100-110'")
+	public String readFileRanges(
+		@P(value = "File path relative to workspace or project", required = true) String filePath,
+		@P(value = "Comma-separated line ranges in format 'start1-end1,start2-end2' (e.g., '10-20,50-60')", required = true) String ranges)
+	{
+		try
+		{
+			IFile file = resolveFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return createErrorResponse("File not found: " + filePath);
+			}
+
+			if (!file.isSynchronized(IResource.DEPTH_ZERO))
+			{
+				file.refreshLocal(IResource.DEPTH_ZERO, null);
+			}
+
+			// Use cached file reading
+			String[] allLines = getCachedFileLines(file);
+			int totalLines = allLines.length;
+
+			// Parse ranges
+			String[] rangePairs = ranges.split(",");
+			StringBuilder content = new StringBuilder();
+			int totalLinesRead = 0;
+			int rangeCount = 0;
+
+			for (String rangePair : rangePairs)
+			{
+				rangePair = rangePair.trim();
+				String[] parts = rangePair.split("-");
+				
+				if (parts.length != 2)
+				{
+					return createErrorResponse("Invalid range format: '" + rangePair + "'. Expected format: 'start-end'");
+				}
+
+				try
+				{
+					int start = Integer.parseInt(parts[0].trim());
+					int end = Integer.parseInt(parts[1].trim());
+
+					// Validate range
+					if (start < 1 || start > totalLines)
+					{
+						return createErrorResponse("Start line " + start + " is out of bounds (file has " + totalLines + " lines)");
+					}
+					if (end < start)
+					{
+						return createErrorResponse("End line " + end + " is less than start line " + start);
+					}
+
+					end = Math.min(end, totalLines);
+
+					// Add range header
+					if (rangeCount > 0)
+					{
+						content.append("\n--- Range ").append(rangeCount + 1).append(" ---\n");
+					}
+
+					// Extract lines WITH LINE NUMBERS
+					for (int i = start - 1; i < end; i++)
+					{
+						int lineNumber = i + 1;
+						content.append(lineNumber).append(": ").append(allLines[i]);
+						if (i < end - 1)
+						{
+							content.append("\n");
+						}
+						totalLinesRead++;
+					}
+
+					rangeCount++;
+				}
+				catch (NumberFormatException e)
+				{
+					return createErrorResponse("Invalid line number in range: '" + rangePair + "'");
+				}
+			}
+
+			return buildJsonResponse(true, null,
+				"filePath", file.getFullPath().toString(),
+				"project", file.getProject().getName(),
+				"totalLines", String.valueOf(totalLines),
+				"rangesRequested", String.valueOf(rangeCount),
+				"linesReturned", String.valueOf(totalLinesRead),
+				"content", content.toString());
+		}
+		catch (Exception e)
+		{
+			return createErrorResponse("Error reading file ranges: " + e.getMessage());
 		}
 	}
 
@@ -198,6 +578,38 @@ public class FileReadingTools
 		catch (Exception e)
 		{
 			return createErrorResponse("Error getting file info: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Gets cached file lines or reads from disk if not cached/stale.
+	 * Invalidates cache if file modification timestamp changed.
+	 */
+	private String[] getCachedFileLines(IFile file) throws Exception
+	{
+		String cacheKey = file.getFullPath().toString();
+		long currentTimestamp = file.getLocalTimeStamp();
+
+		synchronized (fileCache)
+		{
+			CachedFileContent cached = fileCache.get(cacheKey);
+			
+			// Check if cache is valid (exists and timestamp matches)
+			if (cached != null && cached.timestamp == currentTimestamp)
+			{
+				return cached.lines;
+			}
+
+			// Cache miss or stale - read from disk
+			String[] lines;
+			try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getContents(), StandardCharsets.UTF_8)))
+			{
+				lines = reader.lines().toArray(String[]::new);
+			}
+
+			// Update cache
+			fileCache.put(cacheKey, new CachedFileContent(lines, currentTimestamp));
+			return lines;
 		}
 	}
 

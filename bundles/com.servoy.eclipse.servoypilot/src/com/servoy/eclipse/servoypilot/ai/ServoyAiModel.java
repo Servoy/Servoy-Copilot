@@ -20,6 +20,7 @@ import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
+import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
 import com.servoy.eclipse.servoypilot.tools.core.FormTools;
@@ -29,6 +30,7 @@ import com.servoy.eclipse.servoypilot.tools.core.ValueListTools;
 import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
 import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
+import com.servoy.eclipse.servoypilot.tools.utility.WebFetchTools;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -292,7 +294,12 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(new com.servoy.eclipse.servoypilot.tools.FileReadingTools())
+			.tools(
+				new FileReadingTools(), // Read file contents (e.g., for code explanation)
+				new EclipseTools(), // Code search, file operations, workspace queries
+				new KnowledgeTools(), // Servoy API documentation lookup
+				new WebFetchTools() // Fetch docs.servoy.com pages when needed
+			)
 			.build();
 	}
 
