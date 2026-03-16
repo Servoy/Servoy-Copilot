@@ -19,16 +19,29 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.dltk.codeassist.ISelectionRequestor;
+import org.eclipse.dltk.compiler.env.IModuleSource;
+import org.eclipse.dltk.compiler.env.ModuleSource;
+import org.eclipse.dltk.core.DLTKCore;
+import org.eclipse.dltk.core.IModelElement;
+import org.eclipse.dltk.core.ISourceModule;
+import org.eclipse.dltk.core.ISourceRange;
 import org.eclipse.dltk.javascript.ast.FunctionStatement;
 import org.eclipse.dltk.javascript.ast.Statement;
+import org.eclipse.dltk.javascript.internal.core.codeassist.JavaScriptSelectionEngine2;
+import org.eclipse.dltk.javascript.typeinfo.IRElement;
+import org.eclipse.dltk.javascript.typeinfo.IRMember;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 
+import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 
 import dev.langchain4j.agent.tool.P;
@@ -64,8 +77,114 @@ public class CodeContextTools
 		{
 			throw new RuntimeException("The problem statement was not found in the provided document.");
 		}
-		return getContext(problemStatement, document, lineNumber - 1);
+		String context = getContext(problemStatement, document, lineNumber - 1);
+		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
+		for (IModelElement element : selectedElements.modelElements)
+		{
+			context += "\n\n/* Model Element: " + element.toString() + " */";
+		}
+		for (IRElement element : selectedElements.foreignElements)
+		{
+			context += "\n\n/* Typeinfo Element: " + element.getName() + " */"; //TODO check what other info is relevant
+			if (element instanceof IRMember member)
+			{
+				context += "\n/*   Declaring type: " + member.getDeclaringType().getName() + " */";
+			}
+		}
+		return context;
 	}
+
+
+	class SelectionResult
+	{
+		public List<IModelElement> modelElements = new ArrayList<>();
+		public List<IRElement> foreignElements = new ArrayList<>();
+	}
+
+	public SelectionResult getModelElements(String filePath, int lineNumber, int characterOffset) throws Exception
+	{
+		try
+		{
+			IFile file = getFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return null;
+			}
+
+			String fileContent = readWorkspaceFile(filePath);
+			if (fileContent == null)
+			{
+				return null;
+			}
+			ISourceModule sourceModule = (ISourceModule)DLTKCore.create(file);
+			IModuleSource module = new ModuleSource(filePath, sourceModule, fileContent);
+			JavaScriptSelectionEngine2 selectionEngine = new JavaScriptSelectionEngine2();
+			int offset = ParserService.getInstance().skipWhitespaceForward(fileContent, characterOffset);
+			SelectionResult selectedElements = new SelectionResult();
+			Thread thread = new Thread(() -> {
+				try
+				{
+					selectionEngine.setRequestor(new ISelectionRequestor()
+					{
+						@Override
+						public void acceptModelElement(IModelElement element)
+						{
+							if (element != null)
+							{
+								selectedElements.modelElements.add(element);
+							}
+						}
+
+						@Override
+						public void acceptForeignElement(Object element)
+						{
+							if (element instanceof IRElement ire)
+							{
+								selectedElements.foreignElements.add(ire);
+							}
+						}
+
+						@Override
+						public void acceptElement(Object element, ISourceRange range)
+						{
+							acceptForeignElement(element);
+						}
+					});
+
+					selectionEngine.select(module, offset, offset);
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logError("Error selecting model elements: " + e.getMessage(), e);
+				}
+			}, "Searching model elements -" + file.getName());
+
+			thread.start();
+			thread.join();
+			return selectedElements;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Error computing model elements: " + e.getMessage(), e);
+		}
+	}
+
+	public IFile getFile(String filePath)
+	{
+		if (filePath.startsWith("L/"))
+		{
+			filePath = filePath.substring(2);
+		}
+
+		IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
+
+		if (!file.exists())
+		{
+			throw new RuntimeException("File not found: " + filePath);
+		}
+		return file;
+	}
+
 
 	public String readWorkspaceFile(String filePath) throws Exception
 	{

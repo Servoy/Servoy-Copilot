@@ -145,7 +145,7 @@ public class ParserService
 		return null;
 	}
 
-	private int skipWhitespaceForward(String source, int offset)
+	public int skipWhitespaceForward(String source, int offset)
 	{
 		int len = source.length();
 		while (offset < len && Character.isWhitespace(source.charAt(offset)))
