@@ -316,7 +316,12 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(new com.servoy.eclipse.servoypilot.tools.FileReadingTools())
+			.tools(
+				new FileReadingTools(), // Read file contents (e.g., for code explanation)
+				new EclipseTools(), // Code search, file operations, workspace queries
+				new KnowledgeTools(), // Servoy API documentation lookup
+				new WebFetchTools() // Fetch docs.servoy.com pages when needed
+			)
 			.build();
 	}
 
