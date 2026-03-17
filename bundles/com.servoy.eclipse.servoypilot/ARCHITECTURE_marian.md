@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** March 10, 2026  
+**Last Updated:** March 17, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -8,6 +8,24 @@
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
+- ✅ **Documentation Assistant Enhancement - SESSION 1 COMPLETE & TESTED (Mar 17, 2026):**
+  - **IMPLEMENTED:** FileStructureService - DLTK wrapper for symbol extraction with line numbers
+  - **IMPLEMENTED:** FilePathResolver - Intelligent file path resolution (form names, scope names, partial paths)
+  - **IMPLEMENTED:** CodeAnalysisTools - Shared analysis tools (analyzeFileStructure)
+  - **IMPLEMENTED:** DTOs - FileStructure, SymbolInfo (with line number field)
+  - **IMPLEMENTED:** Tool registration - CodeAnalysisTools for VibeCoding & Documentation assistants
+  - **IMPLEMENTED:** Memory limit - 100 messages for Documentation Assistant (vs 40 for others)
+  - **IMPLEMENTED:** Console logging - System.out.println for Eclipse console debugging
+  - **TESTED:** All 10 core tests passed - session1-file-structure-analysis.md
+  - **CODE QUALITY:** All code follows positive conditional pattern, direct imports
+  - **COMPILATION:** Zero errors
+  - **STATUS:** ✅ FULLY FUNCTIONAL - Ready for SESSION 2
+  - **KEY FEATURES:**
+    - Accepts simple names: "testCustomers" → auto-resolves to forms/testCustomers.js
+    - Uses DLTK API to find scopes anywhere in project
+    - Extracts filename from partial paths and searches
+    - Shows line numbers (not character offsets) in output
+    - Full console logging for debugging and verification
 - ✅ **Documentation Assistant CODE CLEANUP (Mar 10, 2026):** Production-ready cleanup
   - **REMOVED:** Debug code block that called `getCodeContext()` twice in `getDocumentationForIdentifiers()`
   - **REMOVED:** 50+ System.out.println statements - replaced with minimal ServoyLog logging
@@ -448,6 +466,126 @@ All memory refactoring features have been tested and validated in production:
 
 **Current Workaround:**
 The system works correctly despite the over-engineering. The obsolete architecture doesn't break functionality, it just adds unnecessary complexity.
+
+✅ **UUID Protection:** Automatic extraction and restoration  
+✅ **Change Detection:** Content hash prevents stale modifications  
+✅ **Clean Code:** Removed debug logging, old methods, dead code (Mar 10)  
+✅ **Template Safety:** Fixed `{{...}}` in examples to avoid LangChain4j parsing errors  
+
+### **Recent Changes (March 10, 2026):**
+
+**Code Cleanup:**
+- Removed debug code that called `getCodeContext()` twice
+- Removed 50+ System.out.println statements
+- Removed old `applyDocumentation()` method (offset-based)
+- Removed `JSDocManipulator.java` (dead code)
+- Minimal logging with ServoyLog only
+
+**System Prompt Fixes:**
+- Updated Examples 1-4 to show correct line-based format
+- Fixed LangChain4j template parsing error: changed `{{timeout: Number, retries: Number}}` to `{Object}` (line 246)
+- Fixed `{{host: String, port: Number, timeout: Number}}` to `{Object}` (line 644)
+- **Root Cause:** LangChain4j scans entire system prompt for `{{variable}}` patterns as template placeholders
+
+**Components:**
+- ✅ DocumentationTools.java (571 lines)
+- ✅ DocumentationItem.java (DTO)
+- ✅ DocumentationValidator.java (UUID protection)
+- ✅ CodeContextService.java (API doc extraction)
+- ❌ JSDocManipulator.java (REMOVED - not used)
+
+---
+
+## 🚧 IN PROGRESS - DOCUMENTATION ASSISTANT ENHANCEMENT (March 16, 2026)
+
+**Goal:** Transform Documentation Assistant from selection-based to scope-aware semantic documentation with intelligent multi-file support.
+
+**Implementation Plan:** 5 sessions (6-8 hours total) leveraging existing DLTK infrastructure.
+
+**Strategy:** Build lightweight wrappers around proven DLTK APIs (TypeInferencer2, IModelElement, JavaScriptParserUtil) instead of reimplementing from scratch.
+
+### ✅ SESSION 1 COMPLETE (March 16, 2026): File Structure Wrapper
+
+**Status:** ✅ Implementation complete, code follows all standards, zero compilation errors, ready for testing
+
+**What Was Implemented:**
+
+**1. FileStructureService** (`services/FileStructureService.java` - 172 lines):
+- Singleton service wrapping DLTK `IModelElement.getChildren()` API
+- `analyzeFile(IFile)` - Extracts all top-level symbols (functions, variables) with JSDoc status
+- `hasJSDocComment()` - Detects JSDoc via `/**` pattern in source text before member position
+- `findSymbol()` - Helper for symbol lookup by name
+- Thin wrapper - DLTK does all parsing and caching (zero custom AST parsing)
+
+**2. DTOs Created** (`services/dto/`):
+- `FileStructure.java` (90 lines) - Represents file with symbols, provides `getTotalSymbols()`, `getDocumentedCount()`, `getUndocumentedCount()`, `toFormattedString()`
+- `SymbolInfo.java` (78 lines) - Represents individual symbol with name, type (FUNCTION/VARIABLE), startOffset, endOffset, hasJSDoc flag
+
+**3. CodeAnalysisTools** (`tools/CodeAnalysisTools.java` - 75 lines):
+- NEW tool class (separate from DocumentationTools)
+- `analyzeFileStructure(filePath)` - @Tool annotated for LangChain4j
+- Returns formatted output: FILE, TOTAL SYMBOLS, DOCUMENTED count, UNDOCUMENTED count, symbol list
+- Registered for VibeCoding and Documentation assistants ONLY (not Explain, not QuickFix)
+
+**4. ServoyAiModel Updates** (`ai/ServoyAiModel.java`):
+- Added constant: `DOC_ASSISTANT_MAX_MESSAGES = 100` (was 40)
+- Updated `createDocumentationServices()` - uses 100-message memory limit
+- Registered `CodeAnalysisTools` for VibeCoding + Documentation assistants
+- `DocumentationTools` remains exclusive to Documentation Assistant
+
+**5. Test Infrastructure** (`testworkflows/`):
+- `README.md` - Testing guidelines and session dependencies
+- `session1-file-structure-analysis.md` - 15 comprehensive test cases with pass/fail tracking
+
+**Architecture Principle Established:**
+- **Documentation Assistant = Single Entry Point** for ALL documentation operations
+- **CodeAnalysisTools = Shared** analysis capability (VibeCoding + Documentation can analyze files)
+- **DocumentationTools = Exclusive** to Documentation Assistant (only Documentation can apply docs)
+
+**Code Quality Compliance:**
+- ✅ All code follows positive conditional pattern (happy path flows naturally inside if-blocks)
+- ✅ All imports direct (no fully qualified class names like org.eclipse.dltk.core.IMember)
+- ✅ Single return at method end (all error cases converge to final return statement)
+- ✅ Zero compilation errors
+- ✅ All methods follow coding standards (RULE 1: positive conditionals, RULE 2: direct imports)
+
+**Files Created:**
+- services/FileStructureService.java (172 lines)
+- services/dto/FileStructure.java (90 lines)
+- services/dto/SymbolInfo.java (78 lines)
+- tools/CodeAnalysisTools.java (75 lines)
+- testworkflows/README.md (136 lines)
+- testworkflows/session1-file-structure-analysis.md (751 lines)
+
+**Files Modified:**
+- ai/ServoyAiModel.java (added DOC_ASSISTANT_MAX_MESSAGES, registered CodeAnalysisTools, added imports)
+
+**Next Steps:**
+- [ ] Execute SESSION 1 tests (15 test cases in testworkflows/session1-file-structure-analysis.md)
+- [ ] Validate all tests pass before proceeding to SESSION 2
+- [ ] SESSION 2: Adaptive Chunk Reading (CodeChunkReader service, getCodeChunk tool with 2-3 modes)
+
+### 🔮 PLANNED SESSIONS (Not Yet Implemented):
+
+**SESSION 2:** Adaptive Chunk Reading (1-2h)
+- CodeChunkReader service for 200-line chunks
+- getCodeChunk() tool with TARGETED, SEQUENTIAL, DIRECT modes
+- CodeChunk DTO
+
+**SESSION 3:** Type Resolution (1-2h)  
+- resolveIdentifierType() tool wrapping TypeInferencer2
+- Enhanced getDocumentationForIdentifiers() with standard JS types (String, Number, Boolean, Array, Object, Date, Function)
+
+**SESSION 4:** Multi-File Workflows (2h)
+- SolutionScannerService for solution-wide scanning
+- scanSolutionForUndocumented() tool
+- getDocumentationProgress() tool
+- Enhanced applyDocumentations() for multi-file support
+
+**SESSION 5:** System Prompt & Integration Testing (2h)
+- Update documentation.txt with new workflow modes
+- Integration testing (10 test scenarios)
+- Production readiness validation
 
 ---
 

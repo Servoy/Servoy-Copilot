@@ -18,7 +18,9 @@ package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
+import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
 import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
+import com.servoy.eclipse.servoypilot.tools.DocumentationTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
@@ -46,6 +48,7 @@ import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 public class ServoyAiModel
 {
 	private static final int MAX_MESSAGES = 40;
+	private static final int DOC_ASSISTANT_MAX_MESSAGES = 100; // Documentation Assistant needs more memory for large file workflows
 
 	private final AiConfiguration conf;
 	private final ChatMemoryStore sharedMemoryStore;
@@ -196,6 +199,7 @@ public class ServoyAiModel
 
 		// Register all tools
 		builder.tools(
+			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
 			new EclipseTools(), // General Eclipse/workspace operations
 			new ValueListTools(), // core/ - COMPLETE: getValueLists, openValueList, deleteValueLists
 			new FormTools(), // core/ - COMPLETE: getForms, openForm, deleteForms
@@ -253,13 +257,18 @@ public class ServoyAiModel
 		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 			.id(memoryId)
 			.alwaysKeepSystemMessageFirst(true)
-			.maxMessages(MAX_MESSAGES)
+			.maxMessages(DOC_ASSISTANT_MAX_MESSAGES) // Documentation Assistant uses 100 messages (not 40)
 			.chatMemoryStore(sharedMemoryStore)
 			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register documentation tools
-		builder.tools(new com.servoy.eclipse.servoypilot.tools.DocumentationTools());
+		// Register tools
+		builder.tools(
+			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
+			new DocumentationTools(), // EXCLUSIVE - documentation operations
+			new EclipseTools(), // General workspace operations
+			new KnowledgeTools() // Servoy API documentation lookup
+		);
 
 		return builder.build();
 	}
