@@ -19,8 +19,10 @@ package com.servoy.eclipse.servoypilot.tools;
 import org.eclipse.core.resources.IFile;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.services.CodeChunkReader;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 import com.servoy.eclipse.servoypilot.services.FileStructureService;
+import com.servoy.eclipse.servoypilot.services.dto.CodeChunk;
 import com.servoy.eclipse.servoypilot.services.dto.FileStructure;
 
 import dev.langchain4j.agent.tool.P;
@@ -89,6 +91,108 @@ public class CodeAnalysisTools
 			ServoyLog.logError("Error analyzing file structure: " + pathOrName, e);
 			System.out.println("EXCEPTION occurred: " + e.getMessage());
 			System.out.println("=== End CodeAnalysisTools.analyzeFileStructure() ===\n");
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool("Read code chunk from file (max 200 lines per chunk). " +
+		"Supports three modes: TARGETED (jump to symbol), DIRECT (start from line), SEQUENTIAL (read by chunk number). " +
+		"Accepts form names, scope names, or full paths.")
+	public String getCodeChunk(
+		@P("File path, form name, or scope name") String pathOrName,
+		@P("Symbol name to find (optional - for TARGETED mode)") String symbolName,
+		@P("Chunk number for sequential reading (0-based, optional - for SEQUENTIAL mode)") Integer chunkNumber,
+		@P("Start line number (0-based, optional - for DIRECT mode)") Integer startLine)
+	{
+		System.out.println("\n=== CodeAnalysisTools.getCodeChunk() called ===");
+		System.out.println("Input: pathOrName='" + pathOrName + "', symbolName='" + symbolName +
+			"', chunkNumber=" + chunkNumber + ", startLine=" + startLine);
+
+		try
+		{
+			if (pathOrName != null && !pathOrName.isBlank())
+			{
+				// Use FilePathResolver for intelligent file resolution
+				FilePathResolver resolver = FilePathResolver.getInstance();
+				IFile file = resolver.resolveFile(pathOrName);
+
+				if (file != null && file.exists())
+				{
+					System.out.println("File resolved successfully: " + file.getFullPath());
+
+					CodeChunkReader reader = CodeChunkReader.getInstance();
+					CodeChunk chunk = null;
+
+					// MODE 1: TARGETED - Jump to specific symbol
+					if (symbolName != null && !symbolName.isBlank())
+					{
+						System.out.println("Using TARGETED mode: jumping to symbol '" + symbolName + "'");
+						chunk = reader.readSymbol(file, symbolName);
+
+						if (chunk == null)
+						{
+							String error = "Error: Symbol '" + symbolName + "' not found in file";
+							System.out.println(error);
+							System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+					// MODE 2: DIRECT - Start from specific line
+					else if (startLine != null && startLine >= 0)
+					{
+						System.out.println("Using DIRECT mode: starting from line " + startLine);
+						chunk = reader.readFromLine(file, startLine);
+
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							String error = "Error: Start line " + startLine + " is beyond end of file";
+							System.out.println(error);
+							System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+					// MODE 3: SEQUENTIAL - Read by chunk number
+					else
+					{
+						int chunkNum = (chunkNumber != null) ? chunkNumber : 0;
+						System.out.println("Using SEQUENTIAL mode: reading chunk " + chunkNum);
+						chunk = reader.readChunk(file, chunkNum);
+
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							String error = "Error: Chunk " + chunkNum + " is beyond end of file";
+							System.out.println(error);
+							System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+
+					// Return formatted output
+					String result = chunk.toFormattedString();
+					System.out.println("Read complete - returning lines " + chunk.getStartLine() + "-" + chunk.getEndLine());
+					System.out.println("\n--- CODE CHUNK RESULT (returned to AI) ---");
+					System.out.println(result);
+					System.out.println("--- END CODE CHUNK RESULT ---\n");
+					System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+					return result;
+				}
+
+				// File not found - provide helpful message
+				String errorMsg = resolver.buildNotFoundMessage(pathOrName);
+				System.out.println("File NOT resolved - returning error message");
+				System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+				return errorMsg;
+			}
+
+			System.out.println("Error: Empty file path provided");
+			System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
+			return "Error: File path or name is required";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error reading code chunk: " + pathOrName, e);
+			System.out.println("EXCEPTION occurred: " + e.getMessage());
+			System.out.println("=== End CodeAnalysisTools.getCodeChunk() ===\n");
 			return "Error: " + e.getMessage();
 		}
 	}
