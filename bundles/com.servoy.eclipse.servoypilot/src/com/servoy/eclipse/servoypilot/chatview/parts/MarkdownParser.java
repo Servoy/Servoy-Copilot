@@ -482,7 +482,8 @@ public class MarkdownParser
 				<input class="diff-only" type="button" onClick="eclipseApplyPatch(document.getElementById('%s').innerText)" value="Apply"/>
 				<input class="error-fix-only" type="button" data-block-id="%s" value="Quick Fix" style="display:none;" />
 				</div>
-				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockId, codeBlockId, codeBlockId, lang, codeBlockId, codeBlockId, codeBlockId, lang,
+				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockId, codeBlockId, codeBlockId, lang, codeBlockId, codeBlockId,
+				codeBlockId, lang,
 				codeBlockId));
 			state.add(ParserState.CODE_BLOCK);
 		}
@@ -644,7 +645,8 @@ public class MarkdownParser
 		return CODE_INLINE_PATTERN.matcher(line).replaceAll(match -> {
 			String content = match.group(1);
 			String base64Content = content;
-			return "<span class=\"inline-code\">" + base64Content + "</span>";
+			// Use Matcher.quoteReplacement to escape special regex replacement characters like $ and \
+			return Matcher.quoteReplacement("<span class=\"inline-code\">" + base64Content + "</span>");
 		});
 	}
 

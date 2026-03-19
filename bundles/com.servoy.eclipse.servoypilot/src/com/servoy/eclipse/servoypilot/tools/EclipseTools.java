@@ -69,6 +69,17 @@ public class EclipseTools
 		return searchService.searchAndReplace(containingText, replacementText, patterns).toString();
 	}
 
+	@Tool("Gets all problems (errors and warnings) from the Eclipse Problems view. Use this to identify compilation errors, warnings, and other issues in the workspace.")
+	public String getProblems(
+		@P(value = "Filter by severity: 'ERROR', 'WARNING', 'INFO', or omit for all", required = false) String severity,
+		@P(value = "Optional project name to limit results to a specific project", required = false) String projectName,
+		@P(value = "Optional file pattern (glob) to filter files, e.g., '*.js'", required = false) String filePattern,
+		@P(value = "Maximum number of results to return (default: 100)", required = false) String maxResults)
+	{
+		Integer limit = Optional.ofNullable(maxResults).map(Integer::parseInt).orElse(100);
+		return String.join("\n", resourceService.getProblems(severity, projectName, filePattern, limit));
+	}
+
 	private static String[] normalizeFileNamePatterns(String fileNamePatterns)
 	{
 		if (fileNamePatterns == null || fileNamePatterns.isBlank())
