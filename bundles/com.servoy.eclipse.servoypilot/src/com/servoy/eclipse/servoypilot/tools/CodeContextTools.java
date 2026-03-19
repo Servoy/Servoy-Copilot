@@ -21,9 +21,11 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.dltk.codeassist.ISelectionRequestor;
 import org.eclipse.dltk.compiler.env.IModuleSource;
@@ -37,12 +39,19 @@ import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.javascript.internal.core.codeassist.JavaScriptSelectionEngine2;
 import org.eclipse.dltk.javascript.typeinfo.IRElement;
 import org.eclipse.dltk.javascript.typeinfo.IRMember;
+import org.eclipse.dltk.javascript.typeinfo.IRMethod;
+import org.eclipse.dltk.javascript.typeinfo.model.Element;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 
+import com.servoy.eclipse.debug.script.TypeCreator;
+import com.servoy.eclipse.model.repository.SolutionSerializer;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.ParserService;
+import com.servoy.j2db.persistence.Form;
+import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.util.PersistHelper;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -85,9 +94,61 @@ public class CodeContextTools
 		}
 		for (IRElement element : selectedElements.foreignElements)
 		{
-			context += "\n\n/* Typeinfo Element: " + element.getName() + " */"; //TODO check what other info is relevant
+			context += "\n\n/* Typeinfo Element: " + element.getName() + " */";
+			//TODO check what other info is relevant
+			if (element.getSource() instanceof Element elementSource)
+			{
+				Object resource = elementSource.getAttribute(TypeCreator.RESOURCE);
+				if (resource == null)
+				{
+					resource = elementSource.getAttribute(TypeCreator.LAZY_VALUECOLLECTION);
+				}
+
+				if (resource instanceof Form frm)
+				{
+					if (frm.getExtendsID() != null)
+					{
+						IPersist superForm = PersistHelper.getSuperPersist(frm);
+						if (superForm != null)
+						{
+							context += "\n/*   You may want to check the parent form for more context: " +
+								SolutionSerializer.getScriptPath(superForm, false) + " */";
+						}
+					}
+					resource = SolutionSerializer.getScriptPath(frm, false);
+				}
+
+				if (resource instanceof String resourcePath)
+				{
+					IPath path = Path.fromPortableString(resourcePath.replace('\\', '/'));
+					IFile sourceFile;
+					if (path.isAbsolute())
+					{
+						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
+					}
+					else
+					{
+						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+					}
+					if (sourceFile != null && sourceFile.exists())
+					{
+						resource = sourceFile;
+					}
+				}
+
+				if (resource instanceof IFile file)
+				{
+					context += "\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */";
+				}
+			}
 			if (element instanceof IRMember member)
 			{
+				if (element instanceof IRMethod method)
+				{
+					context += "\n/*   Method parameters: (" + method.getParameters().stream()
+						.map(p -> p.getName() + ":" + p.getType())
+						.collect(Collectors.joining(", ")) + ") */";
+				}
 				context += "\n/*   Declaring type: " + member.getDeclaringType().getName() + " */";
 			}
 		}
