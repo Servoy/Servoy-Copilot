@@ -31,6 +31,7 @@ import org.eclipse.dltk.codeassist.ISelectionRequestor;
 import org.eclipse.dltk.compiler.env.IModuleSource;
 import org.eclipse.dltk.compiler.env.ModuleSource;
 import org.eclipse.dltk.core.DLTKCore;
+import org.eclipse.dltk.core.ILocalVariable;
 import org.eclipse.dltk.core.IModelElement;
 import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.dltk.core.ISourceRange;
@@ -92,21 +93,28 @@ public class CodeContextTools
 		for (IModelElement element : selectedElements.modelElements)
 		{
 			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
-				.append(element.getElementName())
-				.append("' in this file: ")
-				.append(element.getPath());
-			if (element instanceof SourceRefElement sourceRefElement)
+				.append(element.getElementName()).append("'");
+			if (element instanceof ILocalVariable localVariable)
 			{
-				int offset = sourceRefElement.getSourceRange().getOffset();
-				//TODO check, do we always need to provide the line number?
-				String content = readWorkspaceFile(element.getPath().toString());
-				IDocument doc = new Document(content);
-				int line = doc.getLineOfOffset(offset);
-				if (line >= 0)
+				context.append(" of type: '" + localVariable.getType() + "', ");
+			}
+			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
+			{
+				context.append(" in this file: ")
+					.append(element.getPath());
+				if (element instanceof SourceRefElement sourceRefElement)
 				{
-					context.append(" LineNumber : ").append(line + 1);
+					int offset = sourceRefElement.getSourceRange().getOffset();
+					//TODO check, do we always need to provide the line number?
+					String content = readWorkspaceFile(element.getPath().toString());
+					IDocument doc = new Document(content);
+					int line = doc.getLineOfOffset(offset);
+					if (line >= 0)
+					{
+						context.append(" LineNumber : ").append(line + 1);
+					}
+					context.append(", offset: ").append(offset);
 				}
-				context.append(", offset: ").append(offset);
 			}
 			context.append(" */");
 		}
