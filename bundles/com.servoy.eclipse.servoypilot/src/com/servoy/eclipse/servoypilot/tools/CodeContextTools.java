@@ -86,15 +86,15 @@ public class CodeContextTools
 		{
 			throw new RuntimeException("The problem statement was not found in the provided document.");
 		}
-		String context = getContext(problemStatement, document, lineNumber - 1);
+		StringBuilder context = getContext(problemStatement, document, lineNumber - 1);
 		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
 		for (IModelElement element : selectedElements.modelElements)
 		{
-			context += "\n\n/* Model Element: " + element.toString() + " */";
+			context.append("\n\n/* Model Element: ").append(element.toString()).append(" */");
 		}
 		for (IRElement element : selectedElements.foreignElements)
 		{
-			context += "\n\n/* Typeinfo Element: " + element.getName() + " */";
+			context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
 			//TODO check what other info is relevant
 			if (element.getSource() instanceof Element elementSource)
 			{
@@ -111,8 +111,8 @@ public class CodeContextTools
 						IPersist superForm = PersistHelper.getSuperPersist(frm);
 						if (superForm != null)
 						{
-							context += "\n/*   You may want to check the parent form for more context: " +
-								SolutionSerializer.getScriptPath(superForm, false) + " */";
+							context.append("\n/*   You may want to check the parent form for more context: " +
+								SolutionSerializer.getScriptPath(superForm, false) + " */");
 						}
 					}
 					resource = SolutionSerializer.getScriptPath(frm, false);
@@ -138,21 +138,23 @@ public class CodeContextTools
 
 				if (resource instanceof IFile file)
 				{
-					context += "\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */";
+					context.append("\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */");
 				}
 			}
 			if (element instanceof IRMember member)
 			{
 				if (element instanceof IRMethod method)
 				{
-					context += "\n/*   Method parameters: (" + method.getParameters().stream()
+					context.append("\n/*   Method parameters: (");
+					context.append(method.getParameters().stream()
 						.map(p -> p.getName() + ":" + p.getType())
-						.collect(Collectors.joining(", ")) + ") */";
+						.collect(Collectors.joining(", ")));
+					context.append(") */");
 				}
-				context += "\n/*   Declaring type: " + member.getDeclaringType().getName() + " */";
+				context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
 			}
 		}
-		return context;
+		return context.toString();
 	}
 
 
@@ -267,7 +269,7 @@ public class CodeContextTools
 		}
 	}
 
-	private String getContext(Statement statement, IDocument document, int lineNumber)
+	private StringBuilder getContext(Statement statement, IDocument document, int lineNumber)
 		throws BadLocationException
 	{
 		FunctionStatement parentFunction = ParserService.getInstance().getParentFunction(statement);
@@ -316,7 +318,7 @@ public class CodeContextTools
 		}
 	}
 
-	public String surroundingLines(int startLine, int endLine, String surroundingLines, int errorLine)
+	public StringBuilder surroundingLines(int startLine, int endLine, String surroundingLines, int errorLine)
 	{
 		StringBuilder prompt = new StringBuilder();
 		prompt.append("```javascript\n");
@@ -335,6 +337,6 @@ public class CodeContextTools
 			}
 		}
 		prompt.append("```");
-		return prompt.toString();
+		return prompt;
 	}
 }
