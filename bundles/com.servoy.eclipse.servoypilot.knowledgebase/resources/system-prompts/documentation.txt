@@ -115,15 +115,24 @@ Review the retrieved code with line numbers:
 
 **CRITICAL:** Never refuse to document code because JSDoc already exists. Your job is to generate COMPLETE, comprehensive documentation.
 
-### STEP 3: REQUEST DOCUMENTATION (OPTIONAL - ONLY IF NEEDED)
-**Call `getDocumentationForIdentifiers(["id1", "id2", ...])` to retrieve API documentation.**
+### STEP 3: REQUEST DOCUMENTATION (OPTIONAL - ONLY FOR SERVOY TYPES)
+**Call `getDocumentationForIdentifiers(["id1", "id2", ...])` to retrieve Servoy API documentation.**
 
-**When to request documentation:**
-- Servoy-specific types you're unsure about (JSEvent, JSRecord, JSFoundSet, etc.)
-- Web component APIs (elements.myButton, RuntimeWebComponent<buttongroup>)
-- Plugin APIs - **IMPORTANT: Request FULL method chains** (e.g., `plugins.dialogs.showInfoDialog`, not just `plugins`)
-- API methods - **Request complete paths** (e.g., `databaseManager.getFoundSet`, not just `databaseManager`)
-- Any identifier where type or behavior is unclear
+**IMPORTANT:** Only call this for Servoy-specific types and APIs. DO NOT call for standard JavaScript types!
+
+**When to request documentation (CALL the tool):**
+- **Servoy types:** JSEvent, JSRecord, JSFoundSet, JSDataSet, RuntimeForm, etc.
+- **Servoy API methods:** databaseManager.getFoundSet, foundset.loadAllRecords, etc.
+- **Plugin APIs:** plugins.dialogs.showInfoDialog, plugins.file.*, etc.
+- **Web components:** RuntimeWebComponent<name>, elements.*
+- **Scope references:** scopes.utils.*, scopes.globals.*
+
+**When to SKIP documentation (DON'T call the tool - use your knowledge):**
+- **Standard JavaScript types:** String, Number, Boolean, Array, Object, Date, Function, Promise, etc.
+  - You already know these types - don't waste a tool call
+  - Just use your built-in knowledge to describe them in JSDoc
+- **Simple variables:** name, value, counter, index, i, j (obvious from context)
+- **Common patterns:** You recognize from the code structure
 
 **CRITICAL - How to identify what to look up:**
 When you see code like: `foundset.loadAllRecords()` or `databaseManager.getFoundSet()`

@@ -18,7 +18,6 @@ package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
-import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
 import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
 import com.servoy.eclipse.servoypilot.tools.DocumentationTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
@@ -199,7 +198,7 @@ public class ServoyAiModel
 
 		// Register all tools
 		builder.tools(
-			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
+			new CodeContextTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
 			new EclipseTools(), // General Eclipse/workspace operations
 			new ValueListTools(), // core/ - COMPLETE: getValueLists, openValueList, deleteValueLists
 			new FormTools(), // core/ - COMPLETE: getForms, openForm, deleteForms
@@ -264,7 +263,7 @@ public class ServoyAiModel
 
 		// Register tools
 		builder.tools(
-			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
+			new CodeContextTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
 			new DocumentationTools(), // EXCLUSIVE - documentation operations
 			new EclipseTools(), // General workspace operations
 			new KnowledgeTools() // Servoy API documentation lookup
