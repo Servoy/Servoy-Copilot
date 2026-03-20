@@ -330,99 +330,79 @@ public class CodeContextTools
 			throw new RuntimeException("The problem statement was not found in the provided document.");
 		}
 		StringBuilder context = getContext(problemStatement, document, lineNumber - 1);
+
 		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
-		for (IModelElement element : selectedElements.modelElements)
-		{
-			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
-				.append(element.getElementName()).append("'");
-			if (element instanceof ILocalVariable localVariable)
-			{
-				context.append(" of type: '" + localVariable.getType() + "', ");
-			}
-			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
-			{
-				context.append(" in this file: ")
-					.append(element.getPath());
-				if (element instanceof SourceRefElement sourceRefElement)
-				{
-					int offset = sourceRefElement.getSourceRange().getOffset();
-					//TODO check, do we always need to provide the line number?
-					String content = readWorkspaceFile(element.getPath().toString());
-					IDocument doc = new Document(content);
-					int line = doc.getLineOfOffset(offset);
-					if (line >= 0)
-					{
-						context.append(" LineNumber : ").append(line + 1);
-					}
-					context.append(", offset: ").append(offset);
-				}
-			}
-			context.append(" */");
-		}
-		for (IRElement element : selectedElements.foreignElements)
-		{
-			context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
-			//TODO check what other info is relevant
-			if (element.getSource() instanceof Element elementSource)
-			{
-				Object resource = elementSource.getAttribute(TypeCreator.RESOURCE);
-				if (resource == null)
-				{
-					resource = elementSource.getAttribute(TypeCreator.LAZY_VALUECOLLECTION);
-				}
+		processModelElements(filePath, context, selectedElements);
+		processForeignElements(context, selectedElements);
 
-				if (resource instanceof Form frm)
-				{
-					if (frm.getExtendsID() != null)
-					{
-						IPersist superForm = PersistHelper.getSuperPersist(frm);
-						if (superForm != null)
-						{
-							context.append("\n/*   You may want to check the parent form for more context: " +
-								SolutionSerializer.getScriptPath(superForm, false) + " */");
-						}
-					}
-					resource = SolutionSerializer.getScriptPath(frm, false);
-				}
-
-				if (resource instanceof String resourcePath)
-				{
-					IPath path = Path.fromPortableString(resourcePath.replace('\\', '/'));
-					IFile sourceFile;
-					if (path.isAbsolute())
-					{
-						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
-					}
-					else
-					{
-						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-					}
-					if (sourceFile != null && sourceFile.exists())
-					{
-						resource = sourceFile;
-					}
-				}
-
-				if (resource instanceof IFile file)
-				{
-					context.append("\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */");
-				}
-			}
-			if (element instanceof IRMember member)
-			{
-				if (element instanceof IRMethod method)
-				{
-					context.append("\n/*   Method parameters: (");
-					context.append(method.getParameters().stream()
-						.map(p -> p.getName() + ":" + p.getType())
-						.collect(Collectors.joining(", ")));
-					context.append(") */");
-				}
-				context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
-			}
-		}
 		return context.toString();
 	}
+	
+		public void processForeignElements(StringBuilder context, SelectionResult selectedElements)
+		{
+			for (IRElement element : selectedElements.foreignElements)
+			{
+				context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
+				//TODO check what other info is relevant
+				if (element.getSource() instanceof Element elementSource)
+				{
+					Object resource = elementSource.getAttribute(TypeCreator.RESOURCE);
+					if (resource == null)
+					{
+						resource = elementSource.getAttribute(TypeCreator.LAZY_VALUECOLLECTION);
+					}
+
+					if (resource instanceof Form frm)
+					{
+						if (frm.getExtendsID() != null)
+						{
+							IPersist superForm = PersistHelper.getSuperPersist(frm);
+							if (superForm != null)
+							{
+								context.append("\n/*   You may want to check the parent form for more context: " +
+									SolutionSerializer.getScriptPath(superForm, false) + " */");
+							}
+						}
+						resource = SolutionSerializer.getScriptPath(frm, false);
+					}
+
+					if (resource instanceof String resourcePath)
+					{
+						IPath path = Path.fromPortableString(resourcePath.replace('\\', '/'));
+						IFile sourceFile;
+						if (path.isAbsolute())
+						{
+							sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
+						}
+						else
+						{
+							sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+						}
+						if (sourceFile != null && sourceFile.exists())
+						{
+							resource = sourceFile;
+						}
+					}
+
+					if (resource instanceof IFile file)
+					{
+						context.append("\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */");
+					}
+				}
+				if (element instanceof IRMember member)
+				{
+					if (element instanceof IRMethod method)
+					{
+						context.append("\n/*   Method parameters: (");
+						context.append(method.getParameters().stream()
+							.map(p -> p.getName() + ":" + p.getType())
+							.collect(Collectors.joining(", ")));
+						context.append(") */");
+					}
+					context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
+				}
+			}
+		}
 
 	public void processModelElements(String filePath, StringBuilder context, SelectionResult selectedElements)
 		throws ModelException, Exception, BadLocationException
