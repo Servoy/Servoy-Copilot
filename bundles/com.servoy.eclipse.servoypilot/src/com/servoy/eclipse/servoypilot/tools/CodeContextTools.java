@@ -34,6 +34,7 @@ import org.eclipse.dltk.core.DLTKCore;
 import org.eclipse.dltk.core.IModelElement;
 import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.dltk.core.ISourceRange;
+import org.eclipse.dltk.internal.core.SourceRefElement;
 import org.eclipse.dltk.javascript.ast.FunctionStatement;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.javascript.internal.core.codeassist.JavaScriptSelectionEngine2;
@@ -90,7 +91,24 @@ public class CodeContextTools
 		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
 		for (IModelElement element : selectedElements.modelElements)
 		{
-			context.append("\n\n/* Model Element: ").append(element.toString()).append(" */");
+			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
+				.append(element.getElementName())
+				.append("' in this file: ")
+				.append(element.getPath());
+			if (element instanceof SourceRefElement sourceRefElement)
+			{
+				int offset = sourceRefElement.getSourceRange().getOffset();
+				//TODO check, do we always need to provide the line number?
+				String content = readWorkspaceFile(element.getPath().toString());
+				IDocument doc = new Document(content);
+				int line = doc.getLineOfOffset(offset);
+				if (line >= 0)
+				{
+					context.append(" LineNumber : ").append(line + 1);
+				}
+				context.append(", offset: ").append(offset);
+			}
+			context.append(" */");
 		}
 		for (IRElement element : selectedElements.foreignElements)
 		{
@@ -210,7 +228,14 @@ public class CodeContextTools
 						@Override
 						public void acceptElement(Object element, ISourceRange range)
 						{
-							acceptForeignElement(element);
+							if (element instanceof IModelElement modelElement)
+							{
+								acceptModelElement(modelElement);
+							}
+							else
+							{
+								acceptForeignElement(element);
+							}
 						}
 					});
 
