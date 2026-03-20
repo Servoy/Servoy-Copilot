@@ -20,6 +20,7 @@ package com.servoy.eclipse.servoypilot.tools;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,9 +33,11 @@ import org.eclipse.dltk.compiler.env.IModuleSource;
 import org.eclipse.dltk.compiler.env.ModuleSource;
 import org.eclipse.dltk.core.DLTKCore;
 import org.eclipse.dltk.core.ILocalVariable;
+import org.eclipse.dltk.core.IMethod;
 import org.eclipse.dltk.core.IModelElement;
 import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.dltk.core.ISourceRange;
+import org.eclipse.dltk.core.ModelException;
 import org.eclipse.dltk.internal.core.SourceRefElement;
 import org.eclipse.dltk.javascript.ast.FunctionStatement;
 import org.eclipse.dltk.javascript.ast.Statement;
@@ -89,35 +92,16 @@ public class CodeContextTools
 			throw new RuntimeException("The problem statement was not found in the provided document.");
 		}
 		StringBuilder context = getContext(problemStatement, document, lineNumber - 1);
+
 		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
-		for (IModelElement element : selectedElements.modelElements)
-		{
-			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
-				.append(element.getElementName()).append("'");
-			if (element instanceof ILocalVariable localVariable)
-			{
-				context.append(" of type: '" + localVariable.getType() + "', ");
-			}
-			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
-			{
-				context.append(" in this file: ")
-					.append(element.getPath());
-				if (element instanceof SourceRefElement sourceRefElement)
-				{
-					int offset = sourceRefElement.getSourceRange().getOffset();
-					//TODO check, do we always need to provide the line number?
-					String content = readWorkspaceFile(element.getPath().toString());
-					IDocument doc = new Document(content);
-					int line = doc.getLineOfOffset(offset);
-					if (line >= 0)
-					{
-						context.append(" LineNumber : ").append(line + 1);
-					}
-					context.append(", offset: ").append(offset);
-				}
-			}
-			context.append(" */");
-		}
+		processModelElements(filePath, context, selectedElements);
+		processForeignElements(context, selectedElements);
+
+		return context.toString();
+	}
+
+	public void processForeignElements(StringBuilder context, SelectionResult selectedElements)
+	{
 		for (IRElement element : selectedElements.foreignElements)
 		{
 			context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
@@ -180,7 +164,47 @@ public class CodeContextTools
 				context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
 			}
 		}
-		return context.toString();
+	}
+
+	public void processModelElements(String filePath, StringBuilder context, SelectionResult selectedElements)
+		throws ModelException, Exception, BadLocationException
+	{
+		for (IModelElement element : selectedElements.modelElements)
+		{
+			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
+				.append(element.getElementName()).append("'");
+			if (element instanceof ILocalVariable localVariable)
+			{
+				context.append(" of type: '" + localVariable.getType() + "', ");
+			}
+			if (element instanceof IMethod method)
+			{
+				context.append(" which is a method with parameters: (");
+				context.append(Arrays.stream(method.getParameters())
+					.map(p -> p.getName() + ":" + p.getType())
+					.collect(Collectors.joining(", ")));
+				context.append("), ");
+			}
+			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
+			{
+				context.append(" in this file: ")
+					.append(element.getPath());
+				if (element instanceof SourceRefElement sourceRefElement)
+				{
+					int offset = sourceRefElement.getSourceRange().getOffset();
+					//TODO check, do we always need to provide the line number?
+					String content = readWorkspaceFile(element.getPath().toString());
+					IDocument doc = new Document(content);
+					int line = doc.getLineOfOffset(offset);
+					if (line >= 0)
+					{
+						context.append(" LineNumber : ").append(line + 1);
+					}
+					context.append(", offset: ").append(offset);
+				}
+			}
+			context.append(" */");
+		}
 	}
 
 
