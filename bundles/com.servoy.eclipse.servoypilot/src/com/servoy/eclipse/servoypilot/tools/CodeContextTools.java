@@ -53,7 +53,12 @@ import org.eclipse.jface.text.IDocument;
 import com.servoy.eclipse.debug.script.TypeCreator;
 import com.servoy.eclipse.model.repository.SolutionSerializer;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.services.CodeChunkReader;
+import com.servoy.eclipse.servoypilot.services.FilePathResolver;
+import com.servoy.eclipse.servoypilot.services.FileStructureService;
 import com.servoy.eclipse.servoypilot.services.ParserService;
+import com.servoy.eclipse.servoypilot.services.dto.CodeChunk;
+import com.servoy.eclipse.servoypilot.services.dto.FileStructure;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.util.PersistHelper;
@@ -70,6 +75,239 @@ public class CodeContextTools
 	// configurable limits
 	private static final int CONTEXT_LINES_AROUND_ERROR = 10;
 	private static final int MAX_FULL_FUNCTION_LINES = 40;
+
+	@Tool("Analyze file structure and extract all symbols with JSDoc status (FAST - uses DLTK caching). " +
+		"Accepts form names (e.g., 'testCustomers'), scope names (e.g., 'utils'), or full paths.")
+	public String analyzeFileStructure(
+		@P("File path, form name, or scope name (e.g., 'testCustomers', 'utils', '/ProjectName/forms/customers/customers.js')") String pathOrName)
+	{
+		System.out.println("\n=== CodeContextTools.analyzeFileStructure() called ===");
+		System.out.println("Input parameter: '" + pathOrName + "'");
+		
+		try
+		{
+			if (pathOrName != null && !pathOrName.isBlank())
+			{
+				// Use FilePathResolver for intelligent file resolution
+				FilePathResolver resolver = FilePathResolver.getInstance();
+				IFile file = resolver.resolveFile(pathOrName);
+
+				if (file != null && file.exists())
+				{
+					System.out.println("File resolved successfully: " + file.getFullPath());
+					
+					// Analyze file structure
+					FileStructureService service = FileStructureService.getInstance();
+					FileStructure structure = service.analyzeFile(file);
+
+					// Return formatted output
+					String result = structure.toFormattedString();
+					System.out.println("Analysis complete - returning " + structure.getTotalSymbols() + " symbols");
+					System.out.println("\n--- ANALYSIS RESULT (returned to AI) ---");
+					System.out.println(result);
+					System.out.println("--- END ANALYSIS RESULT ---\n");
+					System.out.println("=== End CodeContextTools.analyzeFileStructure() ===\n");
+					return result;
+				}
+
+				// File not found - provide helpful message
+				String errorMsg = resolver.buildNotFoundMessage(pathOrName);
+				System.out.println("File NOT resolved - returning error message");
+				System.out.println("=== End CodeContextTools.analyzeFileStructure() ===\n");
+				return errorMsg;
+			}
+
+			System.out.println("Error: Empty file path provided");
+			System.out.println("=== End CodeContextTools.analyzeFileStructure() ===\n");
+			return "Error: File path or name is required";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error analyzing file structure: " + pathOrName, e);
+			System.out.println("EXCEPTION occurred: " + e.getMessage());
+			System.out.println("=== End CodeContextTools.analyzeFileStructure() ===\n");
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool("Read code chunk from file (max 200 lines per chunk). " +
+		"Supports three modes: TARGETED (jump to symbol), DIRECT (start from line), SEQUENTIAL (read by chunk number). " +
+		"Accepts form names, scope names, or full paths.")
+	public String getCodeChunk(
+		@P("File path, form name, or scope name") String pathOrName,
+		@P("Symbol name to find (optional - for TARGETED mode)") String symbolName,
+		@P("Chunk number for sequential reading (0-based, optional - for SEQUENTIAL mode)") Integer chunkNumber,
+		@P("Start line number (0-based, optional - for DIRECT mode)") Integer startLine)
+	{
+		System.out.println("\n=== CodeContextTools.getCodeChunk() called ===");
+		System.out.println("Input: pathOrName='" + pathOrName + "', symbolName='" + symbolName +
+			"', chunkNumber=" + chunkNumber + ", startLine=" + startLine);
+
+		try
+		{
+			if (pathOrName != null && !pathOrName.isBlank())
+			{
+				// Use FilePathResolver for intelligent file resolution
+				FilePathResolver resolver = FilePathResolver.getInstance();
+				IFile file = resolver.resolveFile(pathOrName);
+
+				if (file != null && file.exists())
+				{
+					System.out.println("File resolved successfully: " + file.getFullPath());
+
+					CodeChunkReader reader = CodeChunkReader.getInstance();
+					CodeChunk chunk = null;
+
+					// MODE 1: TARGETED - Jump to specific symbol
+					if (symbolName != null && !symbolName.isBlank())
+					{
+						System.out.println("Using TARGETED mode: jumping to symbol '" + symbolName + "'");
+						chunk = reader.readSymbol(file, symbolName);
+
+						if (chunk == null)
+						{
+							String error = "Error: Symbol '" + symbolName + "' not found in file";
+							System.out.println(error);
+							System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+					// MODE 2: DIRECT - Start from specific line
+					else if (startLine != null && startLine >= 0)
+					{
+						System.out.println("Using DIRECT mode: starting from line " + startLine);
+						chunk = reader.readFromLine(file, startLine);
+
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							String error = "Error: Start line " + startLine + " is beyond end of file";
+							System.out.println(error);
+							System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+					// MODE 3: SEQUENTIAL - Read by chunk number
+					else
+					{
+						int chunkNum = (chunkNumber != null) ? chunkNumber : 0;
+						System.out.println("Using SEQUENTIAL mode: reading chunk " + chunkNum);
+						chunk = reader.readChunk(file, chunkNum);
+
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							String error = "Error: Chunk " + chunkNum + " is beyond end of file";
+							System.out.println(error);
+							System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+							return error;
+						}
+					}
+
+					// Return formatted output
+					String result = chunk.toFormattedString();
+					System.out.println("Read complete - returning lines " + chunk.getStartLine() + "-" + chunk.getEndLine());
+					System.out.println("\n--- CODE CHUNK RESULT (returned to AI) ---");
+					System.out.println(result);
+					System.out.println("--- END CODE CHUNK RESULT ---\n");
+					System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+					return result;
+				}
+
+				// File not found - provide helpful message
+				String errorMsg = resolver.buildNotFoundMessage(pathOrName);
+				System.out.println("File NOT resolved - returning error message");
+				System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+				return errorMsg;
+			}
+
+			System.out.println("Error: Empty file path provided");
+			System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+			return "Error: File path or name is required";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error reading code chunk: " + pathOrName, e);
+			System.out.println("EXCEPTION occurred: " + e.getMessage());
+			System.out.println("=== End CodeContextTools.getCodeChunk() ===\n");
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool("Resolve the type of an identifier by analyzing code context. " +
+		"Returns detailed context including type information. " +
+		"Wrapper around codeContext() that finds the identifier position automatically.")
+	public String resolveIdentifierType(
+		@P("Identifier name to resolve (e.g., 'foundset', 'fs', 'record', 'customerName')") String identifier,
+		@P("File path relative to workspace (e.g., 'forms/myForm.js' or 'projectName/forms/myForm.js')") String filePath) throws Exception
+	{
+		System.out.println("\n=== CodeContextTools.resolveIdentifierType() wrapper called ===");
+		System.out.println("Input: identifier='" + identifier + "', filePath='" + filePath + "'");
+
+		if (identifier == null || identifier.isBlank())
+		{
+			return "Error: Identifier name is required";
+		}
+
+		if (filePath == null || filePath.isBlank())
+		{
+			return "Error: File path is required";
+		}
+
+		// Read file content
+		String fileContent = readWorkspaceFile(filePath);
+		IDocument document = new Document(fileContent);
+
+		// Find identifier offset in source
+		int offset = findIdentifierOffset(fileContent, identifier);
+		if (offset == -1)
+		{
+			return "Error: Identifier '" + identifier + "' not found in file: " + filePath;
+		}
+
+		// Calculate line number from offset (0-based)
+		int lineNumber = document.getLineOfOffset(offset);
+		System.out.println("Calling codeContext(filePath=" + filePath + ", lineNumber=" + (lineNumber + 1) + ", offset=" + offset + ")");
+
+		// Call codeContext and return its result
+		String result = codeContext(filePath, lineNumber + 1, offset);
+		System.out.println("=== End CodeContextTools.resolveIdentifierType() wrapper ===\n");
+		return result;
+	}
+
+	/**
+	 * Find offset of identifier in source code.
+	 * Tries multiple strategies: declaration, usage, then fallback to first occurrence.
+	 */
+	private int findIdentifierOffset(String source, String identifier)
+	{
+		// Strategy 1: Find in variable declaration: var identifier = ...
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\bvar\\s+(" + java.util.regex.Pattern.quote(identifier) + ")\\b");
+		java.util.regex.Matcher matcher = pattern.matcher(source);
+		if (matcher.find())
+		{
+			return matcher.start(1);
+		}
+
+		// Strategy 2: Find in usage: identifier.something or identifier(
+		pattern = java.util.regex.Pattern.compile("\\b(" + java.util.regex.Pattern.quote(identifier) + ")\\s*[.({]");
+		matcher = pattern.matcher(source);
+		if (matcher.find())
+		{
+			return matcher.start(1);
+		}
+
+		// Strategy 3: Fallback - just find first occurrence with word boundary check
+		int index = source.indexOf(identifier);
+		if (index >= 0)
+		{
+			if ((index == 0 || !Character.isJavaIdentifierPart(source.charAt(index - 1))) &&
+				(index + identifier.length() >= source.length() || !Character.isJavaIdentifierPart(source.charAt(index + identifier.length()))))
+			{
+				return index;
+			}
+		}
+
+		return -1;
+	}
 
 	@Tool("""
 		Returns code context around a given line in a Servoy JavaScript file.
@@ -92,16 +330,35 @@ public class CodeContextTools
 			throw new RuntimeException("The problem statement was not found in the provided document.");
 		}
 		StringBuilder context = getContext(problemStatement, document, lineNumber - 1);
-
 		SelectionResult selectedElements = getModelElements(filePath, lineNumber - 1, characterOffset);
-		processModelElements(filePath, context, selectedElements);
-		processForeignElements(context, selectedElements);
-
-		return context.toString();
-	}
-
-	public void processForeignElements(StringBuilder context, SelectionResult selectedElements)
-	{
+		for (IModelElement element : selectedElements.modelElements)
+		{
+			context.append("\n\n/* If needed, you can get more info about the Model Element: '")
+				.append(element.getElementName()).append("'");
+			if (element instanceof ILocalVariable localVariable)
+			{
+				context.append(" of type: '" + localVariable.getType() + "', ");
+			}
+			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
+			{
+				context.append(" in this file: ")
+					.append(element.getPath());
+				if (element instanceof SourceRefElement sourceRefElement)
+				{
+					int offset = sourceRefElement.getSourceRange().getOffset();
+					//TODO check, do we always need to provide the line number?
+					String content = readWorkspaceFile(element.getPath().toString());
+					IDocument doc = new Document(content);
+					int line = doc.getLineOfOffset(offset);
+					if (line >= 0)
+					{
+						context.append(" LineNumber : ").append(line + 1);
+					}
+					context.append(", offset: ").append(offset);
+				}
+			}
+			context.append(" */");
+		}
 		for (IRElement element : selectedElements.foreignElements)
 		{
 			context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
@@ -164,6 +421,7 @@ public class CodeContextTools
 				context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
 			}
 		}
+		return context.toString();
 	}
 
 	public void processModelElements(String filePath, StringBuilder context, SelectionResult selectedElements)
