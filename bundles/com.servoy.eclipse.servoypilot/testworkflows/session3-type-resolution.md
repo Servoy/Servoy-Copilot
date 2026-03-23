@@ -1,206 +1,450 @@
 # SESSION 3: Type Resolution - Test Workflows
 
-**Date:** March 19, 2026  
-**Status:** 🧪 READY FOR TESTING  
-**Implementation:** resolveIdentifierType(identifier, pathOrName) - No line number needed
+**Date:** March 20, 2026  
+**Status:** ✅ COMPLETE - Ready for Testing  
+**Implementation:** CodeContextTools.resolveIdentifierType()
 
 ---
 
-## What Was Implemented
+## Overview
 
-1. **resolveIdentifierType()** - Finds symbols by name using FileStructureService + IdentifierCollectingVisitor
-2. **Removed standard JS types from getDocumentationForIdentifiers()** - AI uses built-in knowledge instead
+This document contains test workflows for SESSION 3 of the Documentation Enhancement project.
 
-**Key Changes:**
-- ✅ No line number parameter - finds symbols by name
-- ✅ Uses FileStructureService to get correct offset
-- ✅ Uses IdentifierCollectingVisitor pattern (from CodeContextService)
-- ✅ Standard types: AI uses knowledge (no tool call to getDocumentationForIdentifiers)
-- ✅ Servoy types: AI calls getDocumentationForIdentifiers for method details
+**What was implemented:**
+- resolveIdentifierType() tool in CodeContextTools (standalone, not wrapper)
+- Leverages existing JavaScriptSelectionEngine2 code path (proven to work)
+- JSDoc @type extraction fallback with ownership validation
+- FilePathResolver integration (accepts form names, scope names, full paths)
+- Comprehensive debugging output
+
+**Key Features:**
+- ✅ Accepts form names: `testCustomers` → auto-resolves to file
+- ✅ Accepts scope names: `utils` → auto-resolves using DLTK API
+- ✅ Focused output: Returns only type info (not full code context)
+- ✅ JSDoc fallback: Extracts @type when DLTK returns no types
+- ✅ Ownership validation: Ensures @type belongs to target variable
+- ✅ Explicit error messages: Returns "Error: ..." when type not found
+- ✅ Console logging for debugging
+
+**Tools to test:**
+- `resolveIdentifierType(identifier, pathOrName)` - Resolve identifier type
 
 ---
 
-## Test Files
+## Test Preparation
 
-**File 1: forms/testLiterals.js**
+### Create Test Files
+
+Before running tests, create these test files in your active Servoy solution:
+
+**File 1: forms/testDeclaredTypes.js**
 ```javascript
-var count = 5;
-var name = "test";
-var active = true;
+/**
+ * @type {JSFoundSet}
+ *
+ * @properties={typeid:35,uuid:"5B1A2711-CEA4-4E67-A2C2-A25DDEBB890C",variableType:-4}
+ */
+var customers;
+
+/**
+ * @type {String}
+ *
+ * @properties={typeid:35,uuid:"C62C298F-3A34-4BF6-AEB9-85A34817A4A2"}
+ */
+var customerName;
+
+/**
+ * @type {Number}
+ *
+ * @properties={typeid:35,uuid:"05870B6A-279A-4EE7-AC43-58C6ED170A50",variableType:8}
+ */
+var orderTotal;
 ```
 
 **File 2: forms/testServoyGlobals.js**
 ```javascript
+/**
+ * @param {JSEvent} event
+ *
+ * @properties={typeid:24,uuid:"8ABBEE7E-E217-4D49-B62F-137646FE3782"}
+ */
 function onLoad(event) {
     var fs = foundset;
     var rec = foundset.getRecord(1);
+    var ctrl = controller;
+    var app = application;
     var db = databaseManager;
     return true;
 }
 ```
 
-**File 3: forms/testDeclaredTypes.js**
+**File 3: forms/testLiteralTypes.js**
 ```javascript
+function processData() {
+    var count = 5;
+    var name = "test";
+    var active = true;
+    var items = [];
+    var config = {};
+    return count + items.length;
+}
+```
+
+**File 4: forms/testMixedScenarios.js**
+```javascript
+/**
+ * @type {String}
+ */
+var documentedVar;
+
+var undocumentedVar;
+
 /**
  * @type {JSFoundSet}
  */
 var customers;
 
 /**
- * @type {String}
+ * Comment but no @type
  */
-var customerName;
+var someVar;
 ```
 
 ---
 
-## TEST 1: Standard Types (AI Uses Built-In Knowledge)
+## TEST SUITE
 
-### Test 1.1: Number Type
-**Prompt:** `What type is 'count' in testLiterals?`
+### Test 1: JSDoc @type Annotations
 
-**Expected:**
-- AI calls: `resolveIdentifierType("count", "testLiterals")`
-- Returns: Type=Number, Confidence=MEDIUM
-- AI does NOT call getDocumentationForIdentifiers
-- AI responds using its knowledge: "Number type (numeric values)"
+#### Test 1.1: JSFoundSet from @type
 
-**Success:** ✅ Type resolved, no unnecessary tool call
+**Prompt:**
+```
+What type is 'customers' in testDeclaredTypes?
+```
 
----
+**Expected Output:**
+```
+=== TYPE RESOLUTION ===
 
-### Test 1.2: String Type
-**Prompt:** `What type is 'name' in testLiterals?`
+IDENTIFIER: customers
+TYPE: JSFoundSet
+SOURCE: JSDoc @type annotation
+LOCATION: /TestStructure/forms/testDeclaredTypes.js, line 6
+```
 
-**Expected:**
-- Returns: Type=String, Confidence=HIGH (from @type annotation)
-- AI uses knowledge, doesn't call getDocumentationForIdentifiers
-
-**Success:** ✅ Type resolved correctly
-
----
-
-## TEST 2: Servoy Types (AI Calls getDocumentationForIdentifiers)
-
-### Test 2.1: JSFoundSet
-**Prompt:** `What type is 'fs' in testServoyGlobals?`
-
-**Expected:**
-- AI calls: `resolveIdentifierType("fs", "testServoyGlobals")`
-- Returns: Type=JSFoundSet, Confidence=HIGH
-- AI DOES call: `getDocumentationForIdentifiers(["JSFoundSet"])`
-- AI responds with method details: loadAllRecords(), getSize(), etc.
-
-**Success:** ✅ Servoy type gets full API docs
+**Success Criteria:**
+- ✅ Returns JSFoundSet (not SourceField)
+- ✅ JSDoc extraction works
 
 ---
 
-### Test 2.2: JSRecord
-**Prompt:** `Resolve type of 'rec' in testServoyGlobals`
+#### Test 1.2: String from @type
 
-**Expected:**
-- Type=JSRecord
-- AI calls getDocumentationForIdentifiers for method details
+**Prompt:**
+```
+Resolve type of 'customerName' in testDeclaredTypes
+```
 
-**Success:** ✅ API docs retrieved
+**Expected Output:**
+```
+TYPE: String
+SOURCE: JSDoc @type annotation
+```
 
----
-
-### Test 2.3: DatabaseManager
-**Prompt:** `What's the type of 'db' in testServoyGlobals?`
-
-**Expected:**
-- Servoy type identified
-- API docs retrieved
-
-**Success:** ✅ Works
+**Success Criteria:**
+- ✅ Returns String
+- ✅ No confusion with other variables
 
 ---
 
-## TEST 3: Declared Types
+#### Test 1.3: Number from @type
 
-### Test 3.1: Declared JSFoundSet
-**Prompt:** `What type is 'customers' in testDeclaredTypes?`
+**Prompt:**
+```
+What's the type of orderTotal in testDeclaredTypes?
+```
 
-**Expected:**
-- Type=JSFoundSet, Confidence=HIGH (from @type)
-- AI calls getDocumentationForIdentifiers for details
+**Expected Output:**
+```
+TYPE: Number
+SOURCE: JSDoc @type annotation
+```
 
-**Success:** ✅ Reads annotation, gets API docs
-
----
-
-### Test 3.2: Declared String
-**Prompt:** `Resolve type of 'customerName' in testDeclaredTypes`
-
-**Expected:**
-- Type=String, Confidence=HIGH (from @type)
-- AI does NOT call getDocumentationForIdentifiers
-- AI uses knowledge
-
-**Success:** ✅ Standard type, no API lookup
+**Success Criteria:**
+- ✅ Returns Number
 
 ---
 
-## TEST 4: Full Workflow
+### Test 2: DLTK Inference from Servoy Globals
 
-### Test 4.1: Document Function
-**Setup:** Select processOrders function in testMixedCode.js
+#### Test 2.1: JSFoundSet from foundset
 
-**Prompt:** `Document this function with proper types`
+**Prompt:**
+```
+What type is 'fs' in testServoyGlobals?
+```
 
-**Expected Workflow:**
-1. getCurrentSelection() → Get code
-2. resolveIdentifierType("event", "testMixedCode") → JSEvent
-3. resolveIdentifierType("fs", "testMixedCode") → JSFoundSet
-4. getDocumentationForIdentifiers(["JSEvent", "JSFoundSet"]) → Get Servoy API docs
-5. Generate JSDoc with @param {JSEvent} and description of fs usage
-6. applyDocumentations() → Apply
+**Expected Output:**
+```
+TYPE: JSFoundSet
+SOURCE: Local variable
+```
 
-**Expected JSDoc:**
+**Success Criteria:**
+- ✅ DLTK infers from foundset assignment
+
+---
+
+#### Test 2.2: JSRecord from getRecord()
+
+**Prompt:**
+```
+Resolve type of 'rec' in testServoyGlobals
+```
+
+**Expected Output:**
+```
+TYPE: JSRecord
+SOURCE: Local variable
+```
+
+**Success Criteria:**
+- ✅ DLTK infers from method call
+
+---
+
+#### Test 2.3: JSController from controller
+
+**Prompt:**
+```
+Type of ctrl in testServoyGlobals?
+```
+
+**Expected Output:**
+```
+TYPE: JSController
+SOURCE: Local variable
+```
+
+---
+
+#### Test 2.4: RuntimeApplication from application
+
+**Prompt:**
+```
+Type of app in testServoyGlobals?
+```
+
+**Expected Output:**
+```
+TYPE: RuntimeApplication
+SOURCE: Local variable
+```
+
+---
+
+#### Test 2.5: JSDataBaseManager from databaseManager
+
+**Prompt:**
+```
+Type of db in testServoyGlobals?
+```
+
+**Expected Output:**
+```
+TYPE: JSDataBaseManager
+SOURCE: Local variable
+```
+
+---
+
+### Test 3: Literal Inference
+
+#### Test 3.1: Number from literal
+
+**Prompt:**
+```
+Type of count in testLiteralTypes?
+```
+
+**Expected Output:**
+```
+TYPE: Number
+SOURCE: Local variable
+```
+
+---
+
+#### Test 3.2: String from literal
+
+**Prompt:**
+```
+Type of name in testLiteralTypes?
+```
+
+**Expected Output:**
+```
+TYPE: String
+SOURCE: Local variable
+```
+
+---
+
+#### Test 3.3: Boolean from literal
+
+**Prompt:**
+```
+Type of active in testLiteralTypes?
+```
+
+**Expected Output:**
+```
+TYPE: Boolean
+SOURCE: Local variable
+```
+
+---
+
+### Test 4: Error Handling
+
+#### Test 4.1: Variable Not Found
+
+**Prompt:**
+```
+What type is nonExistentVar in testDeclaredTypes?
+```
+
+**Expected Output:**
+```
+Error: Identifier 'nonExistentVar' not found in file: testDeclaredTypes
+```
+
+**Success Criteria:**
+- ✅ Explicit error message
+- ✅ AI understands failure
+
+---
+
+#### Test 4.2: No Type Available
+
+**Prompt:**
+```
+Type of undocumentedVar in testMixedScenarios?
+```
+
+**Expected Output:**
+```
+Error: Could not resolve type for identifier 'undocumentedVar' in file: ...
+```
+
+**Success Criteria:**
+- ✅ Returns error (not TYPE: UNKNOWN)
+
+---
+
+#### Test 4.3: JSDoc Ownership Validation
+
+**Prompt:**
+```
+Type of someVar in testMixedScenarios?
+```
+
+**File has:**
 ```javascript
-/**
- * Process customer orders by loading all records and counting them.
- * 
- * @param {JSEvent} event - The event that triggered the action
- * @returns {Number} The total number of orders processed
- */
+/** @type {JSFoundSet} */
+var customers;
+
+/** Comment but no @type */
+var someVar;
 ```
 
-**Success:** ✅ Complete workflow with type resolution
+**Expected Output:**
+```
+Error: Could not resolve type for identifier 'someVar' ...
+```
+
+**Success Criteria:**
+- ✅ Does NOT return JSFoundSet (stolen from customers)
+- ✅ Ownership validation works
 
 ---
 
-## TEST 5: Console Verification
+### Test 5: Function Parameters
 
-**Prompt:** (Any test above)
+#### Test 5.1: JSEvent Parameter
 
-**Expected Console:**
+**Prompt:**
 ```
-=== CodeAnalysisTools.resolveIdentifierType() called ===
-Input: identifier='name', pathOrName='testLiterals'
-FilePathResolver: ✓ Resolved as form → /TestStructure/forms/testLiterals.js
-File resolved successfully: /TestStructure/forms/testLiterals.js
-Symbol found: name at offset 126 (line 7)
-Script parsed successfully
-Type inference completed, collected X identifiers
-Found value reference for: name
-TYPE: String, CONFIDENCE: HIGH
+Type of event in testServoyGlobals?
 ```
 
-**Success:** ✅ Shows proper symbol location, not comment
+**Expected Output:**
+```
+TYPE: JSEvent
+SOURCE: Local variable
+```
 
 ---
 
-## Sign-Off Criteria
+### Test 6: Function Type
 
-- [ ] Type resolution finds symbols by name (not failing on comments)
-- [ ] Standard types: AI uses knowledge (no getDocumentationForIdentifiers)
-- [ ] Servoy types: AI calls getDocumentationForIdentifiers
-- [ ] Declared types work (HIGH confidence)
-- [ ] Full workflow completes
-- [ ] Console shows correct offsets and line numbers
+#### Test 6.1: Function Declaration
+
+**Prompt:**
+```
+Type of onLoad in testServoyGlobals?
+```
+
+**Expected Output:**
+```
+TYPE: Function
+SOURCE: Method declaration
+PARAMETERS: (event:JSEvent)
+```
 
 ---
 
-**Status:** Ready for testing
+## Test Results Summary
+
+| Test | Status | Notes |
+|------|--------|-------|
+| 1.1 - JSFoundSet @type | ⏳ | JSDoc extraction |
+| 1.2 - String @type | ⏳ | Standard type |
+| 1.3 - Number @type | ⏳ | Standard type |
+| 2.1 - JSFoundSet from foundset | ⏳ | DLTK inference |
+| 2.2 - JSRecord | ⏳ | Method return |
+| 2.3 - JSController | ⏳ | Global |
+| 2.4 - RuntimeApplication | ⏳ | Global |
+| 2.5 - JSDataBaseManager | ⏳ | Global |
+| 3.1 - Number literal | ⏳ | Literal |
+| 3.2 - String literal | ⏳ | Literal |
+| 3.3 - Boolean literal | ⏳ | Literal |
+| 4.1 - Not found error | ⏳ | Error handling |
+| 4.2 - No type error | ⏳ | Explicit error |
+| 4.3 - Ownership validation | ⏳ | No stealing |
+| 5.1 - Function parameter | ⏳ | Parameter |
+| 6.1 - Function type | ⏳ | Function |
+
+**Total:** 16  
+**Passed:** 0  
+**Pending:** 16
+
+---
+
+## Debug Tips
+
+**Key Console Output:**
+```
+Strategy 1 SUCCESS - Found at offset: 124
+Found JSDoc @type: JSFoundSet
+```
+
+**Common Issues:**
+- Position 0 → Check findIdentifierOffset debug
+- 0 types → JSDoc fallback should catch
+- Wrong type → Check ownership validation
+
+---
+
+**Status:** Implementation complete - March 20, 2026

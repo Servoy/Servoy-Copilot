@@ -22,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
@@ -232,45 +234,236 @@ public class CodeContextTools
 		}
 	}
 
-	@Tool("Resolve the type of an identifier by analyzing code context. " +
-		"Returns detailed context including type information. " +
-		"Wrapper around codeContext() that finds the identifier position automatically.")
+	@Tool("Resolve the type of an identifier in a JavaScript file. " +
+		"Returns concise type information (not full code context). " +
+		"Accepts form names, scope names, or full file paths.")
 	public String resolveIdentifierType(
 		@P("Identifier name to resolve (e.g., 'foundset', 'fs', 'record', 'customerName')") String identifier,
-		@P("File path relative to workspace (e.g., 'forms/myForm.js' or 'projectName/forms/myForm.js')") String filePath) throws Exception
+		@P("File path, form name, or scope name (e.g., 'myForm', 'utils', 'forms/myForm.js')") String pathOrName) throws Exception
 	{
-		System.out.println("\n=== CodeContextTools.resolveIdentifierType() wrapper called ===");
-		System.out.println("Input: identifier='" + identifier + "', filePath='" + filePath + "'");
+		System.out.println("\n=== CodeContextTools.resolveIdentifierType() called ===");
+		System.out.println("Input: identifier='" + identifier + "', pathOrName='" + pathOrName + "'");
 
-		if (identifier == null || identifier.isBlank())
+		if (identifier != null && !identifier.isBlank() && pathOrName != null && !pathOrName.isBlank())
 		{
-			return "Error: Identifier name is required";
+			// Use FilePathResolver for intelligent file resolution
+			FilePathResolver resolver = FilePathResolver.getInstance();
+			IFile file = resolver.resolveFile(pathOrName);
+
+			if (file != null && file.exists())
+			{
+				System.out.println("File resolved successfully: " + file.getFullPath());
+				String filePath = file.getFullPath().toString();
+
+				// Read file content and create document
+				String fileContent = readWorkspaceFile(filePath);
+				IDocument document = new Document(fileContent);
+
+				// Find identifier offset in source
+				int offset = findIdentifierOffset(fileContent, identifier);
+				if (offset != -1)
+				{
+					// Calculate line number from offset (0-based)
+					int lineNumber = document.getLineOfOffset(offset);
+					System.out.println("Found identifier at offset " + offset + ", line " + (lineNumber + 1));
+
+					// Get model elements directly (standalone - not via codeContext)
+					SelectionResult selectedElements = getModelElements(filePath, lineNumber, offset);
+
+					if (selectedElements != null)
+					{
+			// Format type information (focused output, not full context)
+			String result = formatTypeInfo(selectedElements, identifier, filePath, lineNumber + 1, fileContent, offset);
+						System.out.println("\n--- TYPE RESOLUTION RESULT (returned to AI) ---");
+						System.out.println(result);
+						System.out.println("--- END TYPE RESOLUTION RESULT ---\n");
+						System.out.println("=== End CodeContextTools.resolveIdentifierType() ===\n");
+						return result;
+					}
+
+					String error = "Error: No type information available for identifier '" + identifier + "'";
+					System.out.println(error);
+					System.out.println("=== End CodeContextTools.resolveIdentifierType() ===\n");
+					return error;
+				}
+
+				String error = "Error: Identifier '" + identifier + "' not found in file: " + pathOrName;
+				System.out.println(error);
+				System.out.println("=== End CodeContextTools.resolveIdentifierType() ===\n");
+				return error;
+			}
+
+			String errorMsg = resolver.buildNotFoundMessage(pathOrName);
+			System.out.println("File NOT resolved - returning error message");
+			System.out.println("=== End CodeContextTools.resolveIdentifierType() ===\n");
+			return errorMsg;
 		}
 
-		if (filePath == null || filePath.isBlank())
+		System.out.println("Error: Missing required parameters");
+		System.out.println("=== End CodeContextTools.resolveIdentifierType() ===\n");
+		return "Error: Identifier and file path are required";
+	}
+
+	/**
+	 * Format focused type information from SelectionResult.
+	 * Returns concise type details, not full code context.
+	 */
+	private String formatTypeInfo(SelectionResult selectedElements, String identifier, String filePath, int lineNumber, 
+		String fileContent, int offset)
+	{
+		StringBuilder result = new StringBuilder();
+		result.append("=== TYPE RESOLUTION ===\n\n");
+		result.append("IDENTIFIER: ").append(identifier).append("\n");
+
+		// Extract from model elements (LocalVariable, etc.)
+		for (IModelElement element : selectedElements.modelElements)
 		{
-			return "Error: File path is required";
+			if (element.getElementName().equals(identifier))
+			{
+				if (element instanceof ILocalVariable localVariable)
+				{
+					String type = localVariable.getType();
+					if (type != null && !type.isBlank())
+					{
+						result.append("TYPE: ").append(type).append("\n");
+						result.append("SOURCE: Local variable\n");
+						result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+						return result.toString();
+					}
+				}
+				
+				if (element instanceof IMethod method)
+				{
+					result.append("TYPE: Function\n");
+					result.append("SOURCE: Method declaration\n");
+					result.append("PARAMETERS: (");
+					try
+					{
+						result.append(Arrays.stream(method.getParameters())
+							.map(p -> p.getName() + ":" + p.getType())
+							.collect(Collectors.joining(", ")));
+					}
+					catch (Exception e)
+					{
+						result.append("unknown");
+					}
+					result.append(")\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					return result.toString();
+				}
+
+				// Other model element types - try JSDoc fallback before returning
+				System.out.println("  Model element found but no type extracted, trying JSDoc fallback...");
+				String jsDocType = extractJSDocType(fileContent, offset);
+				if (jsDocType != null)
+				{
+					result.append("TYPE: ").append(jsDocType).append("\n");
+					result.append("SOURCE: JSDoc @type annotation\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					return result.toString();
+				}
+
+				result.append("TYPE: ").append(element.getClass().getSimpleName()).append("\n");
+				result.append("SOURCE: Model element\n");
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				return result.toString();
+			}
 		}
 
-		// Read file content
-		String fileContent = readWorkspaceFile(filePath);
-		IDocument document = new Document(fileContent);
-
-		// Find identifier offset in source
-		int offset = findIdentifierOffset(fileContent, identifier);
-		if (offset == -1)
+		// Extract from foreign elements (Servoy API types)
+		for (IRElement element : selectedElements.foreignElements)
 		{
-			return "Error: Identifier '" + identifier + "' not found in file: " + filePath;
+			String type = element.getName();
+			if (type != null && !type.isBlank())
+			{
+				result.append("TYPE: ").append(type).append("\n");
+				result.append("SOURCE: Servoy API type\n");
+				
+				if (element instanceof IRMethod method)
+				{
+					result.append("PARAMETERS: (");
+					result.append(method.getParameters().stream()
+						.map(p -> p.getName() + ":" + p.getType())
+						.collect(Collectors.joining(", ")));
+					result.append(")\n");
+				}
+				
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				return result.toString();
+			}
 		}
 
-		// Calculate line number from offset (0-based)
-		int lineNumber = document.getLineOfOffset(offset);
-		System.out.println("Calling codeContext(filePath=" + filePath + ", lineNumber=" + (lineNumber + 1) + ", offset=" + offset + ")");
+		// Fallback: Try to extract type from JSDoc @type annotation
+		System.out.println("  No type found in model/foreign elements, trying JSDoc fallback...");
+		String jsDocType = extractJSDocType(fileContent, offset);
+		if (jsDocType != null)
+		{
+			result.append("TYPE: ").append(jsDocType).append("\n");
+			result.append("SOURCE: JSDoc @type annotation\n");
+			result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+			return result.toString();
+		}
 
-		// Call codeContext and return its result
-		String result = codeContext(filePath, lineNumber + 1, offset);
-		System.out.println("=== End CodeContextTools.resolveIdentifierType() wrapper ===\n");
-		return result;
+		// No type information found - return error message
+		System.out.println("  No type information found - returning error");
+		return "Error: Could not resolve type for identifier '" + identifier + "' in file: " + filePath + " at line " + lineNumber;
+	}
+
+	/**
+	 * Extract type from JSDoc @type annotation in preceding text.
+	 * Looks backwards from offset to find @type {TypeName} pattern.
+	 * IMPORTANT: Verifies that @type belongs to THIS identifier, not a previous one.
+	 */
+	private String extractJSDocType(String fileContent, int offset)
+	{
+		if (offset <= 0 || fileContent == null)
+		{
+			return null;
+		}
+
+		// Look back ~300 characters for JSDoc comment
+		int lookbackStart = Math.max(0, offset - 300);
+		String precedingText = fileContent.substring(lookbackStart, offset);
+		
+		System.out.println("  Searching for JSDoc @type in preceding text");
+		System.out.println("  Preceding text: " + precedingText.replace("\n", "\\n").substring(Math.max(0, precedingText.length() - 100)));
+		
+		// Find the last /** before our identifier (start of JSDoc)
+		int jsDocStart = precedingText.lastIndexOf("/**");
+		if (jsDocStart == -1)
+		{
+			System.out.println("  No JSDoc comment (/**) found before identifier");
+			return null;
+		}
+		
+		System.out.println("  Found /** at relative position: " + jsDocStart);
+		
+		// Get text from /** to our identifier
+		String jsDocBlock = precedingText.substring(jsDocStart);
+		System.out.println("  JSDoc block: " + jsDocBlock.replace("\n", "\\n"));
+		
+		// Check if there's another variable declaration between the JSDoc and our identifier
+		// Pattern: var someOtherVar (would mean the JSDoc is for that, not ours)
+		Pattern varPattern = Pattern.compile("\\*/\\s*\\n\\s*var\\s+\\w+");
+		Matcher varMatcher = varPattern.matcher(jsDocBlock);
+		if (varMatcher.find())
+		{
+			System.out.println("  Found another var declaration between JSDoc and our identifier - JSDoc belongs to different variable");
+			return null;
+		}
+		
+		// Look for @type {TypeName} pattern in the JSDoc block
+		Pattern jsDocPattern = Pattern.compile("@type\\s*\\{([^}]+)\\}");
+		Matcher jsDocMatcher = jsDocPattern.matcher(jsDocBlock);
+		if (jsDocMatcher.find())
+		{
+			String type = jsDocMatcher.group(1).trim();
+			System.out.println("  Found JSDoc @type: " + type);
+			return type;
+		}
+		
+		System.out.println("  No @type found in JSDoc block");
+		return null;
 	}
 
 	/**
@@ -279,33 +472,60 @@ public class CodeContextTools
 	 */
 	private int findIdentifierOffset(String source, String identifier)
 	{
+		System.out.println("  === findIdentifierOffset() called ===");
+		System.out.println("  Identifier: '" + identifier + "'");
+		System.out.println("  Source length: " + source.length());
+		
 		// Strategy 1: Find in variable declaration: var identifier = ...
-		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\bvar\\s+(" + java.util.regex.Pattern.quote(identifier) + ")\\b");
+		String pattern1Str = "\\bvar\\s+(" + java.util.regex.Pattern.quote(identifier) + ")\\b";
+		System.out.println("  Strategy 1 - Pattern: " + pattern1Str);
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(pattern1Str);
 		java.util.regex.Matcher matcher = pattern.matcher(source);
 		if (matcher.find())
 		{
-			return matcher.start(1);
+			int offset = matcher.start(1);
+			System.out.println("  Strategy 1 SUCCESS - Found at offset: " + offset);
+			System.out.println("  Context: ..." + source.substring(Math.max(0, offset - 10), Math.min(source.length(), offset + 20)) + "...");
+			return offset;
 		}
+		System.out.println("  Strategy 1 FAILED - No match for var declaration");
 
 		// Strategy 2: Find in usage: identifier.something or identifier(
-		pattern = java.util.regex.Pattern.compile("\\b(" + java.util.regex.Pattern.quote(identifier) + ")\\s*[.({]");
+		String pattern2Str = "\\b(" + java.util.regex.Pattern.quote(identifier) + ")\\s*[.({]";
+		System.out.println("  Strategy 2 - Pattern: " + pattern2Str);
+		pattern = java.util.regex.Pattern.compile(pattern2Str);
 		matcher = pattern.matcher(source);
 		if (matcher.find())
 		{
-			return matcher.start(1);
+			int offset = matcher.start(1);
+			System.out.println("  Strategy 2 SUCCESS - Found at offset: " + offset);
+			System.out.println("  Context: ..." + source.substring(Math.max(0, offset - 10), Math.min(source.length(), offset + 20)) + "...");
+			return offset;
 		}
+		System.out.println("  Strategy 2 FAILED - No match for usage pattern");
 
 		// Strategy 3: Fallback - just find first occurrence with word boundary check
+		System.out.println("  Strategy 3 - Using indexOf()");
 		int index = source.indexOf(identifier);
+		System.out.println("  indexOf('" + identifier + "') returned: " + index);
 		if (index >= 0)
 		{
-			if ((index == 0 || !Character.isJavaIdentifierPart(source.charAt(index - 1))) &&
-				(index + identifier.length() >= source.length() || !Character.isJavaIdentifierPart(source.charAt(index + identifier.length()))))
+			boolean beforeCheck = (index == 0 || !Character.isJavaIdentifierPart(source.charAt(index - 1)));
+			boolean afterCheck = (index + identifier.length() >= source.length() || !Character.isJavaIdentifierPart(source.charAt(index + identifier.length())));
+			System.out.println("  Before boundary check: " + beforeCheck);
+			System.out.println("  After boundary check: " + afterCheck);
+			
+			if (beforeCheck && afterCheck)
 			{
+				System.out.println("  Strategy 3 SUCCESS - Accepted offset: " + index);
+				System.out.println("  Context: ..." + source.substring(Math.max(0, index - 10), Math.min(source.length(), index + 20)) + "...");
 				return index;
 			}
+			System.out.println("  Strategy 3 FAILED - Word boundary check failed");
 		}
+		System.out.println("  Strategy 3 FAILED - indexOf returned -1");
 
+		System.out.println("  === All strategies failed - returning -1 ===");
 		return -1;
 	}
 

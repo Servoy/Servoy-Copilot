@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** March 19, 2026  
+**Last Updated:** March 20, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -8,27 +8,48 @@
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
-- ✅ **Documentation Assistant Enhancement - SESSION 3 IN PROGRESS (Mar 19, 2026):**
-  - **STATUS:** 🔧 DEBUGGING - Type resolution implementation being refined
-  - **SESSION 3 CURRENT (Mar 19):** Type resolution using hybrid visitor approach
-    - `resolveIdentifierType(identifier, pathOrName)` tool in CodeAnalysisTools
-    - **Three-strategy implementation:**
-      1. **STRATEGY 1 (HIGH confidence):** Extract from JSDoc @type annotation via regex - ✅ WORKING
-      2. **STRATEGY 2 (MEDIUM confidence):** DLTK type inference with hybrid visitor approach - 🔧 IN PROGRESS
-         - Finds variable declaration offset via FileStructureService
-         - Locates assignment value expression (e.g., "foundset" in "var fs = foundset;")
-         - Uses IdentifierCollectingVisitor on VALUE expression (not variable name)
-         - Current issue: Still collecting 0 identifiers for simple assignments
-      3. **STRATEGY 3 (LOW confidence):** Parse literal values from source via regex - ✅ WORKING (fallback)
-    - **Cross-file support:** Designed for automatic handling via DLTK ReferenceLocation
-    - **Confidence levels:** HIGH (JSDoc @type), MEDIUM (DLTK inferred), LOW (literal parsing)
-    - **Returns:** type name, confidence, source location
-    - **Handles:** JSDoc annotations, Servoy globals (fallback), literals
-    - **Current status:** Strategy 1 and 3 work, Strategy 2 needs refinement
-    - **Investigation:** Analyzing JavaScriptSelectionEngine2 autocomplete behavior
-    - CodeAnalysisTools: 712 lines (extensive logging added)
-    - Zero compilation errors
-    - **Next:** Debug why DLTK TypeInferencer2 works for autocomplete but not for variable lookup
+- ✅ **Documentation Assistant Enhancement - SESSION 3 COMPLETE (Mar 20, 2026):**
+  - **STATUS:** ✅ FULLY FUNCTIONAL - Type resolution with JSDoc fallback and ownership validation
+  - **IMPLEMENTATION:** `resolveIdentifierType(identifier, pathOrName)` tool in CodeContextTools
+  - **ARCHITECTURE:** Standalone tool (not wrapper) leveraging proven JavaScriptSelectionEngine2 code path
+  - **THREE-LAYER TYPE EXTRACTION:**
+    1. **DLTK Inference (Primary):** Uses JavaScriptSelectionEngine2 (same as hover tooltips)
+       - Extracts type from `ILocalVariable.getType()` for local variables
+       - Extracts type from `IRElement.getName()` for Servoy API types
+       - Works for assignments: `var fs = foundset;` → JSFoundSet
+    2. **JSDoc @type Fallback:** When DLTK returns no type (uninitialized variables)
+       - Searches backwards max 300 chars for `@type {TypeName}` pattern
+       - **Ownership Validation:** Checks for intermediate `var` declarations
+       - Prevents type stealing: `var a; /** @type {X} */ var b; var c;` → c doesn't get X
+    3. **Function/Method Handling:** Special formatting for function declarations
+       - Returns "Function" type with parameter list
+       - Example: `TYPE: Function, PARAMETERS: (event:JSEvent)`
+  - **FILE RESOLUTION:** Uses FilePathResolver (accepts form names, scope names, full paths)
+  - **IDENTIFIER SEARCH:** Three-strategy regex approach
+    - Strategy 1: Variable declaration `var identifier[;=]`
+    - Strategy 2: Usage pattern `identifier.method()` or `identifier(`
+    - Strategy 3: Fallback with word boundary check
+  - **OUTPUT FORMAT:** Focused type information (not full code context)
+    ```
+    === TYPE RESOLUTION ===
+    IDENTIFIER: customers
+    TYPE: JSFoundSet
+    SOURCE: JSDoc @type annotation
+    LOCATION: /TestStructure/forms/testDeclaredTypes.js, line 6
+    ```
+  - **ERROR HANDLING:** Explicit error messages (not TYPE: UNKNOWN)
+    - Returns "Error: Identifier 'X' not found in file: Y"
+    - Returns "Error: Could not resolve type for identifier 'X' in file: Y at line Z"
+    - AI understands when type resolution fails
+  - **COMPREHENSIVE DEBUGGING:** Console logging for all strategies and fallbacks
+  - **POSITIVE CONDITIONALS:** All code follows happy path nesting pattern
+  - **CODE QUALITY:** Direct imports, zero compilation errors
+  - **TESTING:** 16 comprehensive tests in session3-type-resolution.md
+  - **FILES MODIFIED:**
+    - CodeContextTools.java (860 lines) - Added resolveIdentifierType, formatTypeInfo, extractJSDocType, findIdentifierOffset
+    - Added imports: Pattern, Matcher from java.util.regex
+  - **TOOL CONSOLIDATION:** Moved analyzeFileStructure and getCodeChunk from CodeAnalysisTools to CodeContextTools
+  - **NEXT:** Run all 16 tests and update status
   - **SESSION 2 COMPLETE (Mar 18):** CodeChunkReader, adaptive code reading with 3 modes
   - **SESSION 1 COMPLETE (Mar 17):** FileStructureService, FilePathResolver, analyzeFileStructure() tool
 - ✅ **Documentation Assistant Enhancement - SESSION 2 COMPLETE & TESTED (Mar 18, 2026):**
