@@ -1,6 +1,6 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** March 20, 2026  
+**Last Updated:** March 24, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
 
 **Status:** 
@@ -8,6 +8,79 @@
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
+- ✅ **CodeAnalysisTools Migration COMPLETE (Mar 24, 2026):**
+  - **CREATED:** New `CodeAnalysisTools.java` class with 3 AI tools
+  - **MIGRATED TOOLS:** Moved from CodeContextTools to CodeAnalysisTools
+    1. `analyzeFileStructure(pathOrName)` - Analyze file structure with JSDoc status
+    2. `getCodeChunk(pathOrName, symbolName, chunkNumber, startLine)` - Read code chunks (3 modes)
+    3. `resolveIdentifierType(identifier, pathOrName)` - Resolve identifier types
+  - **CODECONTEXTSERVICE ENHANCEMENT:**
+    - Added `resolveIdentifierType(identifier, file)` - Public method for type resolution
+    - Added `readWorkspaceFile(filePath)` - File content reader
+    - Added `findIdentifierOffset(source, identifier)` - 3-strategy identifier finder
+    - Added `formatTypeInfo(...)` - Type information formatter
+    - Added `extractJSDocType(fileContent, offset)` - JSDoc @type extractor
+    - Added `getModelElements(filePath, characterOffset)` - DLTK selection engine wrapper (removed unused lineNumber parameter)
+    - Added `getFile(filePath)` - IFile resolver
+    - Added `SelectionResult` inner class - DTO for model/foreign elements
+  - **CODE SEPARATION:**
+    - CodeContextTools - Contains `codeContext()` tool and related methods (UNCHANGED)
+    - CodeAnalysisTools - Contains file analysis and type resolution tools (NEW)
+    - CodeContextService - Shared service methods for both tool classes (ENHANCED)
+  - **CODE QUALITY:**
+    - Zero compilation errors
+    - Positive conditionals throughout
+    - Direct imports, no fully qualified names
+    - Comprehensive JavaDoc comments
+  - **BENEFITS:**
+    - Clean separation of concerns
+    - Reusable service methods in CodeContextService
+    - Easier maintenance and testing
+- ✅ **Documentation Assistant Enhancement - SESSION 3.1 COMPLETE (Mar 23, 2026):**
+  - **STATUS:** ✅ FULLY FUNCTIONAL - Editor-Independent Documentation Tools
+  - **NEW TOOLS (DocumentationTools.java):**
+    1. **getDocumentationForIdentifiers(identifiers[], filePath)** - Enhanced with optional filePath parameter
+       - Works WITHOUT active editor when filePath provided
+       - Creates SelectionInfo programmatically via FilePathResolver
+       - Reuses all existing CodeContextService extraction logic
+    2. **getAvailableMembersForType(typeName, memberFilter)** - List type members without documentation
+       - Returns lightweight signatures: `getName(): String`, `show(window): void`
+       - Regex filtering (default "*"), case-insensitive
+       - 50-member threshold with auto-truncation and warning
+       - Groups: METHODS / PROPERTIES sections
+       - Works WITHOUT any file or editor context
+    3. **getDocumentationForTypeMember(typeName, memberName)** - Get full docs for specific member
+       - Case-insensitive member matching
+       - Returns all overloads with "(1 of N)" indicators
+       - Complete signature + description + params + return type + deprecation
+       - Works WITHOUT any file or editor context
+  - **TYPECREATOR INTEGRATION:**
+    - All tools use `TypeCreator.findType()` for type resolution
+    - Handles @ServoyDocumented scriptingName mappings (JSApplication→application, JSForm→controller)
+    - Added `mapClassNameToScriptingName()` helper for DLTK class name to scriptingName conversion
+    - Same type resolution path as code completion (Ctrl+Space) for consistency
+  - **CODECONTEXTSERVICE ENHANCEMENT:**
+    - Added TypeCreator fallback to `extractServoyApiDocumentation()`
+    - PRIMARY PATH: ScriptObjectRegistry (XML-based docs)
+    - FALLBACK PATH: TypeCreator.findType() for @ServoyDocumented types
+    - Comprehensive debug logging for troubleshooting
+  - **KEY FEATURES:**
+    - ✅ Works without active editor (all three tools)
+    - ✅ Handles JSApplication→application mapping automatically
+    - ✅ Regex filtering for large type member lists
+    - ✅ Auto-truncation prevents token overflow
+    - ✅ Case-insensitive member matching
+    - ✅ Multiple overload support
+  - **CODE QUALITY:**
+    - Zero compilation errors
+    - Positive conditionals throughout
+    - Direct imports, no fully qualified names
+    - Comprehensive JavaDoc comments
+  - **TESTING:** 8 new tests added to session3-type-resolution.md (Tests 7.1-7.8)
+  - **FILES MODIFIED:**
+    - DocumentationTools.java (+310 lines) - 3 new tools, 3 helper methods
+    - CodeContextService.java (+120 lines) - TypeCreator fallback, debug logging
+    - session3-type-resolution.md (+180 lines) - 8 comprehensive tests
 - ✅ **Documentation Assistant Enhancement - SESSION 3 COMPLETE (Mar 20, 2026):**
   - **STATUS:** ✅ FULLY FUNCTIONAL - Type resolution with JSDoc fallback and ownership validation
   - **IMPLEMENTATION:** `resolveIdentifierType(identifier, pathOrName)` tool in CodeContextTools
@@ -25,80 +98,18 @@
        - Returns "Function" type with parameter list
        - Example: `TYPE: Function, PARAMETERS: (event:JSEvent)`
   - **FILE RESOLUTION:** Uses FilePathResolver (accepts form names, scope names, full paths)
-  - **IDENTIFIER SEARCH:** Three-strategy regex approach
-    - Strategy 1: Variable declaration `var identifier[;=]`
-    - Strategy 2: Usage pattern `identifier.method()` or `identifier(`
-    - Strategy 3: Fallback with word boundary check
-  - **OUTPUT FORMAT:** Focused type information (not full code context)
-    ```
-    === TYPE RESOLUTION ===
-    IDENTIFIER: customers
-    TYPE: JSFoundSet
-    SOURCE: JSDoc @type annotation
-    LOCATION: /TestStructure/forms/testDeclaredTypes.js, line 6
-    ```
-  - **ERROR HANDLING:** Explicit error messages (not TYPE: UNKNOWN)
-    - Returns "Error: Identifier 'X' not found in file: Y"
-    - Returns "Error: Could not resolve type for identifier 'X' in file: Y at line Z"
-    - AI understands when type resolution fails
-  - **COMPREHENSIVE DEBUGGING:** Console logging for all strategies and fallbacks
-  - **POSITIVE CONDITIONALS:** All code follows happy path nesting pattern
-  - **CODE QUALITY:** Direct imports, zero compilation errors
-  - **TESTING:** 16 comprehensive tests in session3-type-resolution.md
-  - **FILES MODIFIED:**
-    - CodeContextTools.java (860 lines) - Added resolveIdentifierType, formatTypeInfo, extractJSDocType, findIdentifierOffset
-    - Added imports: Pattern, Matcher from java.util.regex
-  - **TOOL CONSOLIDATION:** Moved analyzeFileStructure and getCodeChunk from CodeAnalysisTools to CodeContextTools
-  - **NEXT:** Run all 16 tests and update status
-  - **SESSION 2 COMPLETE (Mar 18):** CodeChunkReader, adaptive code reading with 3 modes
-  - **SESSION 1 COMPLETE (Mar 17):** FileStructureService, FilePathResolver, analyzeFileStructure() tool
+  - **TESTING:** 17 comprehensive tests in session3-type-resolution.md
+  - **FILES MODIFIED:** CodeContextTools.java (860 lines)
 - ✅ **Documentation Assistant Enhancement - SESSION 2 COMPLETE & TESTED (Mar 18, 2026):**
-  - **STATUS:** ✅ FULLY FUNCTIONAL - All 15 tests passed, Ready for SESSION 3 (Type Resolution)
-  - **NEW COMPONENTS:**
-    - `CodeChunkReader` service (237 lines) - Singleton for reading files in chunks
-    - `CodeChunk` DTO (116 lines) - Formatted output container
-    - `getCodeChunk()` tool (109 lines) - Added to CodeAnalysisTools
-  - **THREE READING MODES:**
-    1. **TARGETED MODE:** `getCodeChunk(file, symbolName="loadCustomers")` - Jump to specific symbol
-       - Uses FileStructureService to locate symbol by name
-       - Returns ~200 lines centered on symbol (100 before, 100 after)
-       - Perfect for: "Show me the code for function X"
-    2. **DIRECT MODE:** `getCodeChunk(file, startLine=500)` - Start from specific line
-       - Returns lines 500-699 (max 200 lines from specified position)
-       - Perfect for: AI knows exact line number from Session 1
-    3. **SEQUENTIAL MODE:** `getCodeChunk(file, chunkNumber=0)` - Read by chunk number
-       - Chunk 0: lines 0-199, Chunk 1: lines 200-399, etc.
-       - Perfect for: Progressive file exploration
-  - **KEY FEATURES:**
-    - **Token Efficiency:** Max 200 lines per chunk (prevents context overflow)
-    - **Line Numbers:** Every line prefixed (0-based: "250: function loadCustomers() {")
-    - **Chunk Progress:** Shows "CHUNK 2 of 5" and "(LAST CHUNK)" indicators
-    - **Mode Priority:** TARGETED > DIRECT > SEQUENTIAL (when multiple params provided)
-    - **FilePathResolver Integration:** Accepts form names, scope names, or full paths
-    - **Error Handling:** Clear error messages for EOF, symbol not found, invalid parameters
-    - **Console Logging:** Full debug output showing mode selection and execution
-  - **INTEGRATION:**
-    - Tool shared across ALL assistants (VibeCoding, Documentation, Explain, QuickFix)
-    - Works seamlessly with Session 1 tools (analyzeFileStructure → getCodeChunk)
-    - Same FilePathResolver for consistent file resolution
-  - **CODE QUALITY:**
-    - Zero compilation errors
-    - Positive conditional pattern throughout
-    - Direct imports (no fully qualified class names)
-    - Comprehensive error handling
-    - Full JavaDoc comments
-  - **TESTING:**
-    - 15 comprehensive test cases in session2-adaptive-chunk-reading.md
-    - All tests passed successfully
-    - Performance: < 500ms per chunk read
-    - Memory: No leaks, efficient chunk handling
+  - **STATUS:** ✅ FULLY FUNCTIONAL - All 15 tests passed
+  - **NEW COMPONENTS:** CodeChunkReader service, CodeChunk DTO, getCodeChunk() tool
+  - **THREE READING MODES:** TARGETED, DIRECT, SEQUENTIAL
+  - **KEY FEATURES:** Max 200 lines per chunk, line number prefixes, chunk progress tracking
+  - **TESTING:** 15 comprehensive test cases, all passed
 - ✅ **Documentation Assistant Enhancement - SESSION 1 COMPLETE & TESTED (Mar 17, 2026):**
-  - **IMPLEMENTED:** FileStructureService - DLTK wrapper for symbol extraction with line numbers
-  - **IMPLEMENTED:** FilePathResolver - Intelligent file path resolution (form names, scope names, partial paths)
-  - **IMPLEMENTED:** CodeAnalysisTools - Shared analysis tools (analyzeFileStructure)
-  - **IMPLEMENTED:** DTOs - FileStructure, SymbolInfo (with line number field)
-  - **IMPLEMENTED:** Tool registration - CodeAnalysisTools for VibeCoding & Documentation assistants
-  - **IMPLEMENTED:** Memory limit - 100 messages for Documentation Assistant (vs 40 for others)
+  - **IMPLEMENTED:** FileStructureService, FilePathResolver, CodeAnalysisTools
+  - **IMPLEMENTED:** DTOs - FileStructure, SymbolInfo with line numbers
+  - **IMPLEMENTED:** Tool registration for VibeCoding & Documentation assistants
   - **IMPLEMENTED:** Console logging - System.out.println for Eclipse console debugging
   - **TESTED:** All 10 core tests passed - session1-file-structure-analysis.md
   - **CODE QUALITY:** All code follows positive conditional pattern, direct imports
@@ -181,6 +192,178 @@
   - Editor selection clearing after documentation application
   - Solution activation notification moved to top notification bar (not chat content)
 - ❌ **Form JS CRUD Tools Removed (Feb 25, 2026):** createFormJS, readFormJS, updateFormJS, deleteFormJS removed from EclipseTools
+
+---
+
+## 🔧 TOOL CLASSES ARCHITECTURE (Updated March 24, 2026)
+
+ServoyPilot provides AI tools through specialized tool classes. Each class groups related functionality and is registered with specific assistants.
+
+### Tool Classes Overview
+
+**1. CodeAnalysisTools** (NEW - Mar 24, 2026)
+- **Location:** `com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools`
+- **Purpose:** File structure analysis and type resolution
+- **Registered with:** VibeCoding Assistant, Documentation Assistant
+- **Tools:**
+  - `analyzeFileStructure(pathOrName)` - List all symbols with JSDoc status
+  - `getCodeChunk(pathOrName, symbolName, chunkNumber, startLine)` - Read code in chunks (3 modes)
+  - `resolveIdentifierType(identifier, pathOrName)` - Resolve identifier types
+- **Dependencies:** Uses CodeContextService for shared functionality
+- **Key Features:**
+  - Accepts form names, scope names, or full paths via FilePathResolver
+  - All tools work without active editor
+  - Console logging for debugging
+
+**2. CodeContextTools**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.CodeContextTools`
+- **Purpose:** Code context extraction for error analysis
+- **Registered with:** QuickFix Assistant, potentially others
+- **Tools:**
+  - `codeContext(filePath, lineNumber, characterOffset)` - Get context around specific line
+- **Key Features:**
+  - Returns full function if small (≤40 lines)
+  - Returns lines around error for large functions
+  - Model element and foreign element processing
+  - Designed for error-focused workflows
+
+**3. DocumentationTools**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.DocumentationTools`
+- **Purpose:** JSDoc generation and API documentation lookup
+- **Registered with:** Documentation Assistant ONLY
+- **Tools:**
+  - `getCurrentSelection()` - Get selected code with line numbers (requires editor)
+  - `getDocumentationForIdentifiers(identifiers[], filePath?)` - API doc lookup
+  - `applyDocumentations(filePath, contentHash, items[])` - Apply JSDoc with line-based positioning
+  - `getAvailableMembersForType(typeName, memberFilter?)` - List type members (signatures only)
+  - `getDocumentationForTypeMember(typeName, memberName)` - Get full docs for specific member
+- **Key Features:**
+  - Line-based JSDoc insertion (INSERT/REPLACE modes)
+  - UUID protection via DocumentationValidator
+  - TypeCreator integration for API types
+  - Works with/without active editor (depends on tool)
+
+**4. EclipseTools**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.EclipseTools`
+- **Purpose:** Eclipse workspace and Servoy project operations
+- **Registered with:** VibeCoding Assistant
+- **Categories:**
+  - Project operations (list, activate, create)
+  - Form operations (create, list, properties, events, inheritance)
+  - Element operations (add buttons, fields, labels, tab panels)
+  - Relation operations (create, list)
+  - ValueList operations (create, list)
+- **Key Features:**
+  - Full Servoy project manipulation
+  - Form inheritance support
+  - Multiple element types
+  - Validation and error handling
+
+**5. FileReadingTools**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.FileReadingTools`
+- **Purpose:** File reading for Explain Assistant
+- **Registered with:** Explain Assistant
+- **Tools:**
+  - `readFile(filePath)` - Read complete file (100KB limit)
+  - `readFileLines(filePath, startLine, endLine)` - Read specific line range (max 500 lines)
+  - `getFileInfo(filePath)` - Get file metadata without reading content
+- **Key Features:**
+  - Chunked reading for large files
+  - Line number support
+  - Size limits to prevent token overflow
+
+**6. KnowledgeTools**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.KnowledgeTools`
+- **Purpose:** Knowledge base queries
+- **Registered with:** VibeCoding Assistant, potentially others
+- **Tools:**
+  - `getKnowledge(query)` - Semantic search over knowledge base
+- **Key Features:**
+  - ONNX-based vector embeddings
+  - 80% similarity threshold
+  - Offline operation
+
+**7. ResourceService & Related**
+- **Location:** `com.servoy.eclipse.servoypilot.tools.ResourceService`
+- **Purpose:** Workspace resource search and analysis
+- **Registered with:** VibeCoding Assistant
+- **Key Features:**
+  - File search by patterns
+  - Content search with regex
+  - Resource type filtering
+
+### Tool Registration Pattern
+
+Tools are registered in `ServoyAiModel` when creating each assistant:
+
+```java
+// VibeCoding Assistant (most tools)
+builder.tools(
+    new EclipseTools(),
+    new CodeAnalysisTools(),
+    new KnowledgeTools(),
+    new ResourceService()
+);
+
+// Documentation Assistant (specialized tools only)
+builder.tools(
+    new DocumentationTools(),
+    new CodeAnalysisTools()
+);
+
+// Explain Assistant (file reading only)
+builder.tools(
+    new FileReadingTools()
+);
+```
+
+### Shared Service Layer
+
+**CodeContextService** (Enhanced Mar 24, 2026)
+- **Location:** `com.servoy.eclipse.servoypilot.services.CodeContextService`
+- **Purpose:** Shared functionality for tool classes
+- **Used by:** CodeAnalysisTools, DocumentationTools
+- **Key Methods:**
+  - `resolveIdentifierType(identifier, file)` - Type resolution logic
+  - `getModelElements(filePath, characterOffset)` - DLTK selection engine wrapper
+  - `readWorkspaceFile(filePath)` - File content reader
+  - `findIdentifierOffset(source, identifier)` - Identifier finder (3 strategies)
+  - `formatTypeInfo(...)` - Type information formatter
+  - `extractJSDocType(fileContent, offset)` - JSDoc @type extractor
+- **Benefits:**
+  - Code reuse across tool classes
+  - Single source of truth for type resolution
+  - Consistent behavior across tools
+
+### Design Principles
+
+1. **Separation of Concerns:**
+   - Each tool class has a clear, focused purpose
+   - No overlap in functionality
+   - Clean boundaries between classes
+
+2. **Service Layer Pattern:**
+   - Complex logic lives in service classes (CodeContextService)
+   - Tool classes are thin wrappers that handle parameters and formatting
+   - Services are reusable across multiple tool classes
+
+3. **Assistant-Specific Registration:**
+   - Documentation Assistant gets only documentation tools (prevents misuse)
+   - VibeCoding Assistant gets broad set of tools (general development)
+   - Explain Assistant gets only file reading tools (focused purpose)
+
+4. **Editor Independence:**
+   - Most tools work without active editor (use FilePathResolver)
+   - Only tools that truly need editor selection require it
+   - Consistent parameter patterns across tools
+
+### Migration History
+
+**March 24, 2026:** CodeAnalysisTools created
+- Migrated `analyzeFileStructure`, `getCodeChunk`, `resolveIdentifierType` from CodeContextTools
+- Supporting methods moved to CodeContextService
+- CodeContextTools now focuses only on context extraction for error analysis
+- Clean separation achieved: analysis vs. context extraction
 
 ---
 
@@ -730,31 +913,11 @@ The system works correctly despite the over-engineering. The obsolete architectu
 - ai/ServoyAiModel.java (added DOC_ASSISTANT_MAX_MESSAGES, registered CodeAnalysisTools, added imports)
 
 **Next Steps:**
-- [ ] Execute SESSION 1 tests (15 test cases in testworkflows/session1-file-structure-analysis.md)
-- [ ] Validate all tests pass before proceeding to SESSION 2
-- [ ] SESSION 2: Adaptive Chunk Reading (CodeChunkReader service, getCodeChunk tool with 2-3 modes)
-
-### 🔮 PLANNED SESSIONS (Not Yet Implemented):
-
-**SESSION 2:** Adaptive Chunk Reading (1-2h)
-- CodeChunkReader service for 200-line chunks
-- getCodeChunk() tool with TARGETED, SEQUENTIAL, DIRECT modes
-- CodeChunk DTO
-
-**SESSION 3:** Type Resolution (1-2h)  
-- resolveIdentifierType() tool wrapping TypeInferencer2
-- Enhanced getDocumentationForIdentifiers() with standard JS types (String, Number, Boolean, Array, Object, Date, Function)
-
-**SESSION 4:** Multi-File Workflows (2h)
-- SolutionScannerService for solution-wide scanning
-- scanSolutionForUndocumented() tool
-- getDocumentationProgress() tool
-- Enhanced applyDocumentations() for multi-file support
-
-**SESSION 5:** System Prompt & Integration Testing (2h)
-- Update documentation.txt with new workflow modes
-- Integration testing (10 test scenarios)
-- Production readiness validation
+- [ ] Execute all 25 tests in session3-type-resolution.md
+- [ ] Validate editor-independent tools work correctly
+- [ ] Test TypeCreator scriptingName mapping for all Servoy API types
+- [ ] FUTURE SESSION 4: Multi-File Workflows (solution-wide scanning, progress tracking)
+- [ ] FUTURE SESSION 5: System Prompt Updates & Integration Testing
 
 ---
 
@@ -778,17 +941,20 @@ The system works correctly despite the over-engineering. The obsolete architectu
 - Memory: 40 messages, solution-scoped with `-documentation` suffix
 - Registered tools: `DocumentationTools` (3 tools only)
 
-**3. Documentation Tools** (`DocumentationTools.java` - 571 lines):
+**3. Documentation Tools** (`DocumentationTools.java` - 1088 lines):
 - **Tool 1:** `getCurrentSelection()` - Returns code with LINE NUMBERS (0-based)
   - Format: FILE, START_LINE, END_LINE, TOTAL_LINES, CONTENT_HASH
   - Each line prefixed with line number (e.g., `0: var customers;`)
   - Eliminates need for offset/length calculations
-- **Tool 2:** `getDocumentationForIdentifiers(String[] identifiers)` - On-demand API doc lookup
+  - Requires active editor via SelectionTracker
+- **Tool 2:** `getDocumentationForIdentifiers(identifiers[], filePath)` - On-demand API doc lookup **[ENHANCED Mar 23]**
+  - **NEW:** Optional `filePath` parameter - works WITHOUT active editor when provided
   - Soft limit: 20 identifiers (encourages prioritization)
   - Supports nested identifiers: `"plugins.ngdesktop"`, `"elements.button"`
   - Returns formatted XML documentation for requested identifiers
   - Reports "NOT FOUND" for missing identifiers
   - Uses CodeContextService for extraction
+  - **Editor-independent:** Creates SelectionInfo from file via FilePathResolver
 - **Tool 3:** `applyDocumentations(filePath, contentHash, items)` - LINE-BASED JSDoc application
   - Accepts List<DocumentationItem> with line ranges
   - INSERT mode: empty validation strings, inserts before specified line
@@ -797,11 +963,36 @@ The system works correctly despite the over-engineering. The obsolete architectu
   - Backs up original file (once per file via FileModificationTracker)
   - Clears editor selection after application
   - Returns success/error messages to AI
+- **Tool 4:** `getAvailableMembersForType(typeName, memberFilter)` - List type members **[NEW Mar 23]**
+  - Returns lightweight signatures WITHOUT full documentation
+  - Regex filtering (default "*" = all), case-insensitive
+  - 50-member threshold with auto-truncation and warning
+  - Groups output: METHODS / PROPERTIES sections
+  - Works WITHOUT any file or editor context
+  - Uses TypeCreator.findType() with scriptingName fallback (JSApplication→application)
+- **Tool 5:** `getDocumentationForTypeMember(typeName, memberName)` - Get full docs for specific member **[NEW Mar 23]**
+  - Case-insensitive member name matching
+  - Returns all overloads with "(1 of N)" indicators
+  - Complete: signature + description + parameters + return type + deprecation
+  - Works WITHOUT any file or editor context
+  - Uses TypeCreator.findType() with scriptingName fallback
 
 **4. Supporting Components:**
 - **DocumentationItem (DTO):** Record with startLine, endLine, startSentence, endSentence, jsdoc
 - **DocumentationValidator:** UUID extraction/restoration + JSDoc syntax validation
-- **CodeContextService:** API documentation extraction for identifiers
+- **CodeContextService (953→1169 lines):** API documentation extraction for identifiers **[ENHANCED Mar 23]**
+  - **PRIMARY PATH:** ScriptObjectRegistry (XML-based documentation) for standard Servoy APIs
+  - **FALLBACK PATH:** TypeCreator.findType() for @ServoyDocumented types (e.g., "controller")
+  - **SCRIPTINGNAME MAPPING:** Handles DLTK class name → TypeCreator scriptingName mismatch
+    - DLTK returns: "JSApplication" (Java class name)
+    - TypeCreator expects: "application" (@ServoyDocumented scriptingName)
+    - Solution: `mapClassNameToScriptingName()` helper maps JSApplication→application
+  - **THREE EXTRACTION PATHS:**
+    1. Solution Functions → `ScriptdocContentAccess.getContentReader()` (JSDoc from code)
+    2. Servoy API → `ScriptObjectRegistry.getScriptObjectByName()` → IObjectDocumentation (XML)
+    3. Web Components/Services + API Fallback → `TypeCreator.findType()` → Type.getMembers() (same as code completion)
+  - **COMPREHENSIVE LOGGING:** Debug output shows which path is taken and why
+  - **FILES MODIFIED:** CodeContextService.java (+120 lines for TypeCreator fallback and logging)
 - ~~**JSDocManipulator:**~~ REMOVED (Mar 10) - Dead code, not used
 
 **5. System Prompt** (`documentation.txt` - 1091 lines):
@@ -880,28 +1071,35 @@ The system works correctly despite the over-engineering. The obsolete architectu
 ✅ **Change Detection:** Content hash prevents stale modifications  
 ✅ **Clean Code:** Removed debug logging, old methods, dead code (Mar 10)  
 ✅ **Template Safety:** Fixed `{{...}}` in examples to avoid LangChain4j parsing errors  
+✅ **Editor-Independent:** New tools work without active editor (Mar 23)  
+✅ **TypeCreator Integration:** Consistent documentation with code completion (Mar 23)  
 
-### **Recent Changes (March 10, 2026):**
+### **Recent Changes:**
 
-**Code Cleanup:**
+**March 23, 2026 - SESSION 3.1: Editor-Independent Documentation Tools**
+- Enhanced `getDocumentationForIdentifiers()` with optional `filePath` parameter
+- Added `getAvailableMembersForType(typeName, memberFilter)` - lightweight member listing with regex filtering
+- Added `getDocumentationForTypeMember(typeName, memberName)` - full docs for specific member
+- Enhanced CodeContextService with TypeCreator fallback for @ServoyDocumented types
+- Added `mapClassNameToScriptingName()` for DLTK→TypeCreator type name mapping
+- Added `createSelectionInfoFromFile()` to create SelectionInfo without SelectionTracker
+- 50-member threshold with auto-truncation prevents token overflow
+- Case-insensitive member matching, multiple overload support
+- 8 new tests added (total: 25 tests)
+- Files: DocumentationTools.java (+310 lines → 1088 total), CodeContextService.java (+120 lines → 1169 total)
+
+**March 10, 2026 - Code Cleanup:**
 - Removed debug code that called `getCodeContext()` twice
 - Removed 50+ System.out.println statements
 - Removed old `applyDocumentation()` method (offset-based)
 - Removed `JSDocManipulator.java` (dead code)
-- Minimal logging with ServoyLog only
-
-**System Prompt Fixes:**
-- Updated Examples 1-4 to show correct line-based format
-- Fixed LangChain4j template parsing error: changed `{{timeout: Number, retries: Number}}` to `{Object}` (line 246)
-- Fixed `{{host: String, port: Number, timeout: Number}}` to `{Object}` (line 644)
-- **Root Cause:** LangChain4j scans entire system prompt for `{{variable}}` patterns as template placeholders
 
 **Components:**
-- ✅ DocumentationTools.java (571 lines)
+- ✅ DocumentationTools.java (1088 lines, 5 tools)
 - ✅ DocumentationItem.java (DTO)
 - ✅ DocumentationValidator.java (UUID protection)
-- ✅ CodeContextService.java (API doc extraction)
-- ❌ JSDocManipulator.java (REMOVED - not used)
+- ✅ CodeContextService.java (1169 lines, TypeCreator integration)
+- ❌ JSDocManipulator.java (REMOVED)
 
 ---
 
@@ -1056,6 +1254,129 @@ Your task is to generate documentation...
 - Simple and maintainable
 
 **Lesson learned:** When writing system prompts, avoid `{{` patterns unless you're intentionally using template variables with provided values.
+
+---
+
+## 🔗 TYPECREATOR INTEGRATION ARCHITECTURE (March 23, 2026)
+
+**Purpose:** How ServoyPilot integrates with Servoy's TypeCreator for API documentation that matches code completion.
+
+### **The Problem: DLTK vs TypeCreator Type Name Mismatch**
+
+**DLTK Type Inference** (what hover tooltips and type resolution use):
+- Returns Java class names from reflection/Rhino
+- Example: `var app = application;` → DLTK returns type `"JSApplication"`
+
+**TypeCreator Type Registration** (what code completion uses):
+- Registers types using `@ServoyDocumented` annotation's `scriptingName` attribute
+- Example: `@ServoyDocumented(scriptingName="application")` on JSApplication class
+- TypeCreator has: `"application"` → Type object with 152 members
+
+**The Mismatch:**
+- DLTK gives us: `"JSApplication"`
+- TypeCreator expects: `"application"`
+- Result: `TypeCreator.findType("JSApplication")` returns null!
+
+### **The Solution: scriptingName Mapping Layer**
+
+**Implementation:**
+```java
+private String mapClassNameToScriptingName(String className) {
+    return switch (className) {
+        case "JSApplication" -> "application";
+        case "JSDatabaseManager" -> "databaseManager";
+        case "JSSecurity" -> "security";
+        case "JSI18N" -> "i18n";
+        case "JSUtils" -> "utils";
+        case "JSForm" -> "controller";
+        case "JSEventsManager" -> "eventsManager";
+        case "JSSolutionModel" -> "solutionModel";
+        default -> null;
+    };
+}
+```
+
+**Usage Pattern:**
+```java
+// Try direct lookup first
+Type type = typeCreator.findType(null, typeName);
+
+// If not found, try scriptingName mapping
+if (type == null) {
+    String scriptingName = mapClassNameToScriptingName(typeName);
+    if (scriptingName != null) {
+        type = typeCreator.findType(null, scriptingName);
+    }
+}
+```
+
+### **Why "controller" is Different from "application"**
+
+**Global API Objects** (application, databaseManager, security):
+- Registered globally via `ScriptObjectRegistry` in TypeCreator.initialize()
+- DLTK returns **class names**: `"JSApplication"`, `"JSDatabaseManager"`
+- TypeCreator expects **scriptingNames**: `"application"`, `"databaseManager"`
+- **Mapping required** ✅
+
+**Form-Scoped Variables** (controller):
+- Injected dynamically into each form's scope
+- NOT registered via ScriptObjectRegistry
+- DLTK already returns **scriptingName**: `"controller"` (lowercase)
+- TypeCreator registered by **scriptingName**: `"controller"`
+- **No mapping needed** ✅ Direct lookup works
+
+### **Documentation Extraction: Three Paths**
+
+**Path 1: Solution Functions** (user-defined code)
+```
+Code → DLTK → IModelElement → ScriptdocContentAccess.getContentReader() → JSDoc from code
+```
+
+**Path 2: Servoy API** (application, databaseManager, plugins, etc.)
+```
+Code → DLTK → ScriptObjectRegistry.getScriptObjectByName() → IObjectDocumentation (XML)
+       ↓ (if null)
+       TypeCreator.findType() → Type.getMembers() → Member.getDescription()
+```
+
+**Path 3: Web Components/Services**
+```
+Code → DLTK → TypeCreator.findType("RuntimeWebComponent<name>") → Type.getMembers() → Member.getDescription()
+```
+
+### **Key Insight: Code Completion Parity**
+
+The TypeCreator fallback ensures **exact same documentation** as code completion (Ctrl+Space):
+
+**Code Completion Flow:**
+1. User types `application.` and presses Ctrl+Space
+2. JavaScriptCompletionEngine2 calls TypeCreator.findType("application")
+3. Gets Type object with 152 members
+4. Displays each member with `Member.getDescription()` in popup
+
+**ServoyPilot Documentation Flow:**
+1. AI calls `getDocumentationForIdentifiers(["app"])`
+2. Finds `var app = application;` → type `"JSApplication"`
+3. Maps to `"application"` via `mapClassNameToScriptingName()`
+4. Calls TypeCreator.findType("application")
+5. Gets SAME Type object with 152 members
+6. Extracts documentation from `Member.getDescription()`
+
+**Result:** ServoyPilot documentation = Code completion documentation ✅
+
+### **TypeCreator Components Used**
+
+- **TypeCreator.findType(context, typeName)** - Main entry point for type lookup
+- **Type.getMembers()** - Returns EList<Member> (methods and properties)
+- **Member.getName()** - Member name (e.g., "closeSolution")
+- **Member.getDescription()** - Full documentation text
+- **Method.getParameters()** - Parameter list with types
+- **Method.getType()** - Return type
+- **Property.getType()** - Property type
+
+**Integration Point:**
+- `TypeProviderFactory.getTypeProvider().getTypeCreator()` - Singleton access
+- Context parameter: `null` for global types, file path for scoped types
 
 ---
 
@@ -1637,6 +1958,71 @@ embeddingService.loadKnowledgeBaseFromReader(bundleReader);
 - ✅ Debug system with DebugUtils (controlled by `-Dconsole.debug=true`)
 - ✅ Comprehensive error handling and logging
 - ✅ Positive conditional coding rules followed
+- ✅ 25 tests for SESSION 3 (session3-type-resolution.md)
+- ✅ 15 tests for SESSION 2 (session2-adaptive-chunk-reading.md)
+- ✅ 15 tests for SESSION 1 (session1-file-structure-analysis.md)
+
+---
+
+## 📋 QUICK REFERENCE: Documentation Assistant Tools
+
+**All Tools Available (8 total):**
+
+### Code Analysis Tools (CodeAnalysisTools.java) - **UPDATED Mar 24, 2026**
+
+| Tool | Parameters | Requires Editor? | Purpose |
+|------|-----------|------------------|---------|
+| `analyzeFileStructure` | pathOrName | ❌ No | List all symbols with JSDoc status |
+| `getCodeChunk` | pathOrName, symbolName?, chunkNumber?, startLine? | ❌ No | Read code in 200-line chunks (3 modes) |
+| `resolveIdentifierType` | identifier, pathOrName | ❌ No | Get type of identifier |
+
+**Note:** These tools were migrated from CodeContextTools to CodeAnalysisTools on March 24, 2026. The implementation uses CodeContextService for shared functionality.
+
+### Code Context Tools (CodeContextTools.java)
+
+| Tool | Parameters | Requires Editor? | Purpose |
+|------|-----------|------------------|---------|
+| `codeContext` | filePath, lineNumber, characterOffset | ❌ No | Get code context around specific line |
+
+**Note:** CodeContextTools now focuses on context extraction. File analysis tools moved to CodeAnalysisTools.
+
+### Documentation Tools (DocumentationTools.java)
+
+| Tool | Parameters | Requires Editor? | Purpose |
+|------|-----------|------------------|---------|
+| `getCurrentSelection` | - | ✅ Yes | Get selected code with line numbers |
+| `getDocumentationForIdentifiers` | identifiers[], filePath? | ⚠️ Optional | Extract API docs for identifiers in selection/file |
+| `applyDocumentations` | filePath, contentHash, items[] | ❌ No | Apply JSDoc to file with line-based positioning |
+| `getAvailableMembersForType` | typeName, memberFilter? | ❌ No | List type members (signatures only, regex filter, 50 max) |
+| `getDocumentationForTypeMember` | typeName, memberName | ❌ No | Get full docs for specific member |
+
+**Legend:**
+- ✅ Yes = Requires active editor via SelectionTracker
+- ❌ No = Works completely standalone, no editor needed
+- ⚠️ Optional = Works with SelectionTracker if filePath not provided, otherwise standalone
+
+**Typical Workflows:**
+
+**Workflow 1: Context Menu → Generate Docs**
+1. User right-clicks code, selects "Generate Docs"
+2. AI calls `getCurrentSelection()` (requires editor ✅)
+3. AI optionally calls `getDocumentationForIdentifiers()` for API types
+4. AI calls `applyDocumentations()` to apply JSDoc
+
+**Workflow 2: Chat-Based → Explore API**
+1. User asks "What methods are available on application?"
+2. AI calls `getAvailableMembersForType("application", "*")` (no editor ❌)
+3. User asks "Tell me about closeSolution"
+4. AI calls `getDocumentationForTypeMember("application", "closeSolution")` (no editor ❌)
+
+**Workflow 3: Chat-Based → Document Closed File**
+1. User asks "Generate docs for testServoyGlobals"
+2. AI calls `analyzeFileStructure("testServoyGlobals")` (no editor ❌)
+3. AI calls `getCodeChunk("testServoyGlobals", symbolName="onLoad")` (no editor ❌)
+4. AI calls `getDocumentationForIdentifiers(["app"], "testServoyGlobals")` (no editor ❌)
+5. AI calls `applyDocumentations("testServoyGlobals", hash, items)` (no editor ❌)
+
+---
 
 **Architecture Highlights:**
 - 3 OSGi bundles (main plugin, langchain4j wrapper, knowledgebase)

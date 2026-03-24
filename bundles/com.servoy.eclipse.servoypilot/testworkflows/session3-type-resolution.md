@@ -1,8 +1,11 @@
 # SESSION 3: Type Resolution - Test Workflows
 
 **Date:** March 20, 2026  
+**Updated:** March 24, 2026 (Tests 7.1-7.8 updated for DocumentationTools)  
 **Status:** ✅ COMPLETE - Ready for Testing  
-**Implementation:** CodeContextTools.resolveIdentifierType()
+**Implementation:** 
+- **Tests 1-6:** `CodeAnalysisTools.resolveIdentifierType()` (shared with VibeCoding, Documentation, UnitTest assistants)
+- **Tests 7.1-7.8:** `DocumentationTools` methods (exclusive to Documentation Assistant)
 
 ---
 
@@ -11,11 +14,19 @@
 This document contains test workflows for SESSION 3 of the Documentation Enhancement project.
 
 **What was implemented:**
-- resolveIdentifierType() tool in CodeContextTools (standalone, not wrapper)
+
+**March 20, 2026:**
+- resolveIdentifierType() tool migrated to CodeAnalysisTools (March 24: moved from CodeContextTools)
 - Leverages existing JavaScriptSelectionEngine2 code path (proven to work)
 - JSDoc @type extraction fallback with ownership validation
 - FilePathResolver integration (accepts form names, scope names, full paths)
 - Comprehensive debugging output
+
+**March 23, 2026:**
+- Three editor-independent tools added to DocumentationTools
+- getAvailableMembersForType() - List type members without documentation
+- getDocumentationForTypeMember() - Get full docs for specific member  
+- getDocumentationForIdentifiers() - Enhanced with optional filePath parameter
 
 **Key Features:**
 - ✅ Accepts form names: `testCustomers` → auto-resolves to file
@@ -25,9 +36,13 @@ This document contains test workflows for SESSION 3 of the Documentation Enhance
 - ✅ Ownership validation: Ensures @type belongs to target variable
 - ✅ Explicit error messages: Returns "Error: ..." when type not found
 - ✅ Console logging for debugging
+- ✅ Editor-independent tools work without active editor (Tests 7.1-7.8)
 
 **Tools to test:**
-- `resolveIdentifierType(identifier, pathOrName)` - Resolve identifier type
+- `CodeAnalysisTools.resolveIdentifierType(identifier, pathOrName)` - Resolve identifier type (Tests 1-6)
+- `DocumentationTools.getAvailableMembersForType(typeName, memberFilter?)` - List type members (Test 7.1-7.3)
+- `DocumentationTools.getDocumentationForTypeMember(typeName, memberName)` - Get member docs (Test 7.4-7.6)
+- `DocumentationTools.getDocumentationForIdentifiers(identifiers[], filePath?)` - Extract API docs (Test 7.7-7.8)
 
 ---
 
@@ -113,6 +128,16 @@ var someVar;
 ---
 
 ## TEST SUITE
+
+### Tests 1-6: Type Resolution with CodeAnalysisTools
+
+**Tool Class:** `CodeAnalysisTools` (shared with VibeCoding, Documentation, UnitTest assistants)
+
+**Tool:** `resolveIdentifierType(identifier, pathOrName)`
+
+**Note:** These tests can be run with any assistant that has CodeAnalysisTools registered (VibeCoding, Documentation, or UnitTest).
+
+---
 
 ### Test 1: JSDoc @type Annotations
 
@@ -223,7 +248,7 @@ Type of ctrl in testServoyGlobals?
 
 **Expected Output:**
 ```
-TYPE: JSController
+TYPE: controller
 SOURCE: Local variable
 ```
 
@@ -238,8 +263,23 @@ Type of app in testServoyGlobals?
 
 **Expected Output:**
 ```
-TYPE: RuntimeApplication
+TYPE: JSApplication
 SOURCE: Local variable
+```
+
+**Known Issue - FIXED:**
+DLTK returns class name "JSApplication" but TypeCreator expects scriptingName "application".
+Added `mapClassNameToScriptingName()` to handle this mismatch:
+- JSApplication → application
+- JSDatabaseManager → databaseManager  
+- JSSecurity → security
+- JSForm → controller
+
+**Expected Console Log (after fix):**
+```
+[TypeCreator Fallback] Resolving type: JSApplication
+[TypeCreator Fallback] Class name 'JSApplication' not found, trying scriptingName 'application'
+[TypeCreator Fallback] Type resolved: application (members: 152)
 ```
 
 ---
@@ -256,6 +296,58 @@ Type of db in testServoyGlobals?
 TYPE: JSDataBaseManager
 SOURCE: Local variable
 ```
+
+---
+
+#### Test 2.6: Controller Type (TypeCreator Mapping)
+
+**Purpose:** Verify TypeCreator fallback resolves @ServoyDocumented scriptingName="controller" to JSForm class
+
+**Prompt:**
+```
+Type of ctrl in testServoyGlobals?
+```
+
+**Expected Output:**
+```
+TYPE: controller
+SOURCE: Local variable
+```
+
+**Expected Console Log:**
+```
+=== CodeContextTools.resolveIdentifierType() called ===
+Input: identifier='ctrl', pathOrName='testServoyGlobals'
+File resolved successfully: /TestStructure/forms/testServoyGlobals.js
+=== findIdentifierOffset() called ===
+Identifier: 'ctrl'
+Strategy 1 SUCCESS - Found at offset: 245
+Found identifier at offset 245, line 8
+```
+
+**Verification for Documentation Extraction:**
+
+When `getDocumentationForIdentifiers(["controller"])` is called with code like:
+```javascript
+var ctrl = controller;
+ctrl.getName();
+ctrl.show();
+```
+
+Console should show TypeCreator fallback:
+```
+[Servoy API Doc] Extracting documentation for type: controller
+[Servoy API Doc] Not found in ScriptObjectRegistry, trying TypeCreator fallback
+[TypeCreator Fallback] Resolving type: controller
+[TypeCreator Fallback] Type resolved: controller (members: 45)
+[TypeCreator Fallback] Extracted documentation for 2 out of 2 members
+```
+
+**Notes:**
+- Type string is "controller" (lowercase) per @ServoyDocumented annotation
+- TypeCreator maps "controller" → BasicFormController.JSForm class
+- Documentation extraction uses same path as code completion (Ctrl+Space)
+- Validates TypeCreator fallback in CodeContextService.extractServoyApiDocumentation()
 
 ---
 
@@ -405,6 +497,269 @@ PARAMETERS: (event:JSEvent)
 
 ---
 
+### Test 7: Editor-Independent Documentation Tools (NEW - March 23, 2026)
+
+**Tool Class:** `DocumentationTools` (registered with Documentation Assistant only)
+
+**Tools Tested:**
+- `getAvailableMembersForType(typeName, memberFilter?)` - List type members (signatures only)
+- `getDocumentationForTypeMember(typeName, memberName)` - Get full docs for specific member
+- `getDocumentationForIdentifiers(identifiers[], filePath?)` - Extract API docs (editor-independent when filePath provided)
+
+**Note:** These tools are exclusive to the Documentation Assistant. Use the Documentation Assistant in the chat view to test these workflows.
+
+#### Test 7.1: getAvailableMembersForType - List All Members
+
+**Purpose:** Verify listing all members of a type without any file or editor context
+
+**Tool:** `DocumentationTools.getAvailableMembersForType()`
+
+**Prompt:**
+```
+List all available members for the 'application' type
+```
+
+**AI Should Call:**
+```
+getAvailableMembersForType("application", "*")
+```
+
+**Expected Output:**
+```
+=== AVAILABLE MEMBERS FOR TYPE: application ===
+
+Total found: 152 members
+
+METHODS (120):
+  - closeSolution(): void
+  - getUUID(): UUID
+  - output(msg:String): void
+  - createWindow(name:String, type:Number): JSWindow
+  - getWindow(name:String): JSWindow
+  ...
+
+PROPERTIES (32):
+  - enabled: Boolean
+  - solution: String
+  ...
+
+[WARNING: 152 members found, showing first 50. Use memberFilter with regex like 'get.*', 'show.*', or 'is.*' to narrow results]
+```
+
+**Success Criteria:**
+- ✅ Works without any active editor
+- ✅ Returns 50 members (truncated)
+- ✅ Shows warning about truncation
+
+---
+
+#### Test 7.2: getAvailableMembersForType - Regex Filter
+
+**Tool:** `DocumentationTools.getAvailableMembersForType()`
+
+**Prompt:**
+```
+Show me all methods on 'application' that start with 'get'
+```
+
+**AI Should Call:**
+```
+getAvailableMembersForType("application", "get.*")
+```
+
+**Expected Output:**
+```
+=== AVAILABLE MEMBERS FOR TYPE: application ===
+
+Filter: get.*
+Total found: 25 members
+
+METHODS (23):
+  - getUUID(): UUID
+  - getWindow(name:String): JSWindow
+  - getApplicationType(): Number
+  ...
+```
+
+**Success Criteria:**
+- ✅ Only returns members matching "get.*" pattern
+- ✅ Case-insensitive matching
+- ✅ No truncation warning (< 50 members)
+
+---
+
+#### Test 7.3: getAvailableMembersForType - JSApplication Class Name Mapping
+
+**Tool:** `DocumentationTools.getAvailableMembersForType()`
+
+**Prompt:**
+```
+List all members for JSApplication type
+```
+
+**AI Should Call:**
+```
+getAvailableMembersForType("JSApplication", "*")
+```
+
+**Expected Console Log:**
+```
+Type 'JSApplication' not found, trying scriptingName: application
+Type resolved: application (total members: 152)
+```
+
+**Success Criteria:**
+- ✅ Automatically maps JSApplication → application
+- ✅ Returns same result as using "application"
+
+---
+
+#### Test 7.4: getDocumentationForTypeMember - Single Method
+
+**Tool:** `DocumentationTools.getDocumentationForTypeMember()`
+
+**Prompt:**
+```
+Get documentation for the closeSolution method on application
+```
+
+**AI Should Call:**
+```
+getDocumentationForTypeMember("application", "closeSolution")
+```
+
+**Expected Output:**
+```
+=== DOCUMENTATION FOR: application.closeSolution ===
+
+SIGNATURE: application.closeSolution(): void
+
+DESCRIPTION:
+Closes the currently active solution...
+
+PARAMETERS:
+  (none)
+
+RETURNS: void
+```
+
+**Success Criteria:**
+- ✅ Works without any file or editor
+- ✅ Returns full description
+
+---
+
+#### Test 7.5: getDocumentationForTypeMember - Overloaded Method
+
+**Tool:** `DocumentationTools.getDocumentationForTypeMember()`
+
+**Prompt:**
+```
+Get documentation for the output method on application
+```
+
+**AI Should Call:**
+```
+getDocumentationForTypeMember("application", "output")
+```
+
+**Expected Output:**
+```
+=== DOCUMENTATION FOR: application.output ===
+
+[Note: 2 overloads found]
+
+--- OVERLOAD 1 of 2 ---
+SIGNATURE: application.output(msg:Object): void
+...
+
+--- OVERLOAD 2 of 2 ---
+SIGNATURE: application.output(msg:Object, level:Number): void
+...
+```
+
+**Success Criteria:**
+- ✅ Returns all overloads
+- ✅ Shows "(1 of 2)" indicators
+
+---
+
+#### Test 7.6: getDocumentationForTypeMember - Case Insensitive
+
+**Tool:** `DocumentationTools.getDocumentationForTypeMember()`
+
+**Prompt:**
+```
+Get documentation for CLOSESOLUTION on application (test case insensitivity)
+```
+
+**AI Should Call:**
+```
+getDocumentationForTypeMember("application", "CLOSESOLUTION")
+```
+
+**Success Criteria:**
+- ✅ Matches "closeSolution" despite uppercase input
+
+---
+
+#### Test 7.7: getDocumentationForIdentifiers - With FilePath
+
+**Tool:** `DocumentationTools.getDocumentationForIdentifiers()`
+
+**Prompt:**
+```
+Get documentation for 'app' identifier in testServoyGlobals file
+```
+
+**AI Should Call:**
+```
+getDocumentationForIdentifiers(["app"], "testServoyGlobals")
+```
+
+**Expected Console Log:**
+```
+========== getDocumentationForIdentifiers CALLED ==========
+Requested identifiers: [app]
+File path parameter: 'testServoyGlobals'
+Step 1: Creating SelectionInfo from file path...
+Step 2: SelectionInfo created from file
+```
+
+**Success Criteria:**
+- ✅ Works without active editor
+- ✅ Resolves form name to file
+- ✅ Extracts documentation for app.closeSolution()
+
+---
+
+#### Test 7.8: getDocumentationForIdentifiers - Controller Fallback
+
+**Tool:** `DocumentationTools.getDocumentationForIdentifiers()`
+
+**Prompt:**
+```
+Get documentation for 'ctrl' identifier in testServoyGlobals file
+```
+
+**AI Should Call:**
+```
+getDocumentationForIdentifiers(["ctrl"], "testServoyGlobals")
+```
+
+**Expected Console Log:**
+```
+[Servoy API Doc] Not found in ScriptObjectRegistry, trying TypeCreator fallback
+[TypeCreator Fallback] ✓ Direct lookup succeeded
+[TypeCreator Fallback] Type resolved: controller
+```
+
+**Success Criteria:**
+- ✅ TypeCreator fallback triggered
+- ✅ Controller documentation extracted
+
+---
+
 ## Test Results Summary
 
 | Test | Status | Notes |
@@ -417,6 +772,7 @@ PARAMETERS: (event:JSEvent)
 | 2.3 - JSController | ⏳ | Global |
 | 2.4 - RuntimeApplication | ⏳ | Global |
 | 2.5 - JSDataBaseManager | ⏳ | Global |
+| 2.6 - Controller (TypeCreator) | ⏳ | TypeCreator fallback |
 | 3.1 - Number literal | ⏳ | Literal |
 | 3.2 - String literal | ⏳ | Literal |
 | 3.3 - Boolean literal | ⏳ | Literal |
@@ -425,10 +781,18 @@ PARAMETERS: (event:JSEvent)
 | 4.3 - Ownership validation | ⏳ | No stealing |
 | 5.1 - Function parameter | ⏳ | Parameter |
 | 6.1 - Function type | ⏳ | Function |
+| 7.1 - getAvailableMembersForType (all) | ⏳ | New test |
+| 7.2 - getAvailableMembersForType (regex) | ⏳ | New test |
+| 7.3 - JSApplication mapping | ⏳ | New test |
+| 7.4 - getDocumentationForTypeMember (single) | ⏳ | New test |
+| 7.5 - getDocumentationForTypeMember (overloaded) | ⏳ | New test |
+| 7.6 - getDocumentationForTypeMember (case insensitive) | ⏳ | New test |
+| 7.7 - getDocumentationForIdentifiers (filepath) | ⏳ | New test |
+| 7.8 - getDocumentationForIdentifiers (fallback) | ⏳ | New test |
 
-**Total:** 16  
+**Total:** 25  
 **Passed:** 0  
-**Pending:** 16
+**Pending:** 25
 
 ---
 

@@ -21,10 +21,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.dltk.core.DLTKCore;
+import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.jface.text.TextSelection;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorPart;
@@ -34,6 +37,8 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.texteditor.ITextEditor;
 
+import com.servoy.eclipse.debug.script.TypeCreator;
+import com.servoy.eclipse.debug.script.TypeProviderFactory;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
@@ -41,9 +46,15 @@ import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.exceptions.ValidationException;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
+import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 import com.servoy.eclipse.servoypilot.services.documentation.DocumentationValidator;
 import com.servoy.eclipse.servoypilot.tools.dto.DocumentationItem;
-
+import com.servoy.j2db.documentation.scripting.docs.FormElements;
+import org.eclipse.dltk.javascript.typeinfo.model.Type;
+import org.eclipse.dltk.javascript.typeinfo.model.Member;
+import org.eclipse.dltk.javascript.typeinfo.model.Method;
+import org.eclipse.dltk.javascript.typeinfo.model.Property;
+import org.eclipse.dltk.javascript.typeinfo.model.Parameter;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 
@@ -115,28 +126,40 @@ public class DocumentationTools
 		return "No active editor or selection available";
 	}
 
-	@Tool("Retrieve API documentation for specific identifiers in the current selection")
+	@Tool("Retrieve API documentation for specific identifiers in the current selection or specified file")
 	public String getDocumentationForIdentifiers(
-		@P("Array of identifier names to look up (e.g., ['foundset', 'record', 'plugins.ngdesktop'])") String[] identifiers)
+		@P("Array of identifier names to look up (e.g., ['foundset', 'record', 'plugins.ngdesktop'])") String[] identifiers,
+		@P("Optional file path (form name, scope name, or full path) - if provided, works without active editor") String filePath)
 	{
 		if (identifiers != null && identifiers.length > 0)
 		{
-
 			try
 			{
-				// Get current selection from tracker
-				SelectionTracker tracker = SelectionTracker.getInstance();
-				Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
-
-				if (!selectionOpt.isPresent())
+				SelectionInfo selection = null;
+				
+				// If filePath provided, create SelectionInfo programmatically (no editor needed)
+				if (filePath != null && !filePath.trim().isEmpty())
 				{
-					return "Error: No active editor or selection available";
+					selection = createSelectionInfoFromFile(filePath);
+					if (selection == null)
+					{
+						return "Error: Could not open file: " + filePath;
+					}
 				}
+				else
+				{
+					SelectionTracker tracker = SelectionTracker.getInstance();
+					Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
 
-				SelectionInfo selection = selectionOpt.get();
+					if (!selectionOpt.isPresent())
+					{
+						return "Error: No active editor or selection available. Provide filePath parameter to work without active editor.";
+					}
+
+					selection = selectionOpt.get();
+				}
+				
 				CodeContextService contextService = CodeContextService.getInstance();
-
-				// Get code context with filter - only extract docs for requested identifiers
 				CodeContext context = contextService.getCodeContext(selection, identifiers);
 
 				if (context.hasError())
@@ -164,7 +187,6 @@ public class DocumentationTools
 					boolean found = false;
 
 					// Extract base identifier from requested ID (before last dot)
-					// e.g., "databaseManager.getFoundSet" → "databaseManager"
 					String baseRequestedId = requestedId;
 					int lastDotIndex = requestedId.lastIndexOf('.');
 					if (lastDotIndex > 0)
@@ -175,11 +197,9 @@ public class DocumentationTools
 					// Search through all identifiers in context
 					for (var identifierContext : context.getIdentifiers())
 					{
-						// Match by base identifier name
 						if (identifierContext.getName().equals(requestedId) ||
 							identifierContext.getName().equals(baseRequestedId))
 						{
-							// Add documentation for this identifier
 							String xml = identifierContext.toFormattedXML();
 							if (xml != null && !xml.trim().isEmpty())
 							{
@@ -191,7 +211,6 @@ public class DocumentationTools
 						}
 					}
 
-					// If not found, report it
 					if (!found)
 					{
 						response.append("<type>").append(requestedId).append(": NOT FOUND</type>\n");
@@ -565,5 +584,464 @@ public class DocumentationTools
 				ServoyLog.logError("Error clearing editor selection", e);
 			}
 		});
+	}
+
+	/**
+	 * Creates SelectionInfo from a file path without requiring SelectionTracker.
+	 * Used when tools are called without an active editor.
+	 * 
+	 * @param pathOrName file path, form name, or scope name
+	 * @return SelectionInfo for entire file, or null if file not found
+	 */
+	private SelectionInfo createSelectionInfoFromFile(String pathOrName)
+	{
+		if (pathOrName == null || pathOrName.trim().isEmpty())
+		{
+			return null;
+		}
+
+		try
+		{
+			// Resolve file using FilePathResolver (supports form names, scope names)
+			FilePathResolver resolver = FilePathResolver.getInstance();
+			IFile file = resolver.resolveFile(pathOrName);
+
+			if (file != null && file.exists())
+			{
+				// Get ISourceModule for DLTK parsing
+				ISourceModule module = (ISourceModule)DLTKCore.create(file);
+				if (module != null)
+				{
+					// Read entire file content
+					String source = module.getSource();
+					if (source != null)
+					{
+						// Calculate total lines
+						int totalLines = source.split("\r\n|\r|\n", -1).length;
+
+						// Create SelectionInfo for entire file
+						Optional<SelectionInfo> selectionOpt = SelectionInfo.create(
+							file.getFullPath().toString(),
+							0, // offset
+							source.length(), // length
+							source, // text
+							module,
+							0, // startLine
+							totalLines - 1, // endLine
+							true // isFullFileSelected
+						);
+
+						if (selectionOpt.isPresent())
+						{
+							return selectionOpt.get();
+						}
+					}
+				}
+			}
+
+			System.out.println("ERROR: File not found or could not be read: " + pathOrName);
+			return null;
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error creating SelectionInfo from file: " + pathOrName, e);
+			return null;
+		}
+	}
+
+	@Tool("List available members (methods and properties) for a Servoy API type. " +
+		"Returns lightweight signatures without full documentation. " +
+		"Use regex filter to narrow results (e.g., 'get.*' for getters, 'show.*|hide.*' for show/hide methods).")
+	public String getAvailableMembersForType(
+		@P("Type name (e.g., 'application', 'databaseManager', 'controller', 'JSApplication')") String typeName,
+		@P("Regex filter for member names (default '*' = all members). Examples: 'get.*', 'is.*', 'show.*|hide.*'") String memberFilter)
+	{
+		System.out.println("\n========== getAvailableMembersForType CALLED ==========");
+		System.out.println("Type name: " + typeName);
+		System.out.println("Member filter: " + (memberFilter != null ? "'" + memberFilter + "'" : "null (default to *)"));
+
+		if (typeName == null || typeName.trim().isEmpty())
+		{
+			return "Error: typeName parameter is required";
+		}
+
+		try
+		{
+			// Get TypeCreator instance
+			TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
+			if (typeCreator == null)
+			{
+				System.out.println("ERROR: TypeCreator instance not available");
+				return "Error: TypeCreator not available";
+			}
+
+			// Resolve type via TypeCreator
+			Type type = typeCreator.findType(null, typeName);
+
+			// If not found, try scriptingName mapping
+			if (type == null)
+			{
+				String scriptingName = mapClassNameToScriptingName(typeName);
+				if (scriptingName != null && !scriptingName.equals(typeName))
+				{
+					System.out.println("Type '" + typeName + "' not found, trying scriptingName: " + scriptingName);
+					type = typeCreator.findType(null, scriptingName);
+				}
+			}
+
+			if (type == null)
+			{
+				System.out.println("ERROR: Type not found: " + typeName);
+				return "Error: Type '" + typeName + "' not found. Try using scriptingName like 'application' instead of 'JSApplication'.";
+			}
+
+			System.out.println("Type resolved: " + type.getName() + " (total members: " + type.getMembers().size() + ")");
+
+			// Prepare regex pattern (default to match all)
+			String filter = (memberFilter != null && !memberFilter.trim().isEmpty()) ? memberFilter.trim() : "*";
+			Pattern pattern = filter.equals("*") ? null : Pattern.compile(filter, Pattern.CASE_INSENSITIVE);
+
+			// Collect and filter members
+			List<Member> methods = new ArrayList<>();
+			List<Member> properties = new ArrayList<>();
+
+			for (Member member : type.getMembers())
+			{
+				String memberName = member.getName();
+				
+				// Apply filter
+				if (pattern != null)
+				{
+					if (!pattern.matcher(memberName).matches())
+					{
+						continue; // Skip non-matching members
+					}
+				}
+
+				if (member instanceof Method)
+				{
+					methods.add(member);
+				}
+				else if (member instanceof Property)
+				{
+					properties.add(member);
+				}
+			}
+
+			int totalFiltered = methods.size() + properties.size();
+			System.out.println("Filtered members: " + totalFiltered + " (methods: " + methods.size() + ", properties: " + properties.size() + ")");
+
+			// Check threshold
+			final int THRESHOLD = 50;
+			boolean truncated = totalFiltered > THRESHOLD;
+
+			// Build response
+			StringBuilder response = new StringBuilder();
+			response.append("=== AVAILABLE MEMBERS FOR TYPE: ").append(type.getName()).append(" ===\n\n");
+
+			if (!filter.equals("*"))
+			{
+				response.append("Filter: ").append(filter).append("\n");
+			}
+			response.append("Total found: ").append(totalFiltered).append(" members\n\n");
+
+			// Methods section
+			if (!methods.isEmpty())
+			{
+				response.append("METHODS (").append(methods.size()).append("):\n");
+				int count = 0;
+				for (Member method : methods)
+				{
+					if (truncated && count >= THRESHOLD)
+					{
+						break;
+					}
+					response.append("  - ").append(formatMemberSignature(method)).append("\n");
+					count++;
+				}
+				response.append("\n");
+			}
+
+			// Properties section
+			if (!properties.isEmpty())
+			{
+				response.append("PROPERTIES (").append(properties.size()).append("):\n");
+				int count = methods.size(); // Continue counting from methods
+				for (Member property : properties)
+				{
+					if (truncated && count >= THRESHOLD)
+					{
+						break;
+					}
+					response.append("  - ").append(formatMemberSignature(property)).append("\n");
+					count++;
+				}
+				response.append("\n");
+			}
+
+			// Add truncation warning
+			if (truncated)
+			{
+				response.append("[WARNING: ").append(totalFiltered).append(" members found, showing first ").append(THRESHOLD);
+				response.append(". Use memberFilter with regex like 'get.*', 'show.*', or 'is.*' to narrow results]\n");
+			}
+
+			System.out.println("Returning " + (truncated ? THRESHOLD : totalFiltered) + " member signatures");
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting available members for type: " + typeName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool("Get full documentation for a specific member (method or property) of a Servoy API type. " +
+		"Works without any file or editor context - queries TypeCreator directly.")
+	public String getDocumentationForTypeMember(
+		@P("Type name (e.g., 'application', 'databaseManager', 'controller', 'JSApplication')") String typeName,
+		@P("Member name (case-insensitive, e.g., 'closeSolution', 'getName', 'enabled')") String memberName)
+	{
+		System.out.println("\n========== getDocumentationForTypeMember CALLED ==========");
+		System.out.println("Type name: " + typeName);
+		System.out.println("Member name: " + memberName);
+
+		if (typeName == null || typeName.trim().isEmpty())
+		{
+			return "Error: typeName parameter is required";
+		}
+
+		if (memberName == null || memberName.trim().isEmpty())
+		{
+			return "Error: memberName parameter is required";
+		}
+
+		try
+		{
+			// Get TypeCreator instance
+			TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
+			if (typeCreator == null)
+			{
+				System.out.println("ERROR: TypeCreator instance not available");
+				return "Error: TypeCreator not available";
+			}
+
+			// Resolve type via TypeCreator
+			Type type = typeCreator.findType(null, typeName);
+
+			// If not found, try scriptingName mapping
+			if (type == null)
+			{
+				String scriptingName = mapClassNameToScriptingName(typeName);
+				if (scriptingName != null && !scriptingName.equals(typeName))
+				{
+					System.out.println("Type '" + typeName + "' not found, trying scriptingName: " + scriptingName);
+					type = typeCreator.findType(null, scriptingName);
+				}
+			}
+
+			if (type == null)
+			{
+				System.out.println("ERROR: Type not found: " + typeName);
+				return "Error: Type '" + typeName + "' not found";
+			}
+
+			System.out.println("Type resolved: " + type.getName());
+
+			// Search for member (case-insensitive)
+			List<Member> matchingMembers = new ArrayList<>();
+			for (Member member : type.getMembers())
+			{
+				if (member.getName().equalsIgnoreCase(memberName))
+				{
+					matchingMembers.add(member);
+				}
+			}
+
+			if (matchingMembers.isEmpty())
+			{
+				System.out.println("ERROR: Member '" + memberName + "' not found in type: " + type.getName());
+				return "Error: Member '" + memberName + "' not found in type '" + type.getName() + "'";
+			}
+
+			System.out.println("Found " + matchingMembers.size() + " matching member(s)");
+
+			// Build response with full documentation
+			StringBuilder response = new StringBuilder();
+			response.append("=== DOCUMENTATION FOR: ").append(type.getName()).append(".").append(memberName).append(" ===\n\n");
+
+			if (matchingMembers.size() > 1)
+			{
+				response.append("[Note: ").append(matchingMembers.size()).append(" overloads found]\n\n");
+			}
+
+			// Format each overload
+			int overloadNum = 1;
+			for (Member member : matchingMembers)
+			{
+				if (matchingMembers.size() > 1)
+				{
+					response.append("--- OVERLOAD ").append(overloadNum).append(" of ").append(matchingMembers.size()).append(" ---\n");
+				}
+
+				response.append(formatMemberDocumentation(member, type.getName()));
+				response.append("\n");
+
+				overloadNum++;
+			}
+
+			System.out.println("Returning documentation for " + matchingMembers.size() + " overload(s)");
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting documentation for member: " + typeName + "." + memberName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * Maps Java class names to @ServoyDocumented scriptingName values.
+	 * Only needed for global Servoy API objects registered via ScriptObjectRegistry.
+	 */
+	private String mapClassNameToScriptingName(String className)
+	{
+		if (className == null)
+		{
+			return null;
+		}
+
+		return switch (className)
+		{
+			case "JSApplication" -> "application";
+			case "JSDatabaseManager" -> "databaseManager";
+			case "JSSecurity" -> "security";
+			case "JSI18N" -> "i18n";
+			case "JSUtils" -> "utils";
+			case "JSForm" -> "controller";
+			case "JSEventsManager" -> "eventsManager";
+			case "JSSolutionModel" -> "solutionModel";
+			default -> null;
+		};
+	}
+
+	/**
+	 * Formats a member signature without full documentation (lightweight).
+	 * Used by getAvailableMembersForType.
+	 */
+	private String formatMemberSignature(Member member)
+	{
+		if (member == null)
+		{
+			return "";
+		}
+
+		StringBuilder sb = new StringBuilder();
+		sb.append(member.getName());
+
+		if (member instanceof Method method)
+		{
+			sb.append("(");
+			List<Parameter> params = method.getParameters();
+			if (params != null && !params.isEmpty())
+			{
+				for (int i = 0; i < params.size(); i++)
+				{
+					Parameter param = params.get(i);
+					sb.append(param.getName());
+					if (param.getType() != null)
+					{
+						sb.append(":").append(param.getType().getName());
+					}
+					if (i < params.size() - 1)
+					{
+						sb.append(", ");
+					}
+				}
+			}
+			sb.append(")");
+
+			// Add return type if available
+			if (method.getType() != null)
+			{
+				sb.append(": ").append(method.getType().getName());
+			}
+		}
+		else if (member instanceof Property property)
+		{
+			// Add property type if available
+			if (property.getType() != null)
+			{
+				sb.append(": ").append(property.getType().getName());
+			}
+		}
+
+		return sb.toString();
+	}
+
+	/**
+	 * Formats full documentation for a member (used by getDocumentationForTypeMember).
+	 * Includes signature, description, parameters, and return type.
+	 */
+	private String formatMemberDocumentation(Member member, String typeName)
+	{
+		if (member == null)
+		{
+			return "";
+		}
+
+		StringBuilder sb = new StringBuilder();
+
+		// Signature
+		sb.append("SIGNATURE: ").append(typeName).append(".").append(formatMemberSignature(member)).append("\n\n");
+
+		// Description
+		String description = member.getDescription();
+		if (description != null && !description.trim().isEmpty())
+		{
+			sb.append("DESCRIPTION:\n").append(description).append("\n\n");
+		}
+
+		// For methods, add detailed parameter and return type info
+		if (member instanceof Method method)
+		{
+			List<Parameter> params = method.getParameters();
+			if (params != null && !params.isEmpty())
+			{
+				sb.append("PARAMETERS:\n");
+				for (Parameter param : params)
+				{
+					sb.append("  - ").append(param.getName());
+					if (param.getType() != null)
+					{
+						sb.append(" (").append(param.getType().getName()).append(")");
+					}
+					sb.append("\n");
+				}
+				sb.append("\n");
+			}
+
+			if (method.getType() != null)
+			{
+				sb.append("RETURNS: ").append(method.getType().getName()).append("\n");
+			}
+		}
+
+		// Deprecation info
+		if (member.isDeprecated())
+		{
+			sb.append("\n[DEPRECATED]");
+			if (description != null && description.toLowerCase().contains("deprecated"))
+			{
+				// Description already mentions deprecation
+			}
+			else
+			{
+				sb.append(" This member is deprecated.");
+			}
+			sb.append("\n");
+		}
+
+		return sb.toString();
 	}
 }

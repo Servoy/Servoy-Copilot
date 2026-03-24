@@ -26,8 +26,16 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.Path;
+import org.eclipse.dltk.codeassist.ISelectionRequestor;
+import org.eclipse.dltk.compiler.env.IModuleSource;
+import org.eclipse.dltk.compiler.env.ModuleSource;
 import org.eclipse.dltk.core.DLTKCore;
+import org.eclipse.dltk.core.ILocalVariable;
 import org.eclipse.dltk.core.IMember;
+import org.eclipse.dltk.core.IMethod;
 import org.eclipse.dltk.core.IModelElement;
 import org.eclipse.dltk.core.IModelElementVisitor;
 import org.eclipse.dltk.core.ISourceModule;
@@ -37,10 +45,13 @@ import org.eclipse.dltk.core.ScriptModelUtil;
 import org.eclipse.dltk.internal.javascript.ti.TypeInferencer2;
 import org.eclipse.dltk.javascript.ast.JSNode;
 import org.eclipse.dltk.javascript.ast.Script;
+import org.eclipse.dltk.javascript.internal.core.codeassist.JavaScriptSelectionEngine2;
 import org.eclipse.dltk.javascript.parser.JavaScriptParserUtil;
 import org.eclipse.dltk.javascript.typeinference.IValueReference;
 import org.eclipse.dltk.javascript.typeinference.ReferenceLocation;
 import org.eclipse.dltk.javascript.typeinfo.IRClassType;
+import org.eclipse.dltk.javascript.typeinfo.IRElement;
+import org.eclipse.dltk.javascript.typeinfo.IRMethod;
 import org.eclipse.dltk.javascript.typeinfo.IRType;
 import org.eclipse.dltk.javascript.typeinfo.JSTypeSet;
 import org.eclipse.dltk.javascript.typeinfo.model.Member;
@@ -50,6 +61,8 @@ import org.eclipse.dltk.javascript.typeinfo.model.ParameterKind;
 import org.eclipse.dltk.javascript.typeinfo.model.Property;
 import org.eclipse.dltk.javascript.typeinfo.model.Type;
 import org.eclipse.dltk.javascript.ui.scriptdoc.ScriptdocContentAccess;
+import org.eclipse.jface.text.Document;
+import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.debug.script.TypeCreator;
 import com.servoy.eclipse.debug.script.TypeProviderFactory;
@@ -379,7 +392,10 @@ public class CodeContextService
 	 * Extracts Servoy API documentation for API objects like plugins, application, etc.
 	 * Ported from AI Bridge AiBridgeHandler.getContextData() lines 289-307.
 	 * 
-	 * @param typeName the API type name (e.g., "Plugins", "Application")
+	 * Enhanced with TypeCreator fallback to handle @ServoyDocumented scriptingName mappings
+	 * (e.g., "controller" → JSForm class with full member documentation).
+	 * 
+	 * @param typeName the API type name (e.g., "Plugins", "Application", "controller")
 	 * @param node the identifier node
 	 * @param collector the visitor with collected properties/calls
 	 * @return formatted documentation string, or empty string if not available
@@ -391,30 +407,246 @@ public class CodeContextService
 			return "";
 		}
 
+		System.out.println("  [Servoy API Doc] Extracting documentation for type: " + typeName);
+
+		// PRIMARY PATH: Try ScriptObjectRegistry (XML-based documentation)
 		ITypedScriptObject scriptObject = ScriptObjectRegistry.getScriptObjectByName(typeName);
+		System.out.println("  [Servoy API Doc] ScriptObjectRegistry.getScriptObjectByName(\"" + typeName + "\") returned: " +
+			(scriptObject != null ? scriptObject.getClass().getSimpleName() : "null"));
+
 		if (scriptObject != null && scriptObject.getObjectDocumentation() != null)
 		{
+			System.out.println("  [Servoy API Doc] ✓ Found in ScriptObjectRegistry");
 			List<IValueReference> callsOrProperties = collector.propertiesOrCalls.get(node);
+			System.out.println("  [Servoy API Doc] collector.propertiesOrCalls.get(node) returned: " +
+				(callsOrProperties != null ? callsOrProperties.size() + " items" : "null"));
+			System.out.println("  [Servoy API Doc] node = " + node + " (class: " + node.getClass().getSimpleName() + ")");
+			System.out.println("  [Servoy API Doc] Total keys in collector.propertiesOrCalls map: " + collector.propertiesOrCalls.keySet().size());
+
 			if (callsOrProperties != null && !callsOrProperties.isEmpty())
 			{
 				IObjectDocumentation docFile = scriptObject.getObjectDocumentation();
 				StringBuilder sb = new StringBuilder();
 				String identifierName = node.toString();
 
+				System.out.println("  [Servoy API Doc] Processing " + callsOrProperties.size() + " property/method calls:");
 				for (IValueReference action : callsOrProperties)
 				{
 					String propertyName = action.getName();
+					System.out.println("    - Extracting doc for: " + propertyName);
 					String funcDoc = extractFunctionDocumentation(docFile, propertyName, identifierName);
 					if (!funcDoc.isEmpty())
 					{
+						System.out.println("      ✓ Found documentation (" + funcDoc.length() + " chars)");
 						sb.append(funcDoc).append("\n\n");
+					}
+					else
+					{
+						System.out.println("      ✗ No documentation found for: " + propertyName);
 					}
 				}
 
-				return sb.toString().trim();
+				String result = sb.toString().trim();
+				if (!result.isEmpty())
+				{
+					System.out.println("  [Servoy API Doc] ✓✓✓ SUCCESS - Extracted documentation via ScriptObjectRegistry");
+					return result;
+				}
+				System.out.println("  [Servoy API Doc] ✗ ScriptObjectRegistry path returned empty result");
+			}
+			else
+			{
+				System.out.println("  [Servoy API Doc] ✗ No properties/calls found on this node");
+				System.out.println("  [Servoy API Doc] DEBUG: Listing all nodes in propertiesOrCalls map:");
+				for (JSNode key : collector.propertiesOrCalls.keySet())
+				{
+					System.out.println("    - Node: " + key + " (" + key.getClass().getSimpleName() + ") → " +
+						collector.propertiesOrCalls.get(key).size() + " calls");
+				}
 			}
 		}
-		return "";
+		else
+		{
+			System.out.println("  [Servoy API Doc] ✗ Not found in ScriptObjectRegistry (trying TypeCreator fallback)");
+		}
+
+		// FALLBACK PATH: Try TypeCreator (Type system with @ServoyDocumented mappings)
+		// This handles cases like "controller" which is mapped via @ServoyDocumented annotation
+		// to JSForm class, providing the same documentation as code completion (Ctrl+Space)
+		return extractServoyApiDocumentationFromTypeCreator(typeName, node, collector);
+	}
+
+	/**
+	 * Fallback extraction using TypeCreator's Type system.
+	 * Handles @ServoyDocumented scriptingName mappings like "controller" → JSForm.
+	 * Uses the same path as code completion for consistent documentation.
+	 * 
+	 * @param typeName the type name to resolve via TypeCreator
+	 * @param node the identifier node
+	 * @param collector the visitor with collected properties/calls
+	 * @return formatted documentation string, or empty string if not available
+	 */
+	private String extractServoyApiDocumentationFromTypeCreator(String typeName, JSNode node, IdentifierCollectingVisitor collector)
+	{
+		if (typeName == null)
+		{
+			return "";
+		}
+
+		System.out.println("  [TypeCreator Fallback] ========== STARTING ==========");
+		System.out.println("  [TypeCreator Fallback] Input typeName: " + typeName);
+		System.out.println("  [TypeCreator Fallback] Input node: " + node + " (" + node.getClass().getSimpleName() + ")");
+
+		// Get TypeCreator instance
+		TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
+		if (typeCreator == null)
+		{
+			System.out.println("  [TypeCreator Fallback] ✗ TypeCreator instance not available");
+			return "";
+		}
+		System.out.println("  [TypeCreator Fallback] ✓ TypeCreator instance obtained");
+
+		// Resolve type via TypeCreator (same as code completion)
+		// Context = null for global types
+		System.out.println("  [TypeCreator Fallback] Calling typeCreator.findType(null, \"" + typeName + "\")...");
+		Type servoyType = typeCreator.findType(null, typeName);
+
+		// If not found by class name, try scriptingName (DLTK returns class name, but TypeCreator uses scriptingName)
+		if (servoyType == null)
+		{
+			System.out.println("  [TypeCreator Fallback] ✗ Direct lookup failed");
+			String scriptingName = mapClassNameToScriptingName(typeName);
+			System.out.println("  [TypeCreator Fallback] mapClassNameToScriptingName(\"" + typeName + "\") returned: " +
+				(scriptingName != null ? "\"" + scriptingName + "\"" : "null"));
+
+			if (scriptingName != null && !scriptingName.equals(typeName))
+			{
+				System.out.println("  [TypeCreator Fallback] Trying mapped scriptingName: calling typeCreator.findType(null, \"" + scriptingName + "\")...");
+				servoyType = typeCreator.findType(null, scriptingName);
+				if (servoyType != null)
+				{
+					System.out.println("  [TypeCreator Fallback] ✓✓ SUCCESS - Found via scriptingName mapping!");
+				}
+				else
+				{
+					System.out.println("  [TypeCreator Fallback] ✗ Mapped scriptingName lookup also failed");
+				}
+			}
+		}
+		else
+		{
+			System.out.println("  [TypeCreator Fallback] ✓ Direct lookup succeeded");
+		}
+
+		if (servoyType == null)
+		{
+			System.out.println("  [TypeCreator Fallback] ✗✗ FINAL: Type not found in TypeCreator");
+			return "";
+		}
+
+		System.out.println("  [TypeCreator Fallback] ✓ Type resolved: " + servoyType.getName());
+		System.out.println("  [TypeCreator Fallback] Type has " + servoyType.getMembers().size() + " members");
+		if (servoyType.getMembers().size() > 0)
+		{
+			System.out.println("  [TypeCreator Fallback] First 5 members:");
+			int count = 0;
+			for (Member m : servoyType.getMembers())
+			{
+				System.out.println("    - " + m.getName() + " (" + m.getClass().getSimpleName() + ")");
+				if (++count >= 5)
+				{
+					break;
+				}
+			}
+		}
+
+		// Get properties/calls for this identifier
+		System.out.println("  [TypeCreator Fallback] Checking collector.propertiesOrCalls.get(node)...");
+		List<IValueReference> callsOrProperties = collector.propertiesOrCalls.get(node);
+		System.out.println("  [TypeCreator Fallback] Result: " + (callsOrProperties != null ? callsOrProperties.size() + " items" : "null"));
+
+		if (callsOrProperties == null || callsOrProperties.isEmpty())
+		{
+			System.out.println("  [TypeCreator Fallback] ✗ No properties/calls found on this specific node");
+			System.out.println("  [TypeCreator Fallback] Total nodes in collector.propertiesOrCalls: " + collector.propertiesOrCalls.keySet().size());
+			System.out.println("  [TypeCreator Fallback] Listing all nodes:");
+			for (JSNode key : collector.propertiesOrCalls.keySet())
+			{
+				System.out.println("    - Node: " + key + " → " + collector.propertiesOrCalls.get(key).size() + " calls");
+			}
+			System.out.println("  [TypeCreator Fallback] ========== END (NO CALLS) ==========");
+			return "";
+		}
+
+		System.out.println("  [TypeCreator Fallback] ✓ Found " + callsOrProperties.size() + " property/method calls");
+		StringBuilder sb = new StringBuilder();
+		String identifierName = node.toString();
+		System.out.println("  [TypeCreator Fallback] Identifier name: " + identifierName);
+
+		// Extract documentation for each property/method call
+		int foundCount = 0;
+		System.out.println("  [TypeCreator Fallback] Extracting documentation for each call:");
+		for (IValueReference action : callsOrProperties)
+		{
+			String propertyName = action.getName();
+			System.out.println("    - Looking for member: " + propertyName);
+			String memberDoc = extractWebObjectMemberDocumentation(servoyType, propertyName, identifierName);
+			if (!memberDoc.isEmpty())
+			{
+				System.out.println("      ✓ Found doc (" + memberDoc.length() + " chars)");
+				sb.append(memberDoc).append("\n\n");
+				foundCount++;
+			}
+			else
+			{
+				System.out.println("      ✗ No doc found");
+			}
+		}
+
+		System.out.println("  [TypeCreator Fallback] Extracted documentation for " + foundCount + " out of " + callsOrProperties.size() + " members");
+		System.out.println("  [TypeCreator Fallback] ========== END ==========");
+
+		return sb.toString().trim();
+	}
+
+	/**
+	 * Maps Java class names to @ServoyDocumented scriptingName values.
+	 * DLTK returns class names (e.g., "JSApplication") but TypeCreator registers by scriptingName (e.g., "application").
+	 * 
+	 * Note: This mapping is only needed for GLOBAL Servoy API objects registered via ScriptObjectRegistry.
+	 * Form-scoped variables like "controller" already use scriptingName in DLTK, so no mapping is needed.
+	 * 
+	 * @param className the Java class name
+	 * @return the scriptingName, or null if no mapping exists
+	 */
+	private String mapClassNameToScriptingName(String className)
+	{
+		if (className == null)
+		{
+			return null;
+		}
+
+		// Map known Servoy global API classes to their scriptingName values from @ServoyDocumented annotations
+		// These are registered via registerConstantsForScriptObject in TypeCreator.initialize()
+		return switch (className)
+		{
+			// Core globals
+			case "JSApplication" -> "application";
+			case "JSDatabaseManager" -> "databaseManager";
+			case "JSSecurity" -> "security";
+			case "JSI18N" -> "i18n";
+			case "JSUtils" -> "utils";
+
+			// Form-scoped (actually not needed, but kept for reference)
+			// "controller" is already resolved correctly by DLTK as it's injected per form scope
+			case "JSForm" -> "controller";
+
+			// Plugin-related
+			case "JSEventsManager" -> "eventsManager";
+			case "JSSolutionModel" -> "solutionModel";
+
+			default -> null; // No known mapping, return null
+		};
 	}
 
 	/**
@@ -923,7 +1155,7 @@ public class CodeContextService
 					{
 						return true;
 					}
-					
+
 					// Extract base identifier from filter (everything before last dot)
 					int lastDotIndex = filter.lastIndexOf('.');
 					if (lastDotIndex > 0)
@@ -936,7 +1168,7 @@ public class CodeContextService
 							return true;
 						}
 					}
-					
+
 					// Fallback: nested match using startsWith
 					// e.g., "databaseManager.getFoundSet" matches "databaseManager"
 					// This handles edge cases where the above logic might not catch
@@ -948,5 +1180,427 @@ public class CodeContextService
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Resolves the type of an identifier in a JavaScript file.
+	 * This is a standalone method used by CodeAnalysisTools.
+	 * 
+	 * @param identifier the identifier name to resolve
+	 * @param file the file containing the identifier
+	 * @return formatted type information string
+	 */
+	public String resolveIdentifierType(String identifier, IFile file)
+	{
+		if (identifier == null || identifier.isBlank() || file == null || !file.exists())
+		{
+			return "Error: Invalid identifier or file";
+		}
+
+		String filePath = file.getFullPath().toString();
+
+		try
+		{
+			String fileContent = readWorkspaceFile(filePath);
+			if (fileContent == null)
+			{
+				return "Error: Could not read file: " + filePath;
+			}
+
+			IDocument document = new Document(fileContent);
+			int offset = findIdentifierOffset(fileContent, identifier);
+			if (offset == -1)
+			{
+				return "Error: Identifier '" + identifier + "' not found in file: " + filePath;
+			}
+
+			int lineNumber = document.getLineOfOffset(offset);
+			SelectionResult selectedElements = getModelElements(filePath, offset);
+
+			if (selectedElements != null)
+			{
+				return formatTypeInfo(selectedElements, identifier, filePath, lineNumber + 1, fileContent, offset);
+			}
+
+			return "Error: No type information available for identifier '" + identifier + "'";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error resolving identifier type: " + identifier, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * Read workspace file content.
+	 * 
+	 * @param filePath the file path
+	 * @return file content as string, or null on error
+	 */
+	private String readWorkspaceFile(String filePath)
+	{
+		if (filePath == null)
+		{
+			return null;
+		}
+
+		if (filePath.startsWith("L/"))
+		{
+			filePath = filePath.substring(2);
+		}
+
+		try
+		{
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
+
+			if (file != null && file.exists())
+			{
+				try (java.io.InputStream is = file.getContents())
+				{
+					return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error reading file: " + filePath, e);
+		}
+		return null;
+	}
+
+	/**
+	 * Find offset of identifier in source code.
+	 * Tries multiple strategies: declaration, usage, then fallback to first occurrence.
+	 * 
+	 * @param source the source code
+	 * @param identifier the identifier to find
+	 * @return offset of identifier, or -1 if not found
+	 */
+	private int findIdentifierOffset(String source, String identifier)
+	{
+		if (source == null || identifier == null)
+		{
+			return -1;
+		}
+
+		// Strategy 1: Find in variable declaration: var identifier = ...
+		String pattern1Str = "\\bvar\\s+(" + java.util.regex.Pattern.quote(identifier) + ")\\b";
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(pattern1Str);
+		java.util.regex.Matcher matcher = pattern.matcher(source);
+		if (matcher.find())
+		{
+			return matcher.start(1);
+		}
+
+		// Strategy 2: Find in usage: identifier.something or identifier(
+		String pattern2Str = "\\b(" + java.util.regex.Pattern.quote(identifier) + ")\\s*[.({]";
+		pattern = java.util.regex.Pattern.compile(pattern2Str);
+		matcher = pattern.matcher(source);
+		if (matcher.find())
+		{
+			return matcher.start(1);
+		}
+
+		// Strategy 3: Fallback - just find first occurrence with word boundary check
+		int index = source.indexOf(identifier);
+		if (index >= 0)
+		{
+			boolean beforeCheck = (index == 0 || !Character.isJavaIdentifierPart(source.charAt(index - 1)));
+			boolean afterCheck = (index + identifier.length() >= source.length() ||
+				!Character.isJavaIdentifierPart(source.charAt(index + identifier.length())));
+
+			if (beforeCheck && afterCheck)
+			{
+				return index;
+			}
+		}
+
+		return -1;
+	}
+
+	/**
+	 * Format focused type information from SelectionResult.
+	 * Returns concise type details, not full code context.
+	 * 
+	 * @param selectedElements the selection result
+	 * @param identifier the identifier name
+	 * @param filePath the file path
+	 * @param lineNumber the line number (1-based)
+	 * @param fileContent the file content
+	 * @param offset the character offset
+	 * @return formatted type information string
+	 */
+	private String formatTypeInfo(SelectionResult selectedElements, String identifier, String filePath, int lineNumber,
+		String fileContent, int offset)
+	{
+		if (selectedElements == null)
+		{
+			return "Error: No selection result available";
+		}
+
+		StringBuilder result = new StringBuilder();
+		result.append("=== TYPE RESOLUTION ===\n\n");
+		result.append("IDENTIFIER: ").append(identifier).append("\n");
+
+		// Extract from model elements (LocalVariable, etc.)
+		for (IModelElement element : selectedElements.modelElements)
+		{
+			if (element.getElementName().equals(identifier))
+			{
+				if (element instanceof ILocalVariable localVariable)
+				{
+					String type = localVariable.getType();
+					if (type != null && !type.isBlank())
+					{
+						result.append("TYPE: ").append(type).append("\n");
+						result.append("SOURCE: Local variable\n");
+						result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+						return result.toString();
+					}
+				}
+
+				if (element instanceof IMethod method)
+				{
+					result.append("TYPE: Function\n");
+					result.append("SOURCE: Method declaration\n");
+					result.append("PARAMETERS: (");
+					try
+					{
+						result.append(java.util.Arrays.stream(method.getParameters())
+							.map(p -> p.getName() + ":" + p.getType())
+							.collect(java.util.stream.Collectors.joining(", ")));
+					}
+					catch (Exception e)
+					{
+						result.append("unknown");
+					}
+					result.append(")\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					return result.toString();
+				}
+
+				// Other model element types - try JSDoc fallback before returning
+				String jsDocType = extractJSDocType(fileContent, offset);
+				if (jsDocType != null)
+				{
+					result.append("TYPE: ").append(jsDocType).append("\n");
+					result.append("SOURCE: JSDoc @type annotation\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					return result.toString();
+				}
+
+				result.append("TYPE: ").append(element.getClass().getSimpleName()).append("\n");
+				result.append("SOURCE: Model element\n");
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				return result.toString();
+			}
+		}
+
+		// Extract from foreign elements (Servoy API types)
+		for (IRElement element : selectedElements.foreignElements)
+		{
+			String type = element.getName();
+			if (type != null && !type.isBlank())
+			{
+				result.append("TYPE: ").append(type).append("\n");
+				result.append("SOURCE: Servoy API type\n");
+
+				if (element instanceof IRMethod method)
+				{
+					result.append("PARAMETERS: (");
+					result.append(method.getParameters().stream()
+						.map(p -> p.getName() + ":" + p.getType())
+						.collect(java.util.stream.Collectors.joining(", ")));
+					result.append(")\n");
+				}
+
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				return result.toString();
+			}
+		}
+
+		// Fallback: Try to extract type from JSDoc @type annotation
+		String jsDocType = extractJSDocType(fileContent, offset);
+		if (jsDocType != null)
+		{
+			result.append("TYPE: ").append(jsDocType).append("\n");
+			result.append("SOURCE: JSDoc @type annotation\n");
+			result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+			return result.toString();
+		}
+
+		return "Error: Could not resolve type for identifier '" + identifier + "' in file: " + filePath + " at line " + lineNumber;
+	}
+
+	/**
+	 * Extract type from JSDoc @type annotation in preceding text.
+	 * Looks backwards from offset to find @type {TypeName} pattern.
+	 * IMPORTANT: Verifies that @type belongs to THIS identifier, not a previous one.
+	 * 
+	 * @param fileContent the file content
+	 * @param offset the character offset
+	 * @return extracted type name, or null if not found
+	 */
+	private String extractJSDocType(String fileContent, int offset)
+	{
+		if (offset <= 0 || fileContent == null)
+		{
+			return null;
+		}
+
+		int lookbackStart = Math.max(0, offset - 300);
+		String precedingText = fileContent.substring(lookbackStart, offset);
+
+		int jsDocStart = precedingText.lastIndexOf("/**");
+		if (jsDocStart == -1)
+		{
+			return null;
+		}
+
+		String jsDocBlock = precedingText.substring(jsDocStart);
+
+		// Check if there's another variable declaration between the JSDoc and our identifier
+		java.util.regex.Pattern varPattern = java.util.regex.Pattern.compile("\\*/\\s*\\n\\s*var\\s+\\w+");
+		java.util.regex.Matcher varMatcher = varPattern.matcher(jsDocBlock);
+		if (varMatcher.find())
+		{
+			return null;
+		}
+
+		// Look for @type {TypeName} pattern in the JSDoc block
+		java.util.regex.Pattern jsDocPattern = java.util.regex.Pattern.compile("@type\\s*\\{([^}]+)\\}");
+		java.util.regex.Matcher jsDocMatcher = jsDocPattern.matcher(jsDocBlock);
+		if (jsDocMatcher.find())
+		{
+			return jsDocMatcher.group(1).trim();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Get model elements at a specific location using DLTK selection engine.
+	 * 
+	 * @param filePath the file path
+	 * @param characterOffset the character offset
+	 * @return SelectionResult containing model and foreign elements
+	 */
+	public SelectionResult getModelElements(String filePath, int characterOffset)
+	{
+		if (filePath == null)
+		{
+			return null;
+		}
+
+		try
+		{
+			IFile file = getFile(filePath);
+			if (file == null || !file.exists())
+			{
+				return null;
+			}
+
+			String fileContent = readWorkspaceFile(filePath);
+			if (fileContent == null)
+			{
+				return null;
+			}
+
+			ISourceModule sourceModule = (ISourceModule)DLTKCore.create(file);
+			IModuleSource module = new ModuleSource(filePath, sourceModule, fileContent);
+			JavaScriptSelectionEngine2 selectionEngine = new JavaScriptSelectionEngine2();
+			int offset = ParserService.getInstance().skipWhitespaceForward(fileContent, characterOffset);
+			SelectionResult selectedElements = new SelectionResult();
+			Thread thread = new Thread(() -> {
+				try
+				{
+					selectionEngine.setRequestor(new ISelectionRequestor()
+					{
+						@Override
+						public void acceptModelElement(IModelElement element)
+						{
+							if (element != null)
+							{
+								selectedElements.modelElements.add(element);
+							}
+						}
+
+						@Override
+						public void acceptForeignElement(Object element)
+						{
+							if (element instanceof IRElement ire)
+							{
+								selectedElements.foreignElements.add(ire);
+							}
+						}
+
+						@Override
+						public void acceptElement(Object element, ISourceRange range)
+						{
+							if (element instanceof IModelElement modelElement)
+							{
+								acceptModelElement(modelElement);
+							}
+							else
+							{
+								acceptForeignElement(element);
+							}
+						}
+					});
+
+					selectionEngine.select(module, offset, offset);
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logError("Error selecting model elements: " + e.getMessage(), e);
+				}
+			}, "Searching model elements -" + file.getName());
+
+			thread.start();
+			thread.join();
+			return selectedElements;
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error computing model elements: " + filePath, e);
+			return null;
+		}
+	}
+
+	/**
+	 * Get IFile from file path.
+	 * 
+	 * @param filePath the file path
+	 * @return IFile or null if not found
+	 */
+	private IFile getFile(String filePath)
+	{
+		if (filePath == null)
+		{
+			return null;
+		}
+
+		if (filePath.startsWith("L/"))
+		{
+			filePath = filePath.substring(2);
+		}
+
+		IFile file = ResourcesPlugin.getWorkspace().getRoot()
+			.getFile(new Path(filePath));
+
+		if (file != null && file.exists())
+		{
+			return file;
+		}
+		return null;
+	}
+
+	/**
+	 * DTO for holding selection results from DLTK selection engine.
+	 */
+	public static class SelectionResult
+	{
+		public List<IModelElement> modelElements = new ArrayList<>();
+		public List<IRElement> foreignElements = new ArrayList<>();
 	}
 }
