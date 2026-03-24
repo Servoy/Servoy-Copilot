@@ -24,7 +24,8 @@ public enum AssistantType
 	DOCUMENTATION("Documentation Assistant", "-documentation"),
 	QUICKFIX("QuickFix Assistant", "-quickfix"),
 	EXPLAIN("Explain Assistant", "-explain"),
-	REVIEW("Review Assistant", "-review");
+	REVIEW("Review Assistant", "-review"),
+	UNIT_TEST("Unit Test Assistant", "-unittest");
 
 	private final String displayName;
 	private final String memorySuffix;
@@ -68,6 +69,8 @@ public enum AssistantType
 				return Activator.getDefault().getServoyAiModel().getExplainAssistant();
 			case REVIEW :
 				return Activator.getDefault().getServoyAiModel().getReviewAssistant();
+			case UNIT_TEST :
+				return Activator.getDefault().getServoyAiModel().getUnitTestAssistant();
 		}
 		return null;
 	}

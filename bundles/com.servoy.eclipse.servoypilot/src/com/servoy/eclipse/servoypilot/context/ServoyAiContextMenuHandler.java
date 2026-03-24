@@ -135,7 +135,53 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateTests(SelectionInfo selection)
 	{
-		// TODO: Implement test generation
+		// Get code context early
+		CodeContextService service = CodeContextService.getInstance();
+		CodeContext context = service.getCodeContext(selection);
+
+		if (context.hasError())
+		{
+			return;
+		}
+
+		handleSelectionInfo(AssistantType.UNIT_TEST, selection, new ISelectionAIHandler()
+		{
+			@Override
+			public void viewTextSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				// Shouldn't happen for test generation, but handle gracefully
+				displayMessage.append("Please generate tests for the selected code:\n\n");
+				displayMessage.append(selection.getSelectedText());
+			}
+
+			@Override
+			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
+			{
+				// Single function selection -> test_functionName.js
+				displayMessage.append("Please generate JSUnit tests for this code from `").append(selection.getFilePath()).append("`:\n\n");
+				displayMessage.append("```javascript\n");
+				displayMessage.append(selection.getSelectedText());
+				displayMessage.append("\n```\n\n");
+				displayMessage.append("Focus on creating comprehensive test cases for the functionality in this code.");
+			}
+
+			@Override
+			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
+			{
+				// Large selection -> probably full file or multiple functions
+				displayMessage.append("Please generate JSUnit tests for the selected code from `").append(selection.getFilePath())
+					.append("` (").append(lineCount).append(" lines).\n\n");
+				displayMessage.append("Analyze the code structure and create comprehensive test coverage for all functions in this selection.");
+			}
+
+			@Override
+			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				// Full file selection -> test_fileName.js
+				displayMessage.append("Please generate JSUnit tests for file `").append(selection.getFilePath()).append("`.\n\n");
+				displayMessage.append("Create comprehensive test coverage for all functions in this file.");
+			}
+		});
 	}
 
 	private void handleExplain(SelectionInfo selection)

@@ -22,6 +22,7 @@ import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
 import com.servoy.eclipse.servoypilot.tools.DocumentationTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
+import com.servoy.eclipse.servoypilot.tools.TestGenerationTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
 import com.servoy.eclipse.servoypilot.tools.core.FormTools;
@@ -58,6 +59,7 @@ public class ServoyAiModel
 	private QuickFixAssistant quickFixAssistant;
 	private ExplainAssistant explainAssistant;
 	private ReviewAssistant reviewAssistant;
+	private UnitTestAssistant unitTestAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -148,6 +150,20 @@ public class ServoyAiModel
 			};
 		}
 		return reviewAssistant;
+	}
+
+	public UnitTestAssistant getUnitTestAssistant()
+	{
+		if (unitTestAssistant == null && conf.isValid())
+		{
+			unitTestAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createUnitTestServices(createOpenAIModel(conf));
+				case GEMINI -> createUnitTestServices(createGeminiModel(conf));
+				case NONE -> null;
+			};
+		}
+		return unitTestAssistant;
 	}
 
 	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
@@ -329,6 +345,29 @@ public class ServoyAiModel
 				new EclipseTools(), // Code search, file operations, workspace queries
 				new KnowledgeTools(), // Servoy API documentation lookup
 				new WebFetchTools() // Fetch docs.servoy.com pages when needed
+			)
+			.build();
+	}
+
+	private UnitTestAssistant createUnitTestServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getUnitTestPrompt();
+
+		return AiServices.builder(UnitTestAssistant.class)
+			.streamingChatModel(model)
+			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+				.id(memoryId)
+				.alwaysKeepSystemMessageFirst(true)
+				.maxMessages(MAX_MESSAGES)
+				.chatMemoryStore(sharedMemoryStore)
+				.build())
+			.systemMessageProvider(memoryId -> systemPrompt)
+			.tools(
+				new CodeContextTools(), // Analyze file structure and code
+				new EclipseTools(), // Workspace operations
+				new FileReadingTools(), // Read source files
+				new TestGenerationTools(), // Test generation tools (createTestFile, addTestMethod, etc.)
+				new KnowledgeTools() // Servoy API documentation
 			)
 			.build();
 	}

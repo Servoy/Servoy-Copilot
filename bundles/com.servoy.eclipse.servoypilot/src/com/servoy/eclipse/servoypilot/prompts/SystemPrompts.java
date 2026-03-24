@@ -92,6 +92,11 @@ public class SystemPrompts
 		return prompts.get("review.txt");
 	}
 
+	public String getUnitTestPrompt()
+	{
+		return prompts.get("unittest.txt");
+	}
+
 	public String getPrompt(String name)
 	{
 		return prompts.get(name);
