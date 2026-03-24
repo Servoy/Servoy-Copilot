@@ -85,7 +85,7 @@ public class CodeContextTools
 	{
 		System.out.println("\n=== CodeContextTools.analyzeFileStructure() called ===");
 		System.out.println("Input parameter: '" + pathOrName + "'");
-		
+
 		try
 		{
 			if (pathOrName != null && !pathOrName.isBlank())
@@ -97,7 +97,7 @@ public class CodeContextTools
 				if (file != null && file.exists())
 				{
 					System.out.println("File resolved successfully: " + file.getFullPath());
-					
+
 					// Analyze file structure
 					FileStructureService service = FileStructureService.getInstance();
 					FileStructure structure = service.analyzeFile(file);
@@ -272,8 +272,8 @@ public class CodeContextTools
 
 					if (selectedElements != null)
 					{
-			// Format type information (focused output, not full context)
-			String result = formatTypeInfo(selectedElements, identifier, filePath, lineNumber + 1, fileContent, offset);
+						// Format type information (focused output, not full context)
+						String result = formatTypeInfo(selectedElements, identifier, filePath, lineNumber + 1, fileContent, offset);
 						System.out.println("\n--- TYPE RESOLUTION RESULT (returned to AI) ---");
 						System.out.println(result);
 						System.out.println("--- END TYPE RESOLUTION RESULT ---\n");
@@ -308,7 +308,7 @@ public class CodeContextTools
 	 * Format focused type information from SelectionResult.
 	 * Returns concise type details, not full code context.
 	 */
-	private String formatTypeInfo(SelectionResult selectedElements, String identifier, String filePath, int lineNumber, 
+	private String formatTypeInfo(SelectionResult selectedElements, String identifier, String filePath, int lineNumber,
 		String fileContent, int offset)
 	{
 		StringBuilder result = new StringBuilder();
@@ -331,7 +331,7 @@ public class CodeContextTools
 						return result.toString();
 					}
 				}
-				
+
 				if (element instanceof IMethod method)
 				{
 					result.append("TYPE: Function\n");
@@ -378,7 +378,7 @@ public class CodeContextTools
 			{
 				result.append("TYPE: ").append(type).append("\n");
 				result.append("SOURCE: Servoy API type\n");
-				
+
 				if (element instanceof IRMethod method)
 				{
 					result.append("PARAMETERS: (");
@@ -387,7 +387,7 @@ public class CodeContextTools
 						.collect(Collectors.joining(", ")));
 					result.append(")\n");
 				}
-				
+
 				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
 				return result.toString();
 			}
@@ -424,10 +424,10 @@ public class CodeContextTools
 		// Look back ~300 characters for JSDoc comment
 		int lookbackStart = Math.max(0, offset - 300);
 		String precedingText = fileContent.substring(lookbackStart, offset);
-		
+
 		System.out.println("  Searching for JSDoc @type in preceding text");
 		System.out.println("  Preceding text: " + precedingText.replace("\n", "\\n").substring(Math.max(0, precedingText.length() - 100)));
-		
+
 		// Find the last /** before our identifier (start of JSDoc)
 		int jsDocStart = precedingText.lastIndexOf("/**");
 		if (jsDocStart == -1)
@@ -435,13 +435,13 @@ public class CodeContextTools
 			System.out.println("  No JSDoc comment (/**) found before identifier");
 			return null;
 		}
-		
+
 		System.out.println("  Found /** at relative position: " + jsDocStart);
-		
+
 		// Get text from /** to our identifier
 		String jsDocBlock = precedingText.substring(jsDocStart);
 		System.out.println("  JSDoc block: " + jsDocBlock.replace("\n", "\\n"));
-		
+
 		// Check if there's another variable declaration between the JSDoc and our identifier
 		// Pattern: var someOtherVar (would mean the JSDoc is for that, not ours)
 		Pattern varPattern = Pattern.compile("\\*/\\s*\\n\\s*var\\s+\\w+");
@@ -451,7 +451,7 @@ public class CodeContextTools
 			System.out.println("  Found another var declaration between JSDoc and our identifier - JSDoc belongs to different variable");
 			return null;
 		}
-		
+
 		// Look for @type {TypeName} pattern in the JSDoc block
 		Pattern jsDocPattern = Pattern.compile("@type\\s*\\{([^}]+)\\}");
 		Matcher jsDocMatcher = jsDocPattern.matcher(jsDocBlock);
@@ -461,7 +461,7 @@ public class CodeContextTools
 			System.out.println("  Found JSDoc @type: " + type);
 			return type;
 		}
-		
+
 		System.out.println("  No @type found in JSDoc block");
 		return null;
 	}
@@ -475,7 +475,7 @@ public class CodeContextTools
 		System.out.println("  === findIdentifierOffset() called ===");
 		System.out.println("  Identifier: '" + identifier + "'");
 		System.out.println("  Source length: " + source.length());
-		
+
 		// Strategy 1: Find in variable declaration: var identifier = ...
 		String pattern1Str = "\\bvar\\s+(" + java.util.regex.Pattern.quote(identifier) + ")\\b";
 		System.out.println("  Strategy 1 - Pattern: " + pattern1Str);
@@ -511,10 +511,11 @@ public class CodeContextTools
 		if (index >= 0)
 		{
 			boolean beforeCheck = (index == 0 || !Character.isJavaIdentifierPart(source.charAt(index - 1)));
-			boolean afterCheck = (index + identifier.length() >= source.length() || !Character.isJavaIdentifierPart(source.charAt(index + identifier.length())));
+			boolean afterCheck = (index + identifier.length() >= source.length() ||
+				!Character.isJavaIdentifierPart(source.charAt(index + identifier.length())));
 			System.out.println("  Before boundary check: " + beforeCheck);
 			System.out.println("  After boundary check: " + afterCheck);
-			
+
 			if (beforeCheck && afterCheck)
 			{
 				System.out.println("  Strategy 3 SUCCESS - Accepted offset: " + index);
@@ -557,72 +558,69 @@ public class CodeContextTools
 
 		return context.toString();
 	}
-	
-		public void processForeignElements(StringBuilder context, SelectionResult selectedElements)
+
+	public void processForeignElements(StringBuilder context, SelectionResult selectedElements)
+	{
+		for (IRElement element : selectedElements.foreignElements)
 		{
-			for (IRElement element : selectedElements.foreignElements)
+			context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
+			//TODO check what other info is relevant
+			if (element.getSource() instanceof Element elementSource)
 			{
-				context.append("\n\n/* Typeinfo Element: " + element.getName() + " */");
-				//TODO check what other info is relevant
-				if (element.getSource() instanceof Element elementSource)
+				Object resource = elementSource.getAttribute(TypeCreator.RESOURCE);
+				if (resource == null)
 				{
-					Object resource = elementSource.getAttribute(TypeCreator.RESOURCE);
-					if (resource == null)
-					{
-						resource = elementSource.getAttribute(TypeCreator.LAZY_VALUECOLLECTION);
-					}
+					resource = elementSource.getAttribute(TypeCreator.LAZY_VALUECOLLECTION);
+				}
 
-					if (resource instanceof Form frm)
+				if (resource instanceof Form frm)
+				{
+					IPersist superForm = PersistHelper.getSuperPersist(frm);
+					if (superForm != null)
 					{
-						if (frm.getExtendsID() != null)
-						{
-							IPersist superForm = PersistHelper.getSuperPersist(frm);
-							if (superForm != null)
-							{
-								context.append("\n/*   You may want to check the parent form for more context: " +
-									SolutionSerializer.getScriptPath(superForm, false) + " */");
-							}
-						}
-						resource = SolutionSerializer.getScriptPath(frm, false);
+						context.append("\n/*   You may want to check the parent form for more context: " +
+							SolutionSerializer.getScriptPath(superForm, false) + " */");
 					}
+					resource = SolutionSerializer.getScriptPath(frm, false);
+				}
 
-					if (resource instanceof String resourcePath)
+				if (resource instanceof String resourcePath)
+				{
+					IPath path = Path.fromPortableString(resourcePath.replace('\\', '/'));
+					IFile sourceFile;
+					if (path.isAbsolute())
 					{
-						IPath path = Path.fromPortableString(resourcePath.replace('\\', '/'));
-						IFile sourceFile;
-						if (path.isAbsolute())
-						{
-							sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
-						}
-						else
-						{
-							sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-						}
-						if (sourceFile != null && sourceFile.exists())
-						{
-							resource = sourceFile;
-						}
+						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
 					}
-
-					if (resource instanceof IFile file)
+					else
 					{
-						context.append("\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */");
+						sourceFile = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+					}
+					if (sourceFile != null && sourceFile.exists())
+					{
+						resource = sourceFile;
 					}
 				}
-				if (element instanceof IRMember member)
+
+				if (resource instanceof IFile file)
 				{
-					if (element instanceof IRMethod method)
-					{
-						context.append("\n/*   Method parameters: (");
-						context.append(method.getParameters().stream()
-							.map(p -> p.getName() + ":" + p.getType())
-							.collect(Collectors.joining(", ")));
-						context.append(") */");
-					}
-					context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
+					context.append("\n/*   Use the file if you need more info: " + file.getProjectRelativePath() + " */");
 				}
 			}
+			if (element instanceof IRMember member)
+			{
+				if (element instanceof IRMethod method)
+				{
+					context.append("\n/*   Method parameters: (");
+					context.append(method.getParameters().stream()
+						.map(p -> p.getName() + ":" + p.getType())
+						.collect(Collectors.joining(", ")));
+					context.append(") */");
+				}
+				context.append("\n/*   Declaring type: " + member.getDeclaringType().getName() + " */");
+			}
 		}
+	}
 
 	public void processModelElements(String filePath, StringBuilder context, SelectionResult selectedElements)
 		throws ModelException, Exception, BadLocationException
