@@ -364,7 +364,7 @@ public class ServoyAiModel
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
 			.tools(
-				new CodeContextTools(), // Analyze file structure and code
+				new CodeAnalysisTools(), // Analyze file structure and code
 				new EclipseTools(), // Workspace operations
 				new FileReadingTools(), // Read source files
 				new TestGenerationTools(), // Test generation tools (createTestFile, addTestMethod, etc.)
