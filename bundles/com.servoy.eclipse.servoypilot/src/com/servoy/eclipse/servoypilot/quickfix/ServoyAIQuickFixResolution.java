@@ -43,7 +43,6 @@ import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotationResolution
 {
@@ -115,15 +114,6 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 						return new Status(IStatus.ERROR, "No quick fix generated", "The AI did not return any quick fix.");
 					}
 
-					for (SourceEdit edit : fix.edits())
-					{
-						if (!ParserService.getInstance().isValidStatement(edit.replacement()))
-						{
-							//TODO send feedback to AI service about invalid quick fix?
-							return new Status(IStatus.ERROR, "Invalid quick fix generated",
-								"The AI generated code that could not be parsed as a valid statement: " + edit.replacement());
-						}
-					}
 					if (monitor.isCanceled())
 					{
 						return Status.CANCEL_STATUS;

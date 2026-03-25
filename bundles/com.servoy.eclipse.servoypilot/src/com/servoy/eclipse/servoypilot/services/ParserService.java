@@ -47,9 +47,9 @@ public class ParserService
 	/**
 	 * Checks if the given code represents a full statement without syntax errors.
 	 * @param code AI-generated replacement
-	 * @return true if the code parses as a valid statement without any errors
+	 * @return the list of problems
 	 */
-	public boolean isValidStatement(String code)
+	public List<DefaultProblem> isValidStatement(String code)
 	{
 		// Collect problems reported by the parser
 		List<DefaultProblem> problems = new ArrayList<>();
@@ -57,15 +57,13 @@ public class ParserService
 
 		try
 		{
-			Script script = JavaScriptParserUtil.parse(code, reporter);
-			// Full statement if parse succeeds and no problems reported
-			return script != null && !script.getStatements().isEmpty() && problems.isEmpty();
+			JavaScriptParserUtil.parse(code, reporter);
 		}
 		catch (Exception e)
 		{
-			// Parsing failed, not a full statement
-			return false;
+			// Parsing failed
 		}
+		return problems;
 	}
 
 	public Statement getStatementAtOffset(String source, int startOffset) throws Exception
