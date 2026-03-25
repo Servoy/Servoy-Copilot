@@ -157,7 +157,7 @@ public class InlineQuickFixPreviewManager
 		}
 
 		backgroundListener = event -> {
-			int lineIndex = textWidget.getLineAtOffset(event.lineOffset) + 1;
+			int lineIndex = textWidget.getLineAtOffset(event.lineOffset);
 			if (removedLines.contains(lineIndex))
 			{
 				event.lineBackground = removedColor;
