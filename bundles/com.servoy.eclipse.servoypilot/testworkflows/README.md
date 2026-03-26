@@ -16,8 +16,8 @@ Test workflows are step-by-step testing procedures for validating each implement
 Each session has its own test workflow file:
 
 - **session1-file-structure-analysis.md** - File structure extraction and symbol analysis
-- **session2-adaptive-chunk-reading.md** - (To be created) Code chunking with multiple modes
-- **session3-type-resolution.md** - (To be created) Type inference and standard JS types
+- **session2-adaptive-chunk-reading.md** - Code chunking with multiple modes
+- **session3-type-resolution.md** - Type inference and standard JS types
 - **session4-multi-file-workflows.md** - (To be created) Solution scanning and progress tracking
 - **session5-integration-testing.md** - (To be created) End-to-end workflows and system prompt
 

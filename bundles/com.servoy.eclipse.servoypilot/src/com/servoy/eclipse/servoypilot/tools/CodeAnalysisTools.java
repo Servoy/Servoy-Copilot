@@ -21,6 +21,7 @@ import org.eclipse.core.resources.IFile;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.CodeChunkReader;
+import com.servoy.eclipse.servoypilot.services.CodeChunkReader.ChunkSize;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 import com.servoy.eclipse.servoypilot.services.FileStructureService;
@@ -69,14 +70,20 @@ public class CodeAnalysisTools
 		}
 	}
 
-	@Tool("Read code chunk from file (max 200 lines per chunk). " +
+	@Tool("Read code chunk from file with configurable chunk size. " +
 		"Supports three modes: TARGETED (jump to symbol), DIRECT (start from line), SEQUENTIAL (read by chunk number). " +
-		"Accepts form names, scope names, or full paths.")
+		"Accepts form names, scope names, or full paths. " +
+		"Choose chunk size based on what you need: " +
+		"SMALL (50 lines) for tight focus on one symbol; " +
+		"MEDIUM (100 lines) for a single function with context; " +
+		"LARGE (200 lines) for broad view or entire small files.")
 	public String getCodeChunk(
 		@P("File path, form name, or scope name") String pathOrName,
 		@P("Symbol name to find (optional - for TARGETED mode)") String symbolName,
 		@P("Chunk number for sequential reading (0-based, optional - for SEQUENTIAL mode)") Integer chunkNumber,
-		@P("Start line number (0-based, optional - for DIRECT mode)") Integer startLine)
+		@P("Start line number (0-based, optional - for DIRECT mode)") Integer startLine,
+		@P("Chunk size: SMALL (50 lines), MEDIUM (100 lines), LARGE (200 lines). Default: LARGE. " +
+			"Use SMALL when reading a single known symbol; MEDIUM for a function with surrounding context; LARGE for full-file exploration.") String chunkSize)
 	{
 		try
 		{
@@ -88,12 +95,13 @@ public class CodeAnalysisTools
 				if (file != null && file.exists())
 				{
 					CodeChunkReader reader = CodeChunkReader.getInstance();
+					ChunkSize size = ChunkSize.fromString(chunkSize);
 					CodeChunk chunk = null;
 
 					// MODE 1: TARGETED - Jump to specific symbol
 					if (symbolName != null && !symbolName.isBlank())
 					{
-						chunk = reader.readSymbol(file, symbolName);
+						chunk = reader.readSymbol(file, symbolName, size);
 						if (chunk == null)
 						{
 							return "Error: Symbol '" + symbolName + "' not found in file";
@@ -102,7 +110,7 @@ public class CodeAnalysisTools
 					// MODE 2: DIRECT - Start from specific line
 					else if (startLine != null && startLine >= 0)
 					{
-						chunk = reader.readFromLine(file, startLine);
+						chunk = reader.readFromLine(file, startLine, size);
 						if (chunk == null || chunk.getContent().isEmpty())
 						{
 							return "Error: Start line " + startLine + " is beyond end of file";
@@ -112,7 +120,7 @@ public class CodeAnalysisTools
 					else
 					{
 						int chunkNum = (chunkNumber != null) ? chunkNumber : 0;
-						chunk = reader.readChunk(file, chunkNum);
+						chunk = reader.readChunk(file, chunkNum, size);
 						if (chunk == null || chunk.getContent().isEmpty())
 						{
 							return "Error: Chunk " + chunkNum + " is beyond end of file";

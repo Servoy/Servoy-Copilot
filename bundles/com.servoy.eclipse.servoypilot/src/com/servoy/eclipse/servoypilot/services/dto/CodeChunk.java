@@ -18,7 +18,7 @@ package com.servoy.eclipse.servoypilot.services.dto;
 
 /**
  * Represents a chunk of code read from a JavaScript file.
- * Used by CodeChunkReader to return file content in manageable portions (max 200 lines).
+ * Used by CodeChunkReader to return file content in configurable portions (small/medium/large).
  */
 public class CodeChunk
 {
@@ -29,8 +29,14 @@ public class CodeChunk
 	private final int chunkNumber; // -1 for direct mode (not chunk-based)
 	private final String content;
 	private final boolean isLast;
+	private final int chunkSizeLines; // actual max lines used for this chunk
 
 	public CodeChunk(String filePath, int startLine, int endLine, int totalChunks, int chunkNumber, String content, boolean isLast)
+	{
+		this(filePath, startLine, endLine, totalChunks, chunkNumber, content, isLast, 200);
+	}
+
+	public CodeChunk(String filePath, int startLine, int endLine, int totalChunks, int chunkNumber, String content, boolean isLast, int chunkSizeLines)
 	{
 		this.filePath = filePath;
 		this.startLine = startLine;
@@ -39,6 +45,7 @@ public class CodeChunk
 		this.chunkNumber = chunkNumber;
 		this.content = content;
 		this.isLast = isLast;
+		this.chunkSizeLines = chunkSizeLines;
 	}
 
 	public String getFilePath()
@@ -85,6 +92,7 @@ public class CodeChunk
 		sb.append("=== CODE CHUNK ===\n\n");
 		sb.append("FILE: ").append(filePath).append("\n");
 		sb.append("LINES: ").append(startLine).append("-").append(endLine).append("\n");
+		sb.append("CHUNK SIZE: ").append(chunkSizeLines).append(" lines\n");
 
 		if (chunkNumber >= 0)
 		{

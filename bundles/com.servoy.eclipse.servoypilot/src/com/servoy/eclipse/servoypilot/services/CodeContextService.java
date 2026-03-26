@@ -148,12 +148,6 @@ public class CodeContextService
 		{
 			if (selectionInfo.hasSelection())
 			{
-				// Debug header
-				System.out.println("\n=== CODE CONTEXT EXTRACTION ===");
-				System.out.println("File: " + selectionInfo.getFilePath());
-				System.out.println("Selection: offset=" + selectionInfo.getOffset() + ", length=" + selectionInfo.getLength());
-				System.out.println("--------------------------------\n");
-
 				try
 				{
 					ISourceModule module = selectionInfo.getSourceModule();
@@ -198,14 +192,10 @@ public class CodeContextService
 							}
 						});
 
-						// Convert to list
-						List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
+					// Convert to list
+					List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
 
-						// Print simple summary
-						System.out.println("Detected " + identifierContexts.size() + " identifiers");
-						System.out.println("================================\n");
-
-						return CodeContext.success(selectionInfo, identifierContexts);
+					return CodeContext.success(selectionInfo, identifierContexts);
 					}
 					return CodeContext.error(selectionInfo, "Failed to parse JavaScript file");
 				}
@@ -407,21 +397,12 @@ public class CodeContextService
 			return "";
 		}
 
-		System.out.println("  [Servoy API Doc] Extracting documentation for type: " + typeName);
-
 		// PRIMARY PATH: Try ScriptObjectRegistry (XML-based documentation)
 		ITypedScriptObject scriptObject = ScriptObjectRegistry.getScriptObjectByName(typeName);
-		System.out.println("  [Servoy API Doc] ScriptObjectRegistry.getScriptObjectByName(\"" + typeName + "\") returned: " +
-			(scriptObject != null ? scriptObject.getClass().getSimpleName() : "null"));
 
 		if (scriptObject != null && scriptObject.getObjectDocumentation() != null)
 		{
-			System.out.println("  [Servoy API Doc] ✓ Found in ScriptObjectRegistry");
 			List<IValueReference> callsOrProperties = collector.propertiesOrCalls.get(node);
-			System.out.println("  [Servoy API Doc] collector.propertiesOrCalls.get(node) returned: " +
-				(callsOrProperties != null ? callsOrProperties.size() + " items" : "null"));
-			System.out.println("  [Servoy API Doc] node = " + node + " (class: " + node.getClass().getSimpleName() + ")");
-			System.out.println("  [Servoy API Doc] Total keys in collector.propertiesOrCalls map: " + collector.propertiesOrCalls.keySet().size());
 
 			if (callsOrProperties != null && !callsOrProperties.isEmpty())
 			{
@@ -429,50 +410,25 @@ public class CodeContextService
 				StringBuilder sb = new StringBuilder();
 				String identifierName = node.toString();
 
-				System.out.println("  [Servoy API Doc] Processing " + callsOrProperties.size() + " property/method calls:");
 				for (IValueReference action : callsOrProperties)
 				{
 					String propertyName = action.getName();
-					System.out.println("    - Extracting doc for: " + propertyName);
 					String funcDoc = extractFunctionDocumentation(docFile, propertyName, identifierName);
 					if (!funcDoc.isEmpty())
 					{
-						System.out.println("      ✓ Found documentation (" + funcDoc.length() + " chars)");
 						sb.append(funcDoc).append("\n\n");
-					}
-					else
-					{
-						System.out.println("      ✗ No documentation found for: " + propertyName);
 					}
 				}
 
 				String result = sb.toString().trim();
 				if (!result.isEmpty())
 				{
-					System.out.println("  [Servoy API Doc] ✓✓✓ SUCCESS - Extracted documentation via ScriptObjectRegistry");
 					return result;
 				}
-				System.out.println("  [Servoy API Doc] ✗ ScriptObjectRegistry path returned empty result");
 			}
-			else
-			{
-				System.out.println("  [Servoy API Doc] ✗ No properties/calls found on this node");
-				System.out.println("  [Servoy API Doc] DEBUG: Listing all nodes in propertiesOrCalls map:");
-				for (JSNode key : collector.propertiesOrCalls.keySet())
-				{
-					System.out.println("    - Node: " + key + " (" + key.getClass().getSimpleName() + ") → " +
-						collector.propertiesOrCalls.get(key).size() + " calls");
-				}
-			}
-		}
-		else
-		{
-			System.out.println("  [Servoy API Doc] ✗ Not found in ScriptObjectRegistry (trying TypeCreator fallback)");
 		}
 
 		// FALLBACK PATH: Try TypeCreator (Type system with @ServoyDocumented mappings)
-		// This handles cases like "controller" which is mapped via @ServoyDocumented annotation
-		// to JSForm class, providing the same documentation as code completion (Ctrl+Space)
 		return extractServoyApiDocumentationFromTypeCreator(typeName, node, collector);
 	}
 
@@ -493,118 +449,50 @@ public class CodeContextService
 			return "";
 		}
 
-		System.out.println("  [TypeCreator Fallback] ========== STARTING ==========");
-		System.out.println("  [TypeCreator Fallback] Input typeName: " + typeName);
-		System.out.println("  [TypeCreator Fallback] Input node: " + node + " (" + node.getClass().getSimpleName() + ")");
-
 		// Get TypeCreator instance
 		TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
 		if (typeCreator == null)
 		{
-			System.out.println("  [TypeCreator Fallback] ✗ TypeCreator instance not available");
+			ServoyLog.logWarning("TypeCreator instance not available for type: " + typeName, null);
 			return "";
 		}
-		System.out.println("  [TypeCreator Fallback] ✓ TypeCreator instance obtained");
 
 		// Resolve type via TypeCreator (same as code completion)
-		// Context = null for global types
-		System.out.println("  [TypeCreator Fallback] Calling typeCreator.findType(null, \"" + typeName + "\")...");
 		Type servoyType = typeCreator.findType(null, typeName);
 
 		// If not found by class name, try scriptingName (DLTK returns class name, but TypeCreator uses scriptingName)
 		if (servoyType == null)
 		{
-			System.out.println("  [TypeCreator Fallback] ✗ Direct lookup failed");
 			String scriptingName = mapClassNameToScriptingName(typeName);
-			System.out.println("  [TypeCreator Fallback] mapClassNameToScriptingName(\"" + typeName + "\") returned: " +
-				(scriptingName != null ? "\"" + scriptingName + "\"" : "null"));
-
 			if (scriptingName != null && !scriptingName.equals(typeName))
 			{
-				System.out.println("  [TypeCreator Fallback] Trying mapped scriptingName: calling typeCreator.findType(null, \"" + scriptingName + "\")...");
 				servoyType = typeCreator.findType(null, scriptingName);
-				if (servoyType != null)
-				{
-					System.out.println("  [TypeCreator Fallback] ✓✓ SUCCESS - Found via scriptingName mapping!");
-				}
-				else
-				{
-					System.out.println("  [TypeCreator Fallback] ✗ Mapped scriptingName lookup also failed");
-				}
 			}
-		}
-		else
-		{
-			System.out.println("  [TypeCreator Fallback] ✓ Direct lookup succeeded");
 		}
 
 		if (servoyType == null)
 		{
-			System.out.println("  [TypeCreator Fallback] ✗✗ FINAL: Type not found in TypeCreator");
 			return "";
-		}
-
-		System.out.println("  [TypeCreator Fallback] ✓ Type resolved: " + servoyType.getName());
-		System.out.println("  [TypeCreator Fallback] Type has " + servoyType.getMembers().size() + " members");
-		if (servoyType.getMembers().size() > 0)
-		{
-			System.out.println("  [TypeCreator Fallback] First 5 members:");
-			int count = 0;
-			for (Member m : servoyType.getMembers())
-			{
-				System.out.println("    - " + m.getName() + " (" + m.getClass().getSimpleName() + ")");
-				if (++count >= 5)
-				{
-					break;
-				}
-			}
 		}
 
 		// Get properties/calls for this identifier
-		System.out.println("  [TypeCreator Fallback] Checking collector.propertiesOrCalls.get(node)...");
 		List<IValueReference> callsOrProperties = collector.propertiesOrCalls.get(node);
-		System.out.println("  [TypeCreator Fallback] Result: " + (callsOrProperties != null ? callsOrProperties.size() + " items" : "null"));
-
 		if (callsOrProperties == null || callsOrProperties.isEmpty())
 		{
-			System.out.println("  [TypeCreator Fallback] ✗ No properties/calls found on this specific node");
-			System.out.println("  [TypeCreator Fallback] Total nodes in collector.propertiesOrCalls: " + collector.propertiesOrCalls.keySet().size());
-			System.out.println("  [TypeCreator Fallback] Listing all nodes:");
-			for (JSNode key : collector.propertiesOrCalls.keySet())
-			{
-				System.out.println("    - Node: " + key + " → " + collector.propertiesOrCalls.get(key).size() + " calls");
-			}
-			System.out.println("  [TypeCreator Fallback] ========== END (NO CALLS) ==========");
 			return "";
 		}
 
-		System.out.println("  [TypeCreator Fallback] ✓ Found " + callsOrProperties.size() + " property/method calls");
 		StringBuilder sb = new StringBuilder();
 		String identifierName = node.toString();
-		System.out.println("  [TypeCreator Fallback] Identifier name: " + identifierName);
 
-		// Extract documentation for each property/method call
-		int foundCount = 0;
-		System.out.println("  [TypeCreator Fallback] Extracting documentation for each call:");
 		for (IValueReference action : callsOrProperties)
 		{
-			String propertyName = action.getName();
-			System.out.println("    - Looking for member: " + propertyName);
-			String memberDoc = extractWebObjectMemberDocumentation(servoyType, propertyName, identifierName);
+			String memberDoc = extractWebObjectMemberDocumentation(servoyType, action.getName(), identifierName);
 			if (!memberDoc.isEmpty())
 			{
-				System.out.println("      ✓ Found doc (" + memberDoc.length() + " chars)");
 				sb.append(memberDoc).append("\n\n");
-				foundCount++;
-			}
-			else
-			{
-				System.out.println("      ✗ No doc found");
 			}
 		}
-
-		System.out.println("  [TypeCreator Fallback] Extracted documentation for " + foundCount + " out of " + callsOrProperties.size() + " members");
-		System.out.println("  [TypeCreator Fallback] ========== END ==========");
 
 		return sb.toString().trim();
 	}
