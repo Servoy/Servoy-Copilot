@@ -750,10 +750,6 @@ public class ChatViewPresenter
 			if (fixCode != null && !fixCode.isEmpty() && allLines != null)
 			{
 				String actualLine = allLines[lineNumber - 1].trim();
-				System.out.println("lineNumber: " + lineNumber);
-				System.out.println(allLines[lineNumber].trim());
-				System.out.println("lineNumber - 1: " + (lineNumber - 1));
-				System.out.println(allLines[lineNumber - 1].trim());
 				String fixFirstLine = fixCode.split("\\n")[0].trim();
 
 				// Compare ignoring differences in whitespace
