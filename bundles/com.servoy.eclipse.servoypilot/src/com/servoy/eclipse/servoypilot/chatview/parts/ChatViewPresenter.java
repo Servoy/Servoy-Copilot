@@ -749,7 +749,11 @@ public class ChatViewPresenter
 			// Validate fix code matches actual line (compare first line of fix with actual line)
 			if (fixCode != null && !fixCode.isEmpty() && allLines != null)
 			{
-				String actualLine = allLines[lineNumber].trim();
+				String actualLine = allLines[lineNumber - 1].trim();
+				System.out.println("lineNumber: " + lineNumber);
+				System.out.println(allLines[lineNumber].trim());
+				System.out.println("lineNumber - 1: " + (lineNumber - 1));
+				System.out.println(allLines[lineNumber - 1].trim());
 				String fixFirstLine = fixCode.split("\\n")[0].trim();
 
 				// Compare ignoring differences in whitespace
@@ -1179,8 +1183,8 @@ public class ChatViewPresenter
 						if (document != null)
 						{
 							// Navigate to the line (lineNumber is 1-based)
-							int offset = document.getLineOffset(lineNumber);
-							int lineLength = document.getLineLength(lineNumber);
+							int offset = document.getLineOffset(lineNumber - 1);
+							int lineLength = document.getLineLength(lineNumber - 1);
 							String lineContent = document.get(offset, lineLength);
 
 							// Strategy 1: If fixText is a complete line of code, replace the entire line's code content
