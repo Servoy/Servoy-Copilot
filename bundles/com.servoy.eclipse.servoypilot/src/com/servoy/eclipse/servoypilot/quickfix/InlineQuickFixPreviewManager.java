@@ -18,6 +18,7 @@
 package com.servoy.eclipse.servoypilot.quickfix;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -30,7 +31,9 @@ import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.LineBackgroundListener;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
@@ -47,6 +50,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
+import com.servoy.eclipse.servoypilot.services.CodeFormattingService;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
@@ -57,6 +61,7 @@ public class InlineQuickFixPreviewManager
 {
 	private String originalContent;
 	private LineBackgroundListener backgroundListener;
+	private PaintListener paintListener;
 	private Composite floatingBar;
 
 	private final Set<Integer> addedLines = new HashSet<>();
@@ -66,6 +71,7 @@ public class InlineQuickFixPreviewManager
 
 	private final List<Color> colors = new ArrayList<>();
 	private FileCompareEditorInput compareEditorInput;
+	private StyledText textWidget;
 
 	private static class PreviewChange
 	{
@@ -94,7 +100,7 @@ public class InlineQuickFixPreviewManager
 			return;
 		}
 
-		StyledText textWidget = viewer.getTextWidget();
+		textWidget = viewer.getTextWidget();
 		IDocument document = viewer.getDocument();
 
 		originalContent = document.get();
@@ -111,7 +117,10 @@ public class InlineQuickFixPreviewManager
 		removedLines.clear();
 		addedLines.clear();
 
-		for (SourceEdit edit : sourceEdits.edits())
+		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits.edits());
+		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
+
+		for (SourceEdit edit : sortedEdits)
 		{
 			int startLine = edit.startLine() - 1;
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
@@ -121,16 +130,18 @@ public class InlineQuickFixPreviewManager
 			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
 			String originalStatement = document.get(startOffset, endOffset - startOffset);
-
 			String lineDelimiter = document.getLineDelimiter(startLine);
 			if (lineDelimiter == null)
 			{
 				lineDelimiter = "\n";
 			}
 
+			String indentedReplacement = CodeFormattingService.getInstance()
+				.format(edit.replacement(), document, startOffset);
+
 			//TODO handle inserts and deletes correctly, the following code is for replacements only
 			String previewBlock = originalStatement +
-				edit.replacement() +
+				indentedReplacement +
 				lineDelimiter;
 
 			document.replace(startOffset, endOffset - startOffset, previewBlock);
@@ -169,9 +180,63 @@ public class InlineQuickFixPreviewManager
 		};
 
 		textWidget.addLineBackgroundListener(backgroundListener);
+
+		paintListener = e -> {
+			GC gc = e.gc;
+			int clientWidth = textWidget.getClientArea().width;
+			drawDiffDecorations(gc, removedLines, "-", removedColor, clientWidth);
+			drawDiffDecorations(gc, addedLines, "+", addedColor, clientWidth);
+		};
+		textWidget.addPaintListener(paintListener);
 		textWidget.redraw();
 
 		showAcceptRejectUI(editor, fixPrompt);
+	}
+
+	private void drawDiffDecorations(GC gc, Set<Integer> lines, String symbol, Color bgColor, int width)
+	{
+		if (lines.isEmpty())
+		{
+			return;
+		}
+		List<Integer> sortedLines = new ArrayList<>(lines);
+		Collections.sort(sortedLines);
+
+		int i = 0;
+		while (i < sortedLines.size())
+		{
+			int startLine = sortedLines.get(i);
+			int endLine = startLine;
+			while (i + 1 < sortedLines.size() && sortedLines.get(i + 1) == endLine + 1)
+			{
+				endLine = sortedLines.get(++i);
+			}
+			i++;
+			try
+			{
+				int startY = textWidget.getLinePixel(startLine);
+				int endY = textWidget.getLinePixel(endLine) + textWidget.getLineHeight(textWidget.getOffsetAtLine(endLine));
+				int height = endY - startY;
+				gc.setForeground(gc.getDevice().getSystemColor(SWT.COLOR_GRAY));
+				gc.setLineWidth(1);
+				gc.setLineStyle(SWT.LINE_SOLID);
+				gc.drawRectangle(0, startY, width - 1, height);
+
+				gc.setForeground(gc.getDevice().getSystemColor(SWT.COLOR_BLACK));
+				Font oldFont = gc.getFont();
+				for (int line = startLine; line <= endLine; line++)
+				{
+					int lineY = textWidget.getLinePixel(line);
+					gc.drawString(symbol, 5, lineY + 2, true);
+				}
+				gc.setFont(oldFont);
+
+			}
+			catch (Exception ex)
+			{
+				// Line might not be visible or disposed
+			}
+		}
 	}
 
 	private int countLines(String text)
@@ -192,9 +257,8 @@ public class InlineQuickFixPreviewManager
 			ISourceViewer viewer = scriptEditor.getViewer();
 			IDocument document = viewer.getDocument();
 
-			for (int i = previewChanges.size() - 1; i >= 0; i--)
+			for (PreviewChange change : previewChanges)
 			{
-				PreviewChange change = previewChanges.get(i);
 				int line = document.getLineOfOffset(change.startOffset);
 				int offset = document.getLineOffset(line);
 				document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
@@ -216,9 +280,8 @@ public class InlineQuickFixPreviewManager
 			ISourceViewer viewer = scriptEditor.getViewer();
 			IDocument document = viewer.getDocument();
 
-			for (int i = previewChanges.size() - 1; i >= 0; i--)
+			for (PreviewChange change : previewChanges)
 			{
-				PreviewChange change = previewChanges.get(i);
 				int line = document.getLineOfOffset(change.startOffset);
 				int offset = document.getLineOffset(line);
 				document.replace(
@@ -246,6 +309,7 @@ public class InlineQuickFixPreviewManager
 			if (backgroundListener != null)
 			{
 				textWidget.removeLineBackgroundListener(backgroundListener);
+				textWidget.removePaintListener(paintListener);
 				backgroundListener = null;
 			}
 			for (Color color : colors)
