@@ -31,6 +31,8 @@ import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.LineBackgroundListener;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.events.FocusAdapter;
+import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
@@ -80,6 +82,7 @@ public class InlineQuickFixPreviewManager
 		String modifiedLine;
 		String lineDelimiter;
 		String originalLine;
+		public boolean isInsert;
 	}
 
 	public void preview(
@@ -139,23 +142,46 @@ public class InlineQuickFixPreviewManager
 			String indentedReplacement = CodeFormattingService.getInstance()
 				.format(edit.replacement(), document, startOffset);
 
-			//TODO handle inserts and deletes correctly, the following code is for replacements only
-			String previewBlock = originalStatement +
-				indentedReplacement +
-				lineDelimiter;
-
-			document.replace(startOffset, endOffset - startOffset, previewBlock);
-
-			int originalLineCount = countLines(originalStatement);
-			int fixedLineCount = countLines(edit.replacement());
-			for (int i = 0; i < originalLineCount; i++)
+			String previewBlock = null;
+			if (edit.isInsert())
 			{
-				removedLines.add(startLine + i);
+				previewBlock = indentedReplacement + lineDelimiter;
+			}
+			else if (edit.isReplacement())
+			{
+				previewBlock = originalStatement +
+					indentedReplacement +
+					lineDelimiter;
+			}
+			else if (edit.isDelete())
+			{
+				previewBlock = originalStatement;
 			}
 
-			for (int i = 0; i < fixedLineCount; i++)
+			if (edit.isInsert())
 			{
-				addedLines.add(startLine + originalLineCount + i);
+				document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
+			}
+			else
+			{
+				document.replace(startOffset, endOffset - startOffset, previewBlock);
+			}
+
+			int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
+			int fixedLineCount = countLines(edit.replacement());
+			if (!edit.isInsert())
+			{
+				for (int i = 0; i < originalLineCount; i++)
+				{
+					removedLines.add(startLine + i);
+				}
+			}
+			if (!edit.isDelete())
+			{
+				for (int i = 0; i < fixedLineCount; i++)
+				{
+					addedLines.add(startLine + originalLineCount + i);
+				}
 			}
 
 			PreviewChange change = new PreviewChange();
@@ -164,6 +190,7 @@ public class InlineQuickFixPreviewManager
 			change.modifiedLine = edit.replacement();
 			change.originalLine = originalStatement;
 			change.lineDelimiter = lineDelimiter;
+			change.isInsert = edit.isInsert();
 			previewChanges.add(change);
 		}
 
@@ -261,7 +288,11 @@ public class InlineQuickFixPreviewManager
 			{
 				int line = document.getLineOfOffset(change.startOffset);
 				int offset = document.getLineOffset(line);
-				document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
+				if (!change.isInsert)
+				{
+					//if it's an insert it's already in the document, so we don't need to do anything to "accept" it.
+					document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
+				}
 			}
 		}
 		catch (Exception e)
@@ -284,10 +315,21 @@ public class InlineQuickFixPreviewManager
 			{
 				int line = document.getLineOfOffset(change.startOffset);
 				int offset = document.getLineOffset(line);
-				document.replace(
-					offset,
-					change.originalLength,
-					change.originalLine);
+				if (change.isInsert)
+				{
+					// To "reject" an insertion, we replace the inserted length 
+					// (which was change.modifiedLine.length()) back to nothing.
+					// Note: This assumes the document currently contains the modifiedLine.
+					int insertedLength = change.modifiedLine.length() + change.lineDelimiter.length();
+					document.replace(offset, insertedLength, "");
+				}
+				else
+				{
+					document.replace(
+						offset,
+						change.originalLength,
+						change.originalLine);
+				}
 			}
 		}
 		catch (Exception e)
@@ -420,6 +462,28 @@ public class InlineQuickFixPreviewManager
 		text.getVerticalBar().addListener(SWT.Selection, e -> positionFloatingBar(text));
 
 		floatingBar.setVisible(true);
+
+		text.addFocusListener(new FocusAdapter()
+		{
+			@Override
+			public void focusLost(FocusEvent e)
+			{
+				if (floatingBar != null && !floatingBar.isDisposed())
+				{
+					floatingBar.setVisible(false);
+				}
+			}
+
+			@Override
+			public void focusGained(FocusEvent e)
+			{
+				if (floatingBar != null && !floatingBar.isDisposed())
+				{
+					floatingBar.setVisible(true);
+					positionFloatingBar(text);
+				}
+			}
+		});
 	}
 
 	private Control createStyledButton(
@@ -496,16 +560,25 @@ public class InlineQuickFixPreviewManager
 			return;
 		}
 
-		if (addedLines.isEmpty())
+		int targetLine;
+
+		if (!addedLines.isEmpty())
+		{
+			targetLine = addedLines.iterator().next();
+		}
+		else if (!removedLines.isEmpty())
+		{
+			targetLine = removedLines.stream().max(Integer::compareTo).orElse(-1);
+		}
+		else
 		{
 			return;
 		}
 
-		int firstLine = addedLines.iterator().next();
 		try
 		{
 			int lineHeight = text.getLineHeight();
-			int yInText = text.getLinePixel(firstLine);
+			int yInText = text.getLinePixel(targetLine);
 			Point displayPoint = text.toDisplay(0, yInText);
 			if (yInText < 0 || yInText > text.getClientArea().height - lineHeight)
 			{
