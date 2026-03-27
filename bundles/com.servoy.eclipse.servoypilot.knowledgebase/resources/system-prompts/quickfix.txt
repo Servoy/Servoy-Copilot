@@ -129,9 +129,10 @@ Original Code:
 12: for (var i = 1; i <= fs.getSize(); i++) {
 13:     msg += fs.getRecord(i).customer_name + ", ";
 14: }
+15: application.output(msg);
 ```
 
-Expected QuickFixResult:
+Expected QuickFixResult, note that the fix is to initialize msg on line 12, before the loop starts because the var is used outside the loop:
 ```JSON
 {
   "edits": [
@@ -147,9 +148,41 @@ Expected QuickFixResult:
 }
 ```
 
+Example 5: Delete QuickFix (Unused Variable)
+
+Scenario: A variable is declared but never used in the subsequent code, leading to a "Variable is never used" warning.
+Error: unused_variable is defined but never used.
+Problem statement: Remove the declaration of unused_variable.
+
+Original Code:
+```javaScript
+10: var fs = foundset;
+11: var unused_variable = "I do nothing";
+12: for (var i = 1; i <= fs.getSize(); i++) {
+13:     application.output(fs.getRecord(i).customer_name);
+14: }
+```
+
+Expected QuickFixResult:
+Note: To delete a line or segment, provide the startSentence and endSentence to be removed and set replacement to an empty string.
+
+```JSON
+{
+  "edits": [
+    {
+      "filePath": "forms/orders.js",
+      "startLine": 11,
+      "endLine": 11,
+      "startSentence": "var unused_variable = \"I do nothing\";",
+      "endSentence": ";",
+      "replacement": ""
+    }
+  ]
+}
+```
+
 Guidelines for Multi-Line Edits
 Use startSentence and endSentence to wrap the specific code you want to replace.
-If you are inserting a new line, anchor to the line above or below it and include the original code in your replacement to maintain context.
 Rule of Atomicity: If a fix requires changes on different lines (e.g., an initialization and a loop logic fix), 
 you MUST provide them as separate SourceEdit objects in the edits list. Do not combine multiple lines into a single replacement
  unless they are contiguous and part of the same logical block.
@@ -279,6 +312,104 @@ If the fix requires multiple lines:
 Never modify lines outside the provided code context unless absolutely necessary.
 
 ------------------------------------------------------------
+
+## Rule 10: Insert vs Replace (STRICT)
+
+If the problem is caused by a missing declaration or initialization:
+
+- You MUST INSERT a new statement
+- You MUST NOT modify or replace the existing statement
+
+If the error is "variable is not initialized":
+- ONLY insert a line initializing that variable
+- Use the SAME variable name as in the original code
+- Do NOT generate or modify any other code
+
+Examples of missing constructs:
+- uninitialized variable
+- missing variable declaration
+
+In these cases:
+- Keep the original code unchanged
+- Add a new SourceEdit with:
+  - startSentence = ""
+  - endSentence = ""
+  - replacement = full statement to insert
+
+## Rule 10.1: No Additional Statements (STRICT)
+
+When inserting a missing initialization:
+
+- The inserted code MUST contain EXACTLY ONE statement
+- That statement MUST be the initialization only
+
+You MUST NOT:
+- append additional statements
+- include any usage of the variable
+- reconstruct or duplicate existing logic
+
+Valid:
+var msg = "";
+
+Invalid:
+var msg = "";
+msg += something;
+
+------------------------------------------------------------
+
+## Rule 11: Correct Insertion Position
+
+When inserting initialization:
+
+- Insert BEFORE the first usage of the variable
+- If the variable is used across multiple iterations or outside a loop:
+  - Insert BEFORE the loop starts
+
+Never insert inside the loop if the variable is used after the loop.
+
+Bad (INVALID):
+
+Replacing the line:
+"str += z + "\n";"
+
+with:
+"var str = '';\nstr += z + "\n";"
+
+Reason:
+- This modifies existing logic
+- This does not initialize before the loop
+- This is NOT an insert
+
+---
+
+Good (VALID):
+
+Insert before loop:
+
+{
+  "startSentence": "",
+  "endSentence": "",
+  "replacement": "var x = '';"
+}
+
+## Rule 12: Insert Encoding (CRITICAL)
+
+An insertion is ONLY valid if:
+
+- startSentence = ""
+- endSentence = ""
+
+If either field is non-empty:
+→ The edit is considered a REPLACEMENT and is INVALID
+
+For initialization fixes:
+- You MUST use startSentence = "" and endSentence = ""
+- Any other form is WRONG
+
+## Rule 13: Deletion
+
+To delete code (such as unused variables or dead logic), you must populate startSentence and endSentence with the code to be removed. The replacement field must be an empty string "". Ensure the startLine and endLine accurately reflect the range of the deletion to maintain file integrity.
+Context Check: Always verify via codeContext that a variable is truly unreferenced before suggesting a deletion.
 
 # Final Instructions
 
