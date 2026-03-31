@@ -61,6 +61,7 @@ public class ServoyAiModel
 	private ExplainAssistant explainAssistant;
 	private ReviewAssistant reviewAssistant;
 	private UnitTestAssistant unitTestAssistant;
+	private QueryBuilderAssistant queryBuilderAssistant;
 
 	public ServoyAiModel(AiConfiguration conf)
 	{
@@ -165,6 +166,20 @@ public class ServoyAiModel
 			};
 		}
 		return unitTestAssistant;
+	}
+
+	public QueryBuilderAssistant getQueryBuilderAssistant()
+	{
+		if (queryBuilderAssistant == null && conf.isValid())
+		{
+			queryBuilderAssistant = switch (conf.getSelectedModel())
+			{
+				case OPENAI -> createQueryBuilderServices(createOpenAIModel(conf));
+				case GEMINI -> createQueryBuilderServices(createGeminiModel(conf));
+				case NONE -> null;
+			};
+		}
+		return queryBuilderAssistant;
 	}
 
 	private ChatModel createQuickFixOpenAIModel(AiConfiguration conf)
@@ -369,6 +384,29 @@ public class ServoyAiModel
 				new FileReadingTools(), // Read source files
 				new TestGenerationTools(), // Test generation tools (createTestFile, addTestMethod, etc.)
 				new KnowledgeTools() // Servoy API documentation
+			)
+			.build();
+	}
+
+	private QueryBuilderAssistant createQueryBuilderServices(StreamingChatModel model)
+	{
+		String systemPrompt = SystemPrompts.INSTANCE.getQueryBuilderPrompt();
+
+		return AiServices.builder(QueryBuilderAssistant.class)
+			.streamingChatModel(model)
+			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+				.id(memoryId)
+				.alwaysKeepSystemMessageFirst(true)
+				.maxMessages(MAX_MESSAGES)
+				.chatMemoryStore(sharedMemoryStore)
+				.build())
+			.systemMessageProvider(memoryId -> systemPrompt)
+			.tools(
+				new FileReadingTools(), // Read file contents
+				new EclipseTools(), // Code search, file operations, workspace queries
+				new KnowledgeTools(), // Servoy API documentation lookup
+				new WebFetchTools(), // Fetch docs.servoy.com pages when needed
+				new DatabaseTools() // Inspect table schemas to generate correct QB queries
 			)
 			.build();
 	}

@@ -89,6 +89,17 @@ public class ServoyAiContextMenu extends CompoundContributionItem
 			CommandContributionItem.STYLE_PUSH);
 		subMenuManager.add(new CommandContributionItem(testsParam));
 
+		// Separator
+		subMenuManager.add(new Separator());
+
+		// Query Builder command
+		CommandContributionItemParameter queryBuilderParam = new CommandContributionItemParameter(
+			window,
+			null,
+			"com.servoy.eclipse.servoypilot.context.querybuilder",
+			CommandContributionItem.STYLE_PUSH);
+		subMenuManager.add(new CommandContributionItem(queryBuilderParam));
+
 		return new IContributionItem[] { subMenuManager };
 	}
 

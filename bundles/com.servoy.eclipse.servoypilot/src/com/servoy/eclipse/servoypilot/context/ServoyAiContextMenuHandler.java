@@ -73,6 +73,9 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 					case "com.servoy.eclipse.servoypilot.context.explain" :
 						handleExplain(selectionInfo);
 						break;
+					case "com.servoy.eclipse.servoypilot.context.querybuilder" :
+						handleQueryBuilder(selectionInfo);
+						break;
 					default :
 						ServoyLog.logInfo("Unknown command: " + commandId);
 				}
@@ -231,6 +234,50 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
 			{
 				displayMessage.append("Please read and analyze the file `").append(selection.getFilePath()).append("`.\n");
+			}
+		});
+	}
+
+	private void handleQueryBuilder(SelectionInfo selection)
+	{
+		handleSelectionInfo(AssistantType.QUERY_BUILDER, selection, new ISelectionAIHandler()
+		{
+			@Override
+			public void viewTextSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				// ignore - QB analysis is file/code focused
+			}
+
+			@Override
+			public void smallTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
+			{
+				displayMessage.append("Please review this code from `").append(selection.getFilePath()).append("` for Query Builder issues:\n\n");
+				displayMessage.append("1. Identify and fix any incorrect or invalid Servoy Query Builder API usage.\n");
+				displayMessage.append("2. Convert any plain SQL strings passed to `databaseManager` methods into equivalent Servoy Query Builder code.\n\n");
+				displayMessage.append("Use `getTableInfo` to look up table schemas before generating any QB code.\n\n");
+				displayMessage.append("```javascript\n");
+				displayMessage.append(selection.getSelectedText());
+				displayMessage.append("\n```");
+			}
+
+			@Override
+			public void largeTextSelection(SelectionInfo selection, int lineCount, StringBuilder displayMessage)
+			{
+				displayMessage.append("Please read and review the selected code from `").append(selection.getFilePath()).append("` at line ")
+					.append(selection.getOffset()).append(" (").append(lineCount).append(" lines, ")
+					.append(selection.getLength()).append(" characters) for Query Builder issues:\n\n");
+				displayMessage.append("1. Identify and fix any incorrect or invalid Servoy Query Builder API usage.\n");
+				displayMessage.append("2. Convert any plain SQL strings passed to `databaseManager` methods into equivalent Servoy Query Builder code.\n\n");
+				displayMessage.append("Use `getTableInfo` to look up table schemas before generating any QB code.");
+			}
+
+			@Override
+			public void fileSelection(SelectionInfo selection, StringBuilder displayMessage)
+			{
+				displayMessage.append("Please read and review the file `").append(selection.getFilePath()).append("` for Query Builder issues:\n\n");
+				displayMessage.append("1. Identify and fix any incorrect or invalid Servoy Query Builder API usage.\n");
+				displayMessage.append("2. Convert any plain SQL strings passed to `databaseManager` methods into equivalent Servoy Query Builder code.\n\n");
+				displayMessage.append("Use `getTableInfo` to look up table schemas before generating any QB code.");
 			}
 		});
 	}

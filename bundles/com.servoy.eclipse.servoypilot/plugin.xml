@@ -83,6 +83,11 @@
             id="com.servoy.eclipse.servoypilot.context.explain"
             name="Explain">
       </command>
+      <command
+            category="com.servoy.eclipse.servoypilot.commands.category"
+            id="com.servoy.eclipse.servoypilot.context.querybuilder"
+            name="Query Builder">
+      </command>
    </extension>
 
    <!-- Servoy AI Context Menu Handlers -->
@@ -107,6 +112,10 @@
       <handler
             class="com.servoy.eclipse.servoypilot.context.ServoyAiContextMenuHandler"
             commandId="com.servoy.eclipse.servoypilot.context.explain">
+      </handler>
+      <handler
+            class="com.servoy.eclipse.servoypilot.context.ServoyAiContextMenuHandler"
+            commandId="com.servoy.eclipse.servoypilot.context.querybuilder">
       </handler>
    </extension>
 

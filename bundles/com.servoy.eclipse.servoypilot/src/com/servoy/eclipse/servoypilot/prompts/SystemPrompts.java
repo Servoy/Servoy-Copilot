@@ -97,6 +97,11 @@ public class SystemPrompts
 		return prompts.get("unittest.txt");
 	}
 
+	public String getQueryBuilderPrompt()
+	{
+		return prompts.get("query-builder.txt");
+	}
+
 	public String getPrompt(String name)
 	{
 		return prompts.get(name);
