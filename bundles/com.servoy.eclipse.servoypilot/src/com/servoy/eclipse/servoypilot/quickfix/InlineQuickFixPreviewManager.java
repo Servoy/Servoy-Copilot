@@ -86,17 +86,11 @@ public class InlineQuickFixPreviewManager
 	}
 
 	public void preview(
-		ITextEditor editor,
+		ScriptEditor scriptEditor,
 		QuickFixResult sourceEdits,
 		QuickFixRequest request,
 		String fixPrompt) throws Exception
 	{
-		if (!(editor instanceof ScriptEditor))
-		{
-			return;
-		}
-
-		ScriptEditor scriptEditor = (ScriptEditor)editor;
 		ISourceViewer viewer = scriptEditor.getViewer();
 		if (viewer == null)
 		{
@@ -217,7 +211,7 @@ public class InlineQuickFixPreviewManager
 		textWidget.addPaintListener(paintListener);
 		textWidget.redraw();
 
-		showAcceptRejectUI(editor, fixPrompt);
+		showAcceptRejectUI(scriptEditor, fixPrompt);
 	}
 
 	private void drawDiffDecorations(GC gc, Set<Integer> lines, String symbol, Color bgColor, int width)
@@ -276,11 +270,10 @@ public class InlineQuickFixPreviewManager
 		return text.endsWith("\n") ? len - 1 : len;
 	}
 
-	private void accept(ITextEditor editor)
+	private void accept(ScriptEditor scriptEditor)
 	{
 		try
 		{
-			ScriptEditor scriptEditor = (ScriptEditor)editor;
 			ISourceViewer viewer = scriptEditor.getViewer();
 			IDocument document = viewer.getDocument();
 
@@ -300,14 +293,13 @@ public class InlineQuickFixPreviewManager
 			ServoyLog.logError("Cannot accept quickfix proposal", e);
 		}
 
-		cleanup(editor);
+		cleanup(scriptEditor);
 	}
 
-	private void reject(ITextEditor editor)
+	private void reject(ScriptEditor scriptEditor)
 	{
 		try
 		{
-			ScriptEditor scriptEditor = (ScriptEditor)editor;
 			ISourceViewer viewer = scriptEditor.getViewer();
 			IDocument document = viewer.getDocument();
 
@@ -337,14 +329,13 @@ public class InlineQuickFixPreviewManager
 			ServoyLog.logError("Cannot reject quickfix proposal", e);
 		}
 
-		cleanup(editor);
+		cleanup(scriptEditor);
 	}
 
-	private void cleanup(ITextEditor editor)
+	private void cleanup(ScriptEditor scriptEditor)
 	{
 		try
 		{
-			ScriptEditor scriptEditor = (ScriptEditor)editor;
 			ISourceViewer viewer = scriptEditor.getViewer();
 			StyledText textWidget = viewer.getTextWidget();
 
@@ -379,14 +370,8 @@ public class InlineQuickFixPreviewManager
 		}
 	}
 
-	private void showAcceptRejectUI(ITextEditor editor, String fixPrompt)
+	private void showAcceptRejectUI(ScriptEditor scriptEditor, String fixPrompt)
 	{
-		if (!(editor instanceof ScriptEditor))
-		{
-			return;
-		}
-
-		ScriptEditor scriptEditor = (ScriptEditor)editor;
 		StyledText text = scriptEditor.getViewer().getTextWidget();
 
 		if (floatingBar != null && !floatingBar.isDisposed())
@@ -426,7 +411,7 @@ public class InlineQuickFixPreviewManager
 			blue,
 			blueHover,
 			() -> {
-				accept(editor);
+				accept(scriptEditor);
 				disposeFloatingBar();
 			});
 
@@ -437,7 +422,7 @@ public class InlineQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				reject(editor);
+				reject(scriptEditor);
 				disposeFloatingBar();
 			});
 
