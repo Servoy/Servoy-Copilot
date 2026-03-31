@@ -59,8 +59,11 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
+import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.quickfix.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
+import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -881,6 +884,16 @@ public class ChatViewPresenter
 					// Parse error_context tags from AI response (not user message)
 					invokeQuickFixForError(responseText, assistantMsgId, responseText);
 				}
+				else if (currentAssistant == AssistantType.QUICKFIX)
+			{
+				QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+				QuickFixResult newFix = quickFixAssistant.fix(userMessage);
+
+				if (newFix != null && !newFix.edits().isEmpty())
+				{
+					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+				}
+			}
 			})
 			.onError(error -> {
 				applyToView(part -> {

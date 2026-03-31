@@ -23,29 +23,18 @@ import java.util.regex.Pattern;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IAnnotationResolution;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IRegion;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.ui.IEditorInput;
-import org.eclipse.ui.IEditorPart;
-import org.eclipse.ui.IEditorReference;
 import org.eclipse.ui.IMarkerResolution;
-import org.eclipse.ui.IWorkbenchPage;
-import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
-import org.eclipse.ui.ide.IDE;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -53,7 +42,6 @@ import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotationResolution
 {
@@ -130,38 +118,7 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 						return Status.CANCEL_STATUS;
 					}
 					monitor.worked(1);
-
-					Display.getDefault().asyncExec(() -> {
-						try
-						{
-							IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-							for (SourceEdit edit : fix.edits())
-							{
-								String editPath = edit.filePath();
-								if (editPath.startsWith("L/"))
-								{
-									editPath = editPath.substring(2);
-								}
-								IPath path = new Path(editPath);
-								IFile fileToEdit = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-
-								IEditorPart targetEditor = findEditor(page, fileToEdit);
-								if (targetEditor instanceof ScriptEditor scriptEditor)
-								{
-									InlineQuickFixPreviewManager previewManager = new InlineQuickFixPreviewManager();
-									previewManager.preview(scriptEditor, fix, request, fixPrompt);
-								}
-								else
-								{
-									ServoyLog.logError("Target editor is not a ScriptEditor, cannot apply quick fix preview");
-								}
-							}
-						}
-						catch (Exception e)
-						{
-							ServoyLog.logError("Error applying quick fix", e);
-						}
-					});
+					QuickFixPresenter.getInstance().previewFix(fixPrompt, fix);
 					monitor.done();
 				}
 				catch (Exception e)
@@ -361,39 +318,5 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 		matcher.appendTail(result);
 
 		return result.toString();
-	}
-
-	private IEditorPart findEditor(IWorkbenchPage page, IFile fileToEdit) throws PartInitException
-	{
-		IEditorPart targetEditor = null;
-
-		// iterate over all open editors in the current page
-		IEditorReference[] editorRefs = page.getEditorReferences();
-		for (IEditorReference ref : editorRefs)
-		{
-			try
-			{
-				IEditorInput input = ref.getEditorInput();
-				IFile openFile = input != null ? input.getAdapter(IFile.class) : null;
-
-				if (openFile != null && openFile.equals(fileToEdit))
-				{
-					targetEditor = ref.getEditor(true);
-					page.activate(targetEditor);
-					break;
-				}
-			}
-			catch (PartInitException e)
-			{
-				ServoyLog.logError("Failed to inspect editor reference", e);
-			}
-		}
-
-		if (targetEditor == null)
-		{
-			// use DLTKUIPlugin.openInEditor ?
-			targetEditor = IDE.openEditor(page, fileToEdit, true);
-		}
-		return targetEditor;
 	}
 }

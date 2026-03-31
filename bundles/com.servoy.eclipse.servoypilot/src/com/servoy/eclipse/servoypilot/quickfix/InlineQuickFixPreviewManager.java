@@ -47,7 +47,6 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IFileEditorInput;
-import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
@@ -55,11 +54,10 @@ import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
 import com.servoy.eclipse.servoypilot.services.CodeFormattingService;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
 import com.servoy.eclipse.servoypilot.services.ParserService;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 
-public class InlineQuickFixPreviewManager
+public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 {
 	private String originalContent;
 	private LineBackgroundListener backgroundListener;
@@ -75,6 +73,8 @@ public class InlineQuickFixPreviewManager
 	private FileCompareEditorInput compareEditorInput;
 	private StyledText textWidget;
 
+	private ScriptEditor scriptEditor;
+
 	private static class PreviewChange
 	{
 		int startOffset;
@@ -85,10 +85,15 @@ public class InlineQuickFixPreviewManager
 		public boolean isInsert;
 	}
 
-	public void preview(
-		ScriptEditor scriptEditor,
-		QuickFixResult sourceEdits,
-		QuickFixRequest request,
+	public InlineQuickFixPreviewManager(ScriptEditor scriptEditor)
+	{
+		super();
+		this.scriptEditor = scriptEditor;
+	}
+
+	@Override
+	public void previewFix(
+		List<SourceEdit> sourceEdits,
 		String fixPrompt) throws Exception
 	{
 		ISourceViewer viewer = scriptEditor.getViewer();
@@ -114,7 +119,7 @@ public class InlineQuickFixPreviewManager
 		removedLines.clear();
 		addedLines.clear();
 
-		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits.edits());
+		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits);
 		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
 
 		for (SourceEdit edit : sortedEdits)
@@ -270,7 +275,7 @@ public class InlineQuickFixPreviewManager
 		return text.endsWith("\n") ? len - 1 : len;
 	}
 
-	private void accept(ScriptEditor scriptEditor)
+	private void accept()
 	{
 		try
 		{
@@ -293,10 +298,10 @@ public class InlineQuickFixPreviewManager
 			ServoyLog.logError("Cannot accept quickfix proposal", e);
 		}
 
-		cleanup(scriptEditor);
+		cleanup();
 	}
 
-	private void reject(ScriptEditor scriptEditor)
+	private void reject()
 	{
 		try
 		{
@@ -329,10 +334,17 @@ public class InlineQuickFixPreviewManager
 			ServoyLog.logError("Cannot reject quickfix proposal", e);
 		}
 
-		cleanup(scriptEditor);
+		cleanup();
 	}
 
-	private void cleanup(ScriptEditor scriptEditor)
+	@Override
+	public void clearPreview()
+	{
+		reject();
+		cleanup();
+	}
+
+	private void cleanup()
 	{
 		try
 		{
@@ -411,7 +423,7 @@ public class InlineQuickFixPreviewManager
 			blue,
 			blueHover,
 			() -> {
-				accept(scriptEditor);
+				accept();
 				disposeFloatingBar();
 			});
 
@@ -422,7 +434,7 @@ public class InlineQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				reject(scriptEditor);
+				reject();
 				disposeFloatingBar();
 			});
 
@@ -433,7 +445,7 @@ public class InlineQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				toggleDiffEditor(scriptEditor, fixPrompt);
+				toggleDiffEditor(fixPrompt);
 			});
 
 		floatingBar.pack();
@@ -590,18 +602,18 @@ public class InlineQuickFixPreviewManager
 		}
 	}
 
-	private void toggleDiffEditor(ITextEditor editor, String fixPrompt)
+	private void toggleDiffEditor(String fixPrompt)
 	{
 		if (compareEditorInput == null)
 		{
-			IEditorInput input = editor.getEditorInput();
+			IEditorInput input = scriptEditor.getEditorInput();
 			IFile file = input.getAdapter(IFile.class);
 			if (file == null && input instanceof IFileEditorInput)
 			{
 				file = ((IFileEditorInput)input).getFile();
 			}
-			IDocument document = editor.getDocumentProvider()
-				.getDocument(editor.getEditorInput());
+			IDocument document = scriptEditor.getDocumentProvider()
+				.getDocument(scriptEditor.getEditorInput());
 
 			CompareEditorService compareService = CompareEditorService.getInstance();
 			try
