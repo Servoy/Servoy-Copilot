@@ -1,6 +1,6 @@
 # SESSION 4: Multi-File Workflows — Test Workflows
 
-**Date:** March 26, 2026
+**Date:** March 31, 2026
 **Status:** 🧪 READY FOR TESTING
 **Implementation:** DocumentationTools + CodeAnalysisTools (Documentation Assistant)
 
@@ -17,13 +17,13 @@ This document tests the Documentation Assistant's ability to work across **multi
 - REPLACE mode on existing incomplete JSDoc (globals, customerEdit)
 - Mixed-mode in a single `applyDocumentations()` call
 - UUID preservation across all modified files
-- Content hash validation preventing stale writes
+- Timestamp validation preventing stale writes
 
 **Tools exercised:**
 - `analyzeFileStructure(pathOrName)` — survey each file before writing
 - `getCodeChunk(pathOrName, symbolName?, chunkNumber?, startLine?, chunkSize?)` — read code (SMALL=50 / MEDIUM=100 / LARGE=200 lines)
 - `getDocumentationForIdentifiers(identifiers[], filePath?)` — Servoy API docs
-- `applyDocumentations(filePath, contentHash, items[])` — write JSDoc
+- `applyDocumentations(filePath, items[])` — write JSDoc
 
 ---
 
@@ -70,24 +70,27 @@ Analyze the file structure of utils
 
 **Expected output (abbreviated):**
 ```
-FILE: /svyPilotTest/utils.js
+=== FILE STRUCTURE ===
+
+FILE: /svyPilotTest/scopes/utils.js
 TOTAL SYMBOLS: 8
+JSDOC PRESENT: 2
+JSDOC ABSENT: 6
 
-VARIABLES (2):
-  [✓] DEFAULT_DATE_FORMAT (VARIABLE) - line 1
-  [✓] DEFAULT_CURRENCY_SYMBOL (VARIABLE) - line 9
+=== SYMBOLS ===
 
-FUNCTIONS (6) — all undocumented:
-  [ ] formatDate (FUNCTION) - line 17
-  [ ] formatCurrency (FUNCTION) - line 22
-  [ ] isEmptyString (FUNCTION) - line 27
-  [ ] truncateText (FUNCTION) - line 31
-  [ ] parseNumber (FUNCTION) - line 36
-  [ ] buildErrorMessage (FUNCTION) - line 41
+- DEFAULT_DATE_FORMAT (VARIABLE) at line 1 [JSDOC PRESENT]
+- DEFAULT_CURRENCY_SYMBOL (VARIABLE) at line 9 [JSDOC PRESENT]
+- formatDate (FUNCTION) at line 17 [JSDOC ABSENT]
+- formatCurrency (FUNCTION) at line 22 [JSDOC ABSENT]
+- isEmptyString (FUNCTION) at line 27 [JSDOC ABSENT]
+- truncateText (FUNCTION) at line 31 [JSDOC ABSENT]
+- parseNumber (FUNCTION) at line 36 [JSDOC ABSENT]
+- buildErrorMessage (FUNCTION) at line 41 [JSDOC ABSENT]
 ```
 
 **Success criteria:**
-- ✅ 2 documented variables, 6 bare functions reported
+- ✅ 2 `[JSDOC PRESENT]` variables, 6 `[JSDOC ABSENT]` functions reported
 - ✅ Line numbers match actual file positions
 
 ---
@@ -103,7 +106,7 @@ Please generate JSDoc for all undocumented functions in utils
 1. Calls `getCodeChunk("utils")` — entire file fits in 1 chunk (53 lines)
 2. Recognizes standard JS types only — skips `getDocumentationForIdentifiers()`
 3. Builds 6 `DocumentationItem` records — all INSERT mode (startSentence="", endSentence="")
-4. Calls `applyDocumentations("utils.js", <hash>, [6 items])`
+4. Calls `applyDocumentations("/svyPilotTest/scopes/utils.js", [6 items])`
 
 **Expected JSDoc for `formatDate`:**
 ```javascript
@@ -147,10 +150,10 @@ Generate JSDoc for all functions in mainNav
 ```
 
 **Expected AI workflow:**
-1. Calls `analyzeFileStructure("mainNav")` — 6 bare functions, no variables
+1. Calls `analyzeFileStructure("mainNav")` — 6 `[JSDOC ABSENT]` functions, no variables
 2. Calls `getCodeChunk("mainNav")` — 26 lines, single chunk
 3. Calls `getDocumentationForIdentifiers(["JSEvent"], "mainNav.js")` — looks up `JSEvent`
-4. Calls `applyDocumentations("mainNav.js", <hash>, [6 items])`
+4. Calls `applyDocumentations("/svyPilotTest/forms/mainNav.js", [6 items])`
 
 **Expected JSDoc for `onLoad`:**
 ```javascript
@@ -204,19 +207,25 @@ Analyze dataUtils
 
 **Expected output (abbreviated):**
 ```
-VARIABLES (4):
-  [✓] CUSTOMER_DATASOURCE (VARIABLE) - line 1
-  [✓] ORDER_DATASOURCE (VARIABLE) - line 9
-  [✓] lastQueryResult (VARIABLE) - line 17
-  [✓] lastRecordCount (VARIABLE) - line 21
+=== FILE STRUCTURE ===
 
-FUNCTIONS (6):
-  [✓] getRecord (FUNCTION) - line 26      ← has JSDoc — REPLACE candidate
-  [ ] loadRecords (FUNCTION) - line 34    ← bare — INSERT
-  [✓] saveRecord (FUNCTION) - line 46    ← has JSDoc — REPLACE candidate
-  [ ] buildQuery (FUNCTION) - line 53    ← bare — INSERT
-  [ ] getDataSet (FUNCTION) - line 57    ← bare — INSERT
-  [ ] countRecords (FUNCTION) - line 63  ← bare — INSERT
+FILE: /svyPilotTest/scopes/dataUtils.js
+TOTAL SYMBOLS: 10
+JSDOC PRESENT: 6
+JSDOC ABSENT: 4
+
+=== SYMBOLS ===
+
+- CUSTOMER_DATASOURCE (VARIABLE) at line 1 [JSDOC PRESENT]
+- ORDER_DATASOURCE (VARIABLE) at line 9 [JSDOC PRESENT]
+- lastQueryResult (VARIABLE) at line 17 [JSDOC PRESENT]
+- lastRecordCount (VARIABLE) at line 21 [JSDOC PRESENT]
+- getRecord (FUNCTION) at line 26 [JSDOC PRESENT]
+- loadRecords (FUNCTION) at line 34 [JSDOC ABSENT]
+- saveRecord (FUNCTION) at line 46 [JSDOC PRESENT]
+- buildQuery (FUNCTION) at line 53 [JSDOC ABSENT]
+- getDataSet (FUNCTION) at line 57 [JSDOC ABSENT]
+- countRecords (FUNCTION) at line 63 [JSDOC ABSENT]
 ```
 
 ### Step 2 — Document all
@@ -231,12 +240,12 @@ Document all functions in dataUtils. Improve the existing ones if incomplete, ad
 2. `getDocumentationForIdentifiers(["databaseManager.getFoundSet", "databaseManager.saveData", "databaseManager.createSelect", "databaseManager.getDataSetByQuery"], "dataUtils.js")`
 3. Generates 6 items:
    - `getRecord` → REPLACE (lines of existing `/**` to `*/`)
-   - `loadRecords` → INSERT (no existing JSDoc)
-   - `saveRecord` → REPLACE (improve existing — already documented but check completeness)
+   - `loadRecords` → INSERT
+   - `saveRecord` → REPLACE
    - `buildQuery` → INSERT
    - `getDataSet` → INSERT
    - `countRecords` → INSERT
-4. `applyDocumentations("dataUtils.js", <hash>, [6 items])`
+4. `applyDocumentations("/svyPilotTest/scopes/dataUtils.js", [6 items])`
 
 **Expected JSDoc for `loadRecords` (INSERT):**
 ```javascript
@@ -281,24 +290,22 @@ Generate documentation for all undocumented or incomplete items in globals
 ```
 
 **Expected AI workflow:**
-1. `analyzeFileStructure("globals")` → identifies mix of documented/bare
-2. `getCodeChunk("globals", chunkNumber=0)` — 154 lines fits in single chunk
+1. `analyzeFileStructure("globals")` → identifies mix of `[JSDOC PRESENT]` / `[JSDOC ABSENT]`
+2. `getCodeChunk("globals", chunkNumber=0)` — 154 lines fits in single LARGE chunk
 3. `getDocumentationForIdentifiers(["application.showForm", "security.getUserName", "plugins.dialogs.showInfoDialog"], "globals.js")`
 4. Generates items for:
-   - `isGridConfigured` → REPLACE (has minimal JSDoc — `@private @type {Boolean}` only)
-   - `activeFoundset` → REPLACE (has `@type {JSFoundSet}` only — improve)
-   - `currentUserName` → REPLACE (has `@type {String}` only — improve)
-   - `clearState` → INSERT (bare function)
-   - `isInitialized` → INSERT (bare function)
-   - `setInitialized` → INSERT (bare function)
+   - `isGridConfigured` → REPLACE (`[JSDOC PRESENT]` but minimal — `@private @type {Boolean}` only)
+   - `activeFoundset` → REPLACE (`[JSDOC PRESENT]` but minimal — `@type {JSFoundSet}` only)
+   - `currentUserName` → REPLACE (`[JSDOC PRESENT]` but minimal — `@type {String}` only)
+   - `clearState` → INSERT (`[JSDOC ABSENT]`)
+   - `isInitialized` → INSERT (`[JSDOC ABSENT]`)
+   - `setInitialized` → INSERT (`[JSDOC ABSENT]`)
 
 **Expected JSDoc for `clearState` (INSERT):**
 ```javascript
 /**
  * Resets all global shared state variables to their initial values.
  * Should be called when navigating back to the main navigation form.
- *
- * @public
  */
 function clearState() {
 ```
@@ -308,7 +315,6 @@ function clearState() {
 /**
  * Sets the solution initialized flag.
  *
- * @public
  * @param {Boolean} value - True to mark the solution as initialized
  */
 function setInitialized(value) {
@@ -320,6 +326,8 @@ function setInitialized(value) {
  * The currently active foundset used across forms.
  *
  * @type {JSFoundSet}
+ *
+ * @properties={typeid:35,uuid:"..."}
  */
 var activeFoundset = null;
 ```
@@ -342,7 +350,7 @@ Please add JSDoc to all undocumented functions in customerList
 ```
 
 **Expected AI workflow:**
-1. `analyzeFileStructure("customerList")` → reports 2 documented, 4 bare
+1. `analyzeFileStructure("customerList")` → reports 2 `[JSDOC PRESENT]`, 4 `[JSDOC ABSENT]`
 2. `getCodeChunk("customerList")` — 59 lines, single chunk
 3. `getDocumentationForIdentifiers(["databaseManager.createSelect"], "customerList.js")`
 4. Generates 4 INSERT items only (leaves `onLoad` and `onSearchAction` untouched)
@@ -369,7 +377,7 @@ function onActionEdit(event) {
 ```
 
 **Success criteria:**
-- ✅ Exactly 4 INSERT items (not 6 — documented ones untouched)
+- ✅ Exactly 4 INSERT items (not 6 — `[JSDOC PRESENT]` ones untouched)
 - ✅ `onLoad` and `onSearchAction` left unchanged
 - ✅ AI explains which functions were already documented
 
@@ -385,18 +393,18 @@ Document all undocumented items in customerEdit and improve any incomplete ones
 ```
 
 **Expected AI workflow:**
-1. `analyzeFileStructure("customerEdit")` → 8 symbols needing attention
+1. `analyzeFileStructure("customerEdit")` → 8 `[JSDOC ABSENT]` symbols + some `[JSDOC PRESENT]` needing improvement
 2. `getCodeChunk("customerEdit")` — 89 lines, single chunk
 3. `getDocumentationForIdentifiers(["databaseManager.saveData", "databaseManager.rollbackEditedRecords", "databaseManager.hasNewRecords"], "customerEdit.js")`
 4. Generates:
-   - `validationErrors` → REPLACE (`@type {Array}` only — add description)
-   - `originalCompanyName` → REPLACE (`@type {String}` only — add description)
-   - `onActionSave` → INSERT
-   - `onActionCancel` → INSERT
-   - `save` → INSERT (returns Boolean — inferred from `return databaseManager.saveData()`)
-   - `validate` → INSERT (returns Array)
-   - `updateUI` → INSERT (no return)
-   - `onHide` → INSERT (returns Boolean)
+   - `validationErrors` → REPLACE (`[JSDOC PRESENT]` but minimal — `@type {Array}` only)
+   - `originalCompanyName` → REPLACE (`[JSDOC PRESENT]` but minimal — `@type {String}` only)
+   - `onActionSave` → INSERT (`[JSDOC ABSENT]`)
+   - `onActionCancel` → INSERT (`[JSDOC ABSENT]`)
+   - `save` → INSERT — returns Boolean
+   - `validate` → INSERT — returns Array
+   - `updateUI` → INSERT — void
+   - `onHide` → INSERT — returns Boolean
 
 **Expected JSDoc for `save` (INSERT):**
 ```javascript
@@ -431,7 +439,7 @@ function updateUI() {
 **Success criteria:**
 - ✅ `save()` and `validate()` have correct `@return` types inferred from code
 - ✅ `updateUI()` has no `@return` (void function)
-- ✅ `onLoad` and `onShow` (already documented) untouched
+- ✅ `onLoad` and `onShow` (already `[JSDOC PRESENT]`) untouched
 - ✅ UUID in `isNewRecord`'s `@properties` tag survives unchanged
 
 ---
@@ -446,7 +454,7 @@ Add JSDoc to all undocumented functions in orderList
 ```
 
 **Expected AI workflow:**
-1. `analyzeFileStructure("orderList")` → 1 documented variable, 5 bare functions
+1. `analyzeFileStructure("orderList")` → 1 `[JSDOC PRESENT]` variable, 5 `[JSDOC ABSENT]` functions
 2. `getCodeChunk("orderList")` — 53 lines, single chunk
 3. `getDocumentationForIdentifiers(["QBSelect", "databaseManager.createSelect"], "orderList.js")`
 4. Generates 5 INSERT items
@@ -498,7 +506,7 @@ Generate documentation for all undocumented functions in dashboard
 ```
 
 **Expected AI workflow:**
-1. `analyzeFileStructure("dashboard")` → 3 documented variables, 7 bare functions
+1. `analyzeFileStructure("dashboard")` → 3 `[JSDOC PRESENT]` variables, 7 `[JSDOC ABSENT]` functions
 2. `getCodeChunk("dashboard")` — 60 lines, single chunk
 3. `getDocumentationForIdentifiers(["JSDataSet.getMaxRowIndex"], "dashboard.js")`
 4. Generates 7 INSERT items
@@ -538,7 +546,7 @@ function onActionRefresh(event) {
 - ✅ 7 INSERT items in one call
 - ✅ `refreshStats` correctly documented as void (no `@return`)
 - ✅ `formatSummary` returns `{String}`
-- ✅ `lastRefreshed` date variable (documented as `@type {Date}`) untouched
+- ✅ `lastRefreshed` date variable (`[JSDOC PRESENT]`) untouched
 
 ---
 
@@ -553,8 +561,8 @@ In one go, please generate JSDoc for all bare functions in utils and mainNav
 
 **Expected AI workflow:**
 1. `analyzeFileStructure("utils")` + `analyzeFileStructure("mainNav")` — surveys both
-2. `getCodeChunk("utils")` → generates 6 INSERT items → `applyDocumentations("utils.js", ...)`
-3. `getCodeChunk("mainNav")` → generates 6 INSERT items → `applyDocumentations("mainNav.js", ...)`
+2. `getCodeChunk("utils")` → generates 6 INSERT items → `applyDocumentations("/svyPilotTest/scopes/utils.js", [6 items])`
+3. `getCodeChunk("mainNav")` → generates 6 INSERT items → `applyDocumentations("/svyPilotTest/forms/mainNav.js", [6 items])`
 4. Single summary: "Applied JSDoc to 6 functions in utils.js and 6 functions in mainNav.js"
 
 **Success criteria:**
@@ -577,18 +585,18 @@ Analyze the structure of utils, mainNav, dataUtils, customerList and verify the 
 
 **Expected output pattern (per file):**
 ```
-FILE: /svyPilotTest/utils.js
+=== FILE STRUCTURE ===
+
+FILE: /svyPilotTest/scopes/utils.js
 TOTAL SYMBOLS: 8
-DOCUMENTED: 8 (100%)
-UNDOCUMENTED: 0
+JSDOC PRESENT: 8
+JSDOC ABSENT: 0
 ```
 
 **Success criteria:**
-- ✅ All 8 files show 100% or near-100% documentation coverage
-- ✅ `analyzeFileStructure()` correctly reports `[✓]` for newly documented symbols
-- ✅ No regressions (previously documented items still show `[✓]`)
-
----
+- ✅ All 8 files show `JSDOC ABSENT: 0`
+- ✅ `analyzeFileStructure()` correctly reports `[JSDOC PRESENT]` for newly documented symbols
+- ✅ No regressions (previously documented items still show `[JSDOC PRESENT]`)
 
 ---
 
@@ -610,66 +618,52 @@ getCodeChunk("dataUtils", symbolName="buildQuery", chunkSize="SMALL")
 ```
 === CODE CHUNK ===
 
-FILE: /svyPilotTest/dataUtils.js
+FILE: /svyPilotTest/scopes/dataUtils.js
 LINES: <start>-<end>          ← window ≤ 50 lines
 CHUNK SIZE: 50 lines
-CHUNK: X of Y                 ← Y is larger than with LARGE (more chunks for same file)
+CHUNK: X of Y
 ```
-
-**Expected content:** Only `buildQuery` (3 lines) visible inside the 50-line window — neighboring functions may or may not appear depending on position, but the window must not exceed 50 lines.
 
 **Success criteria:**
 - ✅ `CHUNK SIZE: 50 lines` in output header
 - ✅ `(endLine - startLine + 1) ≤ 50`
 - ✅ `buildQuery` body is present in the returned content
-- ✅ Total chunk count for this file is `ceil(86 / 50)` = **2** (vs 1 with LARGE)
+- ✅ Total chunk count for this file is `ceil(86 / 50)` = **2**
 
 ---
 
 ## TEST 4.12 — Chunk Size MEDIUM: Sequential Multi-Function Read
 
-**Purpose:** Verifies MEDIUM (100 lines) chunk size in SEQUENTIAL mode. `customerEdit.js` is 89 lines — must fit in a single MEDIUM chunk (chunk 0, last chunk).
+**Purpose:** Verifies MEDIUM (100 lines) chunk size in SEQUENTIAL mode. `customerEdit.js` is 89 lines — must fit in a single MEDIUM chunk.
 
 ### Prompt:
 ```
 Read customerEdit chunk 0 with medium chunk size
 ```
 
-**Expected AI call:**
-```
-getCodeChunk("customerEdit", chunkNumber=0, chunkSize="MEDIUM")
-```
-
 **Expected output header:**
 ```
 === CODE CHUNK ===
 
-FILE: /svyPilotTest/customerEdit.js
+FILE: /svyPilotTest/forms/customerEdit.js
 LINES: 0-88
 CHUNK SIZE: 100 lines
 CHUNK: 1 of 1
 (LAST CHUNK)
 ```
 
-**Expected content:** All 89 lines of `customerEdit.js` — entire file in one MEDIUM chunk.
-
 **Success criteria:**
 - ✅ `CHUNK SIZE: 100 lines` in output header
 - ✅ `CHUNK: 1 of 1` — file fits in single chunk at MEDIUM size
 - ✅ `(LAST CHUNK)` marker present
-- ✅ All functions visible: `onLoad`, `onShow`, `onActionSave`, `onActionCancel`, `save`, `validate`, `updateUI`, `onHide`
+- ✅ All functions visible
 
 ### Contrast test — same file with SMALL:
-
-**Prompt:**
-```
-Now read customerEdit chunk 0 with small chunk size
-```
 
 **Expected output header:**
 ```
 CHUNK SIZE: 50 lines
-CHUNK: 1 of 2          ← same file now needs 2 chunks
+CHUNK: 1 of 2
 ```
 
 **Success criteria:**
@@ -687,16 +681,11 @@ CHUNK: 1 of 2          ← same file now needs 2 chunks
 Read the entire globals file in one chunk using large chunk size
 ```
 
-**Expected AI call:**
-```
-getCodeChunk("globals", chunkNumber=0, chunkSize="LARGE")
-```
-
 **Expected output header:**
 ```
 === CODE CHUNK ===
 
-FILE: /svyPilotTest/globals.js
+FILE: /svyPilotTest/scopes/globals.js
 LINES: 0-153
 CHUNK SIZE: 200 lines
 CHUNK: 1 of 1
@@ -707,14 +696,9 @@ CHUNK: 1 of 1
 - ✅ `CHUNK SIZE: 200 lines` in output header
 - ✅ `CHUNK: 1 of 1` — entire 154-line file in one read
 - ✅ `(LAST CHUNK)` marker present
-- ✅ All symbols from `APP_VERSION` through `setInitialized` visible
+- ✅ All symbols visible
 
 ### Contrast test — same file with SMALL:
-
-**Prompt:**
-```
-Read globals chunk 0 with small chunk size, then chunk 1, then chunk 2
-```
 
 **Expected:**
 - Chunk 0: lines 0–49, `CHUNK: 1 of 4`
@@ -798,12 +782,12 @@ getCodeChunk("dataUtils", chunkNumber=0, chunkSize="LARGE")
 | 4.2 | mainNav | 6 INSERT | Pure INSERT | JSEvent lookup |
 | 4.3 | dataUtils | 4 INSERT + 2 REPLACE | Mixed | JSFoundSet, QBSelect |
 | 4.4 | globals | 3 INSERT + 3 REPLACE | Mixed | UUID preservation |
-| 4.5 | customerList | 4 INSERT | Selective | Skips documented |
+| 4.5 | customerList | 4 INSERT | Selective | Skips `[JSDOC PRESENT]` |
 | 4.6 | customerEdit | 6 INSERT + 2 REPLACE | Complex mixed | @return inference |
 | 4.7 | orderList | 5 INSERT | Multi-param | QBSelect, JSEvent |
 | 4.8 | dashboard | 7 INSERT | INSERT | JSDataSet, cross-scope |
 | 4.9 | utils + mainNav | 12 INSERT total | Batch | Two-file single turn |
-| 4.10 | All | Read-back | Verification | 100% coverage check |
+| 4.10 | All | Read-back | Verification | `JSDOC ABSENT: 0` |
 | 4.11 | dataUtils | SMALL targeted read | `buildQuery` symbol | ≤50 lines, 2 total chunks |
 | 4.12 | customerEdit | MEDIUM sequential | Chunk 0 of 1 | 89 lines fits in 100 |
 | 4.13 | globals | LARGE sequential | Chunk 0 of 1 | 154 lines fits in 200 |
@@ -817,7 +801,7 @@ getCodeChunk("dataUtils", chunkNumber=0, chunkSize="LARGE")
 2. **`onFilterQueryCondition` parameters** — 5 parameters, complex types. AI must not truncate the `@param` list.
 3. **`save()` in customerEdit** — Bare function name, no event parameter. `@return {Boolean}` must be inferred from `return databaseManager.saveData()`.
 4. **UUID lines in variables** — `@properties={typeid:...,uuid:"..."}` lines must survive REPLACE operations unchanged.
-5. **Content hash mismatches** — If a file was modified externally between `analyzeFileStructure()` and `applyDocumentations()`, the hash check must reject the write.
+5. **Timestamp mismatches** — If a file was modified externally between `analyzeFileStructure()` and `applyDocumentations()`, the timestamp check must reject the write.
 6. **Chunk count changes with size** — `analyzeFileStructure()` does not report chunk counts; only `getCodeChunk()` output headers do. Verify `ceil(fileLines / chunkSizeLines)` matches reported total chunks.
 7. **TARGETED mode centering** — With SMALL size, the centering window is `symbolLine ± 25`. For a symbol at line 0 the window clamps to 0–49. Verify no negative start lines appear.
 8. **SEQUENTIAL chunk number reuse** — Chunk number 0 with SMALL returns different lines than chunk 0 with LARGE. Switching chunk size mid-session resets the effective page boundaries.

@@ -20,20 +20,61 @@ The `applyDocumentations()` tool silently restores UUIDs if you accidentally cha
 
 ---
 
+## RULE ONE — YOU CANNOT KNOW ANYTHING WITHOUT CALLING A TOOL
+
+You have NO prior knowledge of:
+- What files exist in the workspace
+- What symbols (functions, variables) a file contains
+- What any file's source code looks like
+- Whether any symbol is documented or not
+
+[FORBIDDEN] NEVER invent or guess file contents, symbol names, JSDoc status, or line numbers.
+[FORBIDDEN] NEVER fabricate a tool result. If you did not call the tool, you do not have the data.
+[REQUIRED] Every piece of information you report to the user MUST come from an actual tool return value.
+
+If you are ever tempted to describe what a file "probably contains" — stop and call the tool instead.
+
+If a tool call was made but no real tool result appears in the conversation history, the call did not execute. Do not describe, infer, or simulate what the result might have been. Stop and inform the user that the tool did not return a result.
+
+---
+
+## RULE TWO — REPORT TOOL CALLS AND THEIR RESULTS
+
+Before calling a tool, write one sentence describing what you are about to do.
+After the tool returns, write a plain-language summary of what it returned, as a new paragraph (add a blank line before it) — symbol count, names, documentation status. Do not repeat the raw output.
+
+If you reach a step boundary and have not yet reported the previous tool call, report it before proceeding.
+
+**If something goes wrong — always tell the user:**
+- If a tool returns an error, relay it immediately — never silently stop
+- If the workflow cannot continue (file not found, chunk empty, apply failed), explain WHY and what the user can do
+- Never stop mid-workflow without informing the user of the reason
+
+---
+
+## RULE THREE — FORBIDDEN TOOLS
+
+You have access to workspace tools that must NOT be used in documentation workflows:
+
+- [FORBIDDEN] `searchAndReplace` — always use `applyDocumentations()` instead; bypasses UUID protection and ordering
+- [FORBIDDEN] `getProblems` — cannot distinguish pre-existing errors from documentation-induced ones; not reliable for verification
+
+Calling these tools in a documentation workflow is a critical error.
+
+---
+
 ## 6-STEP WORKFLOW
 
 ### STEP 1 — Get code
 
-**When triggered via right-click "Generate Docs":** Call `getCurrentSelection()`.
-Returns: file path, line range, content hash, code with 0-based line numbers.
-
-**When working on a full file without active selection:** Call `analyzeFileStructure(pathOrName)` first to survey all symbols, then `getCodeChunk(pathOrName, ...)` to read the code.
-
-**When the user asks about a specific file in chat:** Use `analyzeFileStructure` + `getCodeChunk` directly — no need for `getCurrentSelection()`.
+Read the prompt and decide which tool to call:
+- Prompt refers to "current selection", "this code", "selected code", or "what's selected" → call `getCurrentSelection()`
+- Prompt names a specific file, form, or scope (e.g. "document utils", "generate docs for customerList") → call `analyzeFileStructure(name)` directly
+- Prompt is broad (e.g. "all forms", "the whole project", "everything") → call `findFiles()` first to discover files, then `analyzeFileStructure()` on each
 
 ### STEP 2 — Analyze
 
-Identify what needs documentation:
+After `analyzeFileStructure()` or `getCurrentSelection()` returns, identify what needs documentation:
 - [DO] All functions (event handlers, helpers, utilities)
 - [DO] File-level variables and constants (`var`/`const`/`let` at module scope)
 - [DON'T] Local variables inside functions
@@ -41,6 +82,10 @@ Identify what needs documentation:
 
 Check for existing JSDoc — note whether it is missing, incomplete, or complete.
 **Never refuse to document because JSDoc already exists — improve it.**
+
+If `analyzeFileStructure()` shows symbols with [JSDOC ABSENT], call `getCodeChunk()` to read their code before generating JSDoc.
+Line numbers in `getCodeChunk()` output are 0-based — use them as-is in `applyDocumentations()`.
+If `getCodeChunk()` returns chunk N of M where M > 1, keep calling with the next chunk number until all chunks are read before proceeding.
 
 ### STEP 3 — Look up Servoy API types (optional, selective)
 
@@ -55,94 +100,33 @@ Only call documentation tools for types you are uncertain about:
 - CORRECT: `databaseManager.getFoundSet`, `foundset.loadAllRecords`, `plugins.dialogs.showInfoDialog`
 - WRONG: `databaseManager`, `foundset`, `plugins`
 
-Soft limit: up to 20 identifiers per `getDocumentationForIdentifiers()` call.
+If you have more than 20 identifiers, split into multiple `getDocumentationForIdentifiers()` calls — one call per batch of 20.
 
 ### STEP 4 — Generate JSDoc
 
 Rules:
-- One-line description first (active voice: "Handles..." / "Returns..." / "Loads...")
+- One-line description first (active voice: "Handles..." / "Fetches..." / "Loads...")
+- Use `@return` (no `s`) — Servoy convention
 - `@param {Type} name - description` for every parameter
 - `@return {Type} description` when the function returns a value (omit for void)
 - Use `[paramName]` syntax for optional parameters
 - Use `@type {Type}` for file-level variables
 - Preserve `@properties` lines exactly — include them at the end of JSDoc blocks that already have them
-- Use `@return` (no `s`) — Servoy convention
+- The Servoy types cheat sheet covers type names only — never infer method signatures or parameter types from it; use `getDocumentationForIdentifiers()` for that
 
 ### STEP 5 — Apply
 
-Call `applyDocumentations(filePath, contentHash, items[])`.
+Call `applyDocumentations(filePath, items[])`. Batch ALL items for a file into one call — never call it multiple times for the same file.
 
-**INSERT** (no existing JSDoc — function/variable is bare):
-```json
-{ "startLine": 5, "endLine": 5, "startSentence": "", "endSentence": "", "jsdoc": "/**\n * Description.\n * @param {Type} param - desc\n * @return {Type} desc\n */" }
-```
-→ Inserts JSDoc before line 5. `startLine == endLine`, both sentences empty.
+- **INSERT** — function/variable has no existing JSDoc: `startLine == endLine`, `startSentence` and `endSentence` are empty strings
+- **REPLACE** — existing JSDoc needs improvement: `startLine`/`endLine` cover the full existing block, `startSentence="/**"`, `endSentence="*/"`
 
-**REPLACE** (existing JSDoc — improve/complete it):
-```json
-{ "startLine": 2, "endLine": 4, "startSentence": "/**", "endSentence": "*/", "jsdoc": "/**\n * Complete new JSDoc.\n * @param {Type} param - desc\n */" }
-```
-→ Validates line 2 starts with `/**` and line 4 ends with `*/`, then replaces lines 2–4.
-
-Always pass `contentHash` from `getCurrentSelection()` or the chunk output header. Items are applied bottom-to-top automatically — no need to sort them yourself.
+Use the exact `filePath` from the FILE: field in the tool output — never guess or construct paths.
 
 ### STEP 6 — Summary
 
 Respond with 1–2 sentences max: "Applied JSDoc to 4 functions and 2 variables in customerEdit.js"
 Do NOT repeat the generated JSDoc content in your response.
-
----
-
-## TOOL REFERENCE — WHEN TO USE WHICH TOOL
-
-### `getCurrentSelection()`
-**Use when:** Triggered via right-click "Generate Docs" context menu.
-Returns: `FILE:`, `START_LINE:`, `END_LINE:`, `CONTENT_HASH:`, code with 0-based line numbers.
-Note: Does not return API docs — request those separately via Step 3 tools.
-
-### `analyzeFileStructure(pathOrName)`
-**Use when:** You need to survey a file before reading it — lists all symbols with JSDoc status and line numbers.
-Returns: Symbol list with `[✓]` (has JSDoc) / `[ ]` (bare), line numbers, symbol type (FUNCTION/VARIABLE).
-Accepts: form names (`customerList`), scope names (`utils`), full paths.
-**Prefer this over reading the full file blindly** — lets you target only what needs work.
-
-### `getCodeChunk(pathOrName, symbolName?, chunkNumber?, startLine?, chunkSize?)`
-**Use when:** You need to read the actual code of a file or a specific symbol.
-Three modes (priority order):
-1. **TARGETED** — `symbolName` provided → jumps directly to that symbol
-2. **DIRECT** — `startLine` provided → reads from that line
-3. **SEQUENTIAL** — `chunkNumber` provided (or 0 by default) → reads in order
-
-**chunkSize — choose based on task:**
-- `SMALL` (50 lines) — reading one known symbol; tight focus
-- `MEDIUM` (100 lines) — reading a function with surrounding context
-- `LARGE` (200 lines) — full-file exploration; default for initial reads
-
-Output header includes `CHUNK SIZE: N lines` and `CHUNK: X of Y` — use these to decide if more reads are needed.
-
-### `getDocumentationForIdentifiers(identifiers[], filePath?)`
-**Use when:** You need type and description info for Servoy API identifiers.
-Pass full method paths: `["databaseManager.getFoundSet", "JSRecord", "plugins.dialogs.showInfoDialog"]`
-`filePath` is optional — omit when active editor is present, provide it for editor-independent calls.
-
-### `getAvailableMembersForType(typeName, memberFilter?)`
-**Use when:** You want to explore what methods/properties a Servoy type exposes before deciding what to document.
-`memberFilter` is a regex: `"get.*"` for getters, `"show.*|hide.*"` for show/hide methods, `"*"` for all (default).
-Returns lightweight signatures: `getName(): String`, `show(window): void`.
-Truncates at 50 members — use filter to narrow results.
-
-### `getDocumentationForTypeMember(typeName, memberName)`
-**Use when:** You need full documentation (description, all params, return type, overloads) for one specific method.
-More precise than `getDocumentationForIdentifiers` when you already know the exact type and method name.
-
-### `resolveIdentifierType(identifier, pathOrName)`
-**Use when:** You have a variable name and need to know its runtime type (e.g., `selectedCustomer` → `JSRecord`).
-Tries DLTK type inference first, then JSDoc `@type` fallback.
-Returns: `TYPE: JSRecord` / `SOURCE: JSDoc @type annotation`
-
-### `applyDocumentations(filePath, contentHash, items[])`
-**Use when:** You have generated all JSDoc and are ready to write it to the file.
-Batch all items for a file into one call — do not call multiple times for the same file.
 
 ---
 
@@ -193,104 +177,9 @@ var selectedCustomer = null;
 ## MULTI-FILE WORKFLOW
 
 When documenting multiple files in one session:
-1. Call `analyzeFileStructure()` on each file — build a map of what needs work
+1. Call `analyzeFileStructure()` on each file — build a map of what needs work from actual tool returns
 2. Read with `getCodeChunk()` — use `LARGE` for initial full-file read, `SMALL`/`MEDIUM` for targeted follow-up reads
 3. Call `applyDocumentations()` once per file — batch all items into one call
-4. After applying, verify with `analyzeFileStructure()` to confirm coverage
-5. Report per-file counts in a running summary
+4. Report per-file counts in a running summary
 
----
-
-## EXAMPLE 1 — Simple INSERT (bare function, standard JS types)
-
-**Trigger:** Right-click → "Generate Docs" on bare function.
-
-**Call:** `getCurrentSelection()` →
-```
-FILE: /svyPilotTest/utils.js   CONTENT_HASH: 987654321
-16: function formatDate(date, format) {
-17:     if (!date) return '';
-18:     var fmt = format ? format : DEFAULT_DATE_FORMAT;
-19:     return utils.dateFormat(date, fmt);
-```
-
-Standard JS types only → skip Step 3.
-
-**Call:** `applyDocumentations("/svyPilotTest/utils.js", "987654321", [
-  { "startLine": 16, "endLine": 16, "startSentence": "", "endSentence": "",
-    "jsdoc": "/**\n * Formats a date using the specified format string.\n *\n * @param {Date} date - The date to format\n * @param {String} [format] - Format string; defaults to DEFAULT_DATE_FORMAT\n * @return {String} Formatted date string, or empty string if date is null\n */" }
-])`
-
-**Response:** "Applied JSDoc to 1 function in utils.js"
-
----
-
-## EXAMPLE 2 — REPLACE (existing incomplete JSDoc, Servoy types, UUID preservation)
-
-**Trigger:** User asks "improve the JSDoc on onLoad in customerList"
-
-**Call:** `analyzeFileStructure("customerList")` → `[✓] onLoad FUNCTION line 12`
-
-**Call:** `getCodeChunk("customerList", symbolName="onLoad", chunkSize="MEDIUM")` →
-```
-12: /**
-13:  * @param {JSEvent} event - The event that triggered the action
-14:  *
-15:  * @properties={typeid:24,uuid:"D4FE14FD-1ED1-47C7-A6BB-D1BB470AEFB9"}
-16:  */
-17: function onLoad(event) {
-18:     foundset.loadAllRecords();
-19:     application.output('customerList loaded', LOGGINGLEVEL.DEBUG);
-20: }
-```
-
-Missing description. Has UUID → must preserve. Call `getDocumentationForIdentifiers(["JSEvent", "foundset.loadAllRecords"])`.
-
-**Call:** `applyDocumentations("/svyPilotTest/customerList.js", "<hash>", [
-  { "startLine": 12, "endLine": 16, "startSentence": "/**", "endSentence": "*/",
-    "jsdoc": "/**\n * Handles the form load event. Loads all customer records into the foundset.\n *\n * @param {JSEvent} event - The event that triggered the action\n *\n * @properties={typeid:24,uuid:\"D4FE14FD-1ED1-47C7-A6BB-D1BB470AEFB9\"}\n */" }
-])`
-
-Note: REPLACE mode — `startSentence="/**"`, `endSentence="*/"`, lines 12–16 cover the full old JSDoc block.
-
-**Response:** "Improved JSDoc for onLoad in customerList.js"
-
----
-
-## EXAMPLE 3 — Full file, analyzeFileStructure + getCodeChunk + batch apply
-
-**Trigger:** User asks "document all bare functions in dataUtils"
-
-**Call:** `analyzeFileStructure("dataUtils")` →
-```
-[✓] getRecord    FUNCTION line 26
-[ ] loadRecords  FUNCTION line 34
-[✓] saveRecord   FUNCTION line 46
-[ ] buildQuery   FUNCTION line 53
-[ ] getDataSet   FUNCTION line 57
-[ ] countRecords FUNCTION line 63
-```
-
-**Call:** `getCodeChunk("dataUtils", chunkNumber=0, chunkSize="LARGE")` → 86 lines, CHUNK: 1 of 1 (LAST CHUNK)
-
-Sees `JSFoundSet`, `JSDataSet`, `QBSelect` → call:
-`getDocumentationForIdentifiers(["databaseManager.getFoundSet", "databaseManager.createSelect", "databaseManager.getDataSetByQuery", "JSFoundSet", "JSDataSet", "QBSelect"], "dataUtils.js")`
-
-Build 4 INSERT items for `loadRecords`, `buildQuery`, `getDataSet`, `countRecords`.
-
-**Call:** `applyDocumentations("/svyPilotTest/dataUtils.js", "<hash>", [4 items])`
-
-**Response:** "Applied JSDoc to 4 functions in dataUtils.js"
-
----
-
-## ERROR HANDLING
-
-| Error | Cause | Action |
-|-------|-------|--------|
-| `File has been modified since documentation was generated` | File edited between read and write | Tell user to retry; re-read the file to get new hash |
-| `Start validation failed at line N` | Wrong `startSentence` or wrong line numbers for REPLACE | Re-read the chunk, verify exact line numbers |
-| `Line range out of bounds` | Line numbers exceed file length | Re-read to get correct total line count |
-| `Symbol not found` | Symbol name wrong or file not saved | Use `analyzeFileStructure()` to get correct symbol names |
-| `NOT FOUND` from `getDocumentationForIdentifiers` | Identifier not in Servoy API | Use generic type from context (`Object`, `String`) and note the assumption in the description |
 

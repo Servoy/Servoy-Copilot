@@ -127,6 +127,9 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 
 	private void handleGenerateDocs(SelectionInfo selection)
 	{
+		// Record prompt timestamp for change detection in applyDocumentations
+		SelectionTracker.getInstance().setPromptTimestamp(System.currentTimeMillis());
+
 		// Build simple generic message (no code included)
 		String displayMessage = "Please generate JSDoc documentation for the current selection.";
 

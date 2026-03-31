@@ -297,8 +297,7 @@ public class ServoyAiModel
 		builder.tools(
 			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
 			new DocumentationTools(), // EXCLUSIVE - documentation operations
-			new EclipseTools(), // General workspace operations
-			new KnowledgeTools() // Servoy API documentation lookup
+			new EclipseTools() // General workspace operations
 		);
 
 		return builder.build();

@@ -28,6 +28,11 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.dltk.core.DLTKCore;
 import org.eclipse.dltk.core.ISourceModule;
+import org.eclipse.dltk.javascript.typeinfo.model.Member;
+import org.eclipse.dltk.javascript.typeinfo.model.Method;
+import org.eclipse.dltk.javascript.typeinfo.model.Parameter;
+import org.eclipse.dltk.javascript.typeinfo.model.Property;
+import org.eclipse.dltk.javascript.typeinfo.model.Type;
 import org.eclipse.jface.text.TextSelection;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorPart;
@@ -49,12 +54,7 @@ import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 import com.servoy.eclipse.servoypilot.services.documentation.DocumentationValidator;
 import com.servoy.eclipse.servoypilot.tools.dto.DocumentationItem;
-import com.servoy.j2db.documentation.scripting.docs.FormElements;
-import org.eclipse.dltk.javascript.typeinfo.model.Type;
-import org.eclipse.dltk.javascript.typeinfo.model.Member;
-import org.eclipse.dltk.javascript.typeinfo.model.Method;
-import org.eclipse.dltk.javascript.typeinfo.model.Property;
-import org.eclipse.dltk.javascript.typeinfo.model.Parameter;
+
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 
@@ -67,9 +67,12 @@ import dev.langchain4j.agent.tool.Tool;
  */
 public class DocumentationTools
 {
-	@Tool("Get the current editor selection (or entire file if no selection) - no additional documentation")
+	@Tool("Returns the currently active code in the editor — either the selected text or the entire file if nothing is selected. " +
+		"Returns: FILE (workspace-relative path), START_LINE, END_LINE, TOTAL_LINES, and the code with 0-based line numbers. " +
+		"Does NOT return Servoy API documentation — request that separately via getDocumentationForIdentifiers.")
 	public String getCurrentSelection()
 	{
+		System.out.println("[getCurrentSelection] ===== TOOL CALLED =====");
 		try
 		{
 			// Get current selection from tracker
@@ -79,6 +82,8 @@ public class DocumentationTools
 			if (selectionOpt.isPresent())
 			{
 				SelectionInfo selection = selectionOpt.get();
+				System.out.println("[getCurrentSelection] Active selection: file=" + selection.getFilePath() +
+					", startLine=" + selection.getStartLine() + ", endLine=" + selection.getEndLine());
 
 				// Get code text
 				CodeContextService contextService = CodeContextService.getInstance();
@@ -123,20 +128,25 @@ public class DocumentationTools
 			return "Error: " + e.getMessage();
 		}
 
+		System.out.println("[getCurrentSelection] No active editor or selection available");
 		return "No active editor or selection available";
 	}
 
-	@Tool("Retrieve API documentation for specific identifiers in the current selection or specified file")
+	@Tool("Returns Servoy API documentation for a list of identifiers. " +
+		"Accepts full method paths (e.g. 'databaseManager.getFoundSet', 'foundset.loadAllRecords') and Servoy types (e.g. JSEvent, JSRecord, QBSelect). " +
+		"Returns descriptions, parameter types, and return types for each identifier.")
 	public String getDocumentationForIdentifiers(
-		@P("Array of identifier names to look up (e.g., ['foundset', 'record', 'plugins.ngdesktop'])") String[] identifiers,
-		@P("Optional file path (form name, scope name, or full path) - if provided, works without active editor") String filePath)
+		@P("Array of full identifier paths to look up (e.g., ['databaseManager.getFoundSet', 'JSRecord', 'plugins.dialogs.showInfoDialog'])") String[] identifiers,
+		@P("File path (form name, scope name, or full path) — always provide this when working without an active editor selection") String filePath)
 	{
+		System.out.println("[getDocumentationForIdentifiers] ===== TOOL CALLED ===== identifiers=" +
+			(identifiers == null ? "null" : java.util.Arrays.toString(identifiers)) + ", filePath=" + filePath);
 		if (identifiers != null && identifiers.length > 0)
 		{
 			try
 			{
 				SelectionInfo selection = null;
-				
+
 				// If filePath provided, create SelectionInfo programmatically (no editor needed)
 				if (filePath != null && !filePath.trim().isEmpty())
 				{
@@ -158,7 +168,7 @@ public class DocumentationTools
 
 					selection = selectionOpt.get();
 				}
-				
+
 				CodeContextService contextService = CodeContextService.getInstance();
 				CodeContext context = contextService.getCodeContext(selection, identifiers);
 
@@ -221,6 +231,7 @@ public class DocumentationTools
 				response.append("--- END DOCUMENTATION ---\n\n");
 				response.append("Found documentation for ").append(foundCount).append(" out of ").append(identifiers.length).append(" identifiers.");
 
+				System.out.println("[getDocumentationForIdentifiers] Done: " + foundCount + "/" + identifiers.length + " identifiers found");
 				return response.toString();
 			}
 			catch (Exception e)
@@ -269,248 +280,199 @@ public class DocumentationTools
 	/**
 	 * Apply JSDoc documentation items using line-based positioning.
 	 * Supports insert and replace operations with validation.
-	 * 
+	 *
 	 * @param filePath Workspace-relative file path
-	 * @param expectedHash Content hash from getCurrentSelection() for change detection
 	 * @param items List of documentation items (line range + jsdoc)
 	 * @return Success message or error message
 	 */
-	@Tool("Apply JSDoc documentation using line-based positioning")
+	@Tool("Writes JSDoc documentation items to a Servoy JavaScript file. " +
+		"Supports INSERT (no existing JSDoc) and REPLACE (existing JSDoc). " +
+		"Items are applied bottom-to-top automatically to preserve line numbers. " +
+		"UUID values in @properties lines are automatically restored if accidentally changed.")
 	public String applyDocumentations(
-		@P("Workspace-relative file path") String filePath,
-		@P("Content hash from getCurrentSelection()") String expectedHash,
-		@P("List of documentation items (line range + jsdoc)") List<DocumentationItem> items)
+		@P("Workspace-relative file path (e.g., '/svyPilotTest/utils.js')") String filePath,
+		@P("List of documentation items — each specifies startLine, endLine, startSentence, endSentence, and the jsdoc string. " +
+			"INSERT: startLine==endLine, startSentence and endSentence are empty strings. " +
+			"REPLACE: startLine/endLine cover the existing JSDoc block, startSentence='/**', endSentence='*/'") List<DocumentationItem> items)
 	{
-		// Validation
-		if (filePath == null || filePath.isBlank())
+		System.out.println("[applyDocumentations] ===== TOOL CALLED ===== filePath=" + filePath + ", items=" + (items == null ? "null" : items.size()));
+
+		if (filePath != null && !filePath.isBlank() && items != null && !items.isEmpty())
 		{
-			return "Error: File path is required";
-		}
-
-		if (expectedHash == null || expectedHash.isBlank())
-		{
-			return "Error: Content hash is required for change detection";
-		}
-
-		if (items == null || items.isEmpty())
-		{
-			return "Error: No documentation items provided";
-		}
-
-		try
-		{
-			ServoyLog.logInfo("Applying " + items.size() + " documentation items to: " + filePath);
-
-			// Get file
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(filePath));
-			if (!file.exists())
+			try
 			{
-				return "Error: File does not exist: " + filePath;
-			}
-
-			// Get selection info for hash validation
-			SelectionTracker tracker = SelectionTracker.getInstance();
-			Optional<SelectionInfo> selectionOpt = tracker.getCurrentSelection();
-			if (!selectionOpt.isPresent())
-			{
-				return "Error: No active selection available";
-			}
-			SelectionInfo selection = selectionOpt.get();
-
-			// Read current content
-			String originalContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
-
-			// Extract selection text for hash comparison
-			int selStart = selection.getOffset();
-			int selEnd = Math.min(selStart + selection.getLength(), originalContent.length());
-			String selectionText = originalContent.substring(selStart, selEnd);
-
-			// CHANGE DETECTION
-			String currentHash = Integer.toString(selectionText.hashCode());
-			if (!currentHash.equals(expectedHash))
-			{
-				return "ERROR: File has been modified since documentation was generated. " +
-					"Please try again.\n(Expected hash: " + expectedHash + ", Current hash: " + currentHash + ")";
-			}
-
-			// Backup original
-			FileModificationTracker.getInstance().notifyFileModified(filePath, originalContent);
-
-			// Process items with line-based approach
-			List<String> errors = new ArrayList<>();
-			int successCount = 0;
-			DocumentationValidator validator = new DocumentationValidator();
-
-			// Split content into lines
-			String[] lines = originalContent.split("\r\n|\r|\n", -1);
-			List<String> lineList = new ArrayList<>();
-			for (String line : lines)
-			{
-				lineList.add(line);
-			}
-
-			// Sort items bottom-to-top to avoid line number shifts
-			List<DocumentationItem> sortedItems = new ArrayList<>(items);
-			sortedItems.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
-
-			for (DocumentationItem item : sortedItems)
-			{
-				try
+				// Resolve file using FilePathResolver — same as analyzeFileStructure/getCodeChunk
+				// This handles short names ("utils"), scope names, form names, and full paths
+				IFile file = FilePathResolver.getInstance().resolveFile(filePath);
+				if (file == null || !file.exists())
 				{
-					// Validate line range
-					if (item.startLine() < 0 || item.endLine() >= lineList.size())
+					String notFound = FilePathResolver.getInstance().buildNotFoundMessage(filePath);
+					System.out.println("[applyDocumentations] File not found: " + notFound);
+					return "\n\n" + notFound;
+				}
+
+				// Use the canonical workspace-relative path from here on
+				String resolvedPath = file.getFullPath().toString();
+				System.out.println("[applyDocumentations] Resolved '" + filePath + "' → " + resolvedPath);
+				ServoyLog.logInfo("Applying " + items.size() + " documentation items to: " + resolvedPath);
+
+				// CHANGE DETECTION: compare file last-modified timestamp against prompt timestamp
+				long promptTimestamp = SelectionTracker.getInstance().getPromptTimestamp();
+				long fileTimestamp = file.getLocalTimeStamp();
+				System.out.println("[applyDocumentations] promptTimestamp=" + promptTimestamp + ", fileTimestamp=" + fileTimestamp);
+
+				if (promptTimestamp == 0 || fileTimestamp <= promptTimestamp)
+				{
+					String originalContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
+					FileModificationTracker.getInstance().notifyFileModified(resolvedPath, originalContent);
+
+					// Split content into lines
+					List<String> lineList = new ArrayList<>();
+					for (String line : originalContent.split("\r\n|\r|\n", -1))
 					{
-						String error = "Line range out of bounds: " + item.startLine() + "-" + item.endLine() +
-							" (file has " + lineList.size() + " lines)";
-						errors.add(error);
-						ServoyLog.logInfo(error);
-						continue;
+						lineList.add(line);
 					}
 
-					if (item.isInsert())
+					// Sort items bottom-to-top to avoid line number shifts
+					List<DocumentationItem> sortedItems = new ArrayList<>(items);
+					sortedItems.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
+
+					List<String> errors = new ArrayList<>();
+					int successCount = 0;
+					DocumentationValidator validator = new DocumentationValidator();
+
+					for (DocumentationItem item : sortedItems)
 					{
-						// INSERT operation
-						// Extract indentation from target line
-						String targetLine = lineList.get(item.startLine());
-						String indentation = extractIndentation(targetLine);
-
-						// Format JSDoc with indentation
-						String[] jsdocLines = item.jsdoc().split("\n");
-						List<String> formattedLines = new ArrayList<>();
-						for (String jsdocLine : jsdocLines)
-						{
-							formattedLines.add(indentation + jsdocLine);
-						}
-
-						// Insert JSDoc lines before target line
-						lineList.addAll(item.startLine(), formattedLines);
-						successCount++;
-					}
-					else
-					{
-						// REPLACE operation with validation
-						// Validate start sentence
-						String startLineContent = lineList.get(item.startLine()).trim();
-						if (!startLineContent.startsWith(item.startSentence()))
-						{
-							String error = "Start validation failed at line " + item.startLine() +
-								": expected start with '" + item.startSentence() + "' but got '" +
-								startLineContent.substring(0, Math.min(20, startLineContent.length())) + "...'";
-							errors.add(error);
-							ServoyLog.logInfo(error);
-							continue;
-						}
-
-						// Validate end sentence
-						String endLineContent = lineList.get(item.endLine()).trim();
-						if (!endLineContent.endsWith(item.endSentence()))
-						{
-							String error = "End validation failed at line " + item.endLine() +
-								": expected end with '" + item.endSentence() + "' but got '..." +
-								endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'";
-							errors.add(error);
-							ServoyLog.logInfo(error);
-							continue;
-						}
-
-						// Extract original UUIDs from replaced range
-						StringBuilder replacedContent = new StringBuilder();
-						for (int i = item.startLine(); i <= item.endLine(); i++)
-						{
-							replacedContent.append(lineList.get(i)).append("\n");
-						}
-						List<String> originalUUIDs = validator.extractUUIDs(replacedContent.toString());
-
-						// Restore UUIDs in new JSDoc
-						String fixedJSDoc = validator.restoreUUIDs(item.jsdoc(), originalUUIDs);
-
-						// Extract indentation from first line in range
-						String firstLine = lineList.get(item.startLine());
-						String indentation = extractIndentation(firstLine);
-
-						// Format JSDoc with indentation
-						String[] jsdocLines = fixedJSDoc.split("\n");
-						List<String> formattedLines = new ArrayList<>();
-						for (String jsdocLine : jsdocLines)
-						{
-							formattedLines.add(indentation + jsdocLine);
-						}
-
-						// Remove old lines
-						for (int i = item.endLine(); i >= item.startLine(); i--)
-						{
-							lineList.remove(i);
-						}
-
-						// Insert new JSDoc
-						lineList.addAll(item.startLine(), formattedLines);
-
-						// Validate JSDoc syntax
 						try
 						{
-							validator.validateJSDocSyntax(fixedJSDoc);
-							successCount++;
+							if (item.startLine() >= 0 && item.endLine() < lineList.size())
+							{
+								if (item.isInsert())
+								{
+									String indentation = extractIndentation(lineList.get(item.startLine()));
+									List<String> formattedLines = new ArrayList<>();
+									for (String jsdocLine : item.jsdoc().split("\n"))
+									{
+										formattedLines.add(indentation + jsdocLine);
+									}
+									lineList.addAll(item.startLine(), formattedLines);
+									successCount++;
+								}
+								else
+								{
+									String startLineContent = lineList.get(item.startLine()).trim();
+									String endLineContent = lineList.get(item.endLine()).trim();
+
+									if (startLineContent.startsWith(item.startSentence()) && endLineContent.endsWith(item.endSentence()))
+									{
+										StringBuilder replacedContent = new StringBuilder();
+										for (int i = item.startLine(); i <= item.endLine(); i++)
+										{
+											replacedContent.append(lineList.get(i)).append("\n");
+										}
+										List<String> originalUUIDs = validator.extractUUIDs(replacedContent.toString());
+										String fixedJSDoc = validator.restoreUUIDs(item.jsdoc(), originalUUIDs);
+
+										String indentation = extractIndentation(lineList.get(item.startLine()));
+										List<String> formattedLines = new ArrayList<>();
+										for (String jsdocLine : fixedJSDoc.split("\n"))
+										{
+											formattedLines.add(indentation + jsdocLine);
+										}
+										for (int i = item.endLine(); i >= item.startLine(); i--)
+										{
+											lineList.remove(i);
+										}
+										lineList.addAll(item.startLine(), formattedLines);
+
+										try
+										{
+											validator.validateJSDocSyntax(fixedJSDoc);
+											successCount++;
+										}
+										catch (ValidationException ve)
+										{
+											String error = "JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() + ": " +
+												ve.getMessage();
+											errors.add(error);
+											ServoyLog.logInfo(error);
+										}
+									}
+									else
+									{
+										String error = "Validation failed at lines " + item.startLine() + "-" + item.endLine() +
+											": start='" + startLineContent.substring(0, Math.min(20, startLineContent.length())) +
+											"' end='" + endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'";
+										errors.add(error);
+										ServoyLog.logInfo(error);
+									}
+								}
+							}
+							else
+							{
+								String error = "Line range out of bounds: " + item.startLine() + "-" + item.endLine() +
+									" (file has " + lineList.size() + " lines)";
+								errors.add(error);
+								ServoyLog.logInfo(error);
+							}
 						}
-						catch (ValidationException ve)
+						catch (Exception e)
 						{
-							String error = "JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() +
-								": " + ve.getMessage();
+							String error = "Failed to process lines " + item.startLine() + "-" + item.endLine() + ": " + e.getMessage();
 							errors.add(error);
-							ServoyLog.logInfo(error);
+							ServoyLog.logError(error, e);
 						}
 					}
-				}
-				catch (Exception e)
-				{
-					String error = "Failed to process lines " + item.startLine() + "-" + item.endLine() + ": " + e.getMessage();
-					errors.add(error);
-					ServoyLog.logError(error, e);
-				}
-			}
 
-			// Rebuild content from lines
-			StringBuilder newContent = new StringBuilder();
-			for (int i = 0; i < lineList.size(); i++)
+					// Rebuild and write file
+					StringBuilder newContent = new StringBuilder();
+					for (int i = 0; i < lineList.size(); i++)
+					{
+						if (i > 0)
+						{
+							newContent.append("\n");
+						}
+						newContent.append(lineList.get(i));
+					}
+
+					System.out.println(
+						"[applyDocumentations] Writing file - successCount=" + successCount + ", errors=" + errors.size() + ", newLines=" + lineList.size());
+					file.setContents(
+						new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
+						true, false, null);
+					System.out.println("[applyDocumentations] File written OK: " + resolvedPath);
+
+					clearEditorSelection(file, 0);
+
+					if (errors.isEmpty())
+					{
+						ServoyLog.logInfo("Successfully applied " + successCount + " documentation items to: " + resolvedPath);
+						return String.format("\n\nSuccess: Applied %d documentation items to %s", successCount, resolvedPath);
+					}
+
+					ServoyLog.logInfo("Partial success: Applied " + successCount + "/" + items.size() + " items, " + errors.size() + " errors");
+					StringBuilder response = new StringBuilder();
+					response.append("\n\nPartial success: Applied ").append(successCount).append(" out of ").append(items.size())
+						.append(" documentation items.\n\nErrors encountered:\n");
+					for (String error : errors)
+					{
+						response.append("  - ").append(error).append("\n");
+					}
+					return response.toString();
+				}
+
+				return "\n\nERROR: File was modified after the documentation request was issued. Please re-read the file and try again.";
+			}
+			catch (Exception e)
 			{
-				if (i > 0)
-				{
-					newContent.append("\n");
-				}
-				newContent.append(lineList.get(i));
+				ServoyLog.logError("Error applying documentations to " + filePath, e);
+				return "\n\nError: " + e.getMessage();
 			}
-
-			// Write modified content
-			file.setContents(
-				new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
-				true,
-				false,
-				null);
-
-			// Clear selection in editor after modifications
-			clearEditorSelection(file, selStart);
-
-			// Build response
-			if (!errors.isEmpty())
-			{
-				ServoyLog.logInfo("Partial success: Applied " + successCount + "/" + items.size() + " items, " + errors.size() + " errors");
-				StringBuilder response = new StringBuilder();
-				response.append("Partial success: Applied ").append(successCount).append(" out of ").append(items.size())
-					.append(" documentation items.\n\nErrors encountered:\n");
-				for (String error : errors)
-				{
-					response.append("  - ").append(error).append("\n");
-				}
-				return response.toString();
-			}
-
-			ServoyLog.logInfo("Successfully applied " + successCount + " documentation items to: " + filePath);
-			return String.format("Success: Applied %d documentation items to %s", successCount, filePath);
 		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("Error applying documentations to " + filePath, e);
-			return "Error: " + e.getMessage();
-		}
+
+		return filePath == null || filePath.isBlank()
+			? "\n\nError: File path is required"
+			: "\n\nError: No documentation items provided";
 	}
 
 	/**
@@ -649,12 +611,12 @@ public class DocumentationTools
 		}
 	}
 
-	@Tool("List available members (methods and properties) for a Servoy API type. " +
-		"Returns lightweight signatures without full documentation. " +
-		"Use regex filter to narrow results (e.g., 'get.*' for getters, 'show.*|hide.*' for show/hide methods).")
+	@Tool("Returns lightweight method and property signatures for a Servoy API type. " +
+		"Returns signatures like 'getFoundSet(query): JSFoundSet', 'loadAllRecords(): Boolean'. " +
+		"Truncates at 50 members — use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.")
 	public String getAvailableMembersForType(
-		@P("Type name (e.g., 'application', 'databaseManager', 'controller', 'JSApplication')") String typeName,
-		@P("Regex filter for member names (default '*' = all members). Examples: 'get.*', 'is.*', 'show.*|hide.*'") String memberFilter)
+		@P("Servoy API type name (e.g., 'application', 'databaseManager', 'JSFoundSet', 'controller')") String typeName,
+		@P("Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.") String memberFilter)
 	{
 		System.out.println("\n========== getAvailableMembersForType CALLED ==========");
 		System.out.println("Type name: " + typeName);
@@ -708,7 +670,7 @@ public class DocumentationTools
 			for (Member member : type.getMembers())
 			{
 				String memberName = member.getName();
-				
+
 				// Apply filter
 				if (pattern != null)
 				{
@@ -796,11 +758,11 @@ public class DocumentationTools
 		}
 	}
 
-	@Tool("Get full documentation for a specific member (method or property) of a Servoy API type. " +
-		"Works without any file or editor context - queries TypeCreator directly.")
+	@Tool("Returns full documentation for one specific method or property of a Servoy API type — description, all parameters, return type, and overloads. " +
+		"Works without any file or editor context.")
 	public String getDocumentationForTypeMember(
-		@P("Type name (e.g., 'application', 'databaseManager', 'controller', 'JSApplication')") String typeName,
-		@P("Member name (case-insensitive, e.g., 'closeSolution', 'getName', 'enabled')") String memberName)
+		@P("Servoy API type name (e.g., 'application', 'databaseManager', 'JSFoundSet')") String typeName,
+		@P("Member name to look up — case-insensitive (e.g., 'getFoundSet', 'loadAllRecords', 'showInfoDialog')") String memberName)
 	{
 		System.out.println("\n========== getDocumentationForTypeMember CALLED ==========");
 		System.out.println("Type name: " + typeName);

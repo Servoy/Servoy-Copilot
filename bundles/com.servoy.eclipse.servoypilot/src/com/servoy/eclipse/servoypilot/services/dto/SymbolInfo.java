@@ -79,6 +79,6 @@ public class SymbolInfo
 	@Override
 	public String toString()
 	{
-		return String.format("- %s (%s) at line %d %s", name, type, lineNumber, hasJSDoc ? "[DOCUMENTED]" : "[NEEDS DOCS]");
+		return String.format("- %s (%s) at line %d %s", name, type, lineNumber, hasJSDoc ? "[JSDOC PRESENT]" : "[JSDOC ABSENT]");
 	}
 }

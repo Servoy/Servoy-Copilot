@@ -1,14 +1,43 @@
 # ServoyPilot - Architecture Reference
 
-**Last Updated:** March 24, 2026  
+**Last Updated:** March 31, 2026  
 **Purpose:** Complete technical reference for understanding the system design and component structure
+
+**Status:** 
+- ✅ **Anti-Hallucination Prompt Rewrite (Mar 31, 2026):**
+  - **ROOT CAUSE:** "Announce before calling" pattern in RULE ONE trained model to write fake tool call lines instead of invoking real tools
+  - **REMOVED:** `toolName(param1, ...)` pre-call announcement instruction and all transcript-style examples
+  - **REMOVED:** RULE ONE (announce) → replaced with RULE ONE (no fabrication) + RULE TWO (post-call reporting)
+  - **ADDED:** RULE ONE — explicit `[FORBIDDEN]` on inventing/guessing workspace contents
+  - **ADDED:** RULE TWO — post-call plain-language reporting; mandatory error relay
+  - **ADDED:** TOOL OUTPUT FORMATS section — verbatim `analyzeFileStructure` and `getCodeChunk` output so model expects structured data
+  - **REWRITTEN:** All 4 examples — describe what to call + what tool returns, not fake pre-written transcripts
+  - **ADDED:** `System.out.println` to all tools in `CodeAnalysisTools`, `DocumentationTools`, `EclipseTools` for Eclipse console tracing
+  - Prompt: ~290 lines
 
 **Status:** 
 - ✅ Multi-Assistant View Switcher implemented and functional
 - ✅ **Memory Store Refactoring COMPLETE** - Single source of truth (memory store only)
 - ✅ **Memory Refactoring VALIDATED** - Testing complete, system working correctly
 - ✅ Code Context Gathering complete (Phases 1-4)
-- ✅ **CodeAnalysisTools Migration COMPLETE (Mar 24, 2026):**
+- ✅ **CodeAnalysisTools Migration COMPLETE (Mar 24, 2026)**
+- ✅ **Documentation Assistant Enhancement - SESSION 3.1 COMPLETE (Mar 23, 2026)**
+- ✅ **Documentation Assistant Enhancement - SESSION 3 COMPLETE (Mar 20, 2026)**
+- ✅ **Documentation Assistant Enhancement - SESSION 2 COMPLETE (Mar 18, 2026)**
+- ✅ **Documentation Assistant Enhancement - SESSION 1 COMPLETE (Mar 17, 2026)**
+- ✅ **Documentation Assistant — Timestamp-based Change Detection (Mar 30, 2026):**
+  - **REMOVED:** `contentHash` / `expectedHash` parameter from `applyDocumentations()`
+  - **ADDED:** `promptTimestamp` field to `SelectionTracker` — set at prompt time
+  - **CHANGE DETECTION:** `IFile.getLocalTimeStamp() > SelectionTracker.getPromptTimestamp()` → reject
+  - **SET IN:** `ChatViewPresenter.onSendUserMessage()` (Documentation assistant only) + `ServoyAiContextMenuHandler.handleGenerateDocs()`
+  - **FALLBACK:** `createSelectionInfoFromFile(filePath)` called when no active editor selection
+- ✅ **Documentation Assistant — Tool Annotation Improvements (Mar 30, 2026):**
+  - Improved `@Tool` / `@P` annotations for `getCurrentSelection`, `getDocumentationForIdentifiers`, `applyDocumentations`, `getAvailableMembersForType`, `getDocumentationForTypeMember`, `findFiles`
+  - **REMOVED:** Tool Reference section from `documentation.txt` (~70 lines) — now covered by annotations
+  - **ADDED:** RULE ONE (announce tool calls + always respond), RULE TWO (forbidden tools)
+  - **UPDATED:** STEP 1 — intent-based tool selection (model decides from prompt content)
+  - **REMOVED:** `KnowledgeTools` from Documentation Assistant tool portfolio
+  - Prompt: 305 lines (down from 371)
   - **CREATED:** New `CodeAnalysisTools.java` class with 3 AI tools
   - **MIGRATED TOOLS:** Moved from CodeContextTools to CodeAnalysisTools
     1. `analyzeFileStructure(pathOrName)` - Analyze file structure with JSDoc status
@@ -234,7 +263,7 @@ ServoyPilot provides AI tools through specialized tool classes. Each class group
 - **Tools:**
   - `getCurrentSelection()` - Get selected code with line numbers (requires editor)
   - `getDocumentationForIdentifiers(identifiers[], filePath?)` - API doc lookup
-  - `applyDocumentations(filePath, contentHash, items[])` - Apply JSDoc with line-based positioning
+  - `applyDocumentations(filePath, items[])` - Apply JSDoc with line-based positioning + timestamp change detection
   - `getAvailableMembersForType(typeName, memberFilter?)` - List type members (signatures only)
   - `getDocumentationForTypeMember(typeName, memberName)` - Get full docs for specific member
 - **Key Features:**
@@ -308,7 +337,8 @@ builder.tools(
 // Documentation Assistant (specialized tools only)
 builder.tools(
     new DocumentationTools(),
-    new CodeAnalysisTools()
+    new CodeAnalysisTools(),
+    new EclipseTools()
 );
 
 // Explain Assistant (file reading only)

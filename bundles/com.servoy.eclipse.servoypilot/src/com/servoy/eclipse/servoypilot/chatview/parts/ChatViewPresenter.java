@@ -59,6 +59,7 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
+import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
 
 import dev.langchain4j.data.message.AiMessage;
@@ -833,6 +834,11 @@ public class ChatViewPresenter
 
 	public void onSendUserMessage(String userMessage)
 	{
+		// Record prompt timestamp for Documentation assistant (used by applyDocumentations for change detection)
+		if (currentAssistant == AssistantType.DOCUMENTATION)
+		{
+			SelectionTracker.getInstance().setPromptTimestamp(System.currentTimeMillis());
+		}
 		// Generate temporary IDs for streaming display
 		String userMsgId = UUID.randomUUID().toString();
 		String assistantMsgId = UUID.randomUUID().toString();

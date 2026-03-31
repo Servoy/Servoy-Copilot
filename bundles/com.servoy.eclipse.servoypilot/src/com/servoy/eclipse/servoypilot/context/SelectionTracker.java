@@ -54,6 +54,7 @@ public class SelectionTracker implements ISelectionListener
 	private String currentFilePath;
 	private String currentFullDocumentText;
 	private volatile boolean initialized = false;
+	private volatile long promptTimestamp = 0;
 
 	private SelectionTracker()
 	{
@@ -112,6 +113,27 @@ public class SelectionTracker implements ISelectionListener
 				}
 			}
 		}
+	}
+	
+	/**
+	 * Records the timestamp of the current documentation prompt.
+	 * Called when the Documentation assistant receives a new user message
+	 * or when "Generate Docs" is triggered from the context menu.
+	 */
+	public void setPromptTimestamp(long timestamp)
+	{
+		this.promptTimestamp = timestamp;
+	}
+
+	/**
+	 * Returns the timestamp of the last documentation prompt.
+	 * Used by applyDocumentations() to detect file changes since the prompt was issued.
+	 *
+	 * @return epoch millis of the last prompt, or 0 if never set
+	 */
+	public long getPromptTimestamp()
+	{
+		return promptTimestamp;
 	}
 
 	/**

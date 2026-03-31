@@ -138,27 +138,94 @@ public class FileStructureService
 	}
 
 	/**
-	 * Check if a member has JSDoc comment.
-	 * Simple approach: Look for /** comment in text before member position.
+	 * Check if a member has a structurally complete JSDoc block immediately before it.
+	 * Uses an upward line-by-line scan from the declaration line to verify the block
+	 * belongs to this declaration and is not a leftover from a previous one.
 	 */
 	private boolean hasJSDocComment(IMember member, ISourceModule module)
 	{
 		try
 		{
-			ISourceRange range = member.getNameRange();
-			if (range != null && range.getOffset() >= 50)
+			ISourceRange range = member.getSourceRange();
+			if (range != null && range.getOffset() > 0)
 			{
-				// Get source text before member
 				String source = module.getSource();
 				if (source != null)
 				{
-					// Check for /** comment in the ~100 characters before member
-					int startPos = Math.max(0, range.getOffset() - 100);
-					int endPos = range.getOffset();
-					String precedingText = source.substring(startPos, endPos);
+					IDocument document = new Document(source);
+					int declarationLine = document.getLineOfOffset(range.getOffset());
 
-					// Look for JSDoc pattern: /**
-					return precedingText.contains("/**");
+					int line = declarationLine - 1;
+
+					// PHASE 1: skip blank lines between declaration and closing */
+					// Allow at most 1 consecutive blank line
+					int consecutiveBlanks = 0;
+					while (line >= 0)
+					{
+						String trimmed = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
+						if (trimmed.isEmpty())
+						{
+							consecutiveBlanks++;
+							if (consecutiveBlanks > 1)
+							{
+								return false; // More than 1 blank line before */ — not associated
+							}
+							line--;
+						}
+						else
+						{
+							break;
+						}
+					}
+
+					if (line < 0)
+					{
+						return false; // Reached top of file without finding anything
+					}
+
+					// PHASE 2: first non-blank line must end with */
+					String firstNonBlank = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
+					if (!firstNonBlank.endsWith("*/"))
+					{
+						return false; // No closing marker — no JSDoc
+					}
+
+					line--;
+
+					// PHASE 3: scan upward through JSDoc body — each line must start with *
+					// The opening /** also starts with * so it is caught here
+					while (line >= 0)
+					{
+						String trimmed = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
+
+						// Blank lines inside the JSDoc block break the pattern
+						if (trimmed.isEmpty())
+						{
+							return false;
+						}
+
+						// Single-line comments break the pattern
+						if (trimmed.startsWith("//"))
+						{
+							return false;
+						}
+
+						// Found the opening marker — block is complete and belongs to this declaration
+						if (trimmed.startsWith("/**"))
+						{
+							return true;
+						}
+
+						// Valid JSDoc body line must start with *
+						if (trimmed.startsWith("*"))
+						{
+							line--;
+							continue;
+						}
+
+						// Anything else breaks the pattern
+						return false;
+					}
 				}
 			}
 		}
