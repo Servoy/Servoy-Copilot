@@ -59,11 +59,8 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
-import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
-import com.servoy.eclipse.servoypilot.quickfix.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -446,6 +443,10 @@ public class ChatViewPresenter
 
 		// Remove context hints section: **Context hints:**\n```\n...\n``` (including newlines)
 		cleaned = cleaned.replaceAll("\\n\\n\\*\\*Context hints:\\*\\*\\n```\\n[\\s\\S]*?\\n```", "");
+
+		// Ensure a blank line before tool result headers (=== ... ===) so the
+		// intro sentence and the tool result render as separate paragraphs
+		cleaned = cleaned.replaceAll("([^\\n])(\\n)(===)", "$1\n\n$3");
 
 		// Clean up multiple consecutive newlines and trim
 		cleaned = cleaned.replaceAll("\\n{3,}", "\n\n").trim();
@@ -884,16 +885,6 @@ public class ChatViewPresenter
 					// Parse error_context tags from AI response (not user message)
 					invokeQuickFixForError(responseText, assistantMsgId, responseText);
 				}
-				else if (currentAssistant == AssistantType.QUICKFIX)
-			{
-				QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-				QuickFixResult newFix = quickFixAssistant.fix(userMessage);
-
-				if (newFix != null && !newFix.edits().isEmpty())
-				{
-					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
-				}
-			}
 			})
 			.onError(error -> {
 				applyToView(part -> {
@@ -1419,7 +1410,6 @@ public class ChatViewPresenter
 				com.servoy.eclipse.servoypilot.services.CompareEditorService compareService = com.servoy.eclipse.servoypilot.services.CompareEditorService
 					.getInstance();
 
-				System.out.println("[DEBUG] Opening compare editor via CompareEditorService");
 				compareService.openCompareEditor(file.getName(), originalContent, currentContent);
 			}
 			catch (Exception e)

@@ -23,6 +23,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.dltk.core.DLTKCore;
 import org.eclipse.dltk.core.IMember;
+import org.eclipse.dltk.core.IMethod;
 import org.eclipse.dltk.core.IModelElement;
 import org.eclipse.dltk.core.ISourceModule;
 import org.eclipse.dltk.core.ISourceRange;
@@ -88,16 +89,12 @@ public class FileStructureService
 					// Extract metadata from each child
 					for (IModelElement child : children)
 					{
-						if (child instanceof IMember)
+						if (child instanceof IMember member)
 						{
-							IMember member = (IMember)child;
 							ISourceRange range = member.getNameRange();
 
 							if (range != null)
 							{
-								// Check if JSDoc exists
-								boolean hasJSDoc = hasJSDocComment(member, module);
-								
 								// Get line number using IDocument (0-based, so add 1)
 								int lineNumber = 1;
 								try
@@ -106,8 +103,21 @@ public class FileStructureService
 								}
 								catch (BadLocationException e)
 								{
-									// Fallback to manual calculation
 									lineNumber = calculateLineNumber(source, range.getOffset());
+								}
+
+								// Extract parameter names for functions
+								String[] parameterNames = new String[0];
+								if (member instanceof IMethod method)
+								{
+									try
+									{
+										parameterNames = method.getParameterNames();
+									}
+									catch (Exception e)
+									{
+										// Leave empty if not available
+									}
 								}
 
 								SymbolInfo symbolInfo = new SymbolInfo(
@@ -116,7 +126,7 @@ public class FileStructureService
 									range.getOffset(),
 									range.getOffset() + range.getLength(),
 									lineNumber,
-									hasJSDoc);
+									parameterNames);
 
 								symbols.add(symbolInfo);
 							}
@@ -135,106 +145,6 @@ public class FileStructureService
 		}
 
 		return new FileStructure(file != null ? file.getFullPath().toString() : "unknown", new ArrayList<>());
-	}
-
-	/**
-	 * Check if a member has a structurally complete JSDoc block immediately before it.
-	 * Uses an upward line-by-line scan from the declaration line to verify the block
-	 * belongs to this declaration and is not a leftover from a previous one.
-	 */
-	private boolean hasJSDocComment(IMember member, ISourceModule module)
-	{
-		try
-		{
-			ISourceRange range = member.getSourceRange();
-			if (range != null && range.getOffset() > 0)
-			{
-				String source = module.getSource();
-				if (source != null)
-				{
-					IDocument document = new Document(source);
-					int declarationLine = document.getLineOfOffset(range.getOffset());
-
-					int line = declarationLine - 1;
-
-					// PHASE 1: skip blank lines between declaration and closing */
-					// Allow at most 1 consecutive blank line
-					int consecutiveBlanks = 0;
-					while (line >= 0)
-					{
-						String trimmed = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
-						if (trimmed.isEmpty())
-						{
-							consecutiveBlanks++;
-							if (consecutiveBlanks > 1)
-							{
-								return false; // More than 1 blank line before */ — not associated
-							}
-							line--;
-						}
-						else
-						{
-							break;
-						}
-					}
-
-					if (line < 0)
-					{
-						return false; // Reached top of file without finding anything
-					}
-
-					// PHASE 2: first non-blank line must end with */
-					String firstNonBlank = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
-					if (!firstNonBlank.endsWith("*/"))
-					{
-						return false; // No closing marker — no JSDoc
-					}
-
-					line--;
-
-					// PHASE 3: scan upward through JSDoc body — each line must start with *
-					// The opening /** also starts with * so it is caught here
-					while (line >= 0)
-					{
-						String trimmed = document.get(document.getLineOffset(line), document.getLineLength(line)).strip();
-
-						// Blank lines inside the JSDoc block break the pattern
-						if (trimmed.isEmpty())
-						{
-							return false;
-						}
-
-						// Single-line comments break the pattern
-						if (trimmed.startsWith("//"))
-						{
-							return false;
-						}
-
-						// Found the opening marker — block is complete and belongs to this declaration
-						if (trimmed.startsWith("/**"))
-						{
-							return true;
-						}
-
-						// Valid JSDoc body line must start with *
-						if (trimmed.startsWith("*"))
-						{
-							line--;
-							continue;
-						}
-
-						// Anything else breaks the pattern
-						return false;
-					}
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			// Fail silently
-		}
-
-		return false;
 	}
 
 	/**

@@ -49,16 +49,6 @@ public class FileStructure
 		return symbols.size();
 	}
 
-	public int getDocumentedCount()
-	{
-		return (int)symbols.stream().filter(SymbolInfo::hasJSDoc).count();
-	}
-
-	public int getUndocumentedCount()
-	{
-		return getTotalSymbols() - getDocumentedCount();
-	}
-
 	/**
 	 * Format for AI tool output.
 	 */
@@ -67,9 +57,7 @@ public class FileStructure
 		StringBuilder sb = new StringBuilder();
 		sb.append("=== FILE STRUCTURE ===\n\n");
 		sb.append("FILE: ").append(filePath).append("\n");
-		sb.append("TOTAL SYMBOLS: ").append(getTotalSymbols()).append("\n");
-		sb.append("JSDOC PRESENT: ").append(getDocumentedCount()).append("\n");
-		sb.append("JSDOC ABSENT: ").append(getUndocumentedCount()).append("\n\n");
+		sb.append("TOTAL SYMBOLS: ").append(getTotalSymbols()).append("\n\n");
 
 		if (!symbols.isEmpty())
 		{

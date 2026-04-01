@@ -34,16 +34,16 @@ public class SymbolInfo
 	private final int startOffset;
 	private final int endOffset;
 	private final int lineNumber; // Line number (1-based) where symbol appears
-	private final boolean hasJSDoc;
+	private final String[] parameterNames; // Parameter names for FUNCTION symbols; empty for VARIABLE
 
-	public SymbolInfo(String name, int elementType, int startOffset, int endOffset, int lineNumber, boolean hasJSDoc)
+	public SymbolInfo(String name, int elementType, int startOffset, int endOffset, int lineNumber, String[] parameterNames)
 	{
 		this.name = name;
 		this.type = (elementType == IModelElement.METHOD) ? SymbolType.FUNCTION : SymbolType.VARIABLE;
 		this.startOffset = startOffset;
 		this.endOffset = endOffset;
 		this.lineNumber = lineNumber;
-		this.hasJSDoc = hasJSDoc;
+		this.parameterNames = (parameterNames != null) ? parameterNames : new String[0];
 	}
 
 	public String getName()
@@ -71,14 +71,19 @@ public class SymbolInfo
 		return lineNumber;
 	}
 
-	public boolean hasJSDoc()
+
+	public String[] getParameterNames()
 	{
-		return hasJSDoc;
+		return parameterNames;
 	}
 
 	@Override
 	public String toString()
 	{
-		return String.format("- %s (%s) at line %d %s", name, type, lineNumber, hasJSDoc ? "[JSDOC PRESENT]" : "[JSDOC ABSENT]");
+		if (type == SymbolType.FUNCTION && parameterNames.length > 0)
+		{
+			return String.format("- %s(%s) (%s) at line %d", name, String.join(", ", parameterNames), type, lineNumber);
+		}
+		return String.format("- %s (%s) at line %d", name, type, lineNumber);
 	}
 }

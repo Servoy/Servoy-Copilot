@@ -73,25 +73,19 @@ public class FilePathResolver
 		}
 
 		String normalized = pathOrName.trim();
-		System.out.println("FilePathResolver: Attempting to resolve '" + normalized + "'");
-
 		// Strategy 1: Try as workspace-relative path (starts with /)
 		if (normalized.startsWith("/"))
 		{
-			System.out.println("FilePathResolver: Trying as workspace-relative path");
 			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(new Path(normalized));
 			if (file.exists())
 			{
-				System.out.println("FilePathResolver: ✓ Resolved via workspace-relative path → " + file.getFullPath());
 				return file;
 			}
 
 			// Path doesn't exist - extract filename and search
-			System.out.println("FilePathResolver: Workspace path not found, extracting filename...");
 			String fileName = new Path(normalized).lastSegment();
 			if (fileName != null)
 			{
-				System.out.println("FilePathResolver: Extracted filename: " + fileName);
 				return resolveByFileName(fileName);
 			}
 		}
@@ -101,59 +95,46 @@ public class FilePathResolver
 		if (activeProject != null)
 		{
 			IProject project = activeProject.getProject();
-			System.out.println("FilePathResolver: Active solution is '" + project.getName() + "'");
 
 			// Strategy 3: Try as form name (search in forms folder)
-			System.out.println("FilePathResolver: Trying as form name...");
 			IFile formFile = findFormFile(project, normalized);
 			if (formFile != null && formFile.exists())
 			{
-				System.out.println("FilePathResolver: ✓ Resolved as form → " + formFile.getFullPath());
 				return formFile;
 			}
 
 			// Strategy 4: Try as scope name (search in scopes folder)
-			System.out.println("FilePathResolver: Trying as scope name...");
 			IFile scopeFile = findScopeFile(project, normalized);
 			if (scopeFile != null && scopeFile.exists())
 			{
-				System.out.println("FilePathResolver: ✓ Resolved as scope → " + scopeFile.getFullPath());
 				return scopeFile;
 			}
 
 			// Strategy 5: Try as project-relative path
-			System.out.println("FilePathResolver: Trying as project-relative path...");
 			IFile file = project.getFile(new Path(normalized));
 			if (file.exists())
 			{
-				System.out.println("FilePathResolver: ✓ Resolved via project-relative path → " + file.getFullPath());
 				return file;
 			}
 
 			// Path doesn't exist - extract filename and search
-			System.out.println("FilePathResolver: Project-relative path not found, extracting filename...");
 			String fileName = new Path(normalized).lastSegment();
 			if (fileName != null && !fileName.equals(normalized))
 			{
-				System.out.println("FilePathResolver: Extracted filename: " + fileName);
 				IFile foundFile = searchByFileName(project, fileName);
 				if (foundFile != null && foundFile.exists())
 				{
-					System.out.println("FilePathResolver: ✓ Resolved via filename search → " + foundFile.getFullPath());
 					return foundFile;
 				}
 			}
 
 			// Strategy 6: Search by filename in forms and scopes (original input is just filename)
-			System.out.println("FilePathResolver: Searching by filename in forms and scopes...");
 			IFile foundFile = searchByFileName(project, normalized);
 			if (foundFile != null && foundFile.exists())
 			{
-				System.out.println("FilePathResolver: ✓ Resolved via filename search → " + foundFile.getFullPath());
 				return foundFile;
 			}
 		}
-		System.out.println("FilePathResolver: ✗ Could not resolve '" + normalized + "'");
 		return null;
 	}
 
@@ -167,7 +148,6 @@ public class FilePathResolver
 		if (activeProject != null)
 		{
 			IProject project = activeProject.getProject();
-			System.out.println("FilePathResolver: Searching for filename '" + fileName + "' in active solution '" + project.getName() + "'");
 			return searchByFileName(project, fileName);
 		}
 		return null;
@@ -183,13 +163,10 @@ public class FilePathResolver
 		{
 			// Remove .js extension if provided
 			String cleanName = formName.endsWith(".js") ? formName.substring(0, formName.length() - 3) : formName;
-			System.out.println("  findFormFile: Looking for form '" + cleanName + "'");
 
 			// Try forms/<formName>.js (direct in forms folder)
 			String directPath = "forms/" + cleanName + ".js";
-			System.out.println("  findFormFile: Trying path: " + directPath);
 			IFile file = project.getFile(new Path(directPath));
-			System.out.println("  findFormFile: File exists? " + file.exists());
 
 			if (file.exists())
 			{
@@ -209,7 +186,6 @@ public class FilePathResolver
 		{
 			// Remove .js extension if provided
 			String cleanName = scopeName.endsWith(".js") ? scopeName.substring(0, scopeName.length() - 3) : scopeName;
-			System.out.println("  findScopeFile: Looking for scope '" + cleanName + "' using DLTK API");
 
 			try
 			{
@@ -217,7 +193,6 @@ public class FilePathResolver
 				IScriptProject scriptProject = DLTKCore.create(project);
 				if (scriptProject != null && scriptProject.exists())
 				{
-					System.out.println("  findScopeFile: DLTK script project found");
 
 					// Search for source module matching scope name
 					// Scopes are typically named <scopeName>.js
@@ -226,27 +201,21 @@ public class FilePathResolver
 
 					if (foundFile != null && foundFile.exists())
 					{
-						System.out.println("  findScopeFile: Found via DLTK → " + foundFile.getFullPath());
 						return foundFile;
 					}
 				}
 			}
 			catch (Exception e)
 			{
-				System.out.println("  findScopeFile: Error using DLTK API - " + e.getMessage());
 				ServoyLog.logError("Error finding scope via DLTK", e);
 			}
 
 			// Fallback: Try traditional scopes/ folder
-			System.out.println("  findScopeFile: Trying fallback path: scopes/" + cleanName + ".js");
 			IFile file = project.getFile(new Path("scopes/" + cleanName + ".js"));
 			if (file.exists())
 			{
-				System.out.println("  findScopeFile: Found via fallback path");
 				return file;
 			}
-
-			System.out.println("  findScopeFile: Not found");
 		}
 		return null;
 	}

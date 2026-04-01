@@ -114,10 +114,10 @@ public class ChatView
 	public void createPartControl(Composite parent)
 	{
 		presenter.setChatView(this);
-		
+
 		// Initialize SelectionTracker to start monitoring selections
 		SelectionTracker.getInstance();
-		
+
 		// Create a SashForm to act as the split pane
 		SashForm sashForm = new SashForm(parent, SWT.VERTICAL);
 		sashForm.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -212,7 +212,7 @@ public class ChatView
 		{
 			browser.dispose();
 		}
-		
+
 		// Dispose SelectionTracker to clean up selection listeners
 		SelectionTracker.getInstance().dispose();
 	}
@@ -1173,21 +1173,9 @@ public class ChatView
 		@Override
 		public Object function(Object[] arguments)
 		{
-			System.out.println("[DEBUG] OnFileClickFunction called with " + arguments.length + " arguments");
-			if (arguments.length > 0)
-			{
-				System.out.println("[DEBUG] Argument type: " + arguments[0].getClass().getName());
-				System.out.println("[DEBUG] Argument value: " + arguments[0]);
-			}
-
 			if (arguments.length > 0 && arguments[0] instanceof String filePath)
 			{
-				System.out.println("[DEBUG] Calling presenter.onFileClick with: " + filePath);
 				presenter.onFileClick(filePath);
-			}
-			else
-			{
-				System.out.println("[DEBUG] Invalid argument - not a String or no arguments");
 			}
 			return null;
 		}

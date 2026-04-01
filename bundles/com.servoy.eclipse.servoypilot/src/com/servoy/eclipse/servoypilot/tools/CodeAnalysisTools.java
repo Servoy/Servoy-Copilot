@@ -44,7 +44,6 @@ public class CodeAnalysisTools
 	public String analyzeFileStructure(
 		@P("File path, form name, or scope name (e.g., 'testCustomers', 'utils', '/ProjectName/forms/customers/customers.js')") String pathOrName)
 	{
-		System.out.println("[analyzeFileStructure] ===== TOOL CALLED ===== pathOrName=" + pathOrName);
 		try
 		{
 			if (pathOrName != null && !pathOrName.isBlank())
@@ -54,32 +53,25 @@ public class CodeAnalysisTools
 
 				if (file != null && file.exists())
 				{
-					System.out.println("[analyzeFileStructure] Resolved → " + file.getFullPath());
 					FileStructureService service = FileStructureService.getInstance();
 					FileStructure structure = service.analyzeFile(file);
-					String result = structure.toFormattedString();
-					System.out.println("[analyzeFileStructure] Result:\n" + result);
-					return result;
+					return structure.toFormattedString();
 				}
 
-				String notFound = resolver.buildNotFoundMessage(pathOrName);
-				System.out.println("[analyzeFileStructure] File not found: " + notFound);
-				return notFound;
+				return resolver.buildNotFoundMessage(pathOrName);
 			}
 
-			System.out.println("[analyzeFileStructure] Error: pathOrName is null or blank");
 			return "Error: File path or name is required";
 		}
 		catch (Exception e)
 		{
-			System.out.println("[analyzeFileStructure] Exception: " + e.getMessage());
 			ServoyLog.logError("Error analyzing file structure: " + pathOrName, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
 	@Tool("Read code chunk from file with configurable chunk size. " +
-		"Supports three modes: TARGETED (jump to symbol), DIRECT (start from line), SEQUENTIAL (read by chunk number). " +
+		"Mode priority: TARGETED (symbolName) > SEQUENTIAL (chunkNumber) > DIRECT (startLine). " +
 		"Accepts form names, scope names, or full paths. " +
 		"Choose chunk size based on what you need: " +
 		"SMALL (50 lines) for tight focus on one symbol; " +
@@ -87,15 +79,12 @@ public class CodeAnalysisTools
 		"LARGE (200 lines) for broad view or entire small files.")
 	public String getCodeChunk(
 		@P("File path, form name, or scope name") String pathOrName,
-		@P("Symbol name to find (optional - for TARGETED mode)") String symbolName,
-		@P("Chunk number for sequential reading (0-based, optional - for SEQUENTIAL mode)") Integer chunkNumber,
-		@P("Start line number (0-based, optional - for DIRECT mode)") Integer startLine,
-		@P("Chunk size: SMALL (50 lines), MEDIUM (100 lines), LARGE (200 lines). Default: LARGE. " +
+		@P("Symbol name to jump to — TARGETED mode, highest priority. When provided, chunkNumber and startLine are ignored.") String symbolName,
+		@P("Chunk number to read, 1-based: 1 = first chunk, 2 = second, etc. — SEQUENTIAL mode. When provided, startLine is ignored. Omit when using symbolName.") Integer chunkNumber,
+		@P("Line number to start from, 0-based — DIRECT mode. Only used when neither symbolName nor chunkNumber are provided.") Integer startLine,
+		@P("Chunk size: SMALL (50 lines), MEDIUM (100 lines), LARGE (200 lines). Defaults to LARGE if not specified. " +
 			"Use SMALL when reading a single known symbol; MEDIUM for a function with surrounding context; LARGE for full-file exploration.") String chunkSize)
 	{
-		System.out.println("[getCodeChunk] ===== TOOL CALLED ===== pathOrName=" + pathOrName +
-			", symbolName=" + symbolName + ", chunkNumber=" + chunkNumber +
-			", startLine=" + startLine + ", chunkSize=" + chunkSize);
 		try
 		{
 			if (pathOrName != null && !pathOrName.isBlank())
@@ -109,57 +98,55 @@ public class CodeAnalysisTools
 					ChunkSize size = ChunkSize.fromString(chunkSize);
 					CodeChunk chunk = null;
 
-					// MODE 1: TARGETED - Jump to specific symbol
+					// MODE 1: TARGETED — highest priority, ignores chunkNumber and startLine
 					if (symbolName != null && !symbolName.isBlank())
 					{
-						System.out.println("[getCodeChunk] Mode: TARGETED, symbol=" + symbolName);
 						chunk = reader.readSymbol(file, symbolName, size);
 						if (chunk == null)
 						{
-							System.out.println("[getCodeChunk] Symbol not found: " + symbolName);
 							return "Error: Symbol '" + symbolName + "' not found in file";
 						}
 					}
-					// MODE 2: DIRECT - Start from specific line
-					else if (startLine != null && startLine >= 0)
+					// MODE 2: SEQUENTIAL — second priority, startLine is ignored
+					// chunkNumber is 1-based; 0 means "not provided" (LangChain4j default for unset Integer)
+					else if (chunkNumber != null && chunkNumber > 0)
 					{
-						System.out.println("[getCodeChunk] Mode: DIRECT, startLine=" + startLine);
-						chunk = reader.readFromLine(file, startLine, size);
-						if (chunk == null || chunk.getContent().isEmpty())
-						{
-							System.out.println("[getCodeChunk] Start line beyond EOF: " + startLine);
-							return "Error: Start line " + startLine + " is beyond end of file";
-						}
-					}
-					// MODE 3: SEQUENTIAL - Read by chunk number
-					else
-					{
-						int chunkNum = (chunkNumber != null) ? chunkNumber : 0;
-						System.out.println("[getCodeChunk] Mode: SEQUENTIAL, chunkNum=" + chunkNum);
+						int chunkNum = Math.max(0, chunkNumber - 1);
 						chunk = reader.readChunk(file, chunkNum, size);
 						if (chunk == null || chunk.getContent().isEmpty())
 						{
-							System.out.println("[getCodeChunk] Chunk beyond EOF: " + chunkNum);
-							return "Error: Chunk " + chunkNum + " is beyond end of file";
+							return "Error: Chunk " + chunkNumber + " is beyond end of file";
+						}
+					}
+					// MODE 3: DIRECT — only when neither symbolName nor chunkNumber provided
+					else if (startLine != null && startLine >= 0)
+					{
+						chunk = reader.readFromLine(file, startLine, size);
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							return "Error: Start line " + startLine + " is beyond end of file";
+						}
+					}
+					// DEFAULT: SEQUENTIAL, first chunk, LARGE
+					else
+					{
+						chunk = reader.readChunk(file, 0, size);
+						if (chunk == null || chunk.getContent().isEmpty())
+						{
+							return "Error: File is empty";
 						}
 					}
 
-					System.out.println("[getCodeChunk] Returning chunk: startLine=" + chunk.getStartLine() +
-						", endLine=" + chunk.getEndLine() + ", totalChunks=" + chunk.getTotalChunks());
 					return chunk.toFormattedString();
 				}
 
-				String notFound = resolver.buildNotFoundMessage(pathOrName);
-				System.out.println("[getCodeChunk] File not found: " + notFound);
-				return notFound;
+				return resolver.buildNotFoundMessage(pathOrName);
 			}
 
-			System.out.println("[getCodeChunk] Error: pathOrName is null or blank");
 			return "Error: File path or name is required";
 		}
 		catch (Exception e)
 		{
-			System.out.println("[getCodeChunk] Exception: " + e.getMessage());
 			ServoyLog.logError("Error reading code chunk: " + pathOrName, e);
 			return "Error: " + e.getMessage();
 		}
@@ -172,7 +159,6 @@ public class CodeAnalysisTools
 		@P("Identifier name to resolve (e.g., 'foundset', 'fs', 'record', 'customerName')") String identifier,
 		@P("File path, form name, or scope name (e.g., 'myForm', 'utils', 'forms/myForm.js')") String pathOrName)
 	{
-		System.out.println("[resolveIdentifierType] ===== TOOL CALLED ===== identifier=" + identifier + ", pathOrName=" + pathOrName);
 		if (identifier != null && !identifier.isBlank() && pathOrName != null && !pathOrName.isBlank())
 		{
 			FilePathResolver resolver = FilePathResolver.getInstance();
@@ -180,17 +166,12 @@ public class CodeAnalysisTools
 
 			if (file != null && file.exists())
 			{
-				String result = CodeContextService.getInstance().resolveIdentifierType(identifier, file);
-				System.out.println("[resolveIdentifierType] Result: " + result);
-				return result;
+				return CodeContextService.getInstance().resolveIdentifierType(identifier, file);
 			}
 
-			String notFound = resolver.buildNotFoundMessage(pathOrName);
-			System.out.println("[resolveIdentifierType] File not found: " + notFound);
-			return notFound;
+			return resolver.buildNotFoundMessage(pathOrName);
 		}
 
-		System.out.println("[resolveIdentifierType] Error: identifier or pathOrName is null/blank");
 		return "Error: Identifier and file path are required";
 	}
 }

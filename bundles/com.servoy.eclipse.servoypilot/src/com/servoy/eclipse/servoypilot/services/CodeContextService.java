@@ -1240,10 +1240,10 @@ public class CodeContextService
 					String type = localVariable.getType();
 					if (type != null && !type.isBlank())
 					{
-						result.append("TYPE: ").append(type).append("\n");
-						result.append("SOURCE: Local variable\n");
-						result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
-						return result.toString();
+					result.append("TYPE: ").append(type).append("\n");
+					result.append("SOURCE: Local variable\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
+					return result.toString();
 					}
 				}
 
@@ -1263,7 +1263,7 @@ public class CodeContextService
 						result.append("unknown");
 					}
 					result.append(")\n");
-					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
 					return result.toString();
 				}
 
@@ -1273,13 +1273,13 @@ public class CodeContextService
 				{
 					result.append("TYPE: ").append(jsDocType).append("\n");
 					result.append("SOURCE: JSDoc @type annotation\n");
-					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
 					return result.toString();
 				}
 
 				result.append("TYPE: ").append(element.getClass().getSimpleName()).append("\n");
 				result.append("SOURCE: Model element\n");
-				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
 				return result.toString();
 			}
 		}
@@ -1302,7 +1302,7 @@ public class CodeContextService
 					result.append(")\n");
 				}
 
-				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+				result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
 				return result.toString();
 			}
 		}
@@ -1313,7 +1313,7 @@ public class CodeContextService
 		{
 			result.append("TYPE: ").append(jsDocType).append("\n");
 			result.append("SOURCE: JSDoc @type annotation\n");
-			result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n");
+			result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
 			return result.toString();
 		}
 

@@ -135,13 +135,23 @@ public class CodeChunkReader
 				int totalChunks = calculateTotalChunks(lines.size(), maxLines);
 				boolean isLast = (chunkNumber >= totalChunks - 1);
 
+				// Prepend a note when this is the last chunk and it is much shorter
+				// than a full chunk — prevents the model from dismissing it as a duplicate
+				String contentStr = content.toString();
+				int linesInChunk = endLine - startLine;
+				if (isLast && linesInChunk < maxLines / 2)
+				{
+					contentStr = "NOTE: This is the final chunk. It contains only " + linesInChunk +
+						" lines (file ends at line " + (lines.size() - 1) + ").\n\n" + contentStr;
+				}
+
 				return new CodeChunk(
 					file.getFullPath().toString(),
 					startLine,
 					endLine - 1,
 					totalChunks,
 					chunkNumber,
-					content.toString(),
+					contentStr,
 					isLast,
 					maxLines);
 			}
@@ -156,12 +166,12 @@ public class CodeChunkReader
 
 	/**
 	 * Read chunk by symbol name (TARGETED mode).
-	 * Uses FileStructureService to find symbol location, then reads lines centered on it.
+	 * Starts from the previous symbol's line so the JSDoc block above the target is included.
 	 *
 	 * @param file The file to read
 	 * @param symbolName Symbol name to find
 	 * @param chunkSize The chunk size to use
-	 * @return CodeChunk containing the symbol, or null if not found
+	 * @return CodeChunk containing the symbol with its JSDoc context, or null if not found
 	 */
 	public CodeChunk readSymbol(IFile file, String symbolName, ChunkSize chunkSize)
 	{
@@ -172,22 +182,52 @@ public class CodeChunkReader
 
 			if (structure != null)
 			{
-				SymbolInfo symbol = structureService.findSymbol(structure, symbolName);
-
-				if (symbol != null)
+				List<SymbolInfo> symbols = structure.getSymbols();
+				int targetIndex = -1;
+				for (int i = 0; i < symbols.size(); i++)
 				{
-					int maxLines = chunkSize.getLines();
-					int symbolLine = symbol.getLineNumber() - 1;
-					int startLine = Math.max(0, symbolLine - (maxLines / 2));
-					int chunkNumber = startLine / maxLines;
-
-					System.out.println("Found symbol '" + symbolName + "' at line " + symbol.getLineNumber() +
-						" (0-based: " + symbolLine + "), reading chunk " + chunkNumber + " [" + chunkSize + "]");
-
-					return readChunk(file, chunkNumber, chunkSize);
+					if (symbols.get(i).getName().equals(symbolName))
+					{
+						targetIndex = i;
+						break;
+					}
 				}
 
-				System.out.println("Symbol '" + symbolName + "' not found in file structure");
+				if (targetIndex >= 0)
+				{
+					SymbolInfo symbol = symbols.get(targetIndex);
+					int symbolLine = symbol.getLineNumber() - 1; // 0-based
+
+					// Start from the previous symbol's line to capture the JSDoc block above the target
+					int startLine = 0;
+					boolean hasContext = false;
+					if (targetIndex > 0)
+					{
+						startLine = symbols.get(targetIndex - 1).getLineNumber() - 1; // 0-based
+						hasContext = true;
+					}
+
+					CodeChunk chunk = readFromLine(file, startLine, chunkSize);
+
+					if (chunk != null && hasContext)
+					{
+						String note = "NOTE: Output starts at line " + startLine +
+							" (previous symbol boundary) to include the JSDoc block above '" + symbolName +
+							"' (declared at line " + symbol.getLineNumber() + "). " +
+							"Lines before line " + symbol.getLineNumber() + " are context from the previous symbol.\n\n";
+						chunk = new CodeChunk(
+							chunk.getFilePath(),
+							chunk.getStartLine(),
+							chunk.getEndLine(),
+							chunk.getTotalChunks(),
+							chunk.getChunkNumber(),
+							note + chunk.getContent(),
+							chunk.isLast(),
+							chunk.getChunkSizeLines());
+					}
+
+					return chunk;
+				}
 			}
 		}
 

@@ -130,8 +130,10 @@ public class ServoyAiContextMenuHandler extends AbstractHandler
 		// Record prompt timestamp for change detection in applyDocumentations
 		SelectionTracker.getInstance().setPromptTimestamp(System.currentTimeMillis());
 
-		// Build simple generic message (no code included)
-		String displayMessage = "Please generate JSDoc documentation for the current selection.";
+		// Different message depending on whether the user has text selected or not
+		String displayMessage = selection.isFullFileSelected()
+			? "Please improve the JSDoc documentation for the entire file."
+			: "Please improve the JSDoc documentation for the current selection.";
 
 		// Open ChatView, switch to Documentation Assistant, and send message
 		ChatViewActivator.openAndSwitchToAssistant(

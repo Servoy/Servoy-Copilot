@@ -1,983 +1,449 @@
-# SESSION 2: Adaptive Chunk Reading - Test Workflows
+# SESSION 2: Adaptive Chunk Reading — Test Workflows
 
-**Date:** March 18, 2026  
-**Status:** 🧪 READY FOR TESTING  
-**Implementation:** CodeAnalysisTools.getCodeChunk()
+**Date:** April 1, 2026
+**Status:** 🧪 READY FOR TESTING
+**Implementation:** `CodeAnalysisTools.getCodeChunk()`
 
 ---
 
 ## Overview
 
-This document contains test workflows for SESSION 2 of the Documentation Enhancement project.
+Tests the `getCodeChunk()` tool against the 8 real JS files from `svyPilotTest`. The tool reads source code in configurable chunk sizes with line number prefixes.
 
-**What was implemented:**
-- CodeChunkReader service (singleton with 3 reading modes)
-- CodeChunk DTO (formatted output for AI)
-- getCodeChunk() tool in CodeAnalysisTools with 3 modes:
-  - **TARGETED**: Jump to specific symbol by name
-  - **DIRECT**: Start from specific line number
-  - **SEQUENTIAL**: Read by chunk number
-- Integration with FilePathResolver (accepts form/scope names)
-- Console logging for debugging
+**Chunk sizes:**
+| Size | Lines | Use case |
+|------|-------|---------|
+| `SMALL` | 50 | Targeted: read a single known symbol |
+| `MEDIUM` | 100 | Read a symbol with surrounding context |
+| `LARGE` | 200 | Explore a full file (default) |
 
-**Key Features:**
-- ✅ Max 200 lines per chunk (token efficiency)
-- ✅ Line number prefixes on every line (0-based: "250: function loadCustomers() {")
-- ✅ Three flexible reading modes
-- ✅ Accepts form names, scope names, or full paths
-- ✅ Console logging for debugging
-- ✅ Chunk progress tracking (CHUNK 2 of 5, LAST CHUNK)
+**Reading modes (determined by parameters):**
+- **TARGETED** — `symbolName` provided → centers window on that symbol's line
+- **SEQUENTIAL** — `chunkNumber` provided → reads fixed block by index (0-based)
+- **DIRECT** — `startLine` provided → reads from a specific line number
 
-**Tools to test:**
-- `getCodeChunk(pathOrName, symbolName?, chunkNumber?, startLine?)` - Read code with 3 modes
+**Key facts about the test files:**
 
----
+| File | Lines | SMALL chunks | MEDIUM chunks | LARGE chunks |
+|------|-------|-------------|---------------|--------------|
+| `utils.js` | 96 | 2 | 1 | 1 |
+| `globals.js` | 203 | 5 | 3 | 2 |
+| `dataUtils.js` | 123 | 3 | 2 | 1 |
+| `mainNav.js` | 63 | 2 | 1 | 1 |
+| `customerList.js` | 91 | 2 | 1 | 1 |
+| `customerEdit.js` | 126 | 3 | 2 | 1 |
+| `orderList.js` | 93 | 2 | 1 | 1 |
+| `dashboard.js` | 107 | 3 | 2 | 1 |
 
-## Understanding Three Reading Modes
-
-### MODE 1: TARGETED - Jump to Symbol
-**Use Case:** AI knows symbol name from Session 1, wants to read that specific code
-
-**Example:**
-```
-AI knows from analyzeFileStructure():
-- loadCustomers (FUNCTION) at line 250
-
-AI calls:
-getCodeChunk("testCustomers", symbolName="loadCustomers")
-
-Returns: ~200 lines centered on line 250 (lines 150-350)
-```
-
-### MODE 2: DIRECT - Start from Line
-**Use Case:** AI knows exact line number, wants to read from there
-
-**Example:**
-```
-AI calls:
-getCodeChunk("testCustomers", startLine=500)
-
-Returns: Lines 500-699 (max 200 lines)
-```
-
-### MODE 3: SEQUENTIAL - Explore by Chunks
-**Use Case:** AI wants to explore entire file progressively
-
-**Example:**
-```
-AI calls:
-getCodeChunk("testCustomers", chunkNumber=0)  → Lines 0-199
-getCodeChunk("testCustomers", chunkNumber=1)  → Lines 200-399
-getCodeChunk("testCustomers", chunkNumber=2)  → Lines 400-599
-```
+**Tools tested:** `getCodeChunk(pathOrName, symbolName?, chunkNumber?, startLine?, chunkSize?)`
 
 ---
 
-## Test Preparation
+## Prerequisites
 
-### Create Test Files
-
-Before running tests, create these test files in your active Servoy solution:
-
-**File 1: forms/smallForm.js** (50 lines - Small form for basic testing)
-```javascript
-/**
- * Handle form load event
- * @param {JSEvent} event
- */
-function onLoad(event) {
-    application.output("Form loaded");
-    initializeData();
-}
-
-function initializeData() {
-    currentRecord = null;
-    dataLoaded = false;
-}
-
-/**
- * Save current record
- * @return {Boolean}
- */
-function saveRecord() {
-    if (!currentRecord) {
-        return false;
-    }
-    databaseManager.saveData(currentRecord);
-    return true;
-}
-
-function validateData() {
-    return true;
-}
-
-var currentRecord = null;
-var dataLoaded = false;
-var MAX_RECORDS = 100;
-
-/**
- * Load data from database
- */
-function loadData() {
-    var fs = databaseManager.getFoundSet('db:/example_data/customers');
-    foundset = fs;
-    dataLoaded = true;
-}
-
-// Helper function
-function resetForm() {
-    currentRecord = null;
-    dataLoaded = false;
-}
-```
-
-**File 2: forms/largeForm.js** (800 lines - Large form for chunk testing)
-Create a form with:
-- Lines 0-199: Variables and initialization code
-- Lines 200-399: Data loading functions
-- Lines 400-599: Validation and business logic
-- Lines 600-799: UI update functions
-
-Use this template and expand:
-```javascript
-// Variables section (lines 0-50)
-var customerID = null;
-var orderID = null;
-var currentStatus = 'pending';
-// ... add more variables ...
-
-// Initialization section (lines 50-200)
-function onLoad(event) {
-    initializeForm();
-    loadCustomers();
-}
-
-function initializeForm() {
-    customerID = null;
-    resetUI();
-}
-// ... add more init functions ...
-
-// Data loading section (lines 200-400)
-function loadCustomers() {
-    var fs = databaseManager.getFoundSet('db:/example_data/customers');
-    foundset = fs;
-}
-
-function loadOrders() {
-    var query = "SELECT * FROM orders WHERE customer_id = ?";
-    return databaseManager.getDataSetByQuery('example_data', query, [customerID], -1);
-}
-// ... add more data functions ...
-
-// Validation section (lines 400-600)
-function validateCustomer(record) {
-    if (!record.name) return false;
-    if (!record.email) return false;
-    return true;
-}
-
-function validateOrder(order) {
-    if (!order.customer_id) return false;
-    if (order.total < 0) return false;
-    return true;
-}
-// ... add more validation functions ...
-
-// UI update section (lines 600-800)
-function updateCustomerUI() {
-    elements.customerName.text = currentRecord.name;
-    elements.customerEmail.text = currentRecord.email;
-}
-
-function updateOrderUI() {
-    elements.orderTotal.text = formatCurrency(orderTotal);
-}
-// ... add more UI functions ...
-```
-
-**File 3: scopes/utils.js** (300 lines - Medium scope for symbol testing)
-```javascript
-/**
- * Format currency
- * @param {Number} amount
- * @return {String}
- */
-function formatCurrency(amount) {
-    return '$' + amount.toFixed(2);
-}
-
-function parseDate(dateStr) {
-    return new Date(dateStr);
-}
-
-function validateEmail(email) {
-    var pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return pattern.test(email);
-}
-
-// Add 20+ more functions to reach 300 lines
-// Include mix of documented and undocumented functions
-// Place a specific function at line 250 for targeted testing:
-
-function getCustomerType(customerID) {  // This should be at line 250
-    var query = "SELECT type FROM customers WHERE id = ?";
-    var ds = databaseManager.getDataSetByQuery('example_data', query, [customerID], 1);
-    if (ds.getMaxRowIndex() > 0) {
-        return ds.getValue(1, 1);
-    }
-    return null;
-}
-
-// Continue with more functions...
-```
+- [ ] `svyPilotTest` solution open with all 8 JS files matching `js-content/` reference state
+- [ ] Documentation Assistant active in ServoyPilot chat
 
 ---
 
-## TEST SUITE
-
-### Test 1: SEQUENTIAL Mode - Basic Chunk Reading
-
-**Objective:** Verify tool reads file sequentially in 200-line chunks
-
-**Assistant:** Documentation Assistant
+## TEST 2.1 — SEQUENTIAL mode: single-chunk file (utils.js, LARGE)
 
 **Prompt:**
 ```
-Read the first chunk of smallForm
+Read chunk 1 of utils with large chunk size
 ```
 
-**Expected AI Action:**
-Tool call: `getCodeChunk("smallForm", chunkNumber=0)`
+**Expected AI call:** `getCodeChunk("utils", chunkNumber=1, chunkSize="LARGE")`
 
-**Expected Output:**
+**Expected output header:**
 ```
 === CODE CHUNK ===
 
-FILE: /[YourSolution]/forms/smallForm.js
-LINES: 0-49
+FILE: /svyPilotTest/scopes/utils.js
+LINES: 0-95
+CHUNK SIZE: 200 lines
 CHUNK: 1 of 1
 (LAST CHUNK)
-
---- CODE ---
-0: /**
-1:  * Handle form load event
-2:  * @param {JSEvent} event
-3:  */
-4: function onLoad(event) {
-5:     application.output("Form loaded");
-6:     initializeData();
-7: }
-8: 
-9: function initializeData() {
-10:     currentRecord = null;
-11:     dataLoaded = false;
-12: }
-13: 
-14: /**
-15:  * Save current record
-16:  * @return {Boolean}
-17:  */
-18: function saveRecord() {
-19:     if (!currentRecord) {
-20:         return false;
-21:     }
-22:     databaseManager.saveData(currentRecord);
-23:     return true;
-24: }
-...
-49: }
---- END CODE ---
 ```
 
-**Verification Checklist:**
-- [ ] Tool accepts just form name "smallForm" without full path
-- [ ] Returns exactly 50 lines (0-49) for this small file
-- [ ] Each line prefixed with 0-based line number
-- [ ] Shows "CHUNK: 1 of 1" (single chunk for small file)
-- [ ] Shows "(LAST CHUNK)" indicator
-- [ ] File path shows workspace-relative path
-- [ ] Line numbers match actual file content
-- [ ] Code content readable and complete
-- [ ] Response time < 500ms
-- [ ] Console shows mode selection: "Using SEQUENTIAL mode"
+**Success criteria:**
+- ✅ `CHUNK: 1 of 1` — 96-line file fits in one LARGE chunk
+- ✅ `(LAST CHUNK)` marker present
+- ✅ All 8 symbols visible in the content
+- ✅ Line numbers prefixed on every line (0-based)
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 2: SEQUENTIAL Mode - Multi-Chunk Reading (Large File)
-
-**Objective:** Verify tool handles large files with multiple chunks
-
-**Assistant:** Documentation Assistant
+## TEST 2.2 — SEQUENTIAL mode: multi-chunk file (globals.js, LARGE)
 
 **Prompt:**
 ```
-Read chunk 0 of largeForm
+Read globals chunk 1 with large chunk size
 ```
 
-**Expected AI Action:**
-Tool call: `getCodeChunk("largeForm", chunkNumber=0)`
+**Expected AI call:** `getCodeChunk("globals", chunkNumber=1, chunkSize="LARGE")`
 
-**Expected Output:**
+**Expected output header:**
 ```
 === CODE CHUNK ===
 
-FILE: /[YourSolution]/forms/largeForm.js
+FILE: /svyPilotTest/scopes/globals.js
 LINES: 0-199
-CHUNK: 1 of 4
-
---- CODE ---
-0: // Variables section (lines 0-50)
-1: var customerID = null;
-2: var orderID = null;
-...
-199: }
---- END CODE ---
-```
-
-**Follow-up Prompts:**
-```
-Read chunk 1 of largeForm
-Read chunk 2 of largeForm
-Read chunk 3 of largeForm
-```
-
-**Expected Chunk Boundaries:**
-- Chunk 0: Lines 0-199 (CHUNK: 1 of 4)
-- Chunk 1: Lines 200-399 (CHUNK: 2 of 4)
-- Chunk 2: Lines 400-599 (CHUNK: 3 of 4)
-- Chunk 3: Lines 600-799 (CHUNK: 4 of 4, LAST CHUNK)
-
-**Verification Checklist:**
-- [ ] Each chunk returns exactly 200 lines (except last)
-- [ ] Chunk numbers sequential (1 of 4, 2 of 4, 3 of 4, 4 of 4)
-- [ ] Last chunk shows "(LAST CHUNK)" indicator
-- [ ] No gaps between chunks (line 199 → line 200)
-- [ ] No overlaps between chunks
-- [ ] Line numbers continuous across chunks
-- [ ] Total chunks calculation correct (800 lines / 200 = 4 chunks)
-- [ ] Each chunk reads independently (no state required)
-- [ ] Performance consistent across chunks (< 500ms each)
-- [ ] Console shows chunk number selection
-
-**Pass/Fail:** _______________
-
----
-
-### Test 3: SEQUENTIAL Mode - Beyond End of File
-
-**Objective:** Verify graceful handling when chunk number exceeds file size
-
-**Assistant:** Documentation Assistant
-
-**Prompt:**
-```
-Read chunk 10 of smallForm
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("smallForm", chunkNumber=10)`
-
-**Expected Output:**
-```
-Error: Chunk 10 is beyond end of file
-```
-
-**Verification Checklist:**
-- [ ] Tool returns clear error message
-- [ ] Error mentions chunk number (10)
-- [ ] Error mentions "beyond end of file"
-- [ ] No stack trace or technical error
-- [ ] No NPE or exception thrown
-- [ ] AI understands error and responds appropriately
-- [ ] Console shows error detection
-
-**Pass/Fail:** _______________
-
----
-
-### Test 4: TARGETED Mode - Jump to Specific Symbol
-
-**Objective:** Verify tool jumps directly to symbol using FileStructureService
-
-**Setup:** First get file structure to know symbol location
-
-**Assistant:** Documentation Assistant
-
-**Prompt 1:**
-```
-Analyze the structure of utils
-```
-
-**Expected Output:**
-```
-TOTAL SYMBOLS: 25 (approximate)
-...
-- getCustomerType (FUNCTION) at line 250 [NEEDS DOCS]
-...
-```
-
-**Prompt 2:**
-```
-Now read the code for getCustomerType function in utils
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("utils", symbolName="getCustomerType")`
-
-**Expected Output:**
-```
-=== CODE CHUNK ===
-
-FILE: /[YourSolution]/scopes/utils.js
-LINES: 150-349
+CHUNK SIZE: 200 lines
 CHUNK: 1 of 2
-
---- CODE ---
-150: // ... preceding code ...
-...
-250: function getCustomerType(customerID) {  // Target symbol here!
-251:     var query = "SELECT type FROM customers WHERE id = ?";
-252:     var ds = databaseManager.getDataSetByQuery('example_data', query, [customerID], 1);
-253:     if (ds.getMaxRowIndex() > 0) {
-254:         return ds.getValue(1, 1);
-255:     }
-256:     return null;
-257: }
-...
-349: // ... following code ...
---- END CODE ---
 ```
 
-**Verification Checklist:**
-- [ ] Tool accepts scope name "utils" (uses DLTK to find file)
-- [ ] Tool accepts just symbol name "getCustomerType"
-- [ ] Returns ~200 lines centered on symbol (100 before, 100 after)
-- [ ] Target symbol visible in returned chunk
-- [ ] Symbol at approximately center of chunk
-- [ ] Chunk boundaries reasonable (not cutting mid-function if possible)
-- [ ] Line numbers accurate
-- [ ] Console shows: "Using TARGETED mode: jumping to symbol 'getCustomerType'"
-- [ ] Console shows: "Found symbol 'getCustomerType' at line 251"
-- [ ] Response time < 1 second
-- [ ] FileStructureService integration working
-
-**Pass/Fail:** _______________
-
----
-
-### Test 5: TARGETED Mode - Symbol Not Found
-
-**Objective:** Verify error handling when symbol doesn't exist
-
-**Assistant:** Documentation Assistant
-
-**Prompt:**
+**Follow-up:**
 ```
-Read the code for nonExistentFunction in smallForm
+Read globals chunk 2 with large chunk size
 ```
 
-**Expected AI Action:**
-Tool call: `getCodeChunk("smallForm", symbolName="nonExistentFunction")`
-
-**Expected Output:**
+**Expected:**
 ```
-Error: Symbol 'nonExistentFunction' not found in file
-```
-
-**Verification Checklist:**
-- [ ] Tool returns clear error message
-- [ ] Error mentions symbol name ("nonExistentFunction")
-- [ ] Error mentions "not found in file"
-- [ ] No stack trace or technical error
-- [ ] AI understands error and suggests alternatives
-- [ ] Console shows: "Symbol 'nonExistentFunction' not found in file structure"
-
-**Pass/Fail:** _______________
-
----
-
-### Test 6: DIRECT Mode - Start from Specific Line
-
-**Objective:** Verify tool reads from specific line number
-
-**Assistant:** Documentation Assistant
-
-**Prompt:**
-```
-Read the code from line 400 of largeForm
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("largeForm", startLine=400)`
-
-**Expected Output:**
-```
-=== CODE CHUNK ===
-
-FILE: /[YourSolution]/forms/largeForm.js
-LINES: 400-599
-TOTAL CHUNKS: 4
-
---- CODE ---
-400: // Validation section (lines 400-600)
-401: function validateCustomer(record) {
-402:     if (!record.name) return false;
-403:     if (!record.email) return false;
-404:     return true;
-405: }
-...
-599: }
---- END CODE ---
-```
-
-**Verification Checklist:**
-- [ ] Tool accepts startLine parameter
-- [ ] Returns exactly 200 lines from specified start (400-599)
-- [ ] First line is line 400
-- [ ] Shows "TOTAL CHUNKS: 4" (not chunk number, since direct mode)
-- [ ] No "CHUNK: X of Y" (direct mode doesn't use chunk numbering)
-- [ ] Line numbers accurate
-- [ ] Console shows: "Using DIRECT mode: starting from line 400"
-- [ ] Response time < 500ms
-
-**Pass/Fail:** _______________
-
----
-
-### Test 7: DIRECT Mode - Near End of File
-
-**Objective:** Verify tool handles start line near end of file
-
-**Assistant:** Documentation Assistant
-
-**Prompt:**
-```
-Read code from line 700 of largeForm
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("largeForm", startLine=700)`
-
-**Expected Output:**
-```
-=== CODE CHUNK ===
-
-FILE: /[YourSolution]/forms/largeForm.js
-LINES: 700-799
-TOTAL CHUNKS: 4
+LINES: 200-202
+CHUNK SIZE: 200 lines
+CHUNK: 2 of 2
 (LAST CHUNK)
-
---- CODE ---
-700: function updateOrderUI() {
-...
-799: // End of file
---- END CODE ---
 ```
 
-**Verification Checklist:**
-- [ ] Returns only available lines (700-799, not 700-899)
-- [ ] Shows "(LAST CHUNK)" indicator
-- [ ] No error about insufficient lines
-- [ ] Handles end-of-file gracefully
-- [ ] Last line number matches actual file end
+**Success criteria:**
+- ✅ `ceil(203/200)` = **2** total chunks
+- ✅ Chunk 1 ends at line 199; chunk 2 covers lines 200–202
+- ✅ `(LAST CHUNK)` on chunk 2
+- ✅ No gap or overlap between chunks
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 8: DIRECT Mode - Beyond End of File
-
-**Objective:** Verify error handling when start line exceeds file size
-
-**Assistant:** Documentation Assistant
+## TEST 2.3 — SEQUENTIAL mode: MEDIUM chunk size (customerEdit.js)
 
 **Prompt:**
 ```
-Read code from line 1000 of smallForm
+Read customerEdit chunk 1 with medium chunk size
 ```
 
-**Expected AI Action:**
-Tool call: `getCodeChunk("smallForm", startLine=1000)`
+**Expected AI call:** `getCodeChunk("customerEdit", chunkNumber=1, chunkSize="MEDIUM")`
 
-**Expected Output:**
+**Expected output header:**
 ```
-Error: Start line 1000 is beyond end of file
+LINES: 0-99
+CHUNK SIZE: 100 lines
+CHUNK: 1 of 2
 ```
 
-**Verification Checklist:**
-- [ ] Tool returns clear error message
-- [ ] Error mentions line number (1000)
-- [ ] Error mentions "beyond end of file"
-- [ ] No stack trace or exception
-- [ ] AI responds appropriately
+**Follow-up chunk 2:**
+```
+LINES: 100-125
+CHUNK SIZE: 100 lines
+CHUNK: 2 of 2
+(LAST CHUNK)
+```
+
+**Contrast — same file, LARGE:**
+```
+LINES: 0-125
+CHUNK SIZE: 200 lines
+CHUNK: 1 of 1
+(LAST CHUNK)
+```
+
+**Success criteria:**
+- ✅ MEDIUM: `ceil(126/100)` = **2** chunks
+- ✅ LARGE: `ceil(126/200)` = **1** chunk
+- ✅ Chunk size header matches requested size
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 9: Mode Priority - Multiple Parameters Provided
-
-**Objective:** Verify correct mode selection priority when multiple params provided
-
-**Assistant:** Documentation Assistant
-
-**Test Case 9a - TARGETED has priority over SEQUENTIAL:**
-```
-Read utils with symbolName="formatCurrency" and chunkNumber=0
-```
-
-**Expected:** Uses TARGETED mode (symbolName takes priority)
-
-**Test Case 9b - TARGETED has priority over DIRECT:**
-```
-Read utils with symbolName="formatCurrency" and startLine=100
-```
-
-**Expected:** Uses TARGETED mode (symbolName takes priority)
-
-**Test Case 9c - DIRECT has priority over SEQUENTIAL:**
-```
-Read largeForm with startLine=400 and chunkNumber=2
-```
-
-**Expected:** Uses DIRECT mode (startLine takes priority)
-
-**Verification Checklist:**
-- [ ] Mode selection follows priority: TARGETED > DIRECT > SEQUENTIAL
-- [ ] Console clearly shows which mode was selected
-- [ ] Results match selected mode behavior
-- [ ] No confusion or ambiguous behavior
-
-**Pass/Fail:** _______________
-
----
-
-### Test 10: Integration with FilePathResolver
-
-**Objective:** Verify getCodeChunk works with all FilePathResolver input formats
-
-**Assistant:** Documentation Assistant
-
-**Test Cases:**
-
-**10a - Form name only:**
-```
-Read chunk 0 of smallForm
-```
-Expected: ✅ Resolves to forms/smallForm.js
-
-**10b - Scope name only:**
-```
-Read chunk 0 of utils
-```
-Expected: ✅ Uses DLTK to find utils.js
-
-**10c - Workspace-relative path:**
-```
-Read chunk 0 of /[YourSolution]/forms/smallForm.js
-```
-Expected: ✅ Direct resolution
-
-**10d - Form name with .js extension:**
-```
-Read chunk 0 of smallForm.js
-```
-Expected: ✅ Strips .js and resolves as form name
-
-**10e - Partial path:**
-```
-Read chunk 0 of forms/smallForm.js
-```
-Expected: ✅ Extracts filename and searches
-
-**10f - Non-existent file:**
-```
-Read chunk 0 of nonExistentForm
-```
-Expected: Returns helpful error message with:
-- "File not found: nonExistentForm"
-- Tips for correct usage
-- No technical error
-
-**Verification Checklist:**
-- [ ] All input formats work correctly
-- [ ] FilePathResolver integration seamless
-- [ ] Form names auto-resolve
-- [ ] Scope names use DLTK API
-- [ ] Error messages helpful and clear
-- [ ] Console shows resolution strategy
-
-**Pass/Fail:** _______________
-
----
-
-### Test 11: Line Number Prefix Accuracy
-
-**Objective:** Verify line numbers match actual file content exactly
-
-**Assistant:** Documentation Assistant
+## TEST 2.4 — SEQUENTIAL mode: SMALL chunk size (dataUtils.js)
 
 **Prompt:**
 ```
-Read the first chunk of smallForm
+Read dataUtils chunk 1 with small chunk size
 ```
 
-**Manual Verification Steps:**
-1. Open `forms/smallForm.js` in Eclipse editor
-2. Check line numbers in editor (0-based in output, 1-based in editor)
-3. Compare first line: Output "0: ..." should match editor line 1
-4. Compare line 10: Output "10: ..." should match editor line 11
-5. Compare last line: Output should match editor content
+**Expected:**
+```
+LINES: 0-49
+CHUNK SIZE: 50 lines
+CHUNK: 1 of 3
+```
 
-**Verification Checklist:**
-- [ ] Line 0 in output = Line 1 in Eclipse editor
-- [ ] Line 10 in output = Line 11 in Eclipse editor
-- [ ] All line numbers offset by +1 from Eclipse (0-based vs 1-based)
-- [ ] Code content matches exactly (no truncation)
-- [ ] Special characters preserved (tabs, newlines, quotes)
-- [ ] Empty lines preserved with just line number
-- [ ] No off-by-one errors
+**Success criteria:**
+- ✅ `ceil(123/50)` = **3** total chunks
+- ✅ Each chunk ≤ 50 lines
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 12: Empty File Handling
-
-**Objective:** Verify graceful handling of empty JavaScript file
-
-**Setup:** Create empty file: `forms/emptyForm.js` (0 lines)
-
-**Assistant:** Documentation Assistant
+## TEST 2.5 — TARGETED mode: single symbol (utils.js — formatDate)
 
 **Prompt:**
 ```
-Read chunk 0 of emptyForm
+Read only the formatDate function from utils using a small chunk size
 ```
 
-**Expected Output:**
-```
-Error: Chunk 0 is beyond end of file
-```
-OR
+**Expected AI call:** `getCodeChunk("utils", symbolName="formatDate", chunkSize="SMALL")`
+
+**Expected output:**
 ```
 === CODE CHUNK ===
 
-FILE: /[YourSolution]/forms/emptyForm.js
-LINES: 0-0
-CHUNK: 0 of 0
+FILE: /svyPilotTest/scopes/utils.js
+LINES: <start>-<end>    ← window ≤ 50 lines centered on formatDate
+CHUNK SIZE: 50 lines
+CHUNK: X of Y
+```
+
+**Content must include:**
+```javascript
+function formatDate(date, format) {
+    if (!date) return '';
+    var fmt = format ? format : DEFAULT_DATE_FORMAT;
+    return utils.dateFormat(date, fmt);
+}
+```
+
+**Success criteria:**
+- ✅ `formatDate` body present in returned content
+- ✅ Window ≤ 50 lines
+- ✅ Symbol is near center of returned window
+
+**Pass/Fail:** _______________
+
+---
+
+## TEST 2.6 — TARGETED mode: 5-parameter function (orderList.js — onFilterQueryCondition)
+
+**Prompt:**
+```
+Show me the onFilterQueryCondition function from orderList
+```
+
+**Expected AI call:** `getCodeChunk("orderList", symbolName="onFilterQueryCondition", chunkSize="SMALL")`
+
+**Content must include:**
+```javascript
+function onFilterQueryCondition(query, dataprovider, operator, values, filter) {
+```
+
+**Success criteria:**
+- ✅ Function body fully visible
+- ✅ All 5 parameters visible in signature
+
+**Pass/Fail:** _______________
+
+---
+
+## TEST 2.7 — TARGETED mode: zero-parameter function (customerEdit.js — save)
+
+**Prompt:**
+```
+Show me the save function in customerEdit
+```
+
+**Expected AI call:** `getCodeChunk("customerEdit", symbolName="save", chunkSize="SMALL")`
+
+**Content must include:**
+```javascript
+function save() {
+    validationErrors = validate();
+```
+
+**Success criteria:**
+- ✅ `save()` body present
+- ✅ `validate()` call inside visible
+
+**Pass/Fail:** _______________
+
+---
+
+## TEST 2.8 — TARGETED mode: symbol at start of file (utils.js — DEFAULT_DATE_FORMAT)
+
+**Prompt:**
+```
+Read DEFAULT_DATE_FORMAT from utils using small chunk size
+```
+
+**Expected AI call:** `getCodeChunk("utils", symbolName="DEFAULT_DATE_FORMAT", chunkSize="SMALL")`
+
+**Expected:**
+- Window starts at line 0 (clamped — cannot go negative)
+- Window ends at line 49
+- `DEFAULT_DATE_FORMAT` visible in content
+
+**Success criteria:**
+- ✅ No negative start line
+- ✅ Symbol visible in content
+
+**Pass/Fail:** _______________
+
+---
+
+## TEST 2.9 — DIRECT mode: startLine parameter (globals.js)
+
+**Prompt:**
+```
+Read globals from line 100
+```
+
+**Expected AI call:** `getCodeChunk("globals", startLine=100, chunkSize="LARGE")`
+
+**Expected:**
+```
+LINES: 100-202   ← from line 100 to end (103 lines — less than LARGE)
 (LAST CHUNK)
-
---- CODE ---
---- END CODE ---
 ```
 
-**Verification Checklist:**
-- [ ] No exception or crash
-- [ ] Graceful handling (error or empty chunk)
-- [ ] Clear response
-- [ ] No NPE or index out of bounds
+**Success criteria:**
+- ✅ Starts at line 100
+- ✅ Returns to end of file (not beyond)
+- ✅ `(LAST CHUNK)` present
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 13: Performance - Large File Reading
+## TEST 2.10 — Beyond end of file (error handling)
 
-**Objective:** Verify performance remains acceptable for large files
-
-**Assistant:** Documentation Assistant
-
-**Test Sequence:**
+**Prompt:**
 ```
-Read chunk 0 of largeForm
-Read chunk 1 of largeForm
-Read chunk 2 of largeForm
-Read chunk 3 of largeForm
+Read utils chunk 10 with large chunk size
 ```
 
-**Performance Measurements:**
-- Chunk 0 time: _______ ms
-- Chunk 1 time: _______ ms
-- Chunk 2 time: _______ ms
-- Chunk 3 time: _______ ms
+**Expected AI call:** `getCodeChunk("utils", chunkNumber=10, chunkSize="LARGE")`
 
-**Verification Checklist:**
-- [ ] Each chunk reads in < 500ms
-- [ ] Performance consistent across chunks
-- [ ] No memory leaks (test with 20+ chunks)
-- [ ] No degradation on repeated reads
-- [ ] File handle properly closed after each read
+**Expected output:**
+```
+Error: Chunk 10 is beyond end of file (utils.js has 1 chunk at LARGE size)
+```
 
-**Performance Target:** < 500ms per chunk ✅
+**Success criteria:**
+- ✅ Clear error message
+- ✅ No stack trace
+- ✅ Mentions file size context
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 14: Memory Usage - Multiple Files
+## TEST 2.11 — AI chunk size decision (autonomous selection)
 
-**Objective:** Verify memory usage reasonable when reading multiple files
+**Purpose:** The AI must pick the appropriate chunk size based on context — without being told.
 
-**Assistant:** Documentation Assistant
+### Sub-test A: Single known symbol → expect SMALL
 
-**Test Sequence:**
+**Prompt:**
 ```
-Read chunk 0 of smallForm
-Read chunk 0 of largeForm
-Read chunk 0 of utils
-Read chunk 1 of largeForm
-Read chunk 2 of largeForm
+Show me just the buildQuery function from dataUtils
 ```
 
-**Memory Observations:**
-- No file content cached unnecessarily
-- Each read is independent
-- Previous chunk content released
-- No accumulation in memory
+**Expected AI call:** `getCodeChunk("dataUtils", symbolName="buildQuery", chunkSize="SMALL")`
 
-**Verification Checklist:**
-- [ ] Memory usage stays constant (no accumulation)
-- [ ] Each read independent (no state)
-- [ ] No memory leaks after 50+ reads
-- [ ] Garbage collection works normally
-- [ ] Eclipse heap usage reasonable
+**Success criteria:** ✅ AI picks `SMALL` — single targeted symbol
+
+---
+
+### Sub-test B: Symbol with context → expect MEDIUM
+
+**Prompt:**
+```
+Show me the save function in customerEdit with surrounding context
+```
+
+**Expected AI call:** `getCodeChunk("customerEdit", symbolName="save", chunkSize="MEDIUM")`
+
+**Success criteria:** ✅ AI picks `MEDIUM` — wants surrounding context
+
+---
+
+### Sub-test C: Full file exploration → expect LARGE
+
+**Prompt:**
+```
+I need to understand the full content of dataUtils before improving its docs
+```
+
+**Expected AI call:** `getCodeChunk("dataUtils", chunkNumber=1, chunkSize="LARGE")`
+
+**Success criteria:**
+- ✅ AI picks `LARGE` — full-file exploration
+- ✅ `CHUNK: 1 of 1` — entire 123-line file in one read
+- ✅ AI does not call `getCodeChunk` again (one chunk was sufficient)
+
+**Pass/Fail (A/B/C):** _______________
+
+---
+
+## TEST 2.12 — Integration: analyzeFileStructure → getCodeChunk
+
+**Purpose:** Verifies the two-step workflow that the AI must follow for every documentation task.
+
+**Prompt:**
+```
+I want to improve the docs in customerList. Analyze it first, then read the code.
+```
+
+**Expected AI workflow:**
+1. `analyzeFileStructure("customerList")` → symbol map: 9 symbols at known line numbers
+2. `getCodeChunk("customerList", chunkNumber=1, chunkSize="LARGE")` → full 91-line file (1 chunk)
+3. AI reads actual JSDoc content — identifies TODO stubs vs complete
+
+**Success criteria:**
+- ✅ `analyzeFileStructure()` called first (symbol map)
+- ✅ `getCodeChunk()` called next (actual code)
+- ✅ AI correctly identifies which symbols have TODO stubs vs complete JSDoc
+- ✅ AI does NOT skip `getCodeChunk()` after seeing symbol map
 
 **Pass/Fail:** _______________
 
 ---
 
-### Test 15: Full Workflow - Session 1 + Session 2 Integration
+## TEST 2.13 — Line number prefix accuracy
 
-**Objective:** Verify Session 1 and Session 2 tools work together seamlessly
+**Purpose:** Verify line number prefixes in chunk output are correct.
 
-**Assistant:** Documentation Assistant
-
-**Complete Workflow:**
-
-**Step 1: Analyze file structure (Session 1)**
+**Prompt:**
 ```
-Analyze the structure of utils
+Read utils chunk 1 with large chunk size
 ```
 
-**Expected Output:**
-```
-TOTAL SYMBOLS: 25
-DOCUMENTED: 5
-UNDOCUMENTED: 20
+**Manual verification:**
+1. Open `scopes/utils.js` in Eclipse editor
+2. Compare chunk line numbers to Eclipse editor line numbers
+3. Chunk line 0 = Eclipse line 1 (0-based vs 1-based offset)
+4. Check that `var DEFAULT_DATE_FORMAT = 'dd/MM/yyyy';` appears at chunk line 8 (after the 8-line JSDoc block)
 
-- formatCurrency (FUNCTION) at line 5 [DOCUMENTED]
-- parseDate (FUNCTION) at line 12 [NEEDS DOCS]
-- validateEmail (FUNCTION) at line 18 [NEEDS DOCS]
-- getCustomerType (FUNCTION) at line 250 [NEEDS DOCS]
-...
-```
-
-**Step 2: Read specific symbol code (Session 2 - TARGETED)**
-```
-Now read the code for the getCustomerType function
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("utils", symbolName="getCustomerType")`
-
-**Expected Output:**
-Returns ~200 lines centered on line 250 showing the function
-
-**Step 3: Read from specific line (Session 2 - DIRECT)**
-```
-Now read from line 100
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("utils", startLine=100)`
-
-**Expected Output:**
-Returns lines 100-299
-
-**Step 4: Read sequentially (Session 2 - SEQUENTIAL)**
-```
-Now read the first chunk from the beginning
-```
-
-**Expected AI Action:**
-Tool call: `getCodeChunk("utils", chunkNumber=0)`
-
-**Expected Output:**
-Returns lines 0-199
-
-**Verification Checklist:**
-- [ ] Both Session 1 and Session 2 tools work together
-- [ ] AI correctly uses analyzeFileStructure first
-- [ ] AI correctly uses getCodeChunk with appropriate mode
-- [ ] File path consistent across both tools
-- [ ] Line numbers from Session 1 correctly used in Session 2
-- [ ] Symbol names from Session 1 correctly used in Session 2
-- [ ] No confusion between tools
-- [ ] Seamless workflow experience
+**Success criteria:**
+- ✅ All line numbers accurate
+- ✅ Empty lines preserved with just the line number prefix
+- ✅ Indentation preserved
 
 **Pass/Fail:** _______________
 
 ---
 
-## OVERALL RESULTS
+## Overall Results
 
-**Tests Completed:** __ / 15
+| Test | Description | Pass/Fail |
+|------|-------------|-----------|
+| 2.1 | utils LARGE — 1 chunk | |
+| 2.2 | globals LARGE — 2 chunks (boundary at 203 lines) | |
+| 2.3 | customerEdit MEDIUM vs LARGE | |
+| 2.4 | dataUtils SMALL — 3 chunks | |
+| 2.5 | TARGETED formatDate in utils | |
+| 2.6 | TARGETED onFilterQueryCondition (5 params) | |
+| 2.7 | TARGETED save() zero-param | |
+| 2.8 | TARGETED symbol at line 0 (clamp test) | |
+| 2.9 | DIRECT startLine=100 in globals | |
+| 2.10 | Beyond end of file error | |
+| 2.11 | AI autonomous chunk size selection (A/B/C) | |
+| 2.12 | analyzeFileStructure → getCodeChunk integration | |
+| 2.13 | Line number prefix accuracy | |
 
-**Passed:** __  
-**Failed:** __  
-**Success Rate:** ___%
-
-**Performance Summary:**
-- Average chunk read time: _______ ms
-- Memory usage: _______ MB
-- Large file handling: ✅ / ❌
-
-**Ready for SESSION 3:** ☐ YES / ☐ NO
-
----
-
-## Issues Found
-
-### Issue 1: [Description]
-- **Test:** Test #__
-- **Severity:** Critical / High / Medium / Low
-- **Description:** [What went wrong]
-- **Expected:** [What should happen]
-- **Actual:** [What actually happened]
-- **Fix Required:** [What needs to be changed]
-
-### Issue 2: [Description]
-- **Test:** Test #__
-- **Severity:** Critical / High / Medium / Low
-- **Description:** [What went wrong]
-- **Expected:** [What should happen]
-- **Actual:** [What actually happened]
-- **Fix Required:** [What needs to be changed]
-
----
-
-## Notes
-
-### Observations:
-- [Any observations during testing]
-- [Performance notes]
-- [Usability notes]
-
-### Recommendations:
-- [Improvements for SESSION 3]
-- [Documentation updates needed]
-- [Additional tests needed]
-
----
-
-**Test Completed By:** __________________  
-**Date:** __________________  
-**Time Spent:** ________ hours
-
----
-
-**END OF SESSION 2 TESTS**
+**Total:** ___ / 13

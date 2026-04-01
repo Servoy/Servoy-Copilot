@@ -1,6 +1,6 @@
 # SESSION 5: Integration Testing — Full End-to-End Documentation Workflows
 
-**Date:** March 26, 2026
+**Date:** April 1, 2026
 **Status:** 🧪 READY FOR TESTING
 **Implementation:** Documentation Assistant (all tools combined)
 
@@ -8,19 +8,26 @@
 
 ## Overview
 
-This document tests the **complete Documentation Assistant** end-to-end — from right-click context menu trigger through to the final diff view in Eclipse. Tests cover realistic user scenarios rather than individual tool calls.
+Tests the **complete Documentation Assistant** end-to-end — from right-click context menu trigger through to the final diff view in Eclipse. Tests cover realistic user scenarios rather than individual tool calls.
 
 **What is tested:**
-- Right-click → "Generate Docs" workflow on single functions
-- Full-file documentation on fresh selection
-- Incomplete JSDoc completion (user asks to "improve" existing docs)
-- UUID corruption resistance (simulate AI attempting to change a UUID)
-- Content hash protection (file modified between read and write)
+- Right-click → "Improve docs for file" / "Improve docs for selection" workflow
+- Full-file improvement on files with mixed JSDoc quality
+- Selective improvement on a code selection
+- UUID corruption resistance
+- Timestamp protection (file modified between read and write)
 - Multi-turn conversation within a single file session
 - Undo / Keep workflow in the "Modified files" panel
-- Edge cases: empty return, overloaded semantics, cross-scope params
+- Cross-scope type chain documentation
+- Full solution documentation pass
 
-**Session context:** After Session 4, all 8 files should be 100% documented. Session 5 re-tests on those files, deliberately degrading some JSDoc to test improvement workflows.
+**Prerequisites:**
+- [ ] `svyPilotTest` solution open and active in Servoy Developer
+- [ ] All 8 JS files in `js-content/` reference state (TODO stubs, some complete)
+- [ ] Documentation Assistant active in ServoyPilot chat
+- [ ] Eclipse console visible
+
+**Reset between tests:** Restore any modified file to its `js-content/` reference state using Git (`git checkout -- <file>`) or manually reverting from the "Modified files" panel.
 
 ---
 
@@ -28,390 +35,372 @@ This document tests the **complete Documentation Assistant** end-to-end — from
 
 | Test | Scenario | Trigger | Key Validation |
 |------|----------|---------|----------------|
-| 5.1 | Right-click → single function | Context menu | `getCurrentSelection()` path |
-| 5.2 | Right-click → multiple functions selected | Context menu | Line-range selection |
-| 5.3 | Chat: "document this file" (no selection) | Chat prompt | Full-file workflow |
-| 5.4 | Improve incomplete JSDoc | Chat prompt | REPLACE + description upgrade |
+| 5.1 | Right-click no selection — full file | Context menu | `getCurrentSelection()` isFullFileSelected=true |
+| 5.2 | Right-click with selection — selected functions only | Context menu | Line-range selection, partial apply |
+| 5.3 | Chat: "improve docs for this file" | Chat prompt | Full-file workflow via chat |
+| 5.4 | Improve minimal-stub variables | Chat prompt | REPLACE on @type-only stubs |
 | 5.5 | UUID corruption resistance | Simulated bad AI output | `restoreUUIDs()` safety layer |
-| 5.6 | Hash protection — stale write rejected | File edited externally | `applyDocumentations()` rejection |
-| 5.7 | Multi-turn: document → question → apply | Multi-turn chat | Memory + context continuity |
+| 5.6 | Timestamp protection — stale write rejected | File edited externally | `applyDocumentations()` rejection |
+| 5.7 | Multi-turn: survey → question → apply | Multi-turn chat | Memory + context continuity |
 | 5.8 | Undo and re-apply | UI workflow | `FileModificationTracker` |
 | 5.9 | Cross-file type chain | Chat prompt | `resolveIdentifierType()` + docs |
 | 5.10 | Full solution documentation pass | Chat prompt | All 8 files, single session |
 
 ---
 
-## Prerequisites
+## TEST 5.1 — Right-Click, No Selection → Full File (mainNav.js)
 
-Before running Session 5 tests:
-- [ ] Session 4 completed successfully (all 8 files documented)
-- [ ] `svyPilotTest` solution open and active in Servoy Developer
-- [ ] Documentation Assistant active in ServoyPilot chat
-- [ ] Eclipse console visible (for debug output monitoring)
-
----
-
-## TEST 5.1 — Right-Click Single Function
-
-**Purpose:** Tests the canonical "Generate Docs" trigger path via context menu on a single function.
+**Purpose:** Tests the no-selection path from the context menu. When no text is selected, `ServoyAiContextMenuHandler` sends: `"Please improve the JSDoc documentation for the entire file."`
 
 ### Setup
-In `globals.js`, manually delete the JSDoc block above `clearState()` — make it bare again.
+- Open `mainNav.js` in the JavaScript editor
+- Place cursor inside the file (do NOT select any text)
 
 ### Action
-1. Place cursor inside `clearState()` body (or select the function)
-2. Right-click → "Generate Docs"
+Right-click → **Generate Docs**
 
 ### Expected AI workflow
-1. Chat view opens and switches to Documentation Assistant
-2. AI auto-calls `getCurrentSelection()`
-3. Receives selection with only `clearState` visible (or small context window)
-4. Recognizes it is a function with no JSDoc
-5. Calls `applyDocumentations("globals.js", <hash>, [1 INSERT item])`
-
-**Expected result:**
-```javascript
-/**
- * Resets all global shared state variables to their initial values.
- * Should be called when navigating back to the main navigation form.
- *
- * @public
- */
-function clearState() {
-```
+1. Chat view opens, switches to Documentation Assistant
+2. Message received: `"Please improve the JSDoc documentation for the entire file."`
+3. AI calls `getCurrentSelection()` → `isFullFileSelected=true`, FILE: mainNav.js
+4. `analyzeFileStructure("mainNav")` → 7 functions
+5. `getCodeChunk("mainNav", chunkNumber=1, chunkSize="LARGE")` → 63 lines, 1 chunk
+6. All 7 functions have TODO stubs → 7 REPLACE items
+7. `getDocumentationForIdentifiers(["JSEvent"])`
+8. `applyDocumentations("/svyPilotTest/forms/mainNav.js", [7 REPLACE items])`
 
 **Success criteria:**
-- ✅ `getCurrentSelection()` called first (not `analyzeFileStructure`)
-- ✅ Exactly 1 item in `applyDocumentations()` call
-- ✅ Correct file path used (from `getCurrentSelection()` FILE header)
+- ✅ Message is `"Please improve the JSDoc documentation for the entire file."` (not "selection")
+- ✅ `getCurrentSelection()` called first
+- ✅ `isFullFileSelected=true`
+- ✅ 7 REPLACE items applied
 - ✅ File appears in "Modified files" panel
-- ✅ Brief summary: "Applied JSDoc to clearState in globals.js"
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.2 — Right-Click Multiple Functions Selected
+## TEST 5.2 — Right-Click With Selection → Selected Functions Only (customerEdit.js)
 
-**Purpose:** Tests multi-function selection range. User manually selects 3 consecutive functions before right-clicking.
+**Purpose:** Tests the selection path. User selects 2 functions before right-clicking. Message sent: `"Please improve the JSDoc documentation for the current selection."`
 
 ### Setup
-In `mainNav.js`, manually delete JSDoc from `onActionCustomers`, `onActionOrders`, `onActionDashboard`.
+- Open `customerEdit.js`
+- Select lines covering `onActionSave` and `onActionCancel` (both have TODO stubs)
 
 ### Action
-1. Select lines covering all three functions in the editor
-2. Right-click → "Generate Docs"
+Right-click → **Generate Docs**
 
 ### Expected AI workflow
-1. `getCurrentSelection()` returns the 3 bare functions in the selection range
-2. AI generates 3 JSDoc blocks
-3. Single `applyDocumentations("mainNav.js", <hash>, [3 items])`
+1. Message received: `"Please improve the JSDoc documentation for the current selection."`
+2. `getCurrentSelection()` → `isFullFileSelected=false`, selected lines contain 2 functions
+3. AI reads the selection — both have TODO stubs
+4. `getDocumentationForIdentifiers(["JSEvent"])`
+5. `applyDocumentations("/svyPilotTest/forms/customerEdit.js", [2 REPLACE items])`
+
+**Expected JSDoc for `onActionSave` (REPLACE):**
+```javascript
+/**
+ * Handles the Save button action. Saves the record and navigates to the customer list.
+ *
+ * @param {JSEvent} event - The event that triggered the action
+ *
+ * @properties={typeid:24,uuid:"2604EFBC-4654-4A08-A059-99F77781C31A"}
+ */
+function onActionSave(event) {
+```
 
 **Success criteria:**
-- ✅ Only the 3 selected functions documented (not entire file)
-- ✅ `onLoad`, `onShow`, `onHide` are NOT modified (outside selection)
-- ✅ 3 INSERT items with correct line numbers matching the selection
+- ✅ Message is `"Please improve the JSDoc documentation for the current selection."` (not "file")
+- ✅ `isFullFileSelected=false`
+- ✅ Exactly 2 REPLACE items — only `onActionSave` and `onActionCancel`
+- ✅ `save()`, `validate()`, `onHide()` NOT in items (outside selection)
+- ✅ UUIDs preserved
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.3 — Chat Prompt: "Document This File"
+## TEST 5.3 — Chat: Improve Docs for File (globals.js)
 
-**Purpose:** Tests the full-file workflow triggered by a chat message (not context menu). No active selection.
+**Purpose:** Direct chat prompt triggering the full-file improvement workflow.
 
-### Setup
-Open `utils.js` in editor (no selection needed).
-
-### Prompt:
+### Prompt
 ```
-Please document all undocumented functions in the currently open file
+Please improve the JSDoc documentation for globals
 ```
 
-**Expected AI workflow:**
-1. Calls `getCurrentSelection()` — returns entire visible area or first function
-2. Extracts file path from `FILE:` header
-3. Calls `analyzeFileStructure(<filePath>)` to get full picture
-4. Calls `getCodeChunk(<filePath>)` for code
-5. Generates 6 INSERT items (all bare functions in utils)
-6. Calls `applyDocumentations("utils.js", <hash>, [6 items])`
+### Expected AI workflow
+1. `analyzeFileStructure("globals")` → 17 symbols
+2. `getCodeChunk("globals", chunkNumber=1, chunkSize="LARGE")` → `CHUNK: 1 of 2`
+3. `getCodeChunk("globals", chunkNumber=2, chunkSize="LARGE")` → `CHUNK: 2 of 2, LAST CHUNK`
+4. Classifies all symbols — identifies ~8 needing improvement
+5. `getDocumentationForIdentifiers(["JSRecord", "JSFoundSet", "RuntimeForm"])`
+6. `applyDocumentations("/svyPilotTest/scopes/globals.js", [8-9 REPLACE items])`
 
 **Success criteria:**
-- ✅ AI correctly extracts file path from `getCurrentSelection()` even without text selected
-- ✅ Falls back to `analyzeFileStructure()` for full symbol list
-- ✅ All 6 functions documented
+- ✅ **Both chunks read** before applying (globals.js is 203 lines > 200 LARGE)
+- ✅ Complete symbols (`showForm`, `showMessage`, `getCurrentUser`, etc.) NOT in items
+- ✅ `setInitialized(value)` gets `@param {Boolean} value`
+- ✅ `onSolutionOpen(arg, queryParams)` gets both params documented
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.4 — Improve Incomplete JSDoc
+## TEST 5.4 — Improve Minimal-Stub Variables (dashboard.js)
 
-**Purpose:** Tests REPLACE mode when user asks to "improve" existing but incomplete documentation.
+**Purpose:** Verifies the AI detects and replaces minimal JSDoc stubs (only `@type`, no description) on variables.
+
+### Prompt
+```
+Improve the documentation for dashboard
+```
 
 ### Setup
-In `dataUtils.js`, the `getRecord` function has this JSDoc (from Session 4):
+`dashboard.js` state:
+- `totalCustomers` → complete (description + `@type`) → skip
+- `totalOrders` → minimal (`@type {Number}` only) → REPLACE
+- `lastRefreshed` → minimal (`@type {Date}` only) → REPLACE
+
+### Expected
+`applyDocumentations` items include `totalOrders` and `lastRefreshed` with descriptions added:
+
 ```javascript
 /**
- * Gets a record from a foundset at the given index.
+ * Total number of orders in the system.
  *
- * @param {JSFoundSet} foundset - The foundset to read from
- * @param {Number} index - 1-based record index
- * @return {JSRecord} The record at the given index, or null if out of bounds
- */
-```
-This is complete. To test improvement, add a minimal incomplete JSDoc above `loadRecords` manually:
-```javascript
-/**
- * Loads records.
- */
-function loadRecords(datasource, query) {
-```
-
-### Prompt:
-```
-The JSDoc for loadRecords in dataUtils looks incomplete. Please improve it.
-```
-
-**Expected AI workflow:**
-1. `analyzeFileStructure("dataUtils")` → `loadRecords` shows `[✓]` (has some JSDoc)
-2. `getCodeChunk("dataUtils", symbolName="loadRecords")` — targeted read
-3. Sees minimal JSDoc `/** Loads records. */`
-4. Builds REPLACE item: `startSentence="/**"`, `endSentence="*/"`, new full JSDoc
-5. `applyDocumentations("dataUtils.js", <hash>, [1 REPLACE item])`
-
-**Expected improved JSDoc:**
-```javascript
-/**
- * Loads records from the specified datasource into a new foundset.
- * Optionally filters by a QBSelect query. Updates lastRecordCount after load.
+ * @type {Number}
  *
- * @param {String} datasource - The datasource string (e.g. 'db:/example_data/customers')
- * @param {QBSelect} [query] - Optional query to filter records; loads all if null
- * @return {JSFoundSet} The loaded foundset, or null if datasource is invalid
+ * @properties={typeid:35,uuid:"6CEF9BA1-DF2F-49BC-9471-56D7F994562D",variableType:8}
  */
-function loadRecords(datasource, query) {
+var totalOrders = 0;
 ```
 
 **Success criteria:**
-- ✅ REPLACE mode used (not INSERT creating duplicate)
-- ✅ Original minimal comment completely replaced
-- ✅ New JSDoc includes all params + return type
-- ✅ `@param {QBSelect}` lookup triggered via `getDocumentationForIdentifiers()`
+- ✅ `totalCustomers` NOT in items (already has description)
+- ✅ `totalOrders` and `lastRefreshed` IN items (minimal — description missing)
+- ✅ `@type` preserved in replaced JSDoc
+- ✅ UUID preserved
+
+**Pass/Fail:** _______________
 
 ---
 
 ## TEST 5.5 — UUID Corruption Resistance
 
-**Purpose:** Tests that `DocumentationValidator.restoreUUIDs()` silently fixes AI-corrupted UUIDs.
+**Purpose:** Verifies the `DocumentationValidator.restoreUUIDs()` safety layer prevents UUID changes even if the AI generates incorrect UUIDs.
 
 ### Setup
-This test simulates what happens if the AI accidentally modifies a UUID. In `customerList.js`, the `selectedCustomer` variable has:
-```javascript
-/**
- * The currently selected customer record.
- *
- * @type {JSRecord}
- *
- * @properties={typeid:35,uuid:"ACTUAL-UUID-VALUE-HERE"}
- */
-var selectedCustomer = null;
+Manually send `applyDocumentations` with a deliberately wrong UUID (simulate AI hallucinating):
+```json
+{
+  "functionName": "formatDate",
+  "newJSDoc": "/**\n * Formats a date.\n * @param {Date} date\n * @return {String}\n * @properties={typeid:24,uuid:\"00000000-0000-0000-0000-000000000000\"}\n */",
+  "startSentence": "/**",
+  "endSentence": "*/"
+}
 ```
 
-### Simulation Method
-The `DocumentationValidator.restoreUUIDs()` code path is exercised any time `applyDocumentations()` processes a REPLACE item on a block that contains a `@properties` UUID line. The test verifies the silent-restore mechanism works.
-
-### Prompt:
-```
-The JSDoc for selectedCustomer in customerList seems to be missing a description. Please improve it.
-```
-
-**Expected AI workflow:**
-1. `getCodeChunk("customerList", symbolName="selectedCustomer")` — targeted read
-2. AI generates new JSDoc (may or may not include `@properties` line correctly)
-3. `applyDocumentations()` calls `DocumentationValidator.validateUUIDs()` and `restoreUUIDs()` internally
-4. File is written with correct UUID preserved
-
-**Expected console output (from DocumentationValidator):**
-```
-[DocumentationValidator] UUID count original=1, new=1 → OK
-```
-Or if AI corrupted the UUID:
-```
-[DocumentationValidator] UUID mismatch detected — restoring original UUIDs
-[DocumentationValidator] Restored UUID: ACTUAL-UUID-VALUE-HERE
-```
-
-**Success criteria:**
-- ✅ Operation completes successfully regardless of whether AI included correct UUID
-- ✅ `@properties` line in the file is identical to original after write
-- ✅ Console shows UUID validation step ran
-
----
-
-## TEST 5.6 — Hash Protection: Stale Write Rejected
-
-**Purpose:** Tests that `applyDocumentations()` rejects writes when the file was modified between `getCurrentSelection()` and the write call.
-
-### Setup
-1. Open `utils.js` in editor
-2. Trigger "Generate Docs" (right-click)
-3. **While the AI is generating** (before it calls `applyDocumentations()`): manually edit `utils.js` in a different editor tab and save it
+The original UUID for `formatDate` is `A8F5BDA8-D822-41C7-BE87-7727823970BD`.
 
 ### Expected behavior
-When `applyDocumentations()` is called with the old hash:
-```
-Error: File has been modified since documentation was prepared. Hash mismatch for /svyPilotTest/utils.js. Please try again.
+`DocumentationValidator.restoreUUIDs()` detects the UUID mismatch and silently restores the original:
+```javascript
+@properties={typeid:24,uuid:"A8F5BDA8-D822-41C7-BE87-7727823970BD"}
 ```
 
 **Success criteria:**
-- ✅ `applyDocumentations()` returns error message (does NOT write)
-- ✅ Error message is clear and instructional ("Please try again")
-- ✅ AI surfaces the error to user in chat
-- ✅ AI offers to retry (re-read the file with new hash)
+- ✅ Written file contains original UUID `A8F5BDA8...` not the fake `00000000...`
+- ✅ No error thrown — silent restoration
+- ✅ Console shows: UUID restored for `formatDate`
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.7 — Multi-Turn Conversation
+## TEST 5.6 — Timestamp Protection (Stale Write Rejected)
 
-**Purpose:** Tests that the Documentation Assistant maintains context across multiple messages in a single session.
+**Purpose:** Verifies that `applyDocumentations()` rejects a write if the file was modified after the prompt timestamp was recorded.
 
-### Prompt sequence:
-**Turn 1:**
+### Steps
+1. Open `utils.js`, send prompt: `"Improve the docs for utils"`
+2. AI calls `getCodeChunk("utils")` — prompt timestamp recorded
+3. **Before AI calls `applyDocumentations()`**, manually edit `utils.js` in the Eclipse editor and save it
+4. AI now calls `applyDocumentations("utils.js", [...])`
+
+### Expected behavior
+`applyDocumentations()` detects: `fileLastModified > promptTimestamp` → rejects the write
+
+**Expected AI response:**
 ```
-What functions in customerEdit are currently undocumented?
+The file utils.js was modified after I started reading it. 
+Please re-run the documentation request to ensure I'm working with the latest version.
 ```
-
-**Expected:** AI calls `analyzeFileStructure("customerEdit")` and lists bare functions only.
-
-**Turn 2:**
-```
-Document just the save and validate functions for now
-```
-
-**Expected:** AI remembers the file path from Turn 1, calls `getCodeChunk("customerEdit", symbolName="save")` and reads `validate`, applies 2 INSERT items.
-
-**Turn 3:**
-```
-Now document the rest
-```
-
-**Expected:** AI knows which functions remain (from Turn 1 context), calls `applyDocumentations()` for the remaining bare functions without re-surveying.
 
 **Success criteria:**
-- ✅ Turn 2 does NOT call `analyzeFileStructure()` again (context from memory)
-- ✅ Turn 2 applies exactly 2 items
-- ✅ Turn 3 applies the remaining bare functions only
-- ✅ No duplicate JSDoc created (AI tracks what was already applied)
-- ✅ 100-message memory limit sufficient for 3-turn interaction
+- ✅ Write rejected (no changes applied)
+- ✅ File NOT in "Modified files" panel
+- ✅ AI acknowledges the rejection and suggests retrying
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.8 — Undo and Re-Apply
+## TEST 5.7 — Multi-Turn: Survey → Question → Apply (dataUtils.js)
 
-**Purpose:** Tests the "Modified files" panel Undo workflow and verifies re-documentation works after undo.
+**Purpose:** Tests memory and context continuity across multiple conversation turns.
 
-### Action sequence:
-1. Run TEST 5.1 (document `clearState` in globals)
-2. In "Modified files" panel, click `globals.js` → verify diff shows JSDoc addition
-3. Click "Undo" for `globals.js`
-4. Verify `clearState` is bare again
-5. Re-run TEST 5.1
+### Turn 1
+**Prompt:**
+```
+Analyze the structure of dataUtils
+```
+AI responds with symbol map.
+
+### Turn 2
+**Prompt:**
+```
+Which functions have TODO stubs?
+```
+AI reads code (calls `getCodeChunk`) and identifies: `loadRecords`, `buildQuery`, `getDataSet`, `countRecords`.
+
+### Turn 3
+**Prompt:**
+```
+Improve just the buildQuery function
+```
+AI calls `applyDocumentations("dataUtils.js", [1 REPLACE item])` — only `buildQuery`.
 
 **Success criteria:**
-- ✅ Diff view shows correct before/after when clicking file in panel
-- ✅ Undo correctly restores original file content
-- ✅ After undo, `analyzeFileStructure("globals")` shows `clearState` as undocumented `[ ]`
-- ✅ Second run of TEST 5.1 succeeds (new content hash accepted)
+- ✅ AI remembers the file from Turn 1 (does not re-call `analyzeFileStructure`)
+- ✅ Turn 2: AI reads code to identify TODO stubs (not guessing)
+- ✅ Turn 3: Only 1 item applied — `buildQuery`, not all 4 stubs
+- ✅ `@return {QBSelect}` inferred from code
+
+**Pass/Fail:** _______________
 
 ---
 
-## TEST 5.9 — Cross-Scope Type Chain Resolution
+## TEST 5.8 — Undo and Re-Apply (utils.js)
 
-**Purpose:** Tests type resolution for identifiers that resolve through cross-scope calls.
+**Purpose:** Tests the "Modified files" panel Undo/Keep workflow.
 
-### Prompt:
-```
-In customerList.js, what is the type of 'selectedCustomer' and what methods are available on it?
-```
-
-**Expected AI workflow:**
-1. `resolveIdentifierType("selectedCustomer", "customerList")` → returns `JSRecord` (from `@type` annotation)
-2. `getAvailableMembersForType("JSRecord", "get*")` → lists JSRecord getter methods
-3. AI describes the type and key methods in response
+### Steps
+1. Run Test 4.1 to improve `utils.js` (6 REPLACE items)
+2. File appears in "Modified files" panel
+3. Click **Undo** on `utils.js`
+4. Open `utils.js` — verify it's back to TODO stubs
+5. Re-run: `"Improve the docs for utils"`
+6. File appears again in "Modified files" panel
+7. Click **Keep** on `utils.js`
+8. Open `utils.js` — verify improved JSDoc persists
 
 **Success criteria:**
-- ✅ `selectedCustomer` resolved as `JSRecord` (from JSDoc `@type`)
-- ✅ `getAvailableMembersForType("JSRecord")` returns member list
-- ✅ AI provides useful description of available methods
+- ✅ After Undo: file restored to TODO stubs
+- ✅ After Keep: improved JSDoc written permanently
+- ✅ UUIDs identical in both states
+- ✅ No duplicate `/**` blocks after re-apply
+
+**Pass/Fail:** _______________
+
+---
+
+## TEST 5.9 — Cross-File Type Chain
+
+**Purpose:** Tests `resolveIdentifierType()` used in the context of documenting a function that uses a cross-scope type.
+
+### Prompt
+```
+Improve the documentation for the onShow function in orderList. 
+The currentCustomer variable has type JSRecord — verify this and use it.
+```
+
+### Expected AI workflow
+1. `getCodeChunk("orderList", symbolName="onShow", chunkSize="MEDIUM")`
+2. `resolveIdentifierType("currentCustomer", "orderList")` → `TYPE: JSRecord`
+3. `getDocumentationForIdentifiers(["JSRecord", "JSEvent", "QBSelect"], "orderList")`
+4. `applyDocumentations("orderList.js", [1 REPLACE item])`
+
+**Expected JSDoc for `onShow`:**
+```javascript
+/**
+ * Handles the form show event. Loads orders filtered by the active customer,
+ * or all orders if no customer is selected.
+ *
+ * @param {Boolean} firstShow - True if this is the first time the form is shown
+ * @param {JSEvent} event - The event that triggered the action
+ *
+ * @properties={typeid:24,uuid:"14BED867-1AC0-4C52-ACEC-CD62D5CC07DC"}
+ */
+function onShow(firstShow, event) {
+```
+
+**Success criteria:**
+- ✅ `resolveIdentifierType()` called for `currentCustomer`
+- ✅ Returns `JSRecord`
+- ✅ JSDoc description references the customer filtering behavior
+- ✅ 1 REPLACE item applied
+
+**Pass/Fail:** _______________
 
 ---
 
 ## TEST 5.10 — Full Solution Documentation Pass
 
-**Purpose:** Comprehensive end-to-end test. All 8 files documented in a single chat session from scratch.
+**Purpose:** Document all 8 files in a single session. Tests memory limits, context switching, and consistent UUID handling across all files.
 
-### Setup
-Reset: Manually remove ALL JSDoc from all 8 files (leave `@properties` lines in place). Leave only variable declarations and function signatures bare.
-
-### Prompt:
+### Prompt
 ```
-Please document all 8 files in the svyPilotTest solution completely.
-Files to document: globals, utils, dataUtils, mainNav, customerList, customerEdit, orderList, dashboard
+Please improve the JSDoc documentation for all files in the svyPilotTest solution: 
+utils, globals, dataUtils, mainNav, customerList, customerEdit, orderList, dashboard
 ```
 
-**Expected AI workflow (high level):**
-1. For each file in order:
-   a. `analyzeFileStructure(<file>)` — survey
-   b. `getCodeChunk(<file>)` — read (multiple chunks if needed)
-   c. `getDocumentationForIdentifiers([...])` — Servoy API lookup (selective)
-   d. `applyDocumentations(<file>, <hash>, [items])` — write
-2. Running summary after each file
-3. Final summary: "Documented 8 files, X functions, Y variables total"
+### Expected AI workflow
+For each file (in any order):
+1. `analyzeFileStructure(name)`
+2. `getCodeChunk(name, chunkSize="LARGE")` (+ chunk 2 for globals)
+3. `getDocumentationForIdentifiers([...])` where needed
+4. `applyDocumentations(path, [N items])`
 
-**File processing order (expected):**
-1. `globals` — foundational scope, most cross-referenced
-2. `utils` — pure utilities, no Servoy API
-3. `dataUtils` — data layer, Servoy types
-4. `mainNav` — simple form, event handlers
-5. `customerList` — customer list form
-6. `customerEdit` — complex form with validation
-7. `orderList` — order list with complex filter
-8. `dashboard` — summary form
+### Expected totals
+
+| File | Expected REPLACE items |
+|------|----------------------|
+| utils | 6 |
+| mainNav | 7 |
+| dataUtils | 6 |
+| globals | 8–9 |
+| customerList | 5 |
+| customerEdit | 8 |
+| orderList | 6 |
+| dashboard | 9 |
+| **Total** | **55–56** |
 
 **Success criteria:**
-- ✅ All 8 `applyDocumentations()` calls succeed
-- ✅ All files appear in "Modified files" panel
-- ✅ Post-write `analyzeFileStructure()` on each file shows 100% coverage
-- ✅ No UUID values changed in any file
-- ✅ Total API doc lookups ≤ 15 `getDocumentationForIdentifiers()` calls (efficiency)
-- ✅ Total chunks read ≤ 12 (all files are small — single chunk each)
-- ✅ Final summary message is 3–5 sentences (per system prompt brevity rule)
-- ✅ Session completes within 100 message memory limit
+- ✅ All 8 files appear in "Modified files" panel
+- ✅ No `TODO generated` text remains in any file after the pass
+- ✅ No UUID changes detected
+- ✅ Session completes within the 100-message memory limit of Documentation Assistant
+- ✅ AI does not confuse symbols between files
+
+**Pass/Fail:** _______________
 
 ---
 
-## Failure Mode Reference
+## Overall Results
 
-Use this table when a test fails to identify the failing component:
+| Test | Scenario | Pass/Fail |
+|------|----------|-----------|
+| 5.1 | Right-click no selection → full file | |
+| 5.2 | Right-click with selection → partial | |
+| 5.3 | Chat: improve globals (2 chunks) | |
+| 5.4 | Minimal stub variables (dashboard) | |
+| 5.5 | UUID corruption resistance | |
+| 5.6 | Timestamp protection | |
+| 5.7 | Multi-turn context continuity | |
+| 5.8 | Undo and re-apply | |
+| 5.9 | Cross-file type chain | |
+| 5.10 | Full solution pass (all 8 files) | |
 
-| Failure Symptom | Likely Cause | Component to Check |
-|-----------------|--------------|-------------------|
-| JSDoc inserted at wrong line | Line number off-by-one | `DocumentationItem.startLine` |
-| Duplicate `/**` blocks created | INSERT mode used where REPLACE needed | AI JSDoc detection logic |
-| `@properties` UUID changed | UUID restore failed | `DocumentationValidator.restoreUUIDs()` |
-| "Hash mismatch" on first write | File read hash wrong | `getCurrentSelection()` CONTENT_HASH |
-| "Symbol not found" in targeted read | DLTK cache stale | `FileStructureService` + DLTK index |
-| Type documented as `Object` | Type resolution failed | `resolveIdentifierType()` + TypeCreator fallback |
-| Missing `@param` on multi-param function | AI truncated param list | System prompt / AI generation |
-| `applyDocumentations()` silent fail | Item validation failed | `DocumentationItem` canonical constructor |
-| File not in "Modified files" | Tracker not notified | `FileModificationTracker.notifyFileModified()` |
-| Memory lost between turns | Memory limit hit | Chat memory 100-message window |
-
----
-
-## Regression Test Checklist
-
-After any change to `DocumentationTools`, `CodeAnalysisTools`, or `DocumentationValidator`, run this quick regression set:
-
-- [ ] **5.1** — Single function, right-click path still works
-- [ ] **5.4** — REPLACE mode still generates improved JSDoc (not duplicate)
-- [ ] **5.5** — UUID restore still fires when AI corrupts UUID
-- [ ] **5.6** — Hash mismatch still rejected (not silently ignored)
-- [ ] **5.10** — Full pass completes without tool errors
-
-These 5 tests cover all major code paths in the Documentation Assistant pipeline.
+**Total:** ___ / 10

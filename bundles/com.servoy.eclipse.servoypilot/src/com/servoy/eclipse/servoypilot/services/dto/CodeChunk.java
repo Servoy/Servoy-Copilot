@@ -83,6 +83,11 @@ public class CodeChunk
 		return isLast;
 	}
 
+	public int getChunkSizeLines()
+	{
+		return chunkSizeLines;
+	}
+
 	/**
 	 * Format for AI tool output.
 	 */

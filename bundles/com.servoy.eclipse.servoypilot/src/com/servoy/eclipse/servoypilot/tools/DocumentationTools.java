@@ -72,7 +72,6 @@ public class DocumentationTools
 		"Does NOT return Servoy API documentation — request that separately via getDocumentationForIdentifiers.")
 	public String getCurrentSelection()
 	{
-		System.out.println("[getCurrentSelection] ===== TOOL CALLED =====");
 		try
 		{
 			// Get current selection from tracker
@@ -82,8 +81,6 @@ public class DocumentationTools
 			if (selectionOpt.isPresent())
 			{
 				SelectionInfo selection = selectionOpt.get();
-				System.out.println("[getCurrentSelection] Active selection: file=" + selection.getFilePath() +
-					", startLine=" + selection.getStartLine() + ", endLine=" + selection.getEndLine());
 
 				// Get code text
 				CodeContextService contextService = CodeContextService.getInstance();
@@ -128,7 +125,6 @@ public class DocumentationTools
 			return "Error: " + e.getMessage();
 		}
 
-		System.out.println("[getCurrentSelection] No active editor or selection available");
 		return "No active editor or selection available";
 	}
 
@@ -139,8 +135,6 @@ public class DocumentationTools
 		@P("Array of full identifier paths to look up (e.g., ['databaseManager.getFoundSet', 'JSRecord', 'plugins.dialogs.showInfoDialog'])") String[] identifiers,
 		@P("File path (form name, scope name, or full path) — always provide this when working without an active editor selection") String filePath)
 	{
-		System.out.println("[getDocumentationForIdentifiers] ===== TOOL CALLED ===== identifiers=" +
-			(identifiers == null ? "null" : java.util.Arrays.toString(identifiers)) + ", filePath=" + filePath);
 		if (identifiers != null && identifiers.length > 0)
 		{
 			try
@@ -230,8 +224,6 @@ public class DocumentationTools
 
 				response.append("--- END DOCUMENTATION ---\n\n");
 				response.append("Found documentation for ").append(foundCount).append(" out of ").append(identifiers.length).append(" identifiers.");
-
-				System.out.println("[getDocumentationForIdentifiers] Done: " + foundCount + "/" + identifiers.length + " identifiers found");
 				return response.toString();
 			}
 			catch (Exception e)
@@ -295,8 +287,6 @@ public class DocumentationTools
 			"INSERT: startLine==endLine, startSentence and endSentence are empty strings. " +
 			"REPLACE: startLine/endLine cover the existing JSDoc block, startSentence='/**', endSentence='*/'") List<DocumentationItem> items)
 	{
-		System.out.println("[applyDocumentations] ===== TOOL CALLED ===== filePath=" + filePath + ", items=" + (items == null ? "null" : items.size()));
-
 		if (filePath != null && !filePath.isBlank() && items != null && !items.isEmpty())
 		{
 			try
@@ -307,19 +297,16 @@ public class DocumentationTools
 				if (file == null || !file.exists())
 				{
 					String notFound = FilePathResolver.getInstance().buildNotFoundMessage(filePath);
-					System.out.println("[applyDocumentations] File not found: " + notFound);
 					return "\n\n" + notFound;
 				}
 
 				// Use the canonical workspace-relative path from here on
 				String resolvedPath = file.getFullPath().toString();
-				System.out.println("[applyDocumentations] Resolved '" + filePath + "' → " + resolvedPath);
 				ServoyLog.logInfo("Applying " + items.size() + " documentation items to: " + resolvedPath);
 
 				// CHANGE DETECTION: compare file last-modified timestamp against prompt timestamp
 				long promptTimestamp = SelectionTracker.getInstance().getPromptTimestamp();
 				long fileTimestamp = file.getLocalTimeStamp();
-				System.out.println("[applyDocumentations] promptTimestamp=" + promptTimestamp + ", fileTimestamp=" + fileTimestamp);
 
 				if (promptTimestamp == 0 || fileTimestamp <= promptTimestamp)
 				{
@@ -435,12 +422,9 @@ public class DocumentationTools
 						newContent.append(lineList.get(i));
 					}
 
-					System.out.println(
-						"[applyDocumentations] Writing file - successCount=" + successCount + ", errors=" + errors.size() + ", newLines=" + lineList.size());
 					file.setContents(
 						new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
 						true, false, null);
-					System.out.println("[applyDocumentations] File written OK: " + resolvedPath);
 
 					clearEditorSelection(file, 0);
 
@@ -601,7 +585,6 @@ public class DocumentationTools
 				}
 			}
 
-			System.out.println("ERROR: File not found or could not be read: " + pathOrName);
 			return null;
 		}
 		catch (Exception e)
@@ -618,10 +601,6 @@ public class DocumentationTools
 		@P("Servoy API type name (e.g., 'application', 'databaseManager', 'JSFoundSet', 'controller')") String typeName,
 		@P("Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.") String memberFilter)
 	{
-		System.out.println("\n========== getAvailableMembersForType CALLED ==========");
-		System.out.println("Type name: " + typeName);
-		System.out.println("Member filter: " + (memberFilter != null ? "'" + memberFilter + "'" : "null (default to *)"));
-
 		if (typeName == null || typeName.trim().isEmpty())
 		{
 			return "Error: typeName parameter is required";
@@ -633,7 +612,6 @@ public class DocumentationTools
 			TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
 			if (typeCreator == null)
 			{
-				System.out.println("ERROR: TypeCreator instance not available");
 				return "Error: TypeCreator not available";
 			}
 
@@ -646,18 +624,14 @@ public class DocumentationTools
 				String scriptingName = mapClassNameToScriptingName(typeName);
 				if (scriptingName != null && !scriptingName.equals(typeName))
 				{
-					System.out.println("Type '" + typeName + "' not found, trying scriptingName: " + scriptingName);
 					type = typeCreator.findType(null, scriptingName);
 				}
 			}
 
 			if (type == null)
 			{
-				System.out.println("ERROR: Type not found: " + typeName);
 				return "Error: Type '" + typeName + "' not found. Try using scriptingName like 'application' instead of 'JSApplication'.";
 			}
-
-			System.out.println("Type resolved: " + type.getName() + " (total members: " + type.getMembers().size() + ")");
 
 			// Prepare regex pattern (default to match all)
 			String filter = (memberFilter != null && !memberFilter.trim().isEmpty()) ? memberFilter.trim() : "*";
@@ -691,7 +665,6 @@ public class DocumentationTools
 			}
 
 			int totalFiltered = methods.size() + properties.size();
-			System.out.println("Filtered members: " + totalFiltered + " (methods: " + methods.size() + ", properties: " + properties.size() + ")");
 
 			// Check threshold
 			final int THRESHOLD = 50;
@@ -748,7 +721,6 @@ public class DocumentationTools
 				response.append(". Use memberFilter with regex like 'get.*', 'show.*', or 'is.*' to narrow results]\n");
 			}
 
-			System.out.println("Returning " + (truncated ? THRESHOLD : totalFiltered) + " member signatures");
 			return response.toString();
 		}
 		catch (Exception e)
@@ -764,10 +736,6 @@ public class DocumentationTools
 		@P("Servoy API type name (e.g., 'application', 'databaseManager', 'JSFoundSet')") String typeName,
 		@P("Member name to look up — case-insensitive (e.g., 'getFoundSet', 'loadAllRecords', 'showInfoDialog')") String memberName)
 	{
-		System.out.println("\n========== getDocumentationForTypeMember CALLED ==========");
-		System.out.println("Type name: " + typeName);
-		System.out.println("Member name: " + memberName);
-
 		if (typeName == null || typeName.trim().isEmpty())
 		{
 			return "Error: typeName parameter is required";
@@ -784,7 +752,6 @@ public class DocumentationTools
 			TypeCreator typeCreator = TypeProviderFactory.getTypeProvider().getTypeCreator();
 			if (typeCreator == null)
 			{
-				System.out.println("ERROR: TypeCreator instance not available");
 				return "Error: TypeCreator not available";
 			}
 
@@ -797,18 +764,14 @@ public class DocumentationTools
 				String scriptingName = mapClassNameToScriptingName(typeName);
 				if (scriptingName != null && !scriptingName.equals(typeName))
 				{
-					System.out.println("Type '" + typeName + "' not found, trying scriptingName: " + scriptingName);
 					type = typeCreator.findType(null, scriptingName);
 				}
 			}
 
 			if (type == null)
 			{
-				System.out.println("ERROR: Type not found: " + typeName);
 				return "Error: Type '" + typeName + "' not found";
 			}
-
-			System.out.println("Type resolved: " + type.getName());
 
 			// Search for member (case-insensitive)
 			List<Member> matchingMembers = new ArrayList<>();
@@ -822,11 +785,8 @@ public class DocumentationTools
 
 			if (matchingMembers.isEmpty())
 			{
-				System.out.println("ERROR: Member '" + memberName + "' not found in type: " + type.getName());
 				return "Error: Member '" + memberName + "' not found in type '" + type.getName() + "'";
 			}
-
-			System.out.println("Found " + matchingMembers.size() + " matching member(s)");
 
 			// Build response with full documentation
 			StringBuilder response = new StringBuilder();
@@ -852,7 +812,6 @@ public class DocumentationTools
 				overloadNum++;
 			}
 
-			System.out.println("Returning documentation for " + matchingMembers.size() + " overload(s)");
 			return response.toString();
 		}
 		catch (Exception e)

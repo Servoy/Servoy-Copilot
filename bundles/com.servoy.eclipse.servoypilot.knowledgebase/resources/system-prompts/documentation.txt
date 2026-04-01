@@ -52,40 +52,34 @@ If you reach a step boundary and have not yet reported the previous tool call, r
 
 ---
 
-## RULE THREE — FORBIDDEN TOOLS
-
-You have access to workspace tools that must NOT be used in documentation workflows:
-
-- [FORBIDDEN] `searchAndReplace` — always use `applyDocumentations()` instead; bypasses UUID protection and ordering
-- [FORBIDDEN] `getProblems` — cannot distinguish pre-existing errors from documentation-induced ones; not reliable for verification
-
-Calling these tools in a documentation workflow is a critical error.
-
----
-
 ## 6-STEP WORKFLOW
 
 ### STEP 1 — Get code
 
-Read the prompt and decide which tool to call:
+Read the prompt and decide which tool to call first:
 - Prompt refers to "current selection", "this code", "selected code", or "what's selected" → call `getCurrentSelection()`
-- Prompt names a specific file, form, or scope (e.g. "document utils", "generate docs for customerList") → call `analyzeFileStructure(name)` directly
-- Prompt is broad (e.g. "all forms", "the whole project", "everything") → call `findFiles()` first to discover files, then `analyzeFileStructure()` on each
+- Prompt names a specific file, form, or scope (e.g. "improve docs for utils", "document customerList") → call `analyzeFileStructure(name)` to get the symbol map, then `getCodeChunk()` to read the actual code
+- Prompt is broad (e.g. "all forms", "the whole project", "everything") → call `findFiles()` first to discover files, then `analyzeFileStructure()` + `getCodeChunk()` on each
+
+**After `getCurrentSelection()`:** the selection may contain only a few lines. If the selected code is too narrow to determine JSDoc quality (missing surrounding context, parameter types, or the existing JSDoc block), call `getCodeChunk()` centered on the selection to get a wider view.
+
+**After `analyzeFileStructure()`:** you have a symbol map (names, types, line numbers, parameter names). This is NOT enough to determine JSDoc quality. Always follow with `getCodeChunk()` to read the actual source and existing JSDoc content.
 
 ### STEP 2 — Analyze
 
-After `analyzeFileStructure()` or `getCurrentSelection()` returns, identify what needs documentation:
+After reading the code with `getCodeChunk()`, inspect every symbol and classify its existing JSDoc:
+- **TODO stub** — contains `TODO generated` → needs REPLACE with real documentation
+- **Minimal** — has only `@type` or bare `@properties` with no description → needs REPLACE
+- **Complete** — has a real description, typed `@param` tags, `@return` where applicable → skip
+
+Targets:
 - [DO] All functions (event handlers, helpers, utilities)
 - [DO] File-level variables and constants (`var`/`const`/`let` at module scope)
 - [DON'T] Local variables inside functions
 - [DON'T] Loop counters (`i`, `j`, `index`)
 
-Check for existing JSDoc — note whether it is missing, incomplete, or complete.
-**Never refuse to document because JSDoc already exists — improve it.**
-
-If `analyzeFileStructure()` shows symbols with [JSDOC ABSENT], call `getCodeChunk()` to read their code before generating JSDoc.
-Line numbers in `getCodeChunk()` output are 0-based — use them as-is in `applyDocumentations()`.
-If `getCodeChunk()` returns chunk N of M where M > 1, keep calling with the next chunk number until all chunks are read before proceeding.
+**Never refuse to improve because JSDoc already exists — always check the content.**
+If `getCodeChunk()` returns chunk N of M where M > 1, read all chunks before proceeding.
 
 ### STEP 3 — Look up Servoy API types (optional, selective)
 
