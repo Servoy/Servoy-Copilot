@@ -20,14 +20,12 @@ package com.servoy.eclipse.servoypilot.tools;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.dltk.compiler.problem.DefaultProblem;
 import org.eclipse.dltk.core.ILocalVariable;
 import org.eclipse.dltk.core.IMethod;
 import org.eclipse.dltk.core.IModelElement;
@@ -51,8 +49,6 @@ import com.servoy.eclipse.model.repository.SolutionSerializer;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.services.CodeContextService.SelectionResult;
 import com.servoy.eclipse.servoypilot.services.ParserService;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.Relation;
@@ -70,11 +66,11 @@ import dev.langchain4j.agent.tool.Tool;
  * Provides AI tools that allow the language model to inspect source code within the workspace.
  * @author emera
  */
-public class CodeContextTools
+public interface CodeContextTools
 {
 	// configurable limits
-	private static final int CONTEXT_LINES_AROUND_ERROR = 10;
-	private static final int MAX_FULL_FUNCTION_LINES = 40;
+	public static final int CONTEXT_LINES_AROUND_ERROR = 10;
+	public static final int MAX_FULL_FUNCTION_LINES = 40;
 
 	@Tool("""
 		Returns code context around a given line in a Servoy JavaScript file.
@@ -84,7 +80,7 @@ public class CodeContextTools
 
 		Use this when you need to inspect the surrounding code.
 		""")
-	public String codeContext(
+	public default String codeContext(
 		@P(value = "File path relative to workspace or project (e.g., 'forms/myForm.js' or 'projectName/forms/myForm.js')", required = true) String filePath,
 		@P("The line number provided in the Context section. Do not guess this value.") int lineNumber,
 		@P("The EXACT CharacterOffset provided in the Context section. Do not guess this value.") int characterOffset) throws Exception
@@ -123,7 +119,7 @@ public class CodeContextTools
 
 		Use this when you want to get the full content of a relation, valuelist or database information file.
 		""")
-	public String readPersistFile(
+	public default String readPersistFile(
 		@P(value = "File path relative to workspace or project (e.g., 'projectName/relations/<relation_name>.rel' or 'projectName/valuelists/<valuelist_name>.val')", required = true) String filePath)
 		throws Exception
 	{
@@ -135,29 +131,6 @@ public class CodeContextTools
 			return content;
 		}
 		return null;
-	}
-
-	//TODO move to the code analysis class?
-	@Tool("""
-		Validates the given quick fix edits by checking if the replacement code for each edit can be parsed as a valid statement.
-
-		Use this tool to validate the quick fix before returning it to the caller. If the validation fails, provide feedback to the AI about which edit is invalid and why.
-		""")
-	public String validateQuickfixResult(QuickFixResult fix)
-	{
-		for (SourceEdit edit : fix.edits())
-		{
-			List<DefaultProblem> errors = ParserService.getInstance().isValidStatement(edit.replacement());
-			if (!errors.isEmpty())
-			{
-				return "Invalid quick fix generated. The AI generated code that could not be parsed as a valid statement: " + edit.replacement() +
-					". Parser errors: " + errors.stream()
-						.map(e -> e.getMessage())
-						.collect(Collectors.joining("; ")) +
-					"\n Fix the quick fix result and return a valid QuickFixResult object.";
-			}
-		}
-		return "Valid quick fix. Return the QuickFixResult object to the caller.";
 	}
 
 	private void processForeignElements(StringBuilder context, SelectionResult selectedElements)

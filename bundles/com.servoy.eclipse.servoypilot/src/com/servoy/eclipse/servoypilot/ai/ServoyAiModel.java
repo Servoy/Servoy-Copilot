@@ -19,10 +19,10 @@ package com.servoy.eclipse.servoypilot.ai;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
-import com.servoy.eclipse.servoypilot.tools.CodeContextTools;
 import com.servoy.eclipse.servoypilot.tools.DocumentationTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
+import com.servoy.eclipse.servoypilot.tools.QuickFixTools;
 import com.servoy.eclipse.servoypilot.tools.TestGenerationTools;
 import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
 import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
@@ -316,7 +316,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(new CodeContextTools())
+			.tools(new QuickFixTools())
 			.build();
 	}
 
