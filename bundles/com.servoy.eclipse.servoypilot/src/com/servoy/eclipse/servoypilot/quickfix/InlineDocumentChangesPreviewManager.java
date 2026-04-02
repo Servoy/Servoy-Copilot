@@ -183,7 +183,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			}
 
 			int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
-			int addedLinesCount = countLines(edit.replacement());
+			int addedLinesCount = countLines(indentedReplacement);
 			if (!edit.isInsert())
 			{
 				for (int i = 0; i < originalLineCount; i++)
@@ -202,7 +202,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			PreviewChange change = new PreviewChange();
 			change.startOffset = startOffset;
 			change.originalLength = previewBlock.length();
-			change.modifiedLine = edit.replacement();
+			change.modifiedLine = indentedReplacement;
 			change.originalLine = originalStatement;
 			change.lineDelimiter = lineDelimiter;
 			change.isInsert = edit.isInsert();
