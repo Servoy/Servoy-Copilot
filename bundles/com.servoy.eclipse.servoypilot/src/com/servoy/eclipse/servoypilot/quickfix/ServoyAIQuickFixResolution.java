@@ -23,25 +23,21 @@ import java.util.regex.Pattern;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IAnnotationResolution;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IRegion;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IMarkerResolution;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.Activator;
-import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
+import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.services.ParserService;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 
 public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotationResolution
 {
@@ -95,45 +91,18 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 
 	public void run(ITextEditor editor, QuickFixRequest request)
 	{
-		QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-		Job job = new Job("Servoy AI QuickFix")
+		try
 		{
-			@Override
-			protected IStatus run(IProgressMonitor monitor)
-			{
-				try
-				{
-					monitor.beginTask("Running AI QuickFix...", IProgressMonitor.UNKNOWN);
+			String fixPrompt = buildFixPrompt(editor, request, null);
+			Display.getDefault().asyncExec(() -> {
 
-					String fixPrompt = buildFixPrompt(editor, request, null);
-
-					QuickFixResult fix = quickFixAssistant.fix(fixPrompt);
-					if (fix == null || fix.edits() == null || fix.edits().isEmpty())
-					{
-						return new Status(IStatus.ERROR, "No quick fix generated", "The AI did not return any quick fix.");
-					}
-
-					if (monitor.isCanceled())
-					{
-						return Status.CANCEL_STATUS;
-					}
-					monitor.worked(1);
-					QuickFixPresenter.getInstance().previewFix(fixPrompt, fix);
-					monitor.done();
-				}
-				catch (Exception e)
-				{
-					return new Status(IStatus.ERROR, "Error applying quick fix", "QuickFix failed", e);
-				}
-				finally
-				{
-					monitor.done();
-				}
-				return Status.OK_STATUS;
-			}
-		};
-		job.setUser(true);
-		job.schedule();
+				ChatViewActivator.openAndSwitchToAssistant(AssistantType.QUICKFIX, fixPrompt);
+			});
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error applying quick fix", e);
+		}
 
 	}
 

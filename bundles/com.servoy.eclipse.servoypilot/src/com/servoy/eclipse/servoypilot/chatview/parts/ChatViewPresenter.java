@@ -22,10 +22,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -59,8 +62,12 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
+import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.quickfix.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
+import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -866,6 +873,12 @@ public class ChatViewPresenter
 			.onPartialResponse(partial -> {
 				// Accumulate tokens and update display
 				accumulatedResponse.append(partial);
+
+				if (currentAssistant == AssistantType.QUICKFIX)
+				{
+					//do not show partial response for QuickFix because it contains unformatted json
+					return;
+				}
 				applyToView(part -> {
 					// Clean error_context tags from display while keeping them for parsing
 					String cleanedResponse = cleanExplainMessage(accumulatedResponse.toString());
@@ -885,6 +898,21 @@ public class ChatViewPresenter
 					// Parse error_context tags from AI response (not user message)
 					invokeQuickFixForError(responseText, assistantMsgId, responseText);
 				}
+				else if (currentAssistant == AssistantType.QUICKFIX)
+			{
+				QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+				QuickFixResult newFix = quickFixAssistant.fix(userMessage);
+
+				if (newFix != null && !newFix.edits().isEmpty())
+				{
+					String readableResponse = formatQuickFixForChat(newFix);
+					applyToView(part -> {
+						// human readable response
+						part.setMessageHtml(assistantMsgId, readableResponse);
+					});
+					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+				}
+			}
 			})
 			.onError(error -> {
 				applyToView(part -> {
@@ -893,6 +921,65 @@ public class ChatViewPresenter
 				logger.error("Error getting assistant response", error);
 			})
 			.start();
+	}
+
+	private String formatQuickFixForChat(QuickFixResult result)
+	{
+		if (result == null || result.edits() == null || result.edits().isEmpty())
+		{
+			return "No fixes suggested.";
+		}
+
+		StringBuilder md = new StringBuilder();
+		md.append("### Suggested Fixes\n\n");
+
+		// 1. Group edits by File Path
+		Map<String, List<SourceEdit>> editsByFile = result.edits().stream()
+			.collect(Collectors.groupingBy(SourceEdit::filePath, LinkedHashMap::new, Collectors.toList()));
+
+		for (Map.Entry<String, List<SourceEdit>> entry : editsByFile.entrySet())
+		{
+			String path = entry.getKey();
+			if (path.startsWith("L/"))
+			{
+				path = path.substring(2);
+			}
+
+			md.append("**File:** `").append(path).append("`\n\n");
+
+			for (SourceEdit edit : entry.getValue())
+			{
+				String replacement = edit.replacement() != null ? edit.replacement().trim() : "";
+
+				// 2. Handle Deletions
+				if (replacement.isEmpty())
+				{
+					String lineInfo = (edit.startLine() == edit.endLine())
+						? "Line " + edit.startLine()
+						: "Lines " + edit.startLine() + "-" + edit.endLine();
+					md.append("*").append(lineInfo).append(":* (Code should be removed)\n\n");
+					continue;
+				}
+				md.append("```javascript\n");
+
+				String[] lines = edit.replacement().split("\\R");
+				int currentLine = edit.startLine();
+
+				for (int i = 0; i < lines.length; i++)
+				{
+					md.append(String.format("%2d: %s\n", currentLine + i, lines[i]));
+				}
+
+				md.append("```\n\n");
+			}
+			md.append("---\n\n");
+		}
+
+		// Clean up trailing horizontal rule
+		String finalMarkdown = md.toString();
+		return finalMarkdown.endsWith("---\n\n")
+			? finalMarkdown.substring(0, finalMarkdown.length() - 5).trim()
+			: finalMarkdown.trim();
 	}
 
 	public void onAttachmentAdded(ImageData imageData)
