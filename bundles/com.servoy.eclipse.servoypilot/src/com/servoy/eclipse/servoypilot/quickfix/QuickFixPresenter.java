@@ -51,7 +51,7 @@ public class QuickFixPresenter
 		return INSTANCE;
 	}
 
-	private InlineQuickFixPreviewManager activePreviewManager;
+	private InlineDocumentChangesPreviewManager activePreviewManager;
 
 	public void previewFix(String fixPrompt, QuickFixResult fix)
 	{
@@ -93,8 +93,8 @@ public class QuickFixPresenter
 							activePreviewManager.clearPreview();
 						}
 						//TODO improve preview for multiple editors and multiple/large fixes
-						this.activePreviewManager = new InlineQuickFixPreviewManager(scriptEditor);
-						activePreviewManager.previewFix(filteredEdits, fixPrompt);
+						this.activePreviewManager = new InlineDocumentChangesPreviewManager(scriptEditor);
+						activePreviewManager.preview(filteredEdits);
 					}
 					else
 					{

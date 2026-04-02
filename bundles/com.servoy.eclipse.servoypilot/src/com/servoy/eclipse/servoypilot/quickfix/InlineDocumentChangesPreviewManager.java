@@ -49,15 +49,32 @@ import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IFileEditorInput;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
 import com.servoy.eclipse.servoypilot.services.CodeFormattingService;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
-import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 
-public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
+/**
+ * Manages the interactive inline "ghost" preview of AI-generated code changes 
+ * within a {@code ScriptEditor}.
+ * <p>The manager is responsible for:
+ * <ul>
+ * <li><b>Visual Diffing:</b> Highlighting added lines in green and 
+ * removed lines in red using editor annotations.</li>
+ * <li><b>Interaction:</b> Displaying floating action buttons (e.g., <b>Keep</b>, 
+ * <b>Undo</b>, <b>Diff</b>) to allow the user to accept or reject changes.</li>
+ * <li><b>Lifecycle:</b> Cleaning up previous previews and disposing of 
+ * listeners/widgets when a new fix is proposed or the preview is closed.</li>
+ * </ul>
+ * </p>
+ * <p>This class operates directly on the {@link org.eclipse.jface.text.IDocument} 
+ * to insert temporary projections or overlays without permanently modifying 
+ * the underlying file until the "Keep" action is triggered.</p>
+ * @see com.servoy.eclipse.servoypilot.ai.SourceEdit
+ * @author emera
+ */
+public class InlineDocumentChangesPreviewManager implements IDocumentChangesPreviewManager
 {
 	private String originalContent;
 	private LineBackgroundListener backgroundListener;
@@ -85,16 +102,15 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		public boolean isInsert;
 	}
 
-	public InlineQuickFixPreviewManager(ScriptEditor scriptEditor)
+	public InlineDocumentChangesPreviewManager(ScriptEditor scriptEditor)
 	{
 		super();
 		this.scriptEditor = scriptEditor;
 	}
 
 	@Override
-	public void previewFix(
-		List<SourceEdit> sourceEdits,
-		String fixPrompt) throws Exception
+	public void preview(
+		List<SourceEdit> sourceEdits) throws Exception
 	{
 		ISourceViewer viewer = scriptEditor.getViewer();
 		if (viewer == null)
@@ -167,7 +183,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 			}
 
 			int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
-			int fixedLineCount = countLines(edit.replacement());
+			int addedLinesCount = countLines(edit.replacement());
 			if (!edit.isInsert())
 			{
 				for (int i = 0; i < originalLineCount; i++)
@@ -177,7 +193,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 			}
 			if (!edit.isDelete())
 			{
-				for (int i = 0; i < fixedLineCount; i++)
+				for (int i = 0; i < addedLinesCount; i++)
 				{
 					addedLines.add(startLine + originalLineCount + i);
 				}
@@ -216,7 +232,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		textWidget.addPaintListener(paintListener);
 		textWidget.redraw();
 
-		showAcceptRejectUI(scriptEditor, fixPrompt);
+		showAcceptRejectUI(scriptEditor);
 	}
 
 	private void drawDiffDecorations(GC gc, Set<Integer> lines, String symbol, Color bgColor, int width)
@@ -295,7 +311,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		}
 		catch (Exception e)
 		{
-			ServoyLog.logError("Cannot accept quickfix proposal", e);
+			ServoyLog.logError("Cannot accept source modification", e);
 		}
 
 		cleanup();
@@ -331,7 +347,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		}
 		catch (Exception e)
 		{
-			ServoyLog.logError("Cannot reject quickfix proposal", e);
+			ServoyLog.logError("Cannot revert the proposed source modification", e);
 		}
 
 		cleanup();
@@ -382,7 +398,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		}
 	}
 
-	private void showAcceptRejectUI(ScriptEditor scriptEditor, String fixPrompt)
+	private void showAcceptRejectUI(ScriptEditor scriptEditor)
 	{
 		StyledText text = scriptEditor.getViewer().getTextWidget();
 
@@ -445,7 +461,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 			neutral,
 			neutralHover,
 			() -> {
-				toggleDiffEditor(fixPrompt);
+				toggleDiffEditor();
 			});
 
 		floatingBar.pack();
@@ -602,7 +618,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 		}
 	}
 
-	private void toggleDiffEditor(String fixPrompt)
+	private void toggleDiffEditor()
 	{
 		if (compareEditorInput == null)
 		{
@@ -619,7 +635,6 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 			try
 			{
 				compareEditorInput = compareService.openCompareEditor(file.getName(), originalContent, buildModifiedContent(document));
-				ChatViewActivator.openAndSwitchToAssistant(AssistantType.QUICKFIX, fixPrompt);
 			}
 			catch (Exception e)
 			{
@@ -636,8 +651,7 @@ public class InlineQuickFixPreviewManager implements IQuickFixPreviewManager
 	private String buildModifiedContent(IDocument document) throws Exception
 	{
 		StringBuilder builder = new StringBuilder(document.get());
-		// apply in reverse order
-		for (int i = previewChanges.size() - 1; i >= 0; i--)
+		for (int i = 0; i < previewChanges.size(); i++)
 		{
 			PreviewChange change = previewChanges.get(i);
 			builder.replace(

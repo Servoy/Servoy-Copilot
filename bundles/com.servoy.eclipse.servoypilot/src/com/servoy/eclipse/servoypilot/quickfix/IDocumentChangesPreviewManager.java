@@ -24,9 +24,9 @@ import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 /**
  * @author emera
  */
-public interface IQuickFixPreviewManager
+public interface IDocumentChangesPreviewManager
 {
-	void previewFix(List<SourceEdit> sourceEdits, String fixPrompt) throws Exception;
+	void preview(List<SourceEdit> sourceEdits) throws Exception;
 
 	void clearPreview();
 }
