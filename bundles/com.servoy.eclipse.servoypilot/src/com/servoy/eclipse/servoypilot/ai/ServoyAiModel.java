@@ -22,7 +22,7 @@ import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
 import com.servoy.eclipse.servoypilot.tools.DocumentationAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
-import com.servoy.eclipse.servoypilot.tools.QuickFixTools;
+import com.servoy.eclipse.servoypilot.tools.QuickFixAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.TestGenerationTools;
 import com.servoy.eclipse.servoypilot.tools.VibeCodingAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
@@ -294,7 +294,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(new QuickFixTools())
+			.tools(QuickFixAssistantTools.getTools())
 			.build();
 	}
 
