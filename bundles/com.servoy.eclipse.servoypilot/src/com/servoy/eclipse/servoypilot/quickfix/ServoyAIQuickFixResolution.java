@@ -35,6 +35,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
@@ -206,8 +207,7 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 
 	public boolean canFix()
 	{
-		//we assume the AI always returns something that can be applied (even if it's not correct)
-		return true;
+		return Activator.getDefault().getAiConfiguration().isValid();
 	}
 
 	//TODO move to separate service/tool?

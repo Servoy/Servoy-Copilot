@@ -24,23 +24,29 @@ import org.eclipse.dltk.ui.editor.IScriptAnnotation;
 import org.eclipse.dltk.ui.text.IScriptCorrectionContext;
 import org.eclipse.dltk.ui.text.IScriptCorrectionProcessor;
 
+import com.servoy.eclipse.servoypilot.Activator;
+
 public class ServoyAICorrectionProcessor implements IScriptCorrectionProcessor
 {
 	@Override
 	public boolean canFix(IScriptAnnotation annotation)
 	{
-		return true;
+		return Activator.getDefault().getAiConfiguration().isValid();
 	}
 
 	@Override
 	public boolean canFix(IMarker marker)
 	{
-		return true;
+		return Activator.getDefault().getAiConfiguration().isValid();
 	}
 
 	@Override
 	public void computeQuickAssistProposals(IScriptAnnotation annotation, IScriptCorrectionContext context)
 	{
+		if (!Activator.getDefault().getAiConfiguration().isValid())
+		{
+			return;
+		}
 		IResource resource = annotation.getSourceModule().getResource();
 		if (!(resource instanceof IFile))
 		{
@@ -60,6 +66,10 @@ public class ServoyAICorrectionProcessor implements IScriptCorrectionProcessor
 	@Override
 	public void computeQuickAssistProposals(IMarker marker, IScriptCorrectionContext context)
 	{
+		if (!Activator.getDefault().getAiConfiguration().isValid())
+		{
+			return;
+		}
 		if (marker == null)
 		{
 			return;

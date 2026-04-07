@@ -23,6 +23,7 @@ import org.eclipse.ui.IMarkerResolution;
 import org.eclipse.ui.IMarkerResolutionGenerator;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.Activator;
 
 public class ServoyAIQuickFixGenerator implements IMarkerResolutionGenerator
 {
@@ -30,6 +31,10 @@ public class ServoyAIQuickFixGenerator implements IMarkerResolutionGenerator
 	@Override
 	public IMarkerResolution[] getResolutions(IMarker marker)
 	{
+		if (!Activator.getDefault().getAiConfiguration().isValid())
+		{
+			return new IMarkerResolution[0];
+		}
 		try
 		{
 			return new IMarkerResolution[] { new ServoyAIQuickFixResolution(marker.getResource().getProject(),
