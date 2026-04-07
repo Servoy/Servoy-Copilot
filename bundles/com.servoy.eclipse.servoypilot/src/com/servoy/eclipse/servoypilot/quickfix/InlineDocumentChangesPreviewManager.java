@@ -26,6 +26,8 @@ import java.util.Set;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.dltk.javascript.ast.Statement;
+import org.eclipse.jface.text.DocumentRewriteSession;
+import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
@@ -138,104 +140,123 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits);
 		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
 
-		for (SourceEdit edit : sortedEdits)
+		DocumentRewriteSession docRewriteSession = null;
+		try
 		{
-			int startLine = edit.startLine() - 1;
-			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
-			int endLine = document.getLineOfOffset(statement.sourceEnd());
-
-			int startOffset = document.getLineOffset(startLine);
-			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-
-			String originalStatement = document.get(startOffset, endOffset - startOffset);
-			String lineDelimiter = document.getLineDelimiter(startLine);
-			if (lineDelimiter == null)
+			textWidget.setRedraw(false);
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
 			{
-				lineDelimiter = "\n";
+				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
 			}
 
-			String indentedReplacement = CodeFormattingService.getInstance()
-				.format(edit.replacement(), document, startOffset);
+			for (SourceEdit edit : sortedEdits)
+			{
+				int startLine = edit.startLine() - 1;
+				Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
+				int endLine = document.getLineOfOffset(statement.sourceEnd());
 
-			String previewBlock = null;
-			if (edit.isInsert())
-			{
-				previewBlock = indentedReplacement + lineDelimiter;
-			}
-			else if (edit.isReplacement())
-			{
-				previewBlock = originalStatement +
-					indentedReplacement +
-					lineDelimiter;
-			}
-			else if (edit.isDelete())
-			{
-				previewBlock = originalStatement;
-			}
-			else
-			{
-				ServoyLog.logWarning("Unsupported edit type for preview: " + edit, null);
-				continue; // skip invalid edits
-			}
+				int startOffset = document.getLineOffset(startLine);
+				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
-			if (edit.isInsert())
-			{
-				document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
-			}
-			else
-			{
-				document.replace(startOffset, endOffset - startOffset, previewBlock);
-			}
-
-			int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
-			int addedLinesCount = countLines(indentedReplacement);
-			if (!edit.isInsert())
-			{
-				for (int i = 0; i < originalLineCount; i++)
+				String originalStatement = document.get(startOffset, endOffset - startOffset);
+				String lineDelimiter = document.getLineDelimiter(startLine);
+				if (lineDelimiter == null)
 				{
-					removedLines.add(startLine + i);
+					lineDelimiter = "\n";
 				}
-			}
-			if (!edit.isDelete())
-			{
-				for (int i = 0; i < addedLinesCount; i++)
+
+				String indentedReplacement = CodeFormattingService.getInstance()
+					.format(edit.replacement(), document, startOffset);
+
+				String previewBlock = null;
+				if (edit.isInsert())
 				{
-					addedLines.add(startLine + originalLineCount + i);
+					previewBlock = indentedReplacement + lineDelimiter;
 				}
+				else if (edit.isReplacement())
+				{
+					previewBlock = originalStatement +
+						indentedReplacement +
+						lineDelimiter;
+				}
+				else if (edit.isDelete())
+				{
+					previewBlock = originalStatement;
+				}
+				else
+				{
+					ServoyLog.logWarning("Unsupported edit type for preview: " + edit, null);
+					continue; // skip invalid edits
+				}
+
+
+				if (edit.isInsert())
+				{
+					document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
+				}
+				else
+				{
+					document.replace(startOffset, endOffset - startOffset, previewBlock);
+				}
+
+				int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
+				int addedLinesCount = countLines(indentedReplacement);
+				if (!edit.isInsert())
+				{
+					for (int i = 0; i < originalLineCount; i++)
+					{
+						removedLines.add(startLine + i);
+					}
+				}
+				if (!edit.isDelete())
+				{
+					for (int i = 0; i < addedLinesCount; i++)
+					{
+						addedLines.add(startLine + originalLineCount + i);
+					}
+				}
+
+				PreviewChange change = new PreviewChange();
+				change.startOffset = startOffset;
+				change.originalLength = previewBlock.length();
+				change.modifiedLine = indentedReplacement;
+				change.originalLine = originalStatement;
+				change.lineDelimiter = lineDelimiter;
+				change.isInsert = edit.isInsert();
+				previewChanges.add(change);
 			}
 
-			PreviewChange change = new PreviewChange();
-			change.startOffset = startOffset;
-			change.originalLength = previewBlock.length();
-			change.modifiedLine = indentedReplacement;
-			change.originalLine = originalStatement;
-			change.lineDelimiter = lineDelimiter;
-			change.isInsert = edit.isInsert();
-			previewChanges.add(change);
+			backgroundListener = event -> {
+				int lineIndex = textWidget.getLineAtOffset(event.lineOffset);
+				if (removedLines.contains(lineIndex))
+				{
+					event.lineBackground = removedColor;
+				}
+				else if (addedLines.contains(lineIndex))
+				{
+					event.lineBackground = addedColor;
+				}
+			};
+
+			textWidget.addLineBackgroundListener(backgroundListener);
+
+			paintListener = e -> {
+				GC gc = e.gc;
+				int clientWidth = textWidget.getClientArea().width;
+				drawDiffDecorations(gc, removedLines, "-", removedColor, clientWidth);
+				drawDiffDecorations(gc, addedLines, "+", addedColor, clientWidth);
+			};
+			textWidget.addPaintListener(paintListener);
 		}
-
-		backgroundListener = event -> {
-			int lineIndex = textWidget.getLineAtOffset(event.lineOffset);
-			if (removedLines.contains(lineIndex))
+		finally
+		{
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
 			{
-				event.lineBackground = removedColor;
+				docextension4.stopRewriteSession(docRewriteSession);
 			}
-			else if (addedLines.contains(lineIndex))
-			{
-				event.lineBackground = addedColor;
-			}
-		};
-
-		textWidget.addLineBackgroundListener(backgroundListener);
-
-		paintListener = e -> {
-			GC gc = e.gc;
-			int clientWidth = textWidget.getClientArea().width;
-			drawDiffDecorations(gc, removedLines, "-", removedColor, clientWidth);
-			drawDiffDecorations(gc, addedLines, "+", addedColor, clientWidth);
-		};
-		textWidget.addPaintListener(paintListener);
-		textWidget.redraw();
+			textWidget.setRedraw(true);
+			textWidget.redraw();
+		}
 
 		showAcceptRejectUI(scriptEditor);
 	}
