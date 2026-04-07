@@ -22,32 +22,32 @@ import java.util.stream.Collectors;
 import org.eclipse.dltk.compiler.problem.DefaultProblem;
 
 import com.servoy.eclipse.servoypilot.services.ParserService;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 import dev.langchain4j.agent.tool.Tool;
 
-public interface IValidateQuickFixTool
+public interface IGeneratedCodeValidationTool
 {
 	@Tool("""
-Validates the given quick fix edits by checking if the replacement code for each edit can be parsed as a valid statement.
+		Validates the given generated code changes by checking if the replacement code for each edit can be parsed as a valid statement.
 
-Use this tool to validate the quick fix before returning it to the caller. If the validation fails, provide feedback to the AI about which edit is invalid and why.
-""")
-	default String validateQuickfixResult(QuickFixResult fix)
+		Use this tool to validate generated code before returning it to the caller. If the validation fails, provide feedback to the AI about which edit is invalid and why.
+		""")
+	default String validate(CodeChanges fix)
 	{
-		for (SourceEdit edit : fix.edits())
+		for (SourceEdit edit : fix.codeChanges())
 		{
 			List<DefaultProblem> errors = ParserService.getInstance().isValidStatement(edit.replacement());
 			if (!errors.isEmpty())
 			{
-				return "Invalid quick fix generated. The AI generated code that could not be parsed as a valid statement: " + edit.replacement() +
+				return "Invalid code generated. The AI generated code that could not be parsed as a valid statement: " + edit.replacement() +
 					". Parser errors: " + errors.stream()
 						.map(e -> e.getMessage())
 						.collect(Collectors.joining("; ")) +
-					"\n Fix the quick fix result and return a valid QuickFixResult object.";
+					"\n Fix the generated code and return a valid CodeChanges object.";
 			}
 		}
-		return "Valid quick fix. Return the QuickFixResult object to the caller.";
+		return "The generated code is valid. Return the CodeChanges object to the caller.";
 	}
 }

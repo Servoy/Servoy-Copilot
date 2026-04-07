@@ -66,7 +66,7 @@ import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
 import com.servoy.eclipse.servoypilot.quickfix.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 import dev.langchain4j.data.message.AiMessage;
@@ -901,9 +901,9 @@ public class ChatViewPresenter
 				else if (currentAssistant == AssistantType.QUICKFIX)
 			{
 				QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-				QuickFixResult newFix = quickFixAssistant.fix(userMessage);
+				CodeChanges newFix = quickFixAssistant.fix(userMessage);
 
-				if (newFix != null && !newFix.edits().isEmpty())
+				if (newFix != null && !newFix.codeChanges().isEmpty())
 				{
 					String readableResponse = formatQuickFixForChat(newFix);
 					applyToView(part -> {
@@ -923,9 +923,9 @@ public class ChatViewPresenter
 			.start();
 	}
 
-	private String formatQuickFixForChat(QuickFixResult result)
+	private String formatQuickFixForChat(CodeChanges result)
 	{
-		if (result == null || result.edits() == null || result.edits().isEmpty())
+		if (result == null || result.codeChanges() == null || result.codeChanges().isEmpty())
 		{
 			return "No fixes suggested.";
 		}
@@ -934,7 +934,7 @@ public class ChatViewPresenter
 		md.append("### Suggested Fixes\n\n");
 
 		// 1. Group edits by File Path
-		Map<String, List<SourceEdit>> editsByFile = result.edits().stream()
+		Map<String, List<SourceEdit>> editsByFile = result.codeChanges().stream()
 			.collect(Collectors.groupingBy(SourceEdit::filePath, LinkedHashMap::new, Collectors.toList()));
 
 		for (Map.Entry<String, List<SourceEdit>> entry : editsByFile.entrySet())

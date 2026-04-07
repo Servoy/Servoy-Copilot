@@ -16,7 +16,7 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
 
 import dev.langchain4j.service.UserMessage;
 
@@ -34,5 +34,5 @@ public interface QuickFixAssistant extends IAssistant
 		return AssistantType.QUICKFIX.getDisplayName();
 	}
 
-	QuickFixResult fix(@UserMessage String prompt);
+	CodeChanges fix(@UserMessage String prompt);
 }

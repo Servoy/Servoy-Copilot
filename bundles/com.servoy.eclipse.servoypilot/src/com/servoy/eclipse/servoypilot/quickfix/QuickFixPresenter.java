@@ -36,7 +36,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.tools.dto.QuickFixResult;
+import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 /**
@@ -53,14 +53,14 @@ public class QuickFixPresenter
 
 	private InlineDocumentChangesPreviewManager activePreviewManager;
 
-	public void previewFix(String fixPrompt, QuickFixResult fix)
+	public void previewFix(String fixPrompt, CodeChanges fix)
 	{
 		Display.getDefault().asyncExec(() -> {
 			try
 			{
 				IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 				Set<IPath> uniquePaths = new HashSet<>();
-				for (SourceEdit edit : fix.edits())
+				for (SourceEdit edit : fix.codeChanges())
 				{
 					String editPath = edit.filePath();
 					if (editPath.startsWith("L/"))
@@ -77,7 +77,7 @@ public class QuickFixPresenter
 
 					if (targetEditor instanceof ScriptEditor scriptEditor)
 					{
-						List<SourceEdit> filteredEdits = fix.edits().stream()
+						List<SourceEdit> filteredEdits = fix.codeChanges().stream()
 							.filter(e -> {
 								String p = e.filePath();
 								if (p.startsWith("L/"))

@@ -21,9 +21,9 @@ import java.util.List;
 
 /**
  * Wrapper object approach to avoid the PojoCollectionOutputParser crash in LangChain4j
- * @author merae
+ * @author emera
  */
-public record QuickFixResult(
-	List<SourceEdit> edits)
+public record CodeChanges(
+	List<SourceEdit> codeChanges)
 {
 }
