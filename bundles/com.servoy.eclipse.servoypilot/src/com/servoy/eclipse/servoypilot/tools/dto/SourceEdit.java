@@ -75,26 +75,26 @@ public record SourceEdit(
 
 	/**
 	 * Replacement means:
-	 * - start and end anchors exist
+	 * - At least one anchor exists (start or end)
 	 * - replacement text exists
 	 */
 	public boolean isReplacement()
 	{
-		return !startSentence.isEmpty() &&
-			!endSentence.isEmpty() &&
+		// A replacement is valid if we have something to find (either start or end)
+		// AND we have something to put in its place.
+		return (!startSentence.isEmpty() || !endSentence.isEmpty()) &&
 			replacement != null &&
 			!replacement.isEmpty();
 	}
 
 	/**
 	 * Delete means:
-	 * - start and end anchors exist
-	 * - replacement is empty
+	 * - At least one anchor exists
+	 * - replacement is empty or null
 	 */
 	public boolean isDelete()
 	{
-		return !startSentence.isEmpty() &&
-			!endSentence.isEmpty() &&
+		return (!startSentence.isEmpty() || !endSentence.isEmpty()) &&
 			(replacement == null || replacement.isEmpty());
 	}
 

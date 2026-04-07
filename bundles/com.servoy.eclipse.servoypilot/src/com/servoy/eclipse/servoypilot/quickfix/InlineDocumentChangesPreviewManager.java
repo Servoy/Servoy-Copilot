@@ -172,6 +172,11 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			{
 				previewBlock = originalStatement;
 			}
+			else
+			{
+				ServoyLog.logWarning("Unsupported edit type for preview: " + edit, null);
+				continue; // skip invalid edits
+			}
 
 			if (edit.isInsert())
 			{
