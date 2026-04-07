@@ -40,6 +40,13 @@ public class ResourceService
 {
 	private static final ILog logger = ILog.of(ResourceService.class);
 
+	private static final ResourceService INSTANCE = new ResourceService();
+
+	public static ResourceService getInstance()
+	{
+		return INSTANCE;
+	}
+
 	/**
 	 * Finds workspace files matching the given glob patterns.
 	 *

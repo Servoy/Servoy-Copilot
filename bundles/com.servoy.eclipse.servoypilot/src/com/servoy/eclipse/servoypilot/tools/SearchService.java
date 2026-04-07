@@ -44,19 +44,20 @@ public class SearchService
 {
     private static final ILog logger = ILog.of(SearchService.class);
 
-    public record SearchResult(IFile file, int lineNumber, String lineContent)
-    {
+	private static final SearchService INSTANCE = new SearchService();
 
-    }
+	public static SearchService getInstance()
+	{
+		return INSTANCE;
+	}
 
-    public record SearchAndReplaceResult(IFile file, int matchesFound, int replacementsMade)
-    {
+	public record SearchResult(IFile file, int lineNumber, String lineContent)
+	{
+	}
 
-    }
-
-    public SearchService()
-    {
-    }
+	public record SearchAndReplaceResult(IFile file, int matchesFound, int replacementsMade)
+	{
+	}
 
     /**
      * Plain substring search (not regex).

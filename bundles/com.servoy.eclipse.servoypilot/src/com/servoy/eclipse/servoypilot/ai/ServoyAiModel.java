@@ -19,20 +19,14 @@ package com.servoy.eclipse.servoypilot.ai;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
-import com.servoy.eclipse.servoypilot.tools.DocumentationTools;
+import com.servoy.eclipse.servoypilot.tools.DocumentationAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.EclipseTools;
 import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
 import com.servoy.eclipse.servoypilot.tools.QuickFixTools;
 import com.servoy.eclipse.servoypilot.tools.TestGenerationTools;
-import com.servoy.eclipse.servoypilot.tools.component.ButtonComponentTools;
-import com.servoy.eclipse.servoypilot.tools.component.LabelComponentTools;
-import com.servoy.eclipse.servoypilot.tools.core.FormTools;
-import com.servoy.eclipse.servoypilot.tools.core.RelationTools;
-import com.servoy.eclipse.servoypilot.tools.core.StyleTools;
-import com.servoy.eclipse.servoypilot.tools.core.ValueListTools;
+import com.servoy.eclipse.servoypilot.tools.VibeCodingAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
 import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
-import com.servoy.eclipse.servoypilot.tools.utility.TargetTools;
 import com.servoy.eclipse.servoypilot.tools.utility.WebFetchTools;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -228,20 +222,8 @@ public class ServoyAiModel
 			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register all tools
-		builder.tools(
-			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
-			new EclipseTools(), // General Eclipse/workspace operations
-			new ValueListTools(), // core/ - COMPLETE: getValueLists, openValueList, deleteValueLists
-			new FormTools(), // core/ - COMPLETE: getForms, openForm, deleteForms
-			new RelationTools(), // core/ - COMPLETE: getRelations, openRelation, deleteRelations
-			new StyleTools(), // core/ - COMPLETE: getStyles, openStyle, deleteStyle
-			new DatabaseTools(), // utility/ - COMPLETE: listTables, getTableInfo
-			new TargetTools(), // utility/ - COMPLETE: getTarget, setTarget
-			new KnowledgeTools(), // utility/ - COMPLETE: getKnowledge
-			new ButtonComponentTools(), // component/ - COMPLETE: listButtons, addButton, updateButton, deleteButton, getButtonInfo
-			new LabelComponentTools() // component/ - COMPLETE: listLabels, addLabel, updateLabel, deleteLabel, getLabelInfo
-		);
+		// Register tools
+		builder.tools(VibeCodingAssistantTools.getTools());
 
 		return builder.build();
 	}
@@ -294,11 +276,7 @@ public class ServoyAiModel
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register tools
-		builder.tools(
-			new CodeAnalysisTools(), // NEW - shared analysis tools (file structure, code reading, type resolution)
-			new DocumentationTools(), // EXCLUSIVE - documentation operations
-			new EclipseTools() // General workspace operations
-		);
+		builder.tools(DocumentationAssistantTools.getTools());
 
 		return builder.build();
 	}

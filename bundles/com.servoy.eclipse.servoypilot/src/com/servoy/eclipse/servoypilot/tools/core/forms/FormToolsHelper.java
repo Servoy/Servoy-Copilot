@@ -14,7 +14,7 @@
  with this program; if not, see http://www.gnu.org/licenses or write to the Free
  Software Foundation,Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
  */
-package com.servoy.eclipse.servoypilot.tools.core;
+package com.servoy.eclipse.servoypilot.tools.core.forms;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -29,91 +29,34 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.FormService;
+import com.servoy.eclipse.servoypilot.services.TargetService;
+import com.servoy.eclipse.servoypilot.tools.core.CoreToolsHelper;
 import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
 import com.servoy.eclipse.ui.util.EditorUtil;
 import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
-import com.servoy.j2db.persistence.IRootObject;
 import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.Solution;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-
 /**
- * Tools for Servoy Form operations.
- * Migrated from knowledgebase.mcp FormToolHandler.
- * 
- * Complete migration: All 3 main tools implemented.
+ * Singleton helper providing implementation logic for form tool interfaces.
  */
-public class FormTools
+public class FormToolsHelper
 {
-	/**
-	 * Lists forms in the active solution and its modules.
-	 */
-	@Tool("Lists forms in the active solution and its modules. Optional scope parameter: 'current' for target only, 'all' for solution + modules (default).")
-	public String getForms(
-		@P(value = "Scope: 'current' for target only, 'all' for solution + modules (default 'all')", required = false) String scope)
+	private static final FormToolsHelper INSTANCE = new FormToolsHelper();
+
+	private FormToolsHelper()
 	{
-		return UIThreadHelper.syncExec("getForms",
-			() -> listFormsImpl(scope != null ? scope : "all"));
 	}
 
-	/**
-	 * Opens an existing form or creates a new form.
-	 */
-	@Tool("Opens an existing form or creates a new form. Context-aware: when create=true, form created in current context. Use 'events' parameter to set event handlers by passing a Map where keys are event names (onLoad, onShow, etc.) and values are method names. Example: if user says 'onLoad callInit, onShow refreshData', parse as events: {\"onLoad\": \"callInit\", \"onShow\": \"refreshData\"}. Methods will be auto-created if they don't exist.")
-	public String openForm(
-		@P(value = "Form name", required = true) String name,
-		@P(value = "Create if doesn't exist (default: false)", required = false) Boolean create,
-		@P(value = "Form width (default: 640)", required = false) Integer width,
-		@P(value = "Form height (default: 480)", required = false) Integer height,
-		@P(value = "Form style: 'css' or 'responsive' (default: 'css')", required = false) String style,
-		@P(value = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
-		@P(value = "Parent form name (for inheritance)", required = false) String extendsForm,
-		@P(value = "Set as main form (default: false)", required = false) Boolean setAsMainForm,
-		@P(value = "Additional properties map", required = false) Map<String, Object> properties,
-		@P(value = "Event handlers map (event name -> method name)", required = false) Map<String, String> events)
+	public static FormToolsHelper getInstance()
 	{
-		if (name != null && !name.trim().isEmpty())
-		{
-			boolean shouldCreate = create != null && create;
-			int formWidth = width != null ? width : 640;
-			int formHeight = height != null ? height : 480;
-			String formStyle = style != null ? style : "css";
-
-			return UIThreadHelper.syncExec("openForm",
-				() -> openOrCreateForm(name, shouldCreate, formWidth, formHeight, formStyle,
-					dataSource, extendsForm, setAsMainForm, properties, events));
-		}
-
-		return "Error: name parameter is required";
+		return INSTANCE;
 	}
 
-	/**
-	 * Deletes one or more existing forms.
-	 */
-	@Tool("Deletes one or more existing forms. Requires approval if form not in current context.")
-	public String deleteForms(
-		@P(value = "Array of form names to delete", required = true) List<String> names)
-	{
-		if (names != null && !names.isEmpty())
-		{
-			return UIThreadHelper.syncExec("deleteForms",
-				() -> deleteFormsImpl(names));
-		}
-
-		return "Error: names parameter is required (array of form names)";
-	}
-
-	// =============================================
-	// IMPLEMENTATION: listForms
-	// =============================================
-
-	private String listFormsImpl(String scope) throws RepositoryException
+	public String listFormsImpl(String scope) throws RepositoryException
 	{
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
@@ -122,12 +65,11 @@ public class FormTools
 		{
 			String activeSolutionName = servoyProject.getEditingSolution().getName();
 			String contextName = null;
-
 			List<Form> forms = new ArrayList<>();
 
 			if ("current".equals(scope))
 			{
-				ServoyProject targetProject = resolveTargetProject(servoyModel);
+				ServoyProject targetProject = CoreToolsHelper.getInstance().resolveTargetProject(servoyModel);
 				String target = TargetService.getInstance().getCurrentTarget();
 				contextName = "active".equals(target) ? activeSolutionName : target;
 
@@ -165,7 +107,6 @@ public class FormTools
 			}
 
 			StringBuilder result = new StringBuilder();
-
 			if ("current".equals(scope))
 			{
 				result.append("Forms in '").append(contextName).append("' (").append(forms.size()).append("):\n\n");
@@ -175,15 +116,14 @@ public class FormTools
 				result.append("Forms in solution '").append(activeSolutionName).append("' and modules (").append(forms.size()).append("):\n\n");
 			}
 
+			CoreToolsHelper helper = CoreToolsHelper.getInstance();
 			int count = 1;
 			for (Form form : forms)
 			{
-				String solutionName = getSolutionName(form);
-				String originInfo = formatOrigin(solutionName, activeSolutionName);
+				String solutionName = helper.getSolutionName(form);
+				String originInfo = helper.formatOrigin(solutionName, activeSolutionName);
 
-				result.append(count).append(". ").append(form.getName());
-
-				result.append(originInfo);
+				result.append(count).append(". ").append(form.getName()).append(originInfo);
 
 				if (form.getDataSource() != null && !form.getDataSource().trim().isEmpty())
 				{
@@ -193,7 +133,6 @@ public class FormTools
 				String formType = form.isResponsiveLayout() ? "responsive"
 					: (form.getUseCssPosition() != null && form.getUseCssPosition() ? "css" : "absolute");
 				result.append(" (").append(formType).append(", ").append(form.getWidth()).append("x").append(form.getHeight()).append(")");
-
 				result.append("\n");
 				count++;
 			}
@@ -204,34 +143,28 @@ public class FormTools
 		throw new RepositoryException("No active Servoy solution project found");
 	}
 
-	// =============================================
-	// IMPLEMENTATION: openForm
-	// =============================================
-
-	private String openOrCreateForm(String name, boolean create, int width, int height, String style,
-		String dataSource, String extendsFormName, Boolean setAsMainForm, Map<String, Object> properties, Map<String, String> events) throws RepositoryException
+	public String openOrCreateForm(String name, boolean create, int width, int height, String style,
+		String dataSource, String extendsFormName, Boolean setAsMainForm, Map<String, Object> properties,
+		Map<String, String> events) throws RepositoryException
 	{
-		ServoyLog.logInfo("[FormTools] Processing form: " + name);
+		ServoyLog.logInfo("[FormToolsHelper] Processing form: " + name);
 
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			// Validate style
 			if (!style.equals("css") && !style.equals("responsive"))
 			{
 				throw new RepositoryException("Invalid style value: " + style + ". Must be 'css' or 'responsive'.");
 			}
 
-			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = CoreToolsHelper.getInstance().resolveTargetProject(servoyModel);
 			String target = TargetService.getInstance().getCurrentTarget();
 			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
 			if (targetProject != null && targetProject.getEditingSolution() != null)
 			{
-
-				// Search for existing forms
 				List<Form> allMatchingForms = new ArrayList<>();
 				List<String> formLocations = new ArrayList<>();
 
@@ -276,7 +209,6 @@ public class FormTools
 				}
 				else if (create)
 				{
-					// Create new form in current context
 					form = FormService.createFormInProject(targetProject, name, width, height, style, dataSource);
 					allMatchingForms.add(form);
 					formLocations.add(contextDisplay);
@@ -287,41 +219,27 @@ public class FormTools
 					throw new RepositoryException("Form '" + name + "' not found. Use create=true to create it.");
 				}
 
-				// Apply properties if provided (works for both new and existing forms)
 				if (properties != null && !properties.isEmpty())
 				{
-					ServoyLog.logInfo("[FormTools] Applying properties to form: " + name);
 					FormService.applyFormProperties(form, properties);
 					targetProject.saveEditingSolutionNodes(new IPersist[] { form }, true);
 				}
 
-				// Apply events if provided (auto-creates methods if missing)
-				ServoyLog.logInfo("[FormTools] Checking events parameter - events: " + events);
 				if (events != null && !events.isEmpty())
 				{
-					ServoyLog.logInfo("[FormTools] Events map is NOT null/empty, calling FormService.applyFormEvents");
-					ServoyLog.logInfo("[FormTools] Events content: " + events);
 					FormService.applyFormEvents(form, events, targetProject);
-					// FormService.applyFormEvents already saves, no need to save again
-				}
-				else
-				{
-					ServoyLog.logInfo("[FormTools] Events parameter is null or empty - skipping event application");
 				}
 
-				// Set parent form if specified
 				if (extendsFormName != null && !extendsFormName.trim().isEmpty())
 				{
 					FormService.setFormParent(form, extendsFormName, servoyProject);
 					targetProject.saveEditingSolutionNodes(new IPersist[] { form }, true);
 				}
 
-				// Set as main form if specified
 				if (setAsMainForm != null && setAsMainForm)
 				{
 					try
 					{
-						// Use String UUID version for 2025.12+ (new API), int version for older versions
 						boolean useNewAPI = ClientVersion.getMajorVersion() > 2025 ||
 							(ClientVersion.getMajorVersion() == 2025 && ClientVersion.getMiddleVersion() >= 12);
 						if (useNewAPI)
@@ -331,7 +249,6 @@ public class FormTools
 						}
 						else
 						{
-							// Old API: setFirstFormID(int id)
 							Method setFirstFormID = Solution.class.getMethod("setFirstFormID", int.class);
 							Method getID = Form.class.getMethod("getID");
 							setFirstFormID.invoke(servoyProject.getEditingSolution(), getID.invoke(form));
@@ -344,14 +261,12 @@ public class FormTools
 					}
 				}
 
-				// Open form in editor
 				if (isNewForm)
 				{
 					final Form formToOpen = form;
-					UIThreadHelper.asyncExec("openFormEditor",
-						() -> EditorUtil.openFormDesignEditor(formToOpen));
+					UIThreadHelper.asyncExec("openFormEditor", () -> EditorUtil.openFormDesignEditor(formToOpen));
 				}
-				else if (!allMatchingForms.isEmpty())
+				else
 				{
 					final List<Form> formsToOpen = new ArrayList<>(allMatchingForms);
 					UIThreadHelper.asyncExec("openFormEditors", () -> {
@@ -362,9 +277,7 @@ public class FormTools
 					});
 				}
 
-				// Build result message
 				StringBuilder result = new StringBuilder();
-
 				if (isNewForm)
 				{
 					result.append("Form '").append(name).append("' created successfully in ").append(contextDisplay);
@@ -401,18 +314,14 @@ public class FormTools
 		throw new RepositoryException("No active Servoy solution project found");
 	}
 
-	// =============================================
-	// IMPLEMENTATION: deleteForms
-	// =============================================
-
-	private String deleteFormsImpl(List<String> names) throws RepositoryException
+	public String deleteFormsImpl(List<String> names) throws RepositoryException
 	{
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject != null && servoyProject.getEditingSolution() != null)
 		{
-			ServoyProject targetProject = resolveTargetProject(servoyModel);
+			ServoyProject targetProject = CoreToolsHelper.getInstance().resolveTargetProject(servoyModel);
 			String target = TargetService.getInstance().getCurrentTarget();
 			String contextDisplay = "active".equals(target) ? targetProject.getProject().getName() + " (active solution)" : target;
 
@@ -422,7 +331,6 @@ public class FormTools
 			Map<String, String> approvalLocations = new HashMap<>();
 			List<Form> formsToDelete = new ArrayList<>();
 
-			// Find forms and check if they're in current context
 			for (String name : names)
 			{
 				if (name == null || name.trim().isEmpty())
@@ -440,7 +348,6 @@ public class FormTools
 				}
 				else
 				{
-					// Search other locations
 					if (!targetProject.equals(servoyProject))
 					{
 						form = servoyProject.getEditingSolution().getForm(name);
@@ -479,7 +386,6 @@ public class FormTools
 				}
 			}
 
-			// If any items need approval, return approval request message
 			if (!needsApproval.isEmpty())
 			{
 				StringBuilder approvalMsg = new StringBuilder();
@@ -490,7 +396,6 @@ public class FormTools
 					String formName = needsApproval.get(0);
 					String location = approvalLocations.get(formName);
 					String locationDisplay = "active".equals(location) ? servoyProject.getProject().getName() + " (active solution)" : location;
-
 					approvalMsg.append("Form '").append(formName).append("' found in ").append(locationDisplay).append(".\n");
 					approvalMsg.append("Current context is ").append(contextDisplay).append(".\n\n");
 					approvalMsg.append("To delete this form, I need to switch to ").append(locationDisplay).append(".\n");
@@ -513,58 +418,42 @@ public class FormTools
 				if (!formsToDelete.isEmpty())
 				{
 					approvalMsg.append("\n\nNote: Can delete from current context without approval: ");
-					approvalMsg.append(String.join(", ", formsToDelete.stream().map(f -> f.getName()).toArray(String[]::new)));
+					approvalMsg.append(String.join(", ", formsToDelete.stream().map(Form::getName).toArray(String[]::new)));
 				}
 
 				return approvalMsg.toString();
 			}
 
-			// Delete forms (all are in current context)
 			if (!formsToDelete.isEmpty())
 			{
 				EclipseRepository repository = (EclipseRepository)servoyProject.getEditingSolution().getRepository();
-
-				try
+				for (Form form : formsToDelete)
 				{
-					for (Form form : formsToDelete)
+					IPersist editingNode = servoyProject.getEditingPersist(form.getUUID());
+					if (editingNode == null)
 					{
-						IPersist editingNode = servoyProject.getEditingPersist(form.getUUID());
-						if (editingNode == null)
-						{
-							editingNode = form;
-						}
-						repository.deleteObject(editingNode);
-						ServoyLog.logInfo("[FormTools] Called deleteObject for form: " + form.getName());
+						editingNode = form;
 					}
-
-					for (Form form : formsToDelete)
-					{
-						IPersist editingNode = servoyProject.getEditingPersist(form.getUUID());
-						if (editingNode == null)
-						{
-							editingNode = form;
-						}
-						servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
-						deletedForms.add(form.getName());
-						ServoyLog.logInfo("[FormTools] Successfully deleted form: " + form.getName());
-					}
+					repository.deleteObject(editingNode);
 				}
-				catch (Exception e)
+				for (Form form : formsToDelete)
 				{
-					ServoyLog.logError("[FormTools] FAILED to delete forms", e);
-					throw new RepositoryException("Failed to delete forms. Error: " + e.getMessage(), e);
+					IPersist editingNode = servoyProject.getEditingPersist(form.getUUID());
+					if (editingNode == null)
+					{
+						editingNode = form;
+					}
+					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingNode }, true);
+					deletedForms.add(form.getName());
 				}
 			}
 
-			// Build result message
 			StringBuilder result = new StringBuilder();
-
 			if (!deletedForms.isEmpty())
 			{
 				result.append("Successfully deleted ").append(deletedForms.size()).append(" form(s): ");
 				result.append(String.join(", ", deletedForms));
 			}
-
 			if (!notFoundForms.isEmpty())
 			{
 				if (result.length() > 0)
@@ -574,7 +463,6 @@ public class FormTools
 				result.append("Forms not found (").append(notFoundForms.size()).append("): ");
 				result.append(String.join(", ", notFoundForms));
 			}
-
 			if (deletedForms.isEmpty() && notFoundForms.isEmpty())
 			{
 				result.append("No forms specified for deletion");
@@ -584,60 +472,5 @@ public class FormTools
 		}
 
 		throw new RepositoryException("No active Servoy solution project found");
-	}
-
-	// =============================================
-	// HELPER METHODS
-	// =============================================
-
-	private ServoyProject resolveTargetProject(IDeveloperServoyModel servoyModel)
-	{
-		String target = TargetService.getInstance().getCurrentTarget();
-		ServoyProject activeProject = servoyModel.getActiveProject();
-
-		if ("active".equals(target) || target == null)
-		{
-			return activeProject;
-		}
-
-		ServoyProject[] modules = servoyModel.getModulesOfActiveProject();
-		for (ServoyProject module : modules)
-		{
-			if (module != null && target.equals(module.getProject().getName()))
-			{
-				return module;
-			}
-		}
-
-		return activeProject;
-	}
-
-	private String getSolutionName(IPersist persist)
-	{
-		try
-		{
-			IRootObject rootObject = persist.getRootObject();
-			if (rootObject instanceof Solution solution)
-			{
-				return solution.getName();
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("[FormTools] Error getting solution name", e);
-		}
-		return "unknown";
-	}
-
-	private String formatOrigin(String solutionName, String activeSolutionName)
-	{
-		if (solutionName.equals(activeSolutionName))
-		{
-			return " (in: active solution)";
-		}
-		else
-		{
-			return " (in: " + solutionName + ")";
-		}
 	}
 }
