@@ -18,16 +18,13 @@ package com.servoy.eclipse.servoypilot.ai;
 
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
-import com.servoy.eclipse.servoypilot.tools.CodeAnalysisTools;
 import com.servoy.eclipse.servoypilot.tools.DocumentationAssistantTools;
-import com.servoy.eclipse.servoypilot.tools.EclipseTools;
-import com.servoy.eclipse.servoypilot.tools.FileReadingTools;
+import com.servoy.eclipse.servoypilot.tools.ExplainAssistantTools;
+import com.servoy.eclipse.servoypilot.tools.QueryBuilderAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.QuickFixAssistantTools;
-import com.servoy.eclipse.servoypilot.tools.TestGenerationTools;
+import com.servoy.eclipse.servoypilot.tools.ReviewAssistantTools;
+import com.servoy.eclipse.servoypilot.tools.UnitTestAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.VibeCodingAssistantTools;
-import com.servoy.eclipse.servoypilot.tools.utility.DatabaseTools;
-import com.servoy.eclipse.servoypilot.tools.utility.KnowledgeTools;
-import com.servoy.eclipse.servoypilot.tools.utility.WebFetchTools;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -311,12 +308,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(
-				new FileReadingTools(), // Read file contents (e.g., for code explanation)
-				new EclipseTools(), // Code search, file operations, workspace queries
-				new KnowledgeTools(), // Servoy API documentation lookup
-				new WebFetchTools() // Fetch docs.servoy.com pages when needed
-			)
+			.tools(ExplainAssistantTools.getTools())
 			.build();
 	}
 
@@ -333,12 +325,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(
-				new FileReadingTools(), // Read file contents (e.g., for code explanation)
-				new EclipseTools(), // Code search, file operations, workspace queries
-				new KnowledgeTools(), // Servoy API documentation lookup
-				new WebFetchTools() // Fetch docs.servoy.com pages when needed
-			)
+			.tools(ReviewAssistantTools.getTools())
 			.build();
 	}
 
@@ -355,13 +342,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(
-				new CodeAnalysisTools(), // Analyze file structure and code
-				new EclipseTools(), // Workspace operations
-				new FileReadingTools(), // Read source files
-				new TestGenerationTools(), // Test generation tools (createTestFile, addTestMethod, etc.)
-				new KnowledgeTools() // Servoy API documentation
-			)
+			.tools(UnitTestAssistantTools.getTools())
 			.build();
 	}
 
@@ -378,13 +359,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(
-				new FileReadingTools(), // Read file contents
-				new EclipseTools(), // Code search, file operations, workspace queries
-				new KnowledgeTools(), // Servoy API documentation lookup
-				new WebFetchTools(), // Fetch docs.servoy.com pages when needed
-				new DatabaseTools() // Inspect table schemas to generate correct QB queries
-			)
+			.tools(QueryBuilderAssistantTools.getTools())
 			.build();
 	}
 
