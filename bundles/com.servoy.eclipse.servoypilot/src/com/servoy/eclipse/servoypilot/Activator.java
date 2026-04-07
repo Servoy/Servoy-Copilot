@@ -41,6 +41,7 @@ public class Activator implements BundleActivator
 	private static Activator bundle;
 
 	private ScopedPreferenceStore preferenceStore;
+	private AiConfiguration aiConfiguration;
 	private ServoyAiModel servoyAIModel;
 	private final List<Runnable> servoyAIModelChangeListeners = new ArrayList<>();
 
@@ -73,15 +74,25 @@ public class Activator implements BundleActivator
 
 		preferenceStore = null;
 		clearServoyAiModel();
+		aiConfiguration = null;
 	}
 
 	public ServoyAiModel getServoyAiModel()
 	{
 		if (servoyAIModel == null)
 		{
-			servoyAIModel = new ServoyAiModel(new AiConfiguration());
+			servoyAIModel = new ServoyAiModel(getAiConfiguration());
 		}
 		return servoyAIModel;
+	}
+
+	public AiConfiguration getAiConfiguration()
+	{
+		if (aiConfiguration == null)
+		{
+			aiConfiguration = new AiConfiguration();
+		}
+		return aiConfiguration;
 	}
 
 	public void clearServoyAiModel()

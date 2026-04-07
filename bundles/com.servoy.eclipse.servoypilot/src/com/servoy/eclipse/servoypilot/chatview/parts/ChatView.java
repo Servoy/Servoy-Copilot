@@ -96,9 +96,16 @@ public class ChatView
 
 	private Runnable chatModelListener = () -> {
 		uiSync.asyncExec(() -> {
-			boolean hasModel = Activator.getDefault().getServoyAiModel() != null &&
-				Activator.getDefault().getServoyAiModel().getConfiguration().isValid();
+			boolean hasModel = Activator.getDefault().getAiConfiguration().isValid();
 			inputArea.setEditable(hasModel);
+			if (assistantSelector != null && !assistantSelector.isDisposed())
+			{
+				assistantSelector.setEnabled(hasModel);
+			}
+			if (actionToolBar != null && !actionToolBar.isDisposed())
+			{
+				actionToolBar.setEnabled(hasModel);
+			}
 			if (!hasModel)
 			{
 				inputArea.setText("No AI model configured. Please set up an AI model in preferences. (Window -> Preferences -> Servoy-> Servoy AI Pilot)");
@@ -258,9 +265,16 @@ public class ChatView
 	public void setInputEnabled(boolean enabled)
 	{
 		uiSync.asyncExec(() -> {
-			boolean realEnabled = Activator.getDefault().getServoyAiModel() != null &&
-				Activator.getDefault().getServoyAiModel().getConfiguration().isValid() && enabled;
+			boolean realEnabled = Activator.getDefault().getAiConfiguration().isValid() && enabled;
 			inputArea.setEnabled(realEnabled);
+			if (assistantSelector != null && !assistantSelector.isDisposed())
+			{
+				assistantSelector.setEnabled(realEnabled);
+			}
+			if (actionToolBar != null && !actionToolBar.isDisposed())
+			{
+				actionToolBar.setEnabled(realEnabled);
+			}
 			if (realEnabled)
 			{
 				// Restore focus after a small delay to ensure browser operations complete

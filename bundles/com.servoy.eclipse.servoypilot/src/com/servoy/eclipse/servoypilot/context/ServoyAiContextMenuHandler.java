@@ -25,6 +25,7 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
@@ -39,6 +40,12 @@ import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
  */
 public class ServoyAiContextMenuHandler extends AbstractHandler
 {
+	@Override
+	public boolean isEnabled()
+	{
+		return Activator.getDefault().getAiConfiguration().isValid();
+	}
+
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException
 	{
