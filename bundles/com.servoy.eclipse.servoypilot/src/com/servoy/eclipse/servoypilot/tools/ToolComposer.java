@@ -22,7 +22,7 @@ import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.eclipse.core.runtime.ILog;
+import com.servoy.eclipse.model.util.ServoyLog;
 
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -44,7 +44,6 @@ import dev.langchain4j.service.tool.ToolExecutor;
  */
 public class ToolComposer
 {
-	private static final ILog logger = ILog.of(ToolComposer.class);
 
 	/**
 	 * Builds a Map of ToolSpecification -> ToolExecutor from the given tool interfaces.
@@ -60,11 +59,11 @@ public class ToolComposer
 	 * @return map ready to pass to AiServices builder.tools(Map)
 	 */
 	@SafeVarargs
-	public static Map<ToolSpecification, ToolExecutor> from(Class<?>... toolInterfaces)
+	public static Map<ToolSpecification, ToolExecutor> from(Class< ? >... toolInterfaces)
 	{
 		Map<ToolSpecification, ToolExecutor> result = new HashMap<>();
 
-		for (Class<?> iface : toolInterfaces)
+		for (Class< ? > iface : toolInterfaces)
 		{
 			if (iface != null && iface.isInterface())
 			{
@@ -83,7 +82,7 @@ public class ToolComposer
 							}
 							catch (Exception e)
 							{
-								logger.error("ToolComposer: failed to register tool method '" +
+								ServoyLog.logError("ToolComposer: failed to register tool method '" +
 									method.getName() + "' from interface " + iface.getName(), e);
 							}
 						}
@@ -108,9 +107,9 @@ public class ToolComposer
 	{
 		try
 		{
-			return (T) Proxy.newProxyInstance(
+			return (T)Proxy.newProxyInstance(
 				iface.getClassLoader(),
-				new Class<?>[] { iface },
+				new Class< ? >[] { iface },
 				(proxy, method, args) -> {
 					if (method.isDefault())
 					{
@@ -131,7 +130,7 @@ public class ToolComposer
 		}
 		catch (Exception e)
 		{
-			logger.error("ToolComposer: failed to create instance for interface " + iface.getName(), e);
+			ServoyLog.logError("ToolComposer: failed to create instance for interface " + iface.getName(), e);
 			return null;
 		}
 	}
