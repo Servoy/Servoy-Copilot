@@ -14,7 +14,6 @@
  with this program; if not, see http://www.gnu.org/licenses or write to the Free
  Software Foundation,Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
  */
-
 package com.servoy.eclipse.servoypilot.util;
 
 import java.util.ArrayList;
@@ -189,7 +188,6 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 					continue; // skip invalid edits
 				}
 
-
 				if (edit.isInsert())
 				{
 					document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
@@ -201,6 +199,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 
 				int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
 				int addedLinesCount = countLines(indentedReplacement);
+
 				if (!edit.isInsert())
 				{
 					for (int i = 0; i < originalLineCount; i++)
@@ -227,14 +226,32 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			}
 
 			backgroundListener = event -> {
-				int lineIndex = textWidget.getLineAtOffset(event.lineOffset);
-				if (removedLines.contains(lineIndex))
+				try
 				{
-					event.lineBackground = removedColor;
+					int widgetOffset = event.lineOffset;
+					int documentOffset = widgetOffset;
+
+					// Convert Widget Offset -> Master Document Offset
+					if (viewer instanceof org.eclipse.jface.text.ITextViewerExtension5 ext5)
+					{
+						documentOffset = ext5.widgetOffset2ModelOffset(widgetOffset);
+					}
+
+					if (documentOffset != -1)
+					{
+						int documentLine = document.getLineOfOffset(documentOffset);
+						if (removedLines.contains(documentLine))
+						{
+							event.lineBackground = removedColor;
+						}
+						else if (addedLines.contains(documentLine))
+						{
+							event.lineBackground = addedColor;
+						}
+					}
 				}
-				else if (addedLines.contains(lineIndex))
+				catch (Exception ex)
 				{
-					event.lineBackground = addedColor;
 				}
 			};
 
@@ -263,39 +280,86 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 
 	private void drawDiffDecorations(GC gc, Set<Integer> lines, String symbol, Color bgColor, int width)
 	{
-		if (lines.isEmpty())
+		if (lines.isEmpty() || textWidget.isDisposed())
 		{
 			return;
 		}
+
+		ISourceViewer viewer = scriptEditor.getViewer();
+		if (viewer == null)
+		{
+			return;
+		}
+		IDocument document = viewer.getDocument();
+		org.eclipse.jface.text.ITextViewerExtension5 ext5 = (viewer instanceof org.eclipse.jface.text.ITextViewerExtension5)
+			? (org.eclipse.jface.text.ITextViewerExtension5)viewer : null;
+
 		List<Integer> sortedLines = new ArrayList<>(lines);
 		Collections.sort(sortedLines);
+		Rectangle clipping = gc.getClipping();
 
 		int i = 0;
 		while (i < sortedLines.size())
 		{
-			int startLine = sortedLines.get(i);
-			int endLine = startLine;
-			while (i + 1 < sortedLines.size() && sortedLines.get(i + 1) == endLine + 1)
+			int startDocLine = sortedLines.get(i);
+			int endDocLine = startDocLine;
+			while (i + 1 < sortedLines.size() && sortedLines.get(i + 1) == endDocLine + 1)
 			{
-				endLine = sortedLines.get(++i);
+				endDocLine = sortedLines.get(++i);
 			}
 			i++;
+
 			try
 			{
-				int startY = textWidget.getLinePixel(startLine);
-				int endY = textWidget.getLinePixel(endLine) + textWidget.getLineHeight(textWidget.getOffsetAtLine(endLine));
-				int height = endY - startY;
+				int startDocOffset = document.getLineOffset(startDocLine);
+				int endDocOffset = document.getLineOffset(endDocLine);
+
+				// Convert to widget offsets (handles folding safely)
+				int startWidgetOffset = ext5 != null ? ext5.modelOffset2WidgetOffset(startDocOffset) : startDocOffset;
+				int endWidgetOffset = ext5 != null ? ext5.modelOffset2WidgetOffset(endDocOffset) : endDocOffset;
+
+				if (startWidgetOffset == -1 && endWidgetOffset == -1)
+				{
+					continue;
+				}
+				if (startWidgetOffset == -1)
+				{
+					startWidgetOffset = endWidgetOffset;
+				}
+				if (endWidgetOffset == -1)
+				{
+					endWidgetOffset = startWidgetOffset;
+				}
+
+				int startY = textWidget.getLocationAtOffset(startWidgetOffset).y;
+				int endY = textWidget.getLocationAtOffset(endWidgetOffset).y;
+				int endLineHeight = textWidget.getLineHeight(endWidgetOffset);
+				int height = (endY + endLineHeight) - startY;
+
+				// Skip if completely out of view
+				if (startY + height < clipping.y || startY > clipping.y + clipping.height)
+				{
+					continue;
+				}
+
 				gc.setForeground(gc.getDevice().getSystemColor(SWT.COLOR_GRAY));
 				gc.setLineWidth(1);
 				gc.setLineStyle(SWT.LINE_SOLID);
-				gc.drawRectangle(0, startY, width - 1, height);
+				gc.drawRectangle(0, startY, width - 1, height - 1);
 
 				gc.setForeground(gc.getDevice().getSystemColor(SWT.COLOR_BLACK));
 				Font oldFont = gc.getFont();
-				for (int line = startLine; line <= endLine; line++)
+
+				// Draw symbols on visible lines
+				for (int line = startDocLine; line <= endDocLine; line++)
 				{
-					int lineY = textWidget.getLinePixel(line);
-					gc.drawString(symbol, 5, lineY + 2, true);
+					int docOffset = document.getLineOffset(line);
+					int wOffset = ext5 != null ? ext5.modelOffset2WidgetOffset(docOffset) : docOffset;
+					if (wOffset != -1)
+					{
+						int lineY = textWidget.getLocationAtOffset(wOffset).y;
+						gc.drawString(symbol, 5, lineY + 2, true);
+					}
 				}
 				gc.setFont(oldFont);
 
@@ -427,8 +491,12 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			}
 			for (Color color : colors)
 			{
-				color.dispose();
+				if (color != null && !color.isDisposed())
+				{
+					color.dispose();
+				}
 			}
+			colors.clear();
 
 			addedLines.clear();
 			removedLines.clear();
@@ -454,10 +522,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	{
 		StyledText text = scriptEditor.getViewer().getTextWidget();
 
-		if (floatingBar != null && !floatingBar.isDisposed())
-		{
-			floatingBar.dispose();
-		}
+		disposeFloatingBar();
 
 		floatingBar = new Composite(text.getShell(), SWT.DOUBLE_BUFFERED | SWT.NO_TRIM | SWT.ON_TOP);
 		floatingBar.moveAbove(null);
@@ -505,7 +570,6 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 				reject();
 				disposeFloatingBar();
 			});
-
 		createStyledButton(
 			floatingBar,
 			text,
@@ -567,7 +631,6 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		final int lineHeight = styledText.getLineHeight() + 5;
 		button.setCursor(display.getSystemCursor(SWT.CURSOR_HAND));
 
-
 		final boolean[] hovered = { false };
 		button.addPaintListener(e -> {
 			GC gc = e.gc;
@@ -592,12 +655,10 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			hovered[0] = true;
 			button.redraw();
 		});
-
 		button.addListener(SWT.MouseExit, e -> {
 			hovered[0] = false;
 			button.redraw();
 		});
-
 		button.addListener(SWT.MouseUp, e -> {
 			if (action != null)
 			{
@@ -625,41 +686,68 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			return;
 		}
 
-		int targetLine;
-
-		if (!addedLines.isEmpty())
-		{
-			targetLine = addedLines.iterator().next();
-		}
-		else if (!removedLines.isEmpty())
-		{
-			targetLine = removedLines.stream().max(Integer::compareTo).orElse(-1);
-		}
-		else
-		{
-			return;
-		}
-
-		try
-		{
-			int lineHeight = text.getLineHeight();
-			int yInText = text.getLinePixel(targetLine);
-			Point displayPoint = text.toDisplay(0, yInText);
-			if (yInText < 0 || yInText > text.getClientArea().height - lineHeight)
+		text.getDisplay().asyncExec(() -> {
+			if (text.isDisposed() || floatingBar == null || floatingBar.isDisposed())
 			{
-				floatingBar.setVisible(false); // hide if line not visible
 				return;
 			}
-			floatingBar.setVisible(true);
-			Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
-			int x = displayPoint.x + text.getClientArea().width - size.x - 10;
-			int y = displayPoint.y - size.y - 10;
 
-			floatingBar.setBounds(x, y, size.x, lineHeight + 10);
-		}
-		catch (Exception ignore)
-		{
-		}
+			int targetLine;
+			if (!addedLines.isEmpty())
+			{
+				targetLine = addedLines.iterator().next();
+			}
+			else if (!removedLines.isEmpty())
+			{
+				targetLine = removedLines.stream().max(Integer::compareTo).orElse(-1);
+			}
+			else
+			{
+				floatingBar.setVisible(false);
+				return;
+			}
+
+			try
+			{
+				ISourceViewer viewer = scriptEditor.getViewer();
+				if (viewer == null)
+				{
+					return;
+				}
+				IDocument document = viewer.getDocument();
+				org.eclipse.jface.text.ITextViewerExtension5 ext5 = (viewer instanceof org.eclipse.jface.text.ITextViewerExtension5)
+					? (org.eclipse.jface.text.ITextViewerExtension5)viewer : null;
+
+				int documentOffset = document.getLineOffset(targetLine);
+				int widgetOffset = ext5 != null ? ext5.modelOffset2WidgetOffset(documentOffset) : documentOffset;
+
+				if (widgetOffset == -1)
+				{
+					floatingBar.setVisible(false);
+					return;
+				}
+
+				int yInText = text.getLocationAtOffset(widgetOffset).y;
+				int lineHeight = text.getLineHeight(widgetOffset);
+
+				if (yInText < 0 || yInText > text.getClientArea().height - lineHeight)
+				{
+					floatingBar.setVisible(false); // hide if line not visible
+					return;
+				}
+
+				floatingBar.setVisible(true);
+				Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
+				Point displayPoint = text.toDisplay(0, yInText);
+				int x = displayPoint.x + text.getClientArea().width - size.x - 10;
+				int y = displayPoint.y - size.y - 10;
+
+				floatingBar.setBounds(x, y, size.x, lineHeight + 10);
+			}
+			catch (Exception ignore)
+			{
+			}
+		});
 	}
 
 	private void disposeFloatingBar()
