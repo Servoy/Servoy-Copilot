@@ -24,10 +24,10 @@ import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
-import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.IDocumentExtension4;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.LineBackgroundListener;
@@ -51,9 +51,7 @@ import org.eclipse.ui.IFileEditorInput;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
-import com.servoy.eclipse.servoypilot.services.CodeFormattingService;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
-import com.servoy.eclipse.servoypilot.services.ParserService;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 /**
@@ -93,16 +91,6 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 
 	private ScriptEditor scriptEditor;
 
-	private static class PreviewChange
-	{
-		int startOffset;
-		int originalLength;
-		String modifiedLine;
-		String lineDelimiter;
-		String originalLine;
-		public boolean isInsert;
-	}
-
 	public InlineDocumentChangesPreviewManager(ScriptEditor scriptEditor)
 	{
 		super();
@@ -114,7 +102,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		List<SourceEdit> sourceEdits) throws Exception
 	{
 		ISourceViewer viewer = scriptEditor.getViewer();
-		if (viewer == null)
+		if (viewer == null || viewer.getTextWidget() == null)
 		{
 			return;
 		}
@@ -136,94 +124,16 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		removedLines.clear();
 		addedLines.clear();
 
-		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits);
-		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
-
 		DocumentRewriteSession docRewriteSession = null;
 		try
 		{
 			textWidget.setRedraw(false);
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
+			if (document instanceof IDocumentExtension4 docExt4)
 			{
-				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+				docRewriteSession = docExt4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
 			}
 
-			for (SourceEdit edit : sortedEdits)
-			{
-				int startLine = edit.startLine() - 1;
-				Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(startLine));
-				int endLine = document.getLineOfOffset(statement.sourceEnd());
-
-				int startOffset = document.getLineOffset(startLine);
-				int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
-
-				String originalStatement = document.get(startOffset, endOffset - startOffset);
-				String lineDelimiter = document.getLineDelimiter(startLine);
-				if (lineDelimiter == null)
-				{
-					lineDelimiter = "\n";
-				}
-
-				String indentedReplacement = CodeFormattingService.getInstance()
-					.format(edit.replacement(), document, startOffset);
-
-				String previewBlock = null;
-				if (edit.isInsert())
-				{
-					previewBlock = indentedReplacement + lineDelimiter;
-				}
-				else if (edit.isReplacement())
-				{
-					previewBlock = originalStatement +
-						indentedReplacement +
-						lineDelimiter;
-				}
-				else if (edit.isDelete())
-				{
-					previewBlock = originalStatement;
-				}
-				else
-				{
-					ServoyLog.logWarning("Unsupported edit type for preview: " + edit, null);
-					continue; // skip invalid edits
-				}
-
-				if (edit.isInsert())
-				{
-					document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
-				}
-				else
-				{
-					document.replace(startOffset, endOffset - startOffset, previewBlock);
-				}
-
-				int originalLineCount = edit.isInsert() ? 0 : countLines(originalStatement);
-				int addedLinesCount = countLines(indentedReplacement);
-
-				if (!edit.isInsert())
-				{
-					for (int i = 0; i < originalLineCount; i++)
-					{
-						removedLines.add(startLine + i);
-					}
-				}
-				if (!edit.isDelete())
-				{
-					for (int i = 0; i < addedLinesCount; i++)
-					{
-						addedLines.add(startLine + originalLineCount + i);
-					}
-				}
-
-				PreviewChange change = new PreviewChange();
-				change.startOffset = startOffset;
-				change.originalLength = previewBlock.length();
-				change.modifiedLine = indentedReplacement;
-				change.originalLine = originalStatement;
-				change.lineDelimiter = lineDelimiter;
-				change.isInsert = edit.isInsert();
-				previewChanges.add(change);
-			}
+			previewChanges.addAll(applyEdits(document, sourceEdits));
 
 			backgroundListener = event -> {
 				try
@@ -276,6 +186,29 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		}
 
 		showAcceptRejectUI(scriptEditor);
+	}
+
+	@Override
+	public void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement)
+	{
+		int originalLineCount = edit.isInsert() ? 0 : countLines(original);
+		int addedLinesCount = countLines(replacement);
+
+		// Update the sets for the LineBackgroundPainter
+		if (!edit.isInsert())
+		{
+			for (int i = 0; i < originalLineCount; i++)
+			{
+				removedLines.add(startLine + i);
+			}
+		}
+		if (!edit.isDelete())
+		{
+			for (int i = 0; i < addedLinesCount; i++)
+			{
+				addedLines.add(startLine + originalLineCount + i);
+			}
+		}
 	}
 
 	private void drawDiffDecorations(GC gc, Set<Integer> lines, String symbol, Color bgColor, int width)

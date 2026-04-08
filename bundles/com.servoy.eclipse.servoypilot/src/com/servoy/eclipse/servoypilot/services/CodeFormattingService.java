@@ -16,6 +16,9 @@
 */
 package com.servoy.eclipse.servoypilot.services;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 import org.eclipse.core.resources.IProject;
 import org.eclipse.dltk.core.PreferencesLookupDelegate;
 import org.eclipse.dltk.javascript.core.JavaScriptNature;
@@ -34,51 +37,41 @@ import com.servoy.eclipse.model.ServoyModelFinder;
  */
 public class CodeFormattingService
 {
-	private static CodeFormattingService instance;
-	private final IProject project;
+	private static final Map<IDocument, CodeFormattingService> INSTANCES = new WeakHashMap<>();
 
-	private CodeFormattingService()
+	private IDocument document;
+	private IScriptFormatter formatter;
+
+	private CodeFormattingService(IDocument document)
 	{
-		this.project = ServoyModelFinder.getServoyModel().getActiveProject().getProject();
+		IProject project = ServoyModelFinder.getServoyModel().getActiveProject().getProject();
+		this.document = document;
+		IScriptFormatterFactory factory = ScriptFormatterManager.getSelected(JavaScriptNature.NATURE_ID, project);
+		if (factory != null)
+		{
+			this.formatter = factory.createFormatter(TextUtilities.getDefaultLineDelimiter(document),
+				factory.retrievePreferences(new PreferencesLookupDelegate(project)));
+		}
 	}
 
-	public static synchronized CodeFormattingService getInstance()
+	public static synchronized CodeFormattingService getInstance(IDocument document)
 	{
-		if (instance == null)
-		{
-			instance = new CodeFormattingService();
-		}
-		return instance;
+		return INSTANCES.computeIfAbsent(document, CodeFormattingService::new);
 	}
 
 	/**
 	 * Takes the raw AI replacement and formats it to match the document's 
 	 * current indentation level and project style rules.
 	 */
-	public String format(String rawCode, IDocument document, int offset)
+	public String format(String rawCode, int offset)
 	{
-		if (rawCode == null || rawCode.isEmpty())
+		if (rawCode == null || rawCode.isEmpty() || formatter == null)
 		{
 			return rawCode;
 		}
 
 		try
 		{
-			String lineDelimiter = document.getLineDelimiter(document.getLineOfOffset(offset));
-			if (lineDelimiter == null)
-			{
-				lineDelimiter = "\n";
-			}
-
-			IScriptFormatterFactory factory = ScriptFormatterManager.getSelected(JavaScriptNature.NATURE_ID, project);
-			if (factory == null)
-			{
-				return rawCode;
-			}
-
-			IScriptFormatter formatter = factory.createFormatter(TextUtilities.getDefaultLineDelimiter(document),
-				factory.retrievePreferences(new PreferencesLookupDelegate(project)));
-
 			int initialLevel = formatter.detectIndentationLevel(document, offset);
 			TextEdit edit = formatter.format(rawCode, 0, rawCode.length(), initialLevel);
 
