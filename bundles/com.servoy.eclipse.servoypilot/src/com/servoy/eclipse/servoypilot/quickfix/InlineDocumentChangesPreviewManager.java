@@ -319,11 +319,17 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 
 	private void accept()
 	{
+		DocumentRewriteSession docRewriteSession = null;
+		IDocument document = null;
 		try
 		{
 			ISourceViewer viewer = scriptEditor.getViewer();
-			IDocument document = viewer.getDocument();
+			document = viewer.getDocument();
 
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
+			{
+				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+			}
 			for (PreviewChange change : previewChanges)
 			{
 				int line = document.getLineOfOffset(change.startOffset);
@@ -339,16 +345,29 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		{
 			ServoyLog.logError("Cannot accept source modification", e);
 		}
+		finally
+		{
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
+			{
+				docextension4.stopRewriteSession(docRewriteSession);
+			}
+		}
 
 		cleanup();
 	}
 
 	private void reject()
 	{
+		DocumentRewriteSession docRewriteSession = null;
+		IDocument document = null;
 		try
 		{
 			ISourceViewer viewer = scriptEditor.getViewer();
-			IDocument document = viewer.getDocument();
+			document = viewer.getDocument();
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
+			{
+				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+			}
 
 			for (PreviewChange change : previewChanges)
 			{
@@ -374,6 +393,13 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		catch (Exception e)
 		{
 			ServoyLog.logError("Cannot revert the proposed source modification", e);
+		}
+		finally
+		{
+			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
+			{
+				docextension4.stopRewriteSession(docRewriteSession);
+			}
 		}
 
 		cleanup();
