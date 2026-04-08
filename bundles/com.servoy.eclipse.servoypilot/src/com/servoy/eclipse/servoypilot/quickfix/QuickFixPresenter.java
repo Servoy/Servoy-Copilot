@@ -38,6 +38,7 @@ import org.eclipse.ui.ide.IDE;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
+import com.servoy.eclipse.servoypilot.util.InlineDocumentChangesPreviewManager;
 
 /**
  * @author emera
