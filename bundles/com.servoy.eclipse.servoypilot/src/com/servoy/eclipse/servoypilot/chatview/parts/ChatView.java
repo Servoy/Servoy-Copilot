@@ -56,6 +56,7 @@ import org.eclipse.ui.PlatformUI;
 
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 import com.servoy.eclipse.ui.browser.BrowserFactory;
 import com.servoy.eclipse.ui.browser.IBrowser;
 import com.servoy.eclipse.ui.tweaks.IconPreferences;
@@ -121,6 +122,9 @@ public class ChatView
 	public void createPartControl(Composite parent)
 	{
 		presenter.setChatView(this);
+
+		// Set the part icon based on current theme
+		ChatViewActivator.updateChatViewIcon(IconPreferences.getInstance().getUseDarkThemeIcons());
 
 		// Initialize SelectionTracker to start monitoring selections
 		SelectionTracker.getInstance();

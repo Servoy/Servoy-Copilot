@@ -171,4 +171,38 @@ public class ChatViewActivator
 		}
 		return false;
 	}
+
+	/**
+	 * Updates the ChatView icon based on the current theme.
+	 * 
+	 * @param isDarkTheme true if dark theme is active, false for light theme
+	 * @return true if the icon was successfully updated, false otherwise
+	 */
+	public static boolean updateChatViewIcon(boolean isDarkTheme)
+	{
+		try
+		{
+			IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+			if (window != null)
+			{
+				EPartService partService = window.getService(EPartService.class);
+				if (partService != null)
+				{
+					MPart mPart = partService.findPart(CHAT_VIEW_ID);
+					if (mPart != null)
+					{
+						String iconFolder = isDarkTheme ? "darkicons" : "icons";
+						String iconURI = "platform:/plugin/com.servoy.eclipse.servoypilot/" + iconFolder + "/aichat.png";
+						mPart.setIconURI(iconURI);
+						return true;
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError(e);
+		}
+		return false;
+	}
 }
