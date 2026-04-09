@@ -19,10 +19,10 @@ package com.servoy.eclipse.servoypilot.tools.testgeneration;
 import org.eclipse.core.resources.IFile;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.dto.FileStructure;
+import com.servoy.eclipse.servoypilot.dto.SymbolInfo;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 import com.servoy.eclipse.servoypilot.services.FileStructureService;
-import com.servoy.eclipse.servoypilot.services.dto.FileStructure;
-import com.servoy.eclipse.servoypilot.services.dto.SymbolInfo;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;

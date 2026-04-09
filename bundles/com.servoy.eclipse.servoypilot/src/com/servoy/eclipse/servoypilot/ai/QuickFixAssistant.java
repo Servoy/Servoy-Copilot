@@ -16,7 +16,7 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
-import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
+import com.servoy.eclipse.servoypilot.dto.CodeChanges;
 
 import dev.langchain4j.service.UserMessage;
 

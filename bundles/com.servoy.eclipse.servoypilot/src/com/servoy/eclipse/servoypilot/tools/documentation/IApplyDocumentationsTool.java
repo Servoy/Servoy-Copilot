@@ -26,10 +26,10 @@ import org.eclipse.core.resources.IFile;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.dto.DocumentationItem;
 import com.servoy.eclipse.servoypilot.exceptions.ValidationException;
+import com.servoy.eclipse.servoypilot.services.DocumentationValidatorService;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
-import com.servoy.eclipse.servoypilot.services.documentation.DocumentationValidator;
-import com.servoy.eclipse.servoypilot.tools.dto.DocumentationItem;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -79,7 +79,7 @@ public interface IApplyDocumentationsTool
 
 					List<String> errors = new ArrayList<>();
 					int successCount = 0;
-					DocumentationValidator validator = new DocumentationValidator();
+					DocumentationValidatorService validator = new DocumentationValidatorService();
 					DocumentationToolsHelper helper = DocumentationToolsHelper.getInstance();
 
 					for (DocumentationItem item : sortedItems)

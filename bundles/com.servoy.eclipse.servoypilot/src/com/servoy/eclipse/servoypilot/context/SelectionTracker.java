@@ -35,7 +35,7 @@ import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 
-import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 
 /**
  * Singleton service that tracks the current text selection in JavaScript editors.

@@ -23,9 +23,9 @@ import org.apache.commons.io.IOUtils;
 import org.eclipse.core.resources.IFile;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.dto.CodeChunk;
-import com.servoy.eclipse.servoypilot.services.dto.FileStructure;
-import com.servoy.eclipse.servoypilot.services.dto.SymbolInfo;
+import com.servoy.eclipse.servoypilot.dto.CodeChunk;
+import com.servoy.eclipse.servoypilot.dto.FileStructure;
+import com.servoy.eclipse.servoypilot.dto.SymbolInfo;
 
 /**
  * Service for reading JavaScript files in manageable chunks.

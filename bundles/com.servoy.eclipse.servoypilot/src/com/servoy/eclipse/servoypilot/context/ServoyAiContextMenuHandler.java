@@ -27,8 +27,8 @@ import org.eclipse.ui.handlers.HandlerUtil;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
-import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
-import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.dto.CodeContext;
+import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 import com.servoy.eclipse.servoypilot.util.ChatViewActivator;
 

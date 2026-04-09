@@ -32,8 +32,8 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.dto.FileStructure;
-import com.servoy.eclipse.servoypilot.services.dto.SymbolInfo;
+import com.servoy.eclipse.servoypilot.dto.FileStructure;
+import com.servoy.eclipse.servoypilot.dto.SymbolInfo;
 
 /**
  * Service for analyzing JavaScript file structure using DLTK APIs.

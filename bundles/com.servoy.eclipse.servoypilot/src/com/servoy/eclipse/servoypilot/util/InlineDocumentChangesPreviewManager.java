@@ -51,8 +51,8 @@ import org.eclipse.ui.IFileEditorInput;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileCompareEditorInput;
+import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.services.CompareEditorService;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 /**
  * Manages the interactive inline "ghost" preview of AI-generated code changes 
@@ -70,7 +70,7 @@ import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
  * <p>This class operates directly on the {@link org.eclipse.jface.text.IDocument} 
  * to insert temporary projections or overlays without permanently modifying 
  * the underlying file until the "Keep" action is triggered.</p>
- * @see com.servoy.eclipse.servoypilot.ai.SourceEdit
+ * @see com.servoy.eclipse.servoypilot.dto.SourceEdit
  * @author emera
  */
 public class InlineDocumentChangesPreviewManager implements IDocumentChangesPreviewManager

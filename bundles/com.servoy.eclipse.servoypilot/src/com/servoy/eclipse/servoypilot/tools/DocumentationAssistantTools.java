@@ -18,17 +18,18 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.util.Map;
 
-import com.servoy.eclipse.servoypilot.tools.codeanalysis.IAnalyzeFileStructureTool;
-import com.servoy.eclipse.servoypilot.tools.codeanalysis.IGetCodeChunkTool;
-import com.servoy.eclipse.servoypilot.tools.codeanalysis.IResolveIdentifierTypeTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IAnalyzeFileStructureTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IGetCodeChunkTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IResolveIdentifierTypeTool;
 import com.servoy.eclipse.servoypilot.tools.documentation.IApplyDocumentationsTool;
 import com.servoy.eclipse.servoypilot.tools.documentation.IGetAvailableMembersForTypeTool;
 import com.servoy.eclipse.servoypilot.tools.documentation.IGetCurrentSelectionTool;
 import com.servoy.eclipse.servoypilot.tools.documentation.IGetDocumentationForIdentifiersTool;
 import com.servoy.eclipse.servoypilot.tools.documentation.IGetDocumentationForTypeMemberTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFileSearchRegExpTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFileSearchTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFindFilesTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFindFilesTool;
+import com.servoy.eclipse.servoypilot.util.ToolComposer;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;

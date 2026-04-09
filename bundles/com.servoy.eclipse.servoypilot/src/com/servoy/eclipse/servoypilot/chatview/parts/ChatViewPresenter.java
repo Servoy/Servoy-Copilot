@@ -63,11 +63,11 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
+import com.servoy.eclipse.servoypilot.context.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
-import com.servoy.eclipse.servoypilot.quickfix.QuickFixPresenter;
-import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
-import com.servoy.eclipse.servoypilot.tools.dto.CodeChanges;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
+import com.servoy.eclipse.servoypilot.dto.CodeChanges;
+import com.servoy.eclipse.servoypilot.dto.SourceEdit;
+import com.servoy.eclipse.servoypilot.util.ResourceUtilities;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;

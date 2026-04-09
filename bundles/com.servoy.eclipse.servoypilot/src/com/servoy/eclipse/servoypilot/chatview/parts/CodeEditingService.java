@@ -45,7 +45,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
 import org.eclipse.ui.texteditor.ITextEditor;
 
-import com.servoy.eclipse.servoypilot.tools.ResourceUtilities;
+import com.servoy.eclipse.servoypilot.util.ResourceUtilities;
 
 import jakarta.inject.Inject;
 

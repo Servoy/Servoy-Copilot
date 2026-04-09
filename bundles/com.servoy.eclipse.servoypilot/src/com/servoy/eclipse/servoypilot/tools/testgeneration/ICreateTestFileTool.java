@@ -19,7 +19,7 @@ package com.servoy.eclipse.servoypilot.tools.testgeneration;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.services.TargetService;
 import com.servoy.eclipse.servoypilot.services.TestFileService;
-import com.servoy.eclipse.servoypilot.tools.utility.UIThreadHelper;
+import com.servoy.eclipse.servoypilot.tools.core.UIThreadHelper;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;

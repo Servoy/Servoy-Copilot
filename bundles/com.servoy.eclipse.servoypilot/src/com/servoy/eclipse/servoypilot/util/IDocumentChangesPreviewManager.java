@@ -25,9 +25,9 @@ import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.services.CodeFormattingService;
 import com.servoy.eclipse.servoypilot.services.ParserService;
-import com.servoy.eclipse.servoypilot.tools.dto.SourceEdit;
 
 /**
  * @author emera

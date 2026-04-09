@@ -18,9 +18,10 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.util.Map;
 
-import com.servoy.eclipse.servoypilot.tools.quickfix.ICodeContextTool;
-import com.servoy.eclipse.servoypilot.tools.quickfix.IGeneratedCodeValidationTool;
-import com.servoy.eclipse.servoypilot.tools.quickfix.IReadPersistFileTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.ICodeContextTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IGeneratedCodeValidationTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IReadPersistFileTool;
+import com.servoy.eclipse.servoypilot.util.ToolComposer;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;

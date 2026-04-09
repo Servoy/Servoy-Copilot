@@ -38,7 +38,7 @@ import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.services.FilePathResolver;
 
 /**

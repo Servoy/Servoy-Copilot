@@ -18,21 +18,22 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.util.Map;
 
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFileSearchRegExpTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFileSearchTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IFindFilesTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.IGetProblemsTool;
-import com.servoy.eclipse.servoypilot.tools.eclipse.ISearchAndReplaceTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IGetFileInfoTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IGetFileOutlineTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IReadFileContextTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IReadFileLinesTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IReadFileRangesTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IReadFileTool;
-import com.servoy.eclipse.servoypilot.tools.filereading.IReadFunctionTool;
-import com.servoy.eclipse.servoypilot.tools.utility.IDatabaseTool;
-import com.servoy.eclipse.servoypilot.tools.utility.IKnowledgeTool;
-import com.servoy.eclipse.servoypilot.tools.utility.IWebFetchTool;
+import com.servoy.eclipse.servoypilot.tools.core.IDatabaseTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IFindFilesTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IGetFileInfoTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IGetFileOutlineTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IGetProblemsTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileContextTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileLinesTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileRangesTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IReadFunctionTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
+import com.servoy.eclipse.servoypilot.util.ToolComposer;
+import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
+import com.servoy.eclipse.tools.retrieval.IWebFetchTool;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;

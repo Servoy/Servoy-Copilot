@@ -20,8 +20,8 @@ import java.util.Optional;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
-import com.servoy.eclipse.servoypilot.context.dto.CodeContext;
-import com.servoy.eclipse.servoypilot.context.dto.SelectionInfo;
+import com.servoy.eclipse.servoypilot.dto.CodeContext;
+import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.services.CodeContextService;
 
 import dev.langchain4j.agent.tool.P;
