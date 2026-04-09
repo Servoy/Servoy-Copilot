@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.dltk.javascript.ast.Statement;
+import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -102,6 +103,11 @@ public interface IDocumentChangesPreviewManager
 				continue; // skip invalid edits
 			}
 
+			if (shouldSkipChange(document, edit, startOffset, endOffset, originalStatement, indentedReplacement, previewBlock))
+			{
+				continue; //the change was already applied or previewed, skip it to avoid duplication
+			}
+
 			if (edit.isInsert())
 			{
 				document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
@@ -125,5 +131,56 @@ public interface IDocumentChangesPreviewManager
 			appliedChanges.add(change);
 		}
 		return appliedChanges;
+	}
+
+	default boolean shouldSkipChange(IDocument document, SourceEdit edit, int startOffset, int endOffset, String originalStatement, String indentedReplacement,
+		String previewBlock)
+	{
+		boolean shouldSkip = false;
+		if (edit.isDelete())
+		{
+			// If the original statement is ALREADY GONE (or doesn't match), 
+			// it means the delete fix was already applied.
+			if (!isContentAtRange(document, startOffset, endOffset, originalStatement))
+			{
+				shouldSkip = true;
+			}
+		}
+		else
+		{
+			// For Inserts and Replacements, use the "Fix or Preview" check
+			boolean fixAlreadyApplied = isContentAtRange(document, startOffset, endOffset, indentedReplacement);
+			boolean previewAlreadyRendered = isContentAtRange(document, startOffset, endOffset, previewBlock);
+
+			if (fixAlreadyApplied || previewAlreadyRendered)
+			{
+				shouldSkip = true;
+			}
+		}
+		return shouldSkip;
+	}
+
+	private boolean isContentAtRange(IDocument doc, int start, int end, String expected)
+	{
+		try
+		{
+			int lengthToRead = end - start;
+			if (lengthToRead <= 0)
+			{
+				return false;
+			}
+
+			if (start + lengthToRead > doc.getLength())
+			{
+				return false;
+			}
+
+			String actual = doc.get(start, lengthToRead);
+			return actual.trim().equals(expected.trim());
+		}
+		catch (BadLocationException e)
+		{
+			return false;
+		}
 	}
 }
