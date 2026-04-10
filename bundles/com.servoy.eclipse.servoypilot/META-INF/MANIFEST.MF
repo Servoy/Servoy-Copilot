@@ -3,6 +3,7 @@ Bundle-ManifestVersion: 2
 Bundle-Name: Servoy AI Pilot
 Bundle-SymbolicName: com.servoy.eclipse.servoypilot;singleton:=true
 Bundle-Version: 2026.3.0.qualifier
+Export-Package: com.servo.eclipse.servoypilot.mcp.server
 Bundle-Activator: com.servoy.eclipse.servoypilot.Activator
 Bundle-Vendor: Servoy
 Require-Bundle: org.eclipse.jface,
@@ -17,12 +18,14 @@ Require-Bundle: org.eclipse.jface,
  org.eclipse.dltk.core,
  org.eclipse.dltk.javascript.core,
  org.eclipse.dltk.javascript.ui,
- org.eclipse.dltk.ui
+ org.eclipse.dltk.ui,
+ org.apache.tomcat
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot
 Import-Package: com.equo.chromium.swt;resolution:=optional,
  com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",
+ com.fasterxml.jackson.databind.node;version="[2.21.0,3.0.0)",
  com.google.common.io;version="32.1.0",
  com.servoy.base.persistence.constants,
  com.servoy.base.query,
@@ -47,10 +50,14 @@ Import-Package: com.equo.chromium.swt;resolution:=optional,
  com.servoy.j2db.util,
  dev.langchain4j.agent.tool;version="[1.10.0,2.0.0)",
  dev.langchain4j.data.message;version="[1.10.0,2.0.0)",
+ dev.langchain4j.internal;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.client;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.protocol;version="[1.13.0,2.0.0)",
  dev.langchain4j.memory;version="[1.10.0,2.0.0)",
  dev.langchain4j.memory.chat;version="[1.10.0,2.0.0)",
  dev.langchain4j.model.catalog;version="[1.10.0,2.0.0)",
  dev.langchain4j.model.chat;version="[1.10.0,2.0.0)",
+ dev.langchain4j.model.chat.request.json;version="[1.13.0,2.0.0)",
  dev.langchain4j.model.chat.response;version="[1.10.0,2.0.0)",
  dev.langchain4j.model.googleai;version="[1.10.0,2.0.0)",
  dev.langchain4j.model.openai;version="[1.10.0,2.0.0)",
@@ -59,6 +66,9 @@ Import-Package: com.equo.chromium.swt;resolution:=optional,
  dev.langchain4j.store.memory.chat;version="[1.10.0,2.0.0)",
  jakarta.annotation;version="[2.1.0,3.0.0)",
  jakarta.inject;version="[2.0.0,3.0.0)",
+ jakarta.servlet;version="[6.1.0,7.0.0)",
+ jakarta.servlet.annotation;version="[6.1.0,7.0.0)",
+ jakarta.servlet.http;version="[6.1.0,7.0.0)",
  org.apache.commons.io;version="[2.13.0,3.0.0)",
  org.apache.commons.lang3;version="3.18.0",
  org.apache.commons.lang3.exception;version="3.18.0",

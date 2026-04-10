@@ -143,4 +143,11 @@
             nature="org.eclipse.dltk.javascript.core.nature">
       </correctionProcessor>
 </extension>
+ <extension
+       point="org.apache.tomcat.serviceprovider">
+    <serviceprovider
+          class="com.servo.eclipse.servoypilot.mcp.server.ServiceProvider"
+          id="com.servoy.eclipse.servoypilot.serviceprovider">
+    </serviceprovider>
+ </extension>
 </plugin>
