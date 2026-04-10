@@ -25,7 +25,7 @@ Automatic-Module-Name: com.servoy.eclipse.servoypilot
 Import-Package: com.equo.chromium.swt;resolution:=optional,
  com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",
- com.fasterxml.jackson.databind.node;version="[2.21.0,3.0.0)",
+ com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)",
  com.google.common.io;version="32.1.0",
  com.servoy.base.persistence.constants,
  com.servoy.base.query,
