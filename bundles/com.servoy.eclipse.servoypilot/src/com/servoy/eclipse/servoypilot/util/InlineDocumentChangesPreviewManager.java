@@ -314,7 +314,8 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		return text.endsWith("\n") ? len - 1 : len;
 	}
 
-	private void accept()
+	@Override
+	public void accept()
 	{
 		DocumentRewriteSession docRewriteSession = null;
 		IDocument document = null;
@@ -353,13 +354,18 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		cleanup();
 	}
 
-	private void reject()
+	@Override
+	public void reject()
 	{
 		DocumentRewriteSession docRewriteSession = null;
 		IDocument document = null;
 		try
 		{
 			ISourceViewer viewer = scriptEditor.getViewer();
+			if (viewer == null)
+			{
+				return;
+			}
 			document = viewer.getDocument();
 			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
 			{
@@ -414,6 +420,10 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		try
 		{
 			ISourceViewer viewer = scriptEditor.getViewer();
+			if (viewer == null || viewer.getTextWidget() == null)
+			{
+				return;
+			}
 			StyledText textWidget = viewer.getTextWidget();
 
 			if (backgroundListener != null)
@@ -733,5 +743,10 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 				change.modifiedLine + change.lineDelimiter);
 		}
 		return builder.toString();
+	}
+
+	public List<PreviewChange> getPreviewChanges()
+	{
+		return new ArrayList<>(previewChanges);
 	}
 }

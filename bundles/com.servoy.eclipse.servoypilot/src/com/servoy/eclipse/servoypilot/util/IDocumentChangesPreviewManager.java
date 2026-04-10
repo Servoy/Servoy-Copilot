@@ -183,4 +183,8 @@ public interface IDocumentChangesPreviewManager
 			return false;
 		}
 	}
+
+	public void accept();
+
+	public void reject();
 }

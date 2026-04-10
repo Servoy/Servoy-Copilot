@@ -17,8 +17,10 @@
 
 package com.servoy.eclipse.servoypilot.context;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
@@ -38,7 +40,9 @@ import org.eclipse.ui.ide.IDE;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
+import com.servoy.eclipse.servoypilot.util.IDocumentChangesPreviewManager.PreviewChange;
 import com.servoy.eclipse.servoypilot.util.InlineDocumentChangesPreviewManager;
+import com.servoy.eclipse.servoypilot.util.MultiDocumentChangesPreviewManager;
 
 /**
  * @author emera
@@ -52,14 +56,15 @@ public class QuickFixPresenter
 		return INSTANCE;
 	}
 
-	private InlineDocumentChangesPreviewManager activePreviewManager;
+	private final Map<IPath, InlineDocumentChangesPreviewManager> activeInlineManagers = new HashMap<>();
+	private final Map<IPath, List<SourceEdit>> pendingEdits = new HashMap<>();
+	private MultiDocumentChangesPreviewManager activeMultiManager;
 
 	public void previewFix(String fixPrompt, CodeChanges fix)
 	{
 		Display.getDefault().asyncExec(() -> {
 			try
 			{
-				IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 				Set<IPath> uniquePaths = new HashSet<>();
 				for (SourceEdit edit : fix.codeChanges())
 				{
@@ -71,36 +76,36 @@ public class QuickFixPresenter
 					uniquePaths.add(new Path(editPath));
 				}
 
+				if (uniquePaths.size() > 1)
+				{
+					activeMultiManager = new MultiDocumentChangesPreviewManager();
+					//TODO check, do we need to clear, do we always get all the changes back?
+					activeMultiManager.preview(fix.codeChanges());
+				}
+
 				for (IPath path : uniquePaths)
 				{
-					IFile fileToEdit = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-					IEditorPart targetEditor = findEditor(page, fileToEdit);
+					List<SourceEdit> filteredEdits = fix.codeChanges().stream()
+						.filter(e -> {
+							String p = e.filePath();
+							if (p.startsWith("L/"))
+							{
+								p = p.substring(2);
+							}
+							return new Path(p).equals(path);
+						})
+						.toList();
 
-					if (targetEditor instanceof ScriptEditor scriptEditor)
+					InlineDocumentChangesPreviewManager existingManager = activeInlineManagers.get(path);
+					if (existingManager != null)
 					{
-						List<SourceEdit> filteredEdits = fix.codeChanges().stream()
-							.filter(e -> {
-								String p = e.filePath();
-								if (p.startsWith("L/"))
-								{
-									p = p.substring(2);
-								}
-								return new Path(p).equals(path);
-							})
-							.toList();
+						//we have new updates, clear the old ones
+						existingManager.clearPreview();
+					}
+					pendingEdits.put(path, filteredEdits);
 
-						if (activePreviewManager != null)
-						{
-							activePreviewManager.clearPreview();
-						}
-						//TODO improve preview for multiple editors and multiple/large fixes
-						this.activePreviewManager = new InlineDocumentChangesPreviewManager(scriptEditor);
-						activePreviewManager.preview(filteredEdits);
-					}
-					else
-					{
-						ServoyLog.logError("Target editor is not a ScriptEditor, cannot apply quick fix preview");
-					}
+					// TODO should look for the initial file that triggered the fix and show the inline preview there
+					openInlinePreview(path);
 				}
 			}
 			catch (Exception e)
@@ -142,5 +147,89 @@ public class QuickFixPresenter
 			targetEditor = IDE.openEditor(page, fileToEdit, true);
 		}
 		return targetEditor;
+	}
+
+	public void openInlinePreview(String filePath)
+	{
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		try
+		{
+			openInlinePreview(path);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error opening inline preview for " + filePath, e);
+		}
+	}
+
+	public void openInlinePreview(IPath path) throws Exception
+	{
+		IFile fileToEdit = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+		IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+		IEditorPart targetEditor = findEditor(page, fileToEdit);
+
+		if (targetEditor instanceof ScriptEditor scriptEditor)
+		{
+			page.activate(targetEditor);
+
+			Display.getDefault().asyncExec(() -> {
+				try
+				{
+					InlineDocumentChangesPreviewManager inlinePreviewManager = new InlineDocumentChangesPreviewManager(scriptEditor);
+					activeInlineManagers.put(path, inlinePreviewManager);
+					for (PreviewChange pc : inlinePreviewManager.getPreviewChanges())
+					{
+						activeMultiManager.addAppliedChange(path, pc);
+					}
+
+					if (scriptEditor.getViewer() != null)
+					{
+						inlinePreviewManager.preview(pendingEdits.get(path));
+					}
+					else
+					{
+						ServoyLog.logError("Viewer is still null after async yield. Cannot apply inline preview to " + path);
+					}
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logError("Error applying delayed inline preview", e);
+				}
+			});
+		}
+		else
+		{
+			ServoyLog.logError("Target editor is not a ScriptEditor, cannot apply quick fix preview");
+		}
+	}
+
+	public void onUserClickedKeepAll()
+	{
+		if (activeMultiManager != null)
+		{
+			activeMultiManager.accept();
+		}
+
+		clearInlineManagers();
+	}
+
+	public void clearInlineManagers()
+	{
+		// clear the UI colors from any open editors
+		for (InlineDocumentChangesPreviewManager inline : activeInlineManagers.values())
+		{
+			inline.clearPreview();
+		}
+		activeInlineManagers.clear();
+	}
+
+	public void onUserClickedUndoAll()
+	{
+		if (activeMultiManager != null)
+		{
+			activeMultiManager.reject();
+		}
+
+		clearInlineManagers();
 	}
 }
