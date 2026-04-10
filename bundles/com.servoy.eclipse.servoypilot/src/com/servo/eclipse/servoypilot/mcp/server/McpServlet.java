@@ -19,6 +19,15 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+/**
+ * This servlet acts as the main entry point for handling JSON-RPC requests from Claude via the MCP protocol. It performs the following functions:
+ * 
+ * This doesn't work on older servoy releases because of the jakarta.servlet dependency. You need Servoy 2025.9 or newer for that.
+ * TODO so this should be somehow moved?
+ * 
+ * @author jcomp
+ *
+ */
 @WebServlet("/mcp")
 public class McpServlet extends HttpServlet
 {
