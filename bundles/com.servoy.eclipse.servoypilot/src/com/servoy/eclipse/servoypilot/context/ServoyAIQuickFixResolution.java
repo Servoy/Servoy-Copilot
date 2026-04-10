@@ -17,9 +17,6 @@
 
 package com.servoy.eclipse.servoypilot.context;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
@@ -253,40 +250,6 @@ public class ServoyAIQuickFixResolution implements IMarkerResolution, IAnnotatio
 		prompt.append("codeContext(filePath, lineNumber, characterOffset)\n");
 		prompt.append("This returns the surrounding code around the requested line.\n\n");
 
-		//TODO for this it should use the documentation tools
-//		if (apiSignature != null && !apiSignature.isEmpty())
-//		{
-//			prompt.append("API Signature:\n");
-//			prompt.append(apiSignature).append("\n\n");
-//		}
-
 		return prompt.toString();
-	}
-
-	// this is a workaround to avoid issues with curly braces in JSDoc, because it throws 
-	// java.lang.IllegalArgumentException at dev.langchain4j.model.input.DefaultPromptTemplateFactory$DefaultTemplate.ensureAllVariablesProvided
-	private String stripCurlyBracesFromDocumentation(String source)
-	{
-
-		if (source == null || source.isEmpty())
-		{
-			return source;
-		}
-		Pattern jsDocPattern = Pattern.compile("(?s)/\\*\\*.*?\\*/");
-		Matcher matcher = jsDocPattern.matcher(source);
-
-		StringBuffer result = new StringBuffer();
-
-		while (matcher.find())
-		{
-			String jsDoc = matcher.group();
-			String cleanedJsDoc = jsDoc.replaceAll("\\{[^}]*\\}", "");
-
-			matcher.appendReplacement(result, Matcher.quoteReplacement(cleanedJsDoc));
-		}
-
-		matcher.appendTail(result);
-
-		return result.toString();
 	}
 }
