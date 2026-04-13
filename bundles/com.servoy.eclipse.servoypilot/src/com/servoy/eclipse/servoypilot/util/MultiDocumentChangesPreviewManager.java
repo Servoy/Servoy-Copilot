@@ -17,21 +17,37 @@
 
 package com.servoy.eclipse.servoypilot.util;
 
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.ITextFileBuffer;
 import org.eclipse.core.filebuffers.ITextFileBufferManager;
 import org.eclipse.core.filebuffers.LocationKind;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IEditorReference;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.texteditor.IDocumentProvider;
+import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
@@ -42,7 +58,7 @@ import com.servoy.eclipse.servoypilot.dto.SourceEdit;
  */
 public class MultiDocumentChangesPreviewManager implements IDocumentChangesPreviewManager
 {
-	private final Map<IPath, List<PreviewChange>> fileChanges = new HashMap<>();
+	private final Map<IPath, Set<PreviewChange>> fileChanges = new HashMap<>();
 
 	@Override
 	public void preview(List<SourceEdit> allEdits) throws Exception
@@ -60,16 +76,22 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		for (Map.Entry<IPath, List<SourceEdit>> entry : editsByFile.entrySet())
 		{
 			IPath path = entry.getKey();
-			IDocument document = getDocumentForPath(path);
+			IDocument document = connectAndGetDocument(path);
 			if (document == null)
 			{
 				ServoyLog.logError("Could not resolve document for path: " + path);
 				continue;
 			}
-			String originalContent = document.get();
-			List<PreviewChange> changes = applyEdits(document, entry.getValue());
-			fileChanges.put(path, changes);
-			FileModificationTracker.getInstance().notifyFileModified(path.toString(), originalContent);
+			try
+			{
+				String originalContent = document.get();
+				applyEdits(document, entry.getValue());
+				FileModificationTracker.getInstance().notifyFileModified(path.toString(), originalContent);
+			}
+			finally
+			{
+				disconnectPath(path);
+			}
 		}
 	}
 
@@ -89,17 +111,30 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 	@Override
 	public void accept()
 	{
-		for (Map.Entry<IPath, List<PreviewChange>> entry : fileChanges.entrySet())
+		ITextFileBufferManager bufferManager = FileBuffers.getTextFileBufferManager();
+
+		for (Entry<IPath, Set<PreviewChange>> entry : fileChanges.entrySet())
 		{
 			IPath path = entry.getKey();
-			List<PreviewChange> changes = entry.getValue();
-			IDocument document = getDocumentForPath(path);
+			Set<PreviewChange> changes = entry.getValue();
+			if (changes.isEmpty())
+			{
+				continue;
+			}
 
+			IDocument document = connectAndGetDocument(path);
 			if (document == null)
 			{
 				ServoyLog.logError("Could not resolve document for path: " + path);
 				continue;
 			}
+
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+			IEditorPart openEditor = findEditor(page, file);
+
+			IDocumentProvider provider = (openEditor instanceof ScriptEditor se) ? se.getDocumentProvider() : null;
+			Object input = (openEditor != null) ? openEditor.getEditorInput() : null;
 
 			DocumentRewriteSession docRewriteSession = null;
 			try
@@ -107,6 +142,10 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
 				{
 					docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+				}
+				if (provider != null)
+				{
+					provider.aboutToChange(input);
 				}
 
 				for (PreviewChange change : changes)
@@ -131,20 +170,46 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				{
 					docextension4.stopRewriteSession(docRewriteSession);
 				}
+
+				if (provider != null)
+				{
+					provider.changed(input);
+				}
+
+				try
+				{
+					if (openEditor == null)
+					{
+						ITextFileBuffer buffer = bufferManager.getTextFileBuffer(path, LocationKind.IFILE);
+						if (buffer != null && buffer.isDirty())
+						{
+							buffer.commit(null, true);
+						}
+						// only refresh local if we actually wrote to disk
+						file.refreshLocal(IResource.DEPTH_ZERO, null);
+					}
+				}
+				catch (CoreException e)
+				{
+					ServoyLog.logError("Failed to save file after accepting changes: " + path, e);
+				}
+				finally
+				{
+					disconnectPath(path);
+				}
 			}
 		}
-
 		clearPreview();
 	}
 
 	@Override
 	public void reject()
 	{
-		for (Map.Entry<IPath, List<PreviewChange>> entry : fileChanges.entrySet())
+		for (Entry<IPath, Set<PreviewChange>> entry : fileChanges.entrySet())
 		{
 			IPath path = entry.getKey();
-			List<PreviewChange> changes = entry.getValue();
-			IDocument document = getDocumentForPath(path);
+			Set<PreviewChange> changes = entry.getValue();
+			IDocument document = connectAndGetDocument(path);
 
 			if (document == null)
 			{
@@ -178,7 +243,7 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 			}
 			catch (Exception e)
 			{
-				ServoyLog.logError("Cannot revert the proposed source modification for " + path, e);
+				ServoyLog.logError("Cannot revert proposed source modification for " + path, e);
 			}
 			finally
 			{
@@ -186,21 +251,47 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				{
 					docextension4.stopRewriteSession(docRewriteSession);
 				}
+				disconnectPath(path);
 			}
 		}
-
 		clearPreview();
 	}
 
-	private IDocument getDocumentForPath(IPath path)
+	private IDocument connectAndGetDocument(IPath path)
 	{
+		// try to see if it's open in an editor to get the LIVE document
+		try
+		{
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+			IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+			if (window != null)
+			{
+				IWorkbenchPage page = window.getActivePage();
+				IEditorPart editor = findEditor(page, file);
+
+				if (editor instanceof ITextEditor textEditor)
+				{
+					IDocumentProvider provider = textEditor.getDocumentProvider();
+					IDocument doc = provider.getDocument(textEditor.getEditorInput());
+					if (doc != null)
+					{
+						return doc;
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logInfo("Editor not found or not a text editor for: " + path);
+		}
+
+		// fallback: Connect via Buffer Manager for closed files
 		ITextFileBufferManager bufferManager = FileBuffers.getTextFileBufferManager();
 		try
 		{
-			// Connect to the buffer (this loads it if it's closed, or reuses the open editor's buffer)
+			// Note: connect() is reference-counted; ensure you call disconnect() in the calling finally block
 			bufferManager.connect(path, LocationKind.IFILE, null);
 			ITextFileBuffer textFileBuffer = bufferManager.getTextFileBuffer(path, LocationKind.IFILE);
-
 			if (textFileBuffer != null)
 			{
 				return textFileBuffer.getDocument();
@@ -213,12 +304,47 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		return null;
 	}
 
-	/**
-	 * @param path
-	 * @param pc
-	 */
+	private void disconnectPath(IPath path)
+	{
+		try
+		{
+			FileBuffers.getTextFileBufferManager().disconnect(path, LocationKind.IFILE, null);
+		}
+		catch (CoreException e)
+		{
+			ServoyLog.logError("Failed to disconnect buffer for path: " + path, e);
+		}
+	}
+
 	public void addAppliedChange(IPath path, PreviewChange pc)
 	{
-		fileChanges.computeIfAbsent(path, k -> new ArrayList<>()).add(pc);
+		fileChanges.computeIfAbsent(path, k -> new LinkedHashSet<>()).add(pc);
+	}
+
+	private IEditorPart findEditor(IWorkbenchPage page, IFile fileToEdit)
+	{
+		if (page == null || fileToEdit == null)
+		{
+			return null;
+		}
+		IEditorReference[] editorRefs = page.getEditorReferences();
+		for (IEditorReference ref : editorRefs)
+		{
+			try
+			{
+				IEditorInput input = ref.getEditorInput();
+				IFile openFile = input != null ? input.getAdapter(IFile.class) : null;
+
+				if (openFile != null && openFile.equals(fileToEdit))
+				{
+					return ref.getEditor(true);
+				}
+			}
+			catch (PartInitException e)
+			{
+				ServoyLog.logError("Failed to inspect editor reference", e);
+			}
+		}
+		return null;
 	}
 }

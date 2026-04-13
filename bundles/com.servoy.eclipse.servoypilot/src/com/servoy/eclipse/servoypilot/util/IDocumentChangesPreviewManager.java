@@ -103,6 +103,18 @@ public interface IDocumentChangesPreviewManager
 				continue; // skip invalid edits
 			}
 
+			PreviewChange change = new PreviewChange();
+			change.startOffset = startOffset;
+			change.originalLength = previewBlock.length();
+			change.modifiedLine = indentedReplacement;
+			change.originalLine = originalStatement;
+			change.lineDelimiter = lineDelimiter;
+			change.isInsert = edit.isInsert();
+
+			// Callback to the specific implementation (Inline vs Multi-file)
+			handleAppliedChange(edit, change, startLine, originalStatement, indentedReplacement);
+
+
 			if (shouldSkipChange(document, edit, startOffset, endOffset, originalStatement, indentedReplacement, previewBlock))
 			{
 				continue; //the change was already applied or previewed, skip it to avoid duplication
@@ -116,17 +128,6 @@ public interface IDocumentChangesPreviewManager
 			{
 				document.replace(startOffset, endOffset - startOffset, previewBlock);
 			}
-
-			PreviewChange change = new PreviewChange();
-			change.startOffset = startOffset;
-			change.originalLength = previewBlock.length();
-			change.modifiedLine = indentedReplacement;
-			change.originalLine = originalStatement;
-			change.lineDelimiter = lineDelimiter;
-			change.isInsert = edit.isInsert();
-
-			// Callback to the specific implementation (Inline vs Multi-file)
-			handleAppliedChange(edit, change, startLine, originalStatement, indentedReplacement);
 
 			appliedChanges.add(change);
 		}
@@ -164,17 +165,17 @@ public interface IDocumentChangesPreviewManager
 	{
 		try
 		{
-			int lengthToRead = end - start;
-			if (lengthToRead <= 0)
+			int lengthToRead = expected.length();
+
+			if (lengthToRead == 0)
+			{
+				return true;
+			}
+
+			if (start < 0 || start + lengthToRead > doc.getLength())
 			{
 				return false;
 			}
-
-			if (start + lengthToRead > doc.getLength())
-			{
-				return false;
-			}
-
 			String actual = doc.get(start, lengthToRead);
 			return actual.trim().equals(expected.trim());
 		}

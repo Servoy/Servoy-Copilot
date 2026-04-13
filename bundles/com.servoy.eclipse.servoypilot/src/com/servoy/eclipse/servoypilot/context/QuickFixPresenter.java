@@ -38,6 +38,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
 import com.servoy.eclipse.servoypilot.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.util.IDocumentChangesPreviewManager.PreviewChange;
@@ -76,13 +77,6 @@ public class QuickFixPresenter
 					uniquePaths.add(new Path(editPath));
 				}
 
-				if (uniquePaths.size() > 1)
-				{
-					activeMultiManager = new MultiDocumentChangesPreviewManager();
-					//TODO check, do we need to clear, do we always get all the changes back?
-					activeMultiManager.preview(fix.codeChanges());
-				}
-
 				for (IPath path : uniquePaths)
 				{
 					List<SourceEdit> filteredEdits = fix.codeChanges().stream()
@@ -106,6 +100,13 @@ public class QuickFixPresenter
 
 					// TODO should look for the initial file that triggered the fix and show the inline preview there
 					openInlinePreview(path);
+				}
+
+				if (uniquePaths.size() > 1)
+				{
+					activeMultiManager = new MultiDocumentChangesPreviewManager();
+					//TODO check, do we need to clear, do we always get all the changes back?
+					activeMultiManager.preview(fix.codeChanges());
 				}
 			}
 			catch (Exception e)
@@ -177,14 +178,14 @@ public class QuickFixPresenter
 				{
 					InlineDocumentChangesPreviewManager inlinePreviewManager = new InlineDocumentChangesPreviewManager(scriptEditor);
 					activeInlineManagers.put(path, inlinePreviewManager);
-					for (PreviewChange pc : inlinePreviewManager.getPreviewChanges())
-					{
-						activeMultiManager.addAppliedChange(path, pc);
-					}
 
 					if (scriptEditor.getViewer() != null)
 					{
 						inlinePreviewManager.preview(pendingEdits.get(path));
+						for (PreviewChange pc : inlinePreviewManager.getPreviewChanges())
+						{
+							activeMultiManager.addAppliedChange(path, pc);
+						}
 					}
 					else
 					{
@@ -210,10 +211,10 @@ public class QuickFixPresenter
 			activeMultiManager.accept();
 		}
 
-		clearInlineManagers();
+		clearManagers();
 	}
 
-	public void clearInlineManagers()
+	public void clearManagers()
 	{
 		// clear the UI colors from any open editors
 		for (InlineDocumentChangesPreviewManager inline : activeInlineManagers.values())
@@ -221,6 +222,8 @@ public class QuickFixPresenter
 			inline.clearPreview();
 		}
 		activeInlineManagers.clear();
+		FileModificationTracker.getInstance().clear();
+		activeMultiManager = null;
 	}
 
 	public void onUserClickedUndoAll()
@@ -230,6 +233,6 @@ public class QuickFixPresenter
 			activeMultiManager.reject();
 		}
 
-		clearInlineManagers();
+		clearManagers();
 	}
 }
