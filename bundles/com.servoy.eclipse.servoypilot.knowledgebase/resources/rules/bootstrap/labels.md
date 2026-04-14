@@ -14,7 +14,7 @@
 **See copilot-instructions.md RULE 6 for complete tool restrictions.**
 
 **Key points:**
-- [YES] ONLY use the 5 label tools listed below (addLabel, updateLabel, deleteLabel, listLabels, getLabelInfo)
+- [YES] ONLY use the 5 label tools listed below (addLabel, updateLabel, deleteComponent, listLabels, getComponentInfo)
 - [YES] Call tools directly - they handle validation and return clear errors
 - [YES] Stay within {{PROJECT_NAME}} project
 - [NO] Do NOT use file_search, grep_search, read_file, or other workspace tools
@@ -76,9 +76,9 @@ You: setTarget({target: "Module_A"})
 
 1. **addLabel** - Add a new label to a form
 2. **updateLabel** - Modify existing label properties
-3. **deleteLabel** - Remove a label from a form
+3. **deleteComponent** - Remove a label from a form
 4. **listLabels** - List all labels in a form
-5. **getLabelInfo** - Get detailed info about a specific label
+5. **getComponentInfo** - Get detailed info about a specific label
 
 ---
 
@@ -213,7 +213,7 @@ updateLabel(
 
 ---
 
-## TOOL 3: deleteLabel
+## TOOL 3: deleteComponent
 
 **Remove a label component from a form**
 
@@ -224,14 +224,14 @@ updateLabel(
 **Examples**:
 ```
 # Delete a label
-deleteLabel(
+deleteComponent(
   formName="CustomerForm",
   name="lblOldField"
 )
 
 # Clean up multiple labels
-deleteLabel(formName="OrderForm", name="lblTemp1")
-deleteLabel(formName="OrderForm", name="lblTemp2")
+deleteComponent(formName="OrderForm", name="lblTemp1")
+deleteComponent(formName="OrderForm", name="lblTemp2")
 ```
 
 ---
@@ -275,7 +275,7 @@ listLabels(formName="CustomerForm")
 
 ---
 
-## TOOL 5: getLabelInfo
+## TOOL 5: getComponentInfo
 
 **Get detailed information about a specific label**
 
@@ -288,7 +288,7 @@ listLabels(formName="CustomerForm")
 **Examples**:
 ```
 # Get specific label details
-getLabelInfo(
+getComponentInfo(
   formName="CustomerForm",
   name="lblName"
 )
@@ -458,9 +458,9 @@ Current:  "10,-1,-1,120,100,25" (starts at 120px, 10px spacing)
 1. **Required Parameters**:
    - addLabel: formName, name, cssPosition (text defaults to "Label")
    - updateLabel: formName, name, + at least one property to update
-   - deleteLabel: formName, name
+   - deleteComponent: formName, name
    - listLabels: formName
-   - getLabelInfo: formName, name
+   - getComponentInfo: formName, name
 
 2. **AI Controls Layout**: AI model calculates cssPosition based on user requirements
    - [REQUIRED] Use listLabels to see existing components before adding/updating
@@ -494,12 +494,12 @@ Current:  "10,-1,-1,120,100,25" (starts at 120px, 10px spacing)
 4. Tool validates, creates component, saves form
 
 ### Workflow 2: Update Existing Label
-1. [OPTIONAL] Call getLabelInfo(formName, name) to see current properties
+1. [OPTIONAL] Call getComponentInfo(formName, name) to see current properties
 2. Call updateLabel with formName, name, and properties to change
 3. Tool updates specified properties, saves form
 
 ### Workflow 3: Delete Label
-1. Call deleteLabel(formName, name)
+1. Call deleteComponent(formName, name)
 2. Tool removes component, saves form
 
 ### Workflow 4: Complex Layout (Multiple Labels)
@@ -570,7 +570,7 @@ User: "Show me all labels in CustomerForm"
 listLabels(formName="CustomerForm")
 
 # Get specific label details
-getLabelInfo(formName="CustomerForm", name="lblName")
+getComponentInfo(formName="CustomerForm", name="lblName")
 ```
 
 ### Example 3: UPDATE - Modify existing label
@@ -585,8 +585,8 @@ updateLabel(
   styleClass="font-weight-bold"
 )
 
-# Option B: First check current state, then update
-getLabelInfo(formName="CustomerForm", name="lblName")
+# Get specific label details
+getComponentInfo(formName="CustomerForm", name="lblName")
 → See current properties
 updateLabel(formName="CustomerForm", name="lblName", text="Full Name:")
 ```
@@ -596,7 +596,7 @@ updateLabel(formName="CustomerForm", name="lblName", text="Full Name:")
 User: "Move the Email label down by 50 pixels"
 
 # Get current position
-getLabelInfo(formName="CustomerForm", name="lblEmail")
+getComponentInfo(formName="CustomerForm", name="lblEmail")
 → Current: "60,-1,-1,25,100,30" (top=60, left=25)
 
 # Update with new position (add 50 to top: 60 + 50 = 110)
@@ -611,7 +611,7 @@ updateLabel(
 ```
 User: "Remove the old status label from OrderForm"
 
-deleteLabel(formName="OrderForm", name="lblOldStatus")
+deleteComponent(formName="OrderForm", name="lblOldStatus")
 ```
 
 ### Example 6: COMPLEX - Layout with 3 section headers
@@ -733,7 +733,7 @@ addLabel(
 - "Component 'lblX' not found in form 'FormY'"
 - "Invalid CSS position format. Expected 'top,right,bottom,left,width,height'"
 
-**deleteLabel errors:**
+**deleteComponent errors:**
 - "Error: 'formName' parameter is required"
 - "Error: 'name' parameter is required"
 - "Form 'xyz' not found. Available forms: ..."
@@ -743,7 +743,7 @@ addLabel(
 - "Error: 'formName' parameter is required"
 - "Form 'xyz' not found. Available forms: ..."
 
-**getLabelInfo errors:**
+**getComponentInfo errors:**
 - "Error: 'formName' parameter is required"
 - "Error: 'name' parameter is required"
 - "Form 'xyz' not found. Available forms: ..."
@@ -769,14 +769,14 @@ addLabel(
 - name - ASK user if not provided
 - At least one property to update - ASK user what to change
 
-**deleteLabel:**
+**deleteComponent:**
 - formName - ASK user if not provided
 - name - ASK user if not provided
 
 **listLabels:**
 - formName - ASK user if not provided
 
-**getLabelInfo:**
+**getComponentInfo:**
 - formName - ASK user if not provided
 - name - ASK user if not provided
 

@@ -14,7 +14,7 @@
 **See copilot-instructions.md RULE 6 for complete tool restrictions.**
 
 **Key points:**
-- [YES] ONLY use the 5 button tools listed below (addButton, updateButton, deleteButton, listButtons, getButtonInfo)
+- [YES] ONLY use the 5 button tools listed below (addButton, updateButton, deleteComponent, listButtons, getComponentInfo)
 - [YES] Call tools directly - they handle validation and return clear errors
 - [YES] Stay within {{PROJECT_NAME}} project
 - [NO] Do NOT use file_search, grep_search, read_file, or other workspace tools
@@ -76,9 +76,9 @@ You: setTarget({target: "Module_A"})
 
 1. **addButton** - Add a new button to a form
 2. **updateButton** - Modify existing button properties
-3. **deleteButton** - Remove a button from a form
+3. **deleteComponent** - Remove a button from a form
 4. **listButtons** - List all buttons in a form
-5. **getButtonInfo** - Get detailed info about a specific button
+5. **getComponentInfo** - Get detailed info about a specific button
 
 ---
 
@@ -232,7 +232,7 @@ updateButton(
 
 ---
 
-## TOOL 3: deleteButton
+## TOOL 3: deleteComponent
 
 **Remove a button component from a form**
 
@@ -243,14 +243,14 @@ updateButton(
 **Examples**:
 ```
 # Delete a button
-deleteButton(
+deleteComponent(
   formName="CustomerForm",
   name="btnOldButton"
 )
 
 # Delete multiple buttons (call multiple times)
-deleteButton(formName="OrderForm", name="btnTemp1")
-deleteButton(formName="OrderForm", name="btnTemp2")
+deleteComponent(formName="OrderForm", name="btnTemp1")
+deleteComponent(formName="OrderForm", name="btnTemp2")
 ```
 
 ---
@@ -275,7 +275,7 @@ listButtons(formName="OrderForm")
 
 ---
 
-## TOOL 5: getButtonInfo
+## TOOL 5: getComponentInfo
 
 **Get detailed information about a specific button**
 
@@ -288,13 +288,13 @@ listButtons(formName="OrderForm")
 **Examples**:
 ```
 # Get details of a specific button
-getButtonInfo(
+getComponentInfo(
   formName="CustomerForm",
   name="btnSave"
 )
 
 # Check button properties before updating
-getButtonInfo(formName="OrderForm", name="btnSubmit")
+getComponentInfo(formName="OrderForm", name="btnSubmit")
 ```
 
 ---
@@ -367,7 +367,7 @@ Third button:  left = 110 + 80 + 10 = 200
 
 **Deleting Buttons**:
 1. List buttons to confirm name: listButtons(formName="MyForm")
-2. Call deleteButton with formName and name
+2. Call deleteComponent with formName and name
 
 ---
 

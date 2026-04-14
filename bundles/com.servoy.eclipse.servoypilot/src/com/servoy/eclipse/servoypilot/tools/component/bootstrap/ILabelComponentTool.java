@@ -26,8 +26,31 @@ import com.servoy.eclipse.servoypilot.tools.core.UIThreadHelper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 
-public interface ILabelComponentTool
+public interface ILabelComponentTool extends IBootstrapComponentTool
 {
+	String COMPONENT_TYPE = "bootstrapcomponents-label";
+
+	@Override
+	default String getComponentType()
+	{
+		return COMPONENT_TYPE;
+	}
+
+	@Tool("Lists all label components in a form.")
+	default String listLabels(
+		@P(value = "Form name", required = true) String formName)
+	{
+		if (formName != null && !formName.trim().isEmpty())
+		{
+			return UIThreadHelper.syncExec("listLabels", () -> {
+				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
+				return BootstrapComponentService.listComponentsByType(projectPath, formName, COMPONENT_TYPE);
+			});
+		}
+
+		return "Error: formName required";
+	}
+
 	@Tool("Adds a bootstrap label component to a form. Context-aware: looks for form in current context first.")
 	default String addLabel(
 		@P(value = "Form name", required = true) String formName,
@@ -48,46 +71,22 @@ public interface ILabelComponentTool
 			return UIThreadHelper.syncExec("addLabel", () -> {
 				Map<String, Object> properties = new HashMap<>();
 				properties.put("text", text != null ? text : "Label");
-				if (styleClass != null)
-				{
-					properties.put("styleClass", styleClass);
-				}
-				if (labelFor != null)
-				{
-					properties.put("labelFor", labelFor);
-				}
-				if (showAs != null)
-				{
-					properties.put("showAs", showAs);
-				}
-				if (enabled != null)
-				{
-					properties.put("enabled", enabled);
-				}
-				if (visible != null)
-				{
-					properties.put("visible", visible);
-				}
-				if (toolTipText != null)
-				{
-					properties.put("toolTipText", toolTipText);
-				}
+				if (styleClass != null) properties.put("styleClass", styleClass);
+				if (labelFor != null) properties.put("labelFor", labelFor);
+				if (showAs != null) properties.put("showAs", showAs);
+				if (enabled != null) properties.put("enabled", enabled);
+				if (visible != null) properties.put("visible", visible);
+				if (toolTipText != null) properties.put("toolTipText", toolTipText);
 
 				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
 				String error = BootstrapComponentService.addComponentToForm(
-					projectPath, formName, name, "bootstrapcomponents-label", cssPosition, properties);
+					projectPath, formName, name, COMPONENT_TYPE, cssPosition, properties);
 				return error != null ? "Error: " + error : "Successfully added label '" + name + "' to form '" + formName + "'";
 			});
 		}
 
-		if (formName == null || formName.trim().isEmpty())
-		{
-			return "Error: formName required";
-		}
-		if (name == null || name.trim().isEmpty())
-		{
-			return "Error: name required";
-		}
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
+		if (name == null || name.trim().isEmpty()) return "Error: name required";
 		return "Error: cssPosition required";
 	}
 
@@ -108,43 +107,16 @@ public interface ILabelComponentTool
 		{
 			return UIThreadHelper.syncExec("updateLabel", () -> {
 				Map<String, Object> updates = new HashMap<>();
-				if (text != null)
-				{
-					updates.put("text", text);
-				}
-				if (cssPosition != null)
-				{
-					updates.put("cssPosition", cssPosition);
-				}
-				if (styleClass != null)
-				{
-					updates.put("styleClass", styleClass);
-				}
-				if (labelFor != null)
-				{
-					updates.put("labelFor", labelFor);
-				}
-				if (showAs != null)
-				{
-					updates.put("showAs", showAs);
-				}
-				if (enabled != null)
-				{
-					updates.put("enabled", enabled);
-				}
-				if (visible != null)
-				{
-					updates.put("visible", visible);
-				}
-				if (toolTipText != null)
-				{
-					updates.put("toolTipText", toolTipText);
-				}
+				if (text != null) updates.put("text", text);
+				if (cssPosition != null) updates.put("cssPosition", cssPosition);
+				if (styleClass != null) updates.put("styleClass", styleClass);
+				if (labelFor != null) updates.put("labelFor", labelFor);
+				if (showAs != null) updates.put("showAs", showAs);
+				if (enabled != null) updates.put("enabled", enabled);
+				if (visible != null) updates.put("visible", visible);
+				if (toolTipText != null) updates.put("toolTipText", toolTipText);
 
-				if (updates.isEmpty())
-				{
-					return "Error: No properties to update";
-				}
+				if (updates.isEmpty()) return "Error: No properties to update";
 
 				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
 				String error = BootstrapComponentService.updateComponent(projectPath, formName, name, updates);
@@ -152,65 +124,7 @@ public interface ILabelComponentTool
 			});
 		}
 
-		if (formName == null || formName.trim().isEmpty())
-		{
-			return "Error: formName required";
-		}
+		if (formName == null || formName.trim().isEmpty()) return "Error: formName required";
 		return "Error: name required";
-	}
-
-	@Tool("Deletes a label component from a form.")
-	default String deleteLabel(
-		@P(value = "Form name", required = true) String formName,
-		@P(value = "Label name", required = true) String name)
-	{
-		if (formName != null && !formName.trim().isEmpty() && name != null && !name.trim().isEmpty())
-		{
-			return UIThreadHelper.syncExec("deleteLabel", () -> {
-				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
-				String error = BootstrapComponentService.deleteComponent(projectPath, formName, name);
-				return error != null ? "Error: " + error : "Successfully deleted label '" + name + "'";
-			});
-		}
-
-		if (formName == null || formName.trim().isEmpty())
-		{
-			return "Error: formName required";
-		}
-		return "Error: name required";
-	}
-
-	@Tool("Gets detailed information about a label component.")
-	default String getLabelInfo(
-		@P(value = "Form name", required = true) String formName,
-		@P(value = "Label name", required = true) String name)
-	{
-		if (formName != null && !formName.trim().isEmpty() && name != null && !name.trim().isEmpty())
-		{
-			return UIThreadHelper.syncExec("getLabelInfo", () -> {
-				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
-				return BootstrapComponentService.getComponentInfo(projectPath, formName, name);
-			});
-		}
-
-		if (formName == null || formName.trim().isEmpty())
-		{
-			return "Error: formName required";
-		}
-		return "Error: name required";
-	}
-
-	@Tool("Lists all label components in a form.")
-	default String listLabels(@P(value = "Form name", required = true) String formName)
-	{
-		if (formName != null && !formName.trim().isEmpty())
-		{
-			return UIThreadHelper.syncExec("listLabels", () -> {
-				String projectPath = ComponentToolsHelper.getInstance().getProjectPath();
-				return BootstrapComponentService.listComponentsByType(projectPath, formName, "bootstrapcomponents-label");
-			});
-		}
-
-		return "Error: formName required";
 	}
 }

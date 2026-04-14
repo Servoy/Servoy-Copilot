@@ -138,31 +138,21 @@ All tool classes live under `com.servoy.eclipse.servoypilot.tools`.
 
 **Tool interfaces by package:**
 
-`tools/codeanalysis/` — `IAnalyzeFileStructureTool`, `IGetCodeChunkTool`, `IResolveIdentifierTypeTool`
+`tools/codecontext/` — `IAnalyzeFileStructureTool`, `IGetCodeChunkTool`, `IResolveIdentifierTypeTool`, `ICodeContextTool`, `IReadPersistFileTool`, `IGeneratedCodeValidationTool`
 
 `tools/documentation/` — `IGetCurrentSelectionTool`, `IGetDocumentationForIdentifiersTool`, `IApplyDocumentationsTool`, `IGetAvailableMembersForTypeTool`, `IGetDocumentationForTypeMemberTool`
 
-`tools/eclipse/` — `IFileSearchTool`, `IFileSearchRegExpTool`, `IFindFilesTool`, `ISearchAndReplaceTool`, `IGetProblemsTool`
-
-`tools/filereading/` — `IReadFileTool`, `IReadFileLinesTool`, `IReadFileContextTool`, `IReadFileRangesTool`, `IReadFunctionTool`, `IGetFileOutlineTool`, `IGetFileInfoTool`
+`tools/workspace/` — `IFileSearchTool`, `IFileSearchRegExpTool`, `IFindFilesTool`, `ISearchAndReplaceTool`, `IGetProblemsTool`, `IReadFileTool`, `IReadFileLinesTool`, `IReadFileContextTool`, `IReadFileRangesTool`, `IReadFunctionTool`, `IGetFileOutlineTool`, `IGetFileInfoTool`
 
 `tools/testgeneration/` — `IAnalyzeCodeForTestingTool`, `ICreateTestFileTool`, `IAddTestMethodTool`, `IGenerateTestCasesTool`
 
-`tools/core/forms/` — `IGetFormsTool`, `IOpenFormTool`, `IDeleteFormsTool`
+`tools/core/` — `IGetFormsTool`, `IOpenFormTool`, `IDeleteFormsTool`, `IGetRelationsTool`, `IOpenRelationTool`, `IDeleteRelationsTool`, `IGetValueListsTool`, `IOpenValueListTool`, `IDeleteValueListsTool`, `IGetStylesTool`, `IOpenStyleTool`, `IDeleteStyleTool`, `ITargetTool`, `IDatabaseTool`
 
-`tools/core/relation/` — `IGetRelationsTool`, `IOpenRelationTool`, `IDeleteRelationsTool`
-
-`tools/core/valuelist/` — `IGetValueListsTool`, `IOpenValueListTool`, `IDeleteValueListsTool`
-
-`tools/core/style/` — `IGetStylesTool`, `IOpenStyleTool`, `IDeleteStyleTool`
-
-`tools/component/bootstrap/button/` — `IButtonComponentTool` (`listButtons`, `addButton`, `updateButton`, `deleteButton`, `getButtonInfo`)
-
-`tools/component/bootstrap/label/` — `ILabelComponentTool` (`listLabels`, `addLabel`, `updateLabel`, `deleteLabel`, `getLabelInfo`)
+`tools/component/bootstrap/` — `IBootstrapComponentTool` (base: `deleteComponent`, `getComponentInfo`); `IButtonComponentTool` extends base (`listButtons`, `addButton`, `updateButton`); `ILabelComponentTool` extends base (`listLabels`, `addLabel`, `updateLabel`)
 
 `tools/quickfix/` — `ICodeContextTool`, `IReadPersistFileTool`, `IValidateQuickFixTool`
 
-`tools/utility/` — `IDatabaseTool`, `IKnowledgeTool`, `ITargetTool`, `IWebFetchTool`
+`tools/utility/` — `IKnowledgeTool`, `IWebFetchTool`
 
 ### 3.2 Tool DTOs (`tools/dto/`)
 
@@ -189,9 +179,9 @@ All tool classes live under `com.servoy.eclipse.servoypilot.tools`.
 - `findFiles` — glob-based file finder via `ResourceService`
 - `searchAndReplace` — multi-file search and replace (triggers `FileModificationTracker`)
 - `getProblems` — Eclipse Problems view (errors, warnings, info)
-- Shared normalization logic in `EclipseToolsHelper` singleton
+- Shared normalization logic in `WorkspaceToolsHelper` singleton
 
-**File reading interfaces** (`tools/filereading/`) — used by Explain, Review, UnitTest, QueryBuilder:
+**File reading interfaces** (`tools/workspace/`) — used by Explain, Review, UnitTest, QueryBuilder:
 - `readFile` — full file with line numbers; 100KB size limit
 - `readFileLines` — line range (1-based, max 500 lines)
 - `readFileContext` — smart window around a center line (default ±30 lines)
@@ -199,7 +189,13 @@ All tool classes live under `com.servoy.eclipse.servoypilot.tools`.
 - `readFunction` — complete function body by name (brace-counting)
 - `getFileOutline` — function names with line numbers (regex-based)
 - `getFileInfo` — metadata only (size, line count, last modified)
-- Shared LRU cache (50 files, timestamp-invalidated) and file resolution in `FileReadingToolsHelper` singleton
+- Shared LRU cache (50 files, timestamp-invalidated) and file resolution in `WorkspaceToolsHelper` singleton
+
+**Bootstrap component interfaces** (`tools/component/bootstrap/`) — exclusive to VibeCoding:
+- `IBootstrapComponentTool` — base interface with 2 shared type-agnostic `@Tool` defaults: `deleteComponent(formName, name)` and `getComponentInfo(formName, name)`; both work by component name regardless of type
+- `IButtonComponentTool` extends base — `COMPONENT_TYPE = "bootstrapcomponents-button"`; owns `listButtons(formName)`, `addButton(...)`, `updateButton(...)`
+- `ILabelComponentTool` extends base — `COMPONENT_TYPE = "bootstrapcomponents-label"`; owns `listLabels(formName)`, `addLabel(...)`, `updateLabel(...)`
+- `ToolComposer` discovers all 5 tools per leaf (2 from base + 3 from leaf) via hierarchy walk
 
 **Web fetch interface** (`tools/utility/IWebFetchTool`) — used by Explain, Review, QueryBuilder:
 - `fetch_webpage` — fetches `https://docs.servoy.com/` only; 10s timeout, 500KB limit; HTML stripped to plain text
@@ -217,14 +213,15 @@ All tool classes live under `com.servoy.eclipse.servoypilot.tools`.
 **`ToolComposer.from(Class<?>... toolInterfaces)` algorithm:**
 
 For each interface:
-1. `getDeclaredMethods()` on the **interface itself**
-2. Filter methods annotated with `@Tool`
-3. Create a JDK `Proxy`; invocation handler dispatches via `MethodHandles.privateLookupIn(iface, lookup()).unreflectSpecial(method, iface).bindTo(proxy).invokeWithArguments(args)`
-4. Build `ToolSpecification` via `ToolSpecifications.toolSpecificationFrom(method)`
-5. Build `ToolExecutor` via `new DefaultToolExecutor(proxyInstance, method)`
-6. Put `(spec, executor)` into the result `Map`
+1. `collectToolMethods(iface)` recursively walks the full interface hierarchy via `getInterfaces()` — leaf methods win over base methods on the same signature (name + parameter types), implementing override semantics
+2. Create a JDK `Proxy` implementing the leaf interface; invocation handler dispatches via `MethodHandles.privateLookupIn(method.getDeclaringClass(), lookup()).unreflectSpecial(method, declaringIface).bindTo(proxy).invokeWithArguments(args)` — using `method.getDeclaringClass()` (not the leaf) ensures correct dispatch for base interface default methods
+3. Build `ToolSpecification` via `ToolSpecifications.toolSpecificationFrom(method)`
+4. Build `ToolExecutor` via `new DefaultToolExecutor(proxyInstance, method)`
+5. Put `(spec, executor)` into the result `Map`
 
-**Single source of truth:** `@Tool`/`@P` annotations live only on the interface default methods. Helper singletons (e.g., `FileReadingToolsHelper`, `EclipseToolsHelper`, `FormToolsHelper`) hold the heavy implementation logic.
+**Single source of truth:** `@Tool`/`@P` annotations live only on the interface default methods. Base interface `@Tool` defaults are inherited by leaf interfaces — no registration change needed in `XxxAssistantTools`. Leaf interfaces use `@Override @Tool` when overriding a base tool with a different description or behavior.
+
+**Base interface pattern:** A base tool interface (e.g. `IBootstrapComponentTool`) declares shared `@Tool` default methods and an abstract method (e.g. `getComponentType()`) that leaf interfaces must implement. Leaf interfaces extend the base, implement the abstract method, and add their own `@Tool` methods. `ToolComposer` discovers all `@Tool` methods from the full hierarchy automatically.
 
 ---
 
@@ -430,7 +427,7 @@ Eclipse (5 interfaces)         ✅    ✅    ✅    ✅    ✅    ✅
 Test generation (4 interfaces)                        ✅
 Core: forms/relations/         ✅
   valuelists/styles (12)
-Bootstrap components (2)       ✅
+Bootstrap components (2 leaf + 1 base) ✅
 IDatabaseTool                  ✅                           ✅
 IKnowledgeTool                 ✅         ✅    ✅    ✅    ✅
 ITargetTool                    ✅
@@ -456,6 +453,18 @@ QuickFix (3 interfaces)                                          ✅
 2. Declare a `default` method with `@Tool` and `@P` — single source of truth
 3. Implement logic inline or by calling a helper singleton
 4. Add the interface class to `ToolComposer.from(...)` in the relevant `XxxAssistantTools.getTools()`
+
+**To add a new tool to an existing base interface hierarchy** (e.g. a new bootstrap component type):
+1. Create a new leaf interface extending the base (e.g. `IBootstrapComponentTool`)
+2. Implement the abstract method (e.g. `getComponentType()`) returning the component type string
+3. Add leaf-specific `@Tool` methods (e.g. `addXxx`, `updateXxx`)
+4. Inherited base `@Tool` methods (`deleteComponent`, `getComponentInfo`, `listComponents`) are available automatically — no duplication needed
+5. Add the new leaf interface to `ToolComposer.from(...)` in the relevant `XxxAssistantTools.getTools()`
+
+**To add a shared tool to a base interface** (available to all leaves):
+1. Add a `@Tool` default method to the base interface
+2. All existing leaf interfaces inherit it automatically — `ToolComposer` discovers it via hierarchy walk
+3. Override in a specific leaf with `@Override @Tool` only if behavior or description must differ
 
 ### 15.3 Adding a New AI Provider
 
