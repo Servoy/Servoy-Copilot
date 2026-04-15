@@ -49,12 +49,12 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;
 
 /**
- * Declares the tool set for the VibeCodingAssistant.
+ * Declares the tool set for the DevelopmentAssistant.
  *
  * Uses ToolComposer to build tool registrations directly from the tool interfaces,
  * keeping @Tool/@P annotations as a single source of truth on the interfaces.
  */
-public class VibeCodingAssistantTools
+public class DevelopmentAssistantTools
 {
 	public static Map<ToolSpecification, ToolExecutor> getTools()
 	{

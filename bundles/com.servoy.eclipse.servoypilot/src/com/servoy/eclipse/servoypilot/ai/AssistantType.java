@@ -20,7 +20,7 @@ import com.servoy.eclipse.servoypilot.Activator;
 
 public enum AssistantType
 {
-	VIBE_CODING("VibeCoding Assistant", "-vibe"),
+	DEVELOPMENT("Development Assistant", "-devs"),
 	DOCUMENTATION("Documentation Assistant", "-documentation"),
 	QUICKFIX("QuickFix Assistant", "-quickfix"),
 	EXPLAIN("Explain Assistant", "-explain"),
@@ -53,15 +53,15 @@ public enum AssistantType
 		{
 			return values()[index];
 		}
-		return VIBE_CODING; // Default
+		return DEVELOPMENT; // Default
 	}
 
 	public IAssistant getModel()
 	{
 		switch (this)
 		{
-			case VIBE_CODING :
-				return Activator.getDefault().getServoyAiModel().getVibeCodingAssistant();
+			case DEVELOPMENT :
+				return Activator.getDefault().getServoyAiModel().getDevelopmentAssistant();
 			case DOCUMENTATION :
 				return Activator.getDefault().getServoyAiModel().getDocumentationAssistant();
 			case QUICKFIX :

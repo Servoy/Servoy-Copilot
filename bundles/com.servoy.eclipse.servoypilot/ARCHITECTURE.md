@@ -21,7 +21,7 @@ The plugin is split into 3 OSGi bundles:
 
 All 7 assistant types are defined in `AssistantType.java`:
 
-- `VIBE_CODING` — VibeCoding Assistant (`-vibe`) — ChatView dropdown
+- `DEVELOPMENT` — Development Assistant (`-devs`) — ChatView dropdown
 - `DOCUMENTATION` — Documentation Assistant (`-documentation`) — ChatView dropdown
 - `EXPLAIN` — Explain Assistant (`-explain`) — ChatView dropdown
 - `REVIEW` — Review Assistant (`-review`) — ChatView dropdown
@@ -44,7 +44,7 @@ Each assistant interface (e.g., `VibeCodingAssistant`, `DocumentationAssistant`)
 All assistants use `ToolComposer`-based registration via their `XxxAssistantTools.getTools()` factory.
 
 ```
-VibeCoding:     VibeCodingAssistantTools.getTools() → ToolComposer.from(
+Development:    DevelopmentAssistantTools.getTools() → ToolComposer.from(
                   IAnalyzeFileStructureTool, IGetCodeChunkTool, IResolveIdentifierTypeTool,
                   IFileSearchTool, IFileSearchRegExpTool, IFindFilesTool,
                   ISearchAndReplaceTool, IGetProblemsTool,
@@ -98,7 +98,7 @@ Completion:     (no tools — stateless)
 ### 2.4 Memory Configuration
 
 - **Single shared store:** `InMemoryChatMemoryStore` in `ServoyAiModel`
-- **ID format:** `<solutionName><assistantSuffix>` (e.g., `"MySolution-vibe"`)
+- **ID format:** `<solutionName><assistantSuffix>` (e.g., `"MySolution-devs"`)
 - **Window size:** 40 messages for all assistants, **except Documentation which uses 100**
 - `clearAllMemories(solutionName)` iterates all `AssistantType.values()` and deletes each memory ID
 
@@ -124,7 +124,7 @@ All tool classes live under `com.servoy.eclipse.servoypilot.tools`.
 **Factory classes** (`tools/`):
 
 - `ToolComposer` — Static factory: builds `Map<ToolSpecification, ToolExecutor>` from tool interfaces via JDK `Proxy` + `MethodHandles`
-- `VibeCodingAssistantTools` — `getTools()` → `ToolComposer.from(25 interfaces)`
+- `DevelopmentAssistantTools` — `getTools()` → `ToolComposer.from(25 interfaces)`
 - `DocumentationAssistantTools` — `getTools()` → `ToolComposer.from(11 interfaces)`
 - `ExplainAssistantTools` — `getTools()` → `ToolComposer.from(14 interfaces)`
 - `ReviewAssistantTools` — `getTools()` → `ToolComposer.from(14 interfaces)`
@@ -344,7 +344,7 @@ Components: `ServoyAICorrectionProcessor`, `ServoyAIQuickFixResolution`, `Servoy
 ## 8. System Prompts
 
 8 prompt files in knowledgebase bundle `resources/system-prompts/`:
-`vibe-coding.txt`, `documentation.txt`, `explain.txt`, `review.txt`, `unittest.txt`, `query-builder.txt`, `quickfix.txt`, `completion.txt`
+`development.txt`, `documentation.txt`, `explain.txt`, `review.txt`, `unittest.txt`, `query-builder.txt`, `quickfix.txt`, `completion.txt`
 
 **Loading priority:** solution-specific `.servoy/system-prompts/<name>.txt` overrides bundle default. Override triggers `Activator.clearServoyAiModel()`.
 
@@ -419,7 +419,7 @@ Synchronization: `UISynchronize.asyncExec()` in presenter; `Display.getDefault()
 All assistants use ToolComposer-based interfaces.
 
 ```
-                              Vibe  Docs  Exp  Rev  Unit  QB   QF
+                              Dev   Docs  Exp  Rev  Unit  QB   QF
 Code analysis (3 interfaces)   ✅    ✅               ✅
 Documentation (5 interfaces)         ✅
 File reading (7 interfaces)               ✅    ✅    ✅    ✅

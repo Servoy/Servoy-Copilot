@@ -64,7 +64,7 @@ public class SystemPrompts
 
 	public String getChatPrompt()
 	{
-		return prompts.get("vibe-coding.txt");
+		return prompts.get("development.txt");
 	}
 
 	public String getCompletionPrompt()

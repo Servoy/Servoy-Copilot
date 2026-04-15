@@ -16,17 +16,17 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
-public interface VibeCodingAssistant extends IAssistant
+public interface DevelopmentAssistant extends IAssistant
 {
 	@Override
 	default AssistantType getType()
 	{
-		return AssistantType.VIBE_CODING;
+		return AssistantType.DEVELOPMENT;
 	}
 
 	@Override
 	default String getDisplayName()
 	{
-		return AssistantType.VIBE_CODING.getDisplayName();
+		return AssistantType.DEVELOPMENT.getDisplayName();
 	}
 }

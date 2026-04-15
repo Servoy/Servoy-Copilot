@@ -9,7 +9,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servo.eclipse.servoypilot.mcp.server.langchain.McpServer;
-import com.servoy.eclipse.servoypilot.tools.VibeCodingAssistantTools;
+import com.servoy.eclipse.servoypilot.tools.DevelopmentAssistantTools;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.mcp.protocol.McpJsonRpcMessage;
@@ -41,7 +41,7 @@ public class McpServlet extends HttpServlet
 	@Override
 	public void init()
 	{
-		Map<ToolSpecification, ToolExecutor> tools = VibeCodingAssistantTools.getTools();
+		Map<ToolSpecification, ToolExecutor> tools = DevelopmentAssistantTools.getTools();
 		this.mcpServer = new McpServer(tools);
 	}
 

@@ -24,7 +24,7 @@ import com.servoy.eclipse.servoypilot.tools.QueryBuilderAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.QuickFixAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.ReviewAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.UnitTestAssistantTools;
-import com.servoy.eclipse.servoypilot.tools.VibeCodingAssistantTools;
+import com.servoy.eclipse.servoypilot.tools.DevelopmentAssistantTools;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -45,7 +45,7 @@ public class ServoyAiModel
 	private final AiConfiguration conf;
 	private final ChatMemoryStore sharedMemoryStore;
 
-	private VibeCodingAssistant vibeCodingAssistant;
+	private DevelopmentAssistant developmentAssistant;
 	private CompletionAssistent completionAssistant;
 	private DocumentationAssistant documentationAssistant;
 	private QuickFixAssistant quickFixAssistant;
@@ -61,18 +61,18 @@ public class ServoyAiModel
 	}
 
 
-	public VibeCodingAssistant getVibeCodingAssistant()
+	public DevelopmentAssistant getDevelopmentAssistant()
 	{
-		if (vibeCodingAssistant == null && conf.isValid())
+		if (developmentAssistant == null && conf.isValid())
 		{
-			vibeCodingAssistant = switch (conf.getSelectedModel())
+			developmentAssistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createVibeCodingServices(createOpenAIModel(conf));
-				case GEMINI -> createVibeCodingServices(createGeminiModel(conf));
+				case OPENAI -> createDevelopmentServices(createOpenAIModel(conf));
+				case GEMINI -> createDevelopmentServices(createGeminiModel(conf));
 				case NONE -> null;
 			};
 		}
-		return vibeCodingAssistant;
+		return developmentAssistant;
 	}
 
 	public CompletionAssistent getCompletionAssistant()
@@ -204,12 +204,12 @@ public class ServoyAiModel
 			.build();
 	}
 
-	private VibeCodingAssistant createVibeCodingServices(StreamingChatModel model)
+	private DevelopmentAssistant createDevelopmentServices(StreamingChatModel model)
 	{
 		// Load system prompt (auto-selects based on model provider)
 		String systemPrompt = SystemPrompts.INSTANCE.getChatPrompt();
 
-		AiServices<VibeCodingAssistant> builder = AiServices.builder(VibeCodingAssistant.class);
+		AiServices<DevelopmentAssistant> builder = AiServices.builder(DevelopmentAssistant.class);
 		builder.streamingChatModel(model);
 		builder.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 			.id(memoryId)
@@ -220,7 +220,7 @@ public class ServoyAiModel
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
 		// Register tools
-		builder.tools(VibeCodingAssistantTools.getTools());
+		builder.tools(DevelopmentAssistantTools.getTools());
 
 		return builder.build();
 	}
