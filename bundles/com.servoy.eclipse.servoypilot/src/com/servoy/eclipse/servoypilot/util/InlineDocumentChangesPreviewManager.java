@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
@@ -124,6 +127,17 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		removedLines.clear();
 		addedLines.clear();
 
+		if (sourceEdits.isEmpty())
+		{
+			ServoyLog.logInfo("No changes to preview.");
+			return;
+		}
+
+		String filePath = sourceEdits.get(0).filePath();
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+		createLocalHistoryEntry(file);
+
 		DocumentRewriteSession docRewriteSession = null;
 		try
 		{
@@ -133,7 +147,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 				docRewriteSession = docExt4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
 			}
 
-			previewChanges.addAll(applyEdits(document, sourceEdits));
+			applyEdits(document, sourceEdits);
 
 			backgroundListener = event -> {
 				try
@@ -191,6 +205,8 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	@Override
 	public void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement)
 	{
+		previewChanges.add(change);
+
 		int originalLineCount = edit.isInsert() ? 0 : countLines(original);
 		int addedLinesCount = countLines(replacement);
 

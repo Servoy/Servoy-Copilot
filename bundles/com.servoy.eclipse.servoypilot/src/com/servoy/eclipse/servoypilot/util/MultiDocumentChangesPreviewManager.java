@@ -76,6 +76,10 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		for (Map.Entry<IPath, List<SourceEdit>> entry : editsByFile.entrySet())
 		{
 			IPath path = entry.getKey();
+
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+			createLocalHistoryEntry(file);
+
 			IDocument document = connectAndGetDocument(path);
 			if (document == null)
 			{
@@ -122,6 +126,9 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				continue;
 			}
 
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+			createLocalHistoryEntry(file);
+
 			IDocument document = connectAndGetDocument(path);
 			if (document == null)
 			{
@@ -129,7 +136,6 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				continue;
 			}
 
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
 			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 			IEditorPart openEditor = findEditor(page, file);
 

@@ -17,9 +17,13 @@
 
 package com.servoy.eclipse.servoypilot.util;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
@@ -56,10 +60,8 @@ public interface IDocumentChangesPreviewManager
 	 * The shared logic for processing edits. 
 	 * Implementations call this to perform the actual document work.
 	 */
-	default List<PreviewChange> applyEdits(IDocument document, List<SourceEdit> sourceEdits) throws Exception
+	default void applyEdits(IDocument document, List<SourceEdit> sourceEdits) throws Exception
 	{
-		List<PreviewChange> appliedChanges = new ArrayList<>();
-
 		// Sort bottom-to-top to keep offsets valid during multiple replacements
 		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits);
 		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
@@ -128,10 +130,26 @@ public interface IDocumentChangesPreviewManager
 			{
 				document.replace(startOffset, endOffset - startOffset, previewBlock);
 			}
-
-			appliedChanges.add(change);
 		}
-		return appliedChanges;
+	}
+
+	default void createLocalHistoryEntry(IFile file)
+	{
+		if (!file.exists())
+		{
+			return;
+		}
+
+		try
+		{
+			file.appendContents(new ByteArrayInputStream(new byte[0]), IResource.KEEP_HISTORY, null);
+		}
+		catch (
+
+		CoreException e)
+		{
+			ServoyLog.logError("Could not create local history entry for " + file.getName(), e);
+		}
 	}
 
 	default boolean shouldSkipChange(IDocument document, SourceEdit edit, int startOffset, int endOffset, String originalStatement, String indentedReplacement,
