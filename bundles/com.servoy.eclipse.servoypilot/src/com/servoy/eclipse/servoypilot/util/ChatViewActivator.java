@@ -16,6 +16,10 @@
  */
 package com.servoy.eclipse.servoypilot.util;
 
+import java.util.List;
+
+import org.eclipse.e4.ui.model.application.MApplication;
+import org.eclipse.e4.ui.model.application.descriptor.basic.MPartDescriptor;
 import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.e4.ui.workbench.modeling.EPartService;
 import org.eclipse.swt.widgets.Display;
@@ -173,7 +177,19 @@ public class ChatViewActivator
 	}
 
 	/**
-	 * Updates the ChatView icon based on the current theme.
+	 * Gets the icon URI based on the theme.
+	 * 
+	 * @param isDarkTheme true if dark theme is active, false for light theme
+	 * @return the icon URI string
+	 */
+	private static String getIconURI(boolean isDarkTheme)
+	{
+		String iconFolder = isDarkTheme ? "darkicons" : "icons";
+		return "platform:/plugin/com.servoy.eclipse.servoypilot/" + iconFolder + "/aichat.png";
+	}
+
+	/**
+	 * Updates the ChatView icon based on the theme.
 	 * 
 	 * @param isDarkTheme true if dark theme is active, false for light theme
 	 * @return true if the icon was successfully updated, false otherwise
@@ -191,12 +207,57 @@ public class ChatViewActivator
 					MPart mPart = partService.findPart(CHAT_VIEW_ID);
 					if (mPart != null)
 					{
-						String iconFolder = isDarkTheme ? "darkicons" : "icons";
-						String iconURI = "platform:/plugin/com.servoy.eclipse.servoypilot/" + iconFolder + "/aichat.png";
-						mPart.setIconURI(iconURI);
+						mPart.setIconURI(getIconURI(isDarkTheme));
 						return true;
 					}
 				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError(e);
+		}
+		return false;
+	}
+
+	/**
+	 * Updates the ChatView PartDescriptor icon based on the theme.
+	 * This is used by the model processor to update the icon in the Show View dialog.
+	 * 
+	 * @param application the E4 application model
+	 * @param isDarkTheme true if dark theme is active, false for light theme
+	 * @return true if the icon was successfully updated, false otherwise
+	 */
+	public static boolean updatePartDescriptorIcon(MApplication application, boolean isDarkTheme)
+	{
+		try
+		{
+			if (application == null)
+			{
+				return false;
+			}
+
+			// Get the descriptors list directly from application model
+			List<MPartDescriptor> appDescriptors = application.getDescriptors();
+
+			// Find the ChatView descriptor
+			MPartDescriptor chatDescriptor = null;
+			if (appDescriptors != null)
+			{
+				for (MPartDescriptor desc : appDescriptors)
+				{
+					if (CHAT_VIEW_ID.equals(desc.getElementId()))
+					{
+						chatDescriptor = desc;
+						break;
+					}
+				}
+			}
+
+			if (chatDescriptor != null)
+			{
+				chatDescriptor.setIconURI(getIconURI(isDarkTheme));
+				return true;
 			}
 		}
 		catch (Exception e)
