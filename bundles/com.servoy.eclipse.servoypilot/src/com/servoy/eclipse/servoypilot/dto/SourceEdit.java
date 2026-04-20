@@ -25,7 +25,8 @@ public record SourceEdit(
 	int endLine,
 	String startSentence,
 	String endSentence,
-	String replacement)
+	String replacement,
+	boolean forceEndLineUse)
 {
 
 	public SourceEdit

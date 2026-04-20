@@ -62,6 +62,7 @@ import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.Activator;
 import com.servoy.eclipse.servoypilot.ai.AssistantType;
+import com.servoy.eclipse.servoypilot.ai.QueryBuilderAssistant;
 import com.servoy.eclipse.servoypilot.ai.QuickFixAssistant;
 import com.servoy.eclipse.servoypilot.context.QuickFixPresenter;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
@@ -874,9 +875,9 @@ public class ChatViewPresenter
 				// Accumulate tokens and update display
 				accumulatedResponse.append(partial);
 
-				if (currentAssistant == AssistantType.QUICKFIX)
+				if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
 				{
-					//do not show partial response for QuickFix because it contains unformatted json
+					//do not show partial response because it contains unformatted json
 					return;
 				}
 				applyToView(part -> {
@@ -911,6 +912,26 @@ public class ChatViewPresenter
 						part.setMessageHtml(assistantMsgId, readableResponse);
 					});
 					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+				}
+			}
+				else if (currentAssistant == AssistantType.QUERY_BUILDER)
+			{
+				QueryBuilderAssistant queryBuilderAssistant = Activator.getDefault().getServoyAiModel().getQueryBuilderAssistant();
+				CodeChanges newFix = queryBuilderAssistant.fix(userMessage);
+
+				if (newFix != null && !newFix.codeChanges().isEmpty())
+				{
+					String readableResponse = formatQuickFixForChat(newFix);
+					applyToView(part -> {
+						part.setMessageHtml(assistantMsgId, readableResponse);
+					});
+					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+				}
+				else
+				{
+					applyToView(part -> {
+						part.setMessageHtml(assistantMsgId, "No Query Builder issues or plain SQL usage detected in the selected code.");
+					});
 				}
 			}
 			})

@@ -16,6 +16,11 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
+
+import com.servoy.eclipse.servoypilot.dto.CodeChanges;
+
+import dev.langchain4j.service.UserMessage;
+
 /**
  * Query Builder Assistant for detecting QB API misuse and converting plain SQL to Servoy Query Builder code.
  */
@@ -32,4 +37,13 @@ public interface QueryBuilderAssistant extends IAssistant
 	{
 		return AssistantType.QUERY_BUILDER.getDisplayName();
 	}
+
+	/**
+	 * Analyse the given code and return a structured CodeChanges object with all QB fixes.
+	 * Uses the synchronous ChatModel for structured JSON output.
+	 *
+	 * @param prompt the user message (selected code + file context)
+	 * @return CodeChanges with all SourceEdit entries, or an empty list when nothing is found
+	 */
+	CodeChanges fix(@UserMessage String prompt);
 }

@@ -74,7 +74,7 @@ public interface IDocumentChangesPreviewManager
 			int startOffset = document.getLineOffset(startLine);
 
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), startOffset);
-			int endLine = document.getLineOfOffset(statement.sourceEnd());
+			int endLine = edit.forceEndLineUse() ? edit.endLine() : document.getLineOfOffset(statement.sourceEnd());
 			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
 			String originalStatement = document.get(startOffset, endOffset - startOffset);

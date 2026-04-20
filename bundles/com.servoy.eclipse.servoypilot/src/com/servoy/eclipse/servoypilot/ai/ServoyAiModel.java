@@ -165,8 +165,8 @@ public class ServoyAiModel
 		{
 			queryBuilderAssistant = switch (conf.getSelectedModel())
 			{
-				case OPENAI -> createQueryBuilderServices(createOpenAIModel(conf));
-				case GEMINI -> createQueryBuilderServices(createGeminiModel(conf));
+				case OPENAI -> createQueryBuilderServices(createOpenAIModel(conf), createQueryBuilderOpenAIModel(conf));
+				case GEMINI -> createQueryBuilderServices(createGeminiModel(conf), createQueryBuilderGeminiModel(conf));
 				case NONE -> null;
 			};
 		}
@@ -346,12 +346,23 @@ public class ServoyAiModel
 			.build();
 	}
 
-	private QueryBuilderAssistant createQueryBuilderServices(StreamingChatModel model)
+	private ChatModel createQueryBuilderOpenAIModel(AiConfiguration conf)
+	{
+		return OpenAiChatModel.builder().modelName(conf.getModel()).apiKey(conf.getApiKey()).build();
+	}
+
+	private ChatModel createQueryBuilderGeminiModel(AiConfiguration conf)
+	{
+		return GoogleAiGeminiChatModel.builder().apiKey(conf.getApiKey()).modelName(conf.getModel()).allowCodeExecution(true).build();
+	}
+
+	private QueryBuilderAssistant createQueryBuilderServices(StreamingChatModel model, ChatModel chatModel)
 	{
 		String systemPrompt = SystemPrompts.INSTANCE.getQueryBuilderPrompt();
 
 		return AiServices.builder(QueryBuilderAssistant.class)
 			.streamingChatModel(model)
+			.chatModel(chatModel)
 			.chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
 				.id(memoryId)
 				.alwaysKeepSystemMessageFirst(true)

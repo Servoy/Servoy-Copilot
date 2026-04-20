@@ -18,6 +18,8 @@ package com.servoy.eclipse.servoypilot.tools;
 
 import java.util.Map;
 
+import com.servoy.eclipse.servoypilot.tools.codecontext.ICodeContextTool;
+import com.servoy.eclipse.servoypilot.tools.codecontext.IGeneratedCodeValidationTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDatabaseTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
@@ -30,7 +32,6 @@ import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileLinesTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileRangesTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFunctionTool;
-import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
 import com.servoy.eclipse.servoypilot.util.ToolComposer;
 import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
 import com.servoy.eclipse.tools.retrieval.IWebFetchTool;
@@ -57,16 +58,18 @@ public class QueryBuilderAssistantTools
 			IReadFunctionTool.class,
 			IGetFileOutlineTool.class,
 			IGetFileInfoTool.class,
+			// Code context
+			ICodeContextTool.class,
 			// Eclipse workspace
 			IFileSearchTool.class,
 			IFileSearchRegExpTool.class,
 			IFindFilesTool.class,
-			ISearchAndReplaceTool.class,
 			IGetProblemsTool.class,
 			// Knowledge, web and database
 			IKnowledgeTool.class,
 			IWebFetchTool.class,
-			IDatabaseTool.class
-		);
+			IDatabaseTool.class,
+			// Validation
+			IGeneratedCodeValidationTool.class);
 	}
 }
