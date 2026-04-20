@@ -1,4 +1,4 @@
-package com.servo.eclipse.servoypilot.mcp.server.langchain;
+package com.servoy.eclipse.servoypilot.mcp.server.langchain;
 
 import static dev.langchain4j.internal.ValidationUtils.ensureNotNull;
 

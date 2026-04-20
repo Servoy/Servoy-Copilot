@@ -1,4 +1,4 @@
-package com.servo.eclipse.servoypilot.mcp.server;
+package com.servoy.eclipse.servoypilot.mcp.server;
 
 import java.util.Map;
 

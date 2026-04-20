@@ -155,7 +155,7 @@
  <extension
        point="org.apache.tomcat.serviceprovider">
     <serviceprovider
-          class="com.servo.eclipse.servoypilot.mcp.server.ServiceProvider"
+          class="com.servoy.eclipse.servoypilot.mcp.server.ServiceProvider"
           id="com.servoy.eclipse.servoypilot.serviceprovider">
     </serviceprovider>
  </extension>

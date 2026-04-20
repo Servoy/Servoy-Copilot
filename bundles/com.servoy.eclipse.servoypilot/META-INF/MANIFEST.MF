@@ -3,7 +3,7 @@ Bundle-ManifestVersion: 2
 Bundle-Name: Servoy AI Pilot
 Bundle-SymbolicName: com.servoy.eclipse.servoypilot;singleton:=true
 Bundle-Version: 2026.3.0.qualifier
-Export-Package: com.servo.eclipse.servoypilot.mcp.server
+Export-Package: com.servoy.eclipse.servoypilot.mcp.server
 Bundle-Activator: com.servoy.eclipse.servoypilot.Activator
 Bundle-Vendor: Servoy
 Require-Bundle: org.eclipse.jface,

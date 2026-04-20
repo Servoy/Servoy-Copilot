@@ -1,4 +1,4 @@
-package com.servo.eclipse.servoypilot.mcp.server.langchain;
+package com.servoy.eclipse.servoypilot.mcp.server.langchain;
 
 import static dev.langchain4j.mcp.client.McpToolMetadataKeys.DESTRUCTIVE_HINT;
 import static dev.langchain4j.mcp.client.McpToolMetadataKeys.IDEMPOTENT_HINT;

@@ -1,4 +1,4 @@
-package com.servo.eclipse.servoypilot.mcp.server;
+package com.servoy.eclipse.servoypilot.mcp.server;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,7 +8,7 @@ import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.servo.eclipse.servoypilot.mcp.server.langchain.McpServer;
+import com.servoy.eclipse.servoypilot.mcp.server.langchain.McpServer;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.mcp.protocol.McpJsonRpcMessage;
