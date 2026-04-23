@@ -17,12 +17,15 @@
 
 package com.servoy.eclipse.servoypilot.util;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.filebuffers.FileBuffers;
@@ -35,10 +38,12 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.IDocumentExtension4;
+import org.eclipse.jface.text.Position;
+import org.eclipse.jface.text.source.ISourceViewerExtension5;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
@@ -54,15 +59,22 @@ import com.servoy.eclipse.servoypilot.chatview.parts.FileModificationTracker;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 
 /**
- * @author emera
+ * Manager for multi-file previews that uses Code Mining to show changes without 
+ * dirtying the documents until accepted.
+ * * @author emera
  */
 public class MultiDocumentChangesPreviewManager implements IDocumentChangesPreviewManager
 {
+	// Static map shared with the AiPreviewCodeMiningProvider
+	private static final Map<IDocument, List<PreviewChange>> activeChangesMap = new ConcurrentHashMap<>();
+
 	private final Map<IPath, Set<PreviewChange>> fileChanges = new HashMap<>();
 
 	@Override
 	public void preview(List<SourceEdit> allEdits) throws Exception
 	{
+		//TODO check clearPreview(); // Clean start
+
 		Map<IPath, List<SourceEdit>> editsByFile = allEdits.stream()
 			.collect(Collectors.groupingBy(e -> {
 				String p = e.filePath();
@@ -76,128 +88,18 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		for (Map.Entry<IPath, List<SourceEdit>> entry : editsByFile.entrySet())
 		{
 			IPath path = entry.getKey();
-
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-			createLocalHistoryEntry(file);
-
 			IDocument document = connectAndGetDocument(path);
-			if (document == null)
+
+			if (document != null)
 			{
-				ServoyLog.logError("Could not resolve document for path: " + path);
-				continue;
-			}
-			try
-			{
-				String originalContent = document.get();
-				applyEdits(document, entry.getValue());
-				FileModificationTracker.getInstance().notifyFileModified(path.toString(), originalContent);
-			}
-			finally
-			{
-				disconnectPath(path);
-			}
-		}
-	}
-
-	@Override
-	public void clearPreview()
-	{
-		fileChanges.clear();
-	}
-
-	@Override
-	public void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement)
-	{
-		IPath path = new Path(edit.filePath().startsWith("L/") ? edit.filePath().substring(2) : edit.filePath());
-		addAppliedChange(path, change);
-	}
-
-	@Override
-	public void accept()
-	{
-		ITextFileBufferManager bufferManager = FileBuffers.getTextFileBufferManager();
-
-		for (Entry<IPath, Set<PreviewChange>> entry : fileChanges.entrySet())
-		{
-			IPath path = entry.getKey();
-			Set<PreviewChange> changes = entry.getValue();
-			if (changes.isEmpty())
-			{
-				continue;
-			}
-
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-			createLocalHistoryEntry(file);
-
-			IDocument document = connectAndGetDocument(path);
-			if (document == null)
-			{
-				ServoyLog.logError("Could not resolve document for path: " + path);
-				continue;
-			}
-
-			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-			IEditorPart openEditor = findEditor(page, file);
-
-			IDocumentProvider provider = (openEditor instanceof ScriptEditor se) ? se.getDocumentProvider() : null;
-			Object input = (openEditor != null) ? openEditor.getEditorInput() : null;
-
-			DocumentRewriteSession docRewriteSession = null;
-			try
-			{
-				if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-				{
-					docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
-				}
-				if (provider != null)
-				{
-					provider.aboutToChange(input);
-				}
-
-				for (PreviewChange change : changes)
-				{
-					int line = document.getLineOfOffset(change.startOffset);
-					int offset = document.getLineOffset(line);
-
-					if (!change.isInsert)
-					{
-						// if it's an insert it's already in the document, so we don't need to do anything to "accept" it.
-						document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
-					}
-				}
-			}
-			catch (Exception e)
-			{
-				ServoyLog.logError("Cannot accept source modification for " + path, e);
-			}
-			finally
-			{
-				if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4 && docRewriteSession != null)
-				{
-					docextension4.stopRewriteSession(docRewriteSession);
-				}
-
-				if (provider != null)
-				{
-					provider.changed(input);
-				}
-
 				try
 				{
-					if (openEditor == null)
-					{
-						ITextFileBuffer buffer = bufferManager.getTextFileBuffer(path, LocationKind.IFILE);
-						if (buffer != null && buffer.isDirty())
-						{
-							buffer.commit(null, true);
-						}
-						// only refresh local if we actually wrote to disk
-						file.refreshLocal(IResource.DEPTH_ZERO, null);
-					}
-				}
-				catch (CoreException e)
-				{
-					ServoyLog.logError("Failed to save file after accepting changes: " + path, e);
+					// This populates fileChanges and activeChangesMap via handleAppliedChange call-back
+					calculateEdits(document, entry.getValue());
+
+					// Force UI refresh for the editor if it's open
+					triggerUIUpdate(path);
+					FileModificationTracker.getInstance().notifyFileModified(path.toString(), document.get());
 				}
 				finally
 				{
@@ -205,109 +107,181 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 				}
 			}
 		}
-		clearPreview();
 	}
 
 	@Override
-	public void reject()
+	public void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement)
+	{
+		IPath path = new Path(edit.filePath().startsWith("L/") ? edit.filePath().substring(2) : edit.filePath());
+
+		// 1. Store for the actual 'accept' modification later
+		fileChanges.computeIfAbsent(path, k -> new LinkedHashSet<>()).add(change);
+
+		// 2. Populate the static map for CodeMining UI
+		IDocument doc = connectAndGetDocument(path);
+		if (doc != null)
+		{
+			activeChangesMap.computeIfAbsent(doc, k -> new ArrayList<>()).add(change);
+		}
+	}
+
+	public void accept()
 	{
 		for (Entry<IPath, Set<PreviewChange>> entry : fileChanges.entrySet())
 		{
 			IPath path = entry.getKey();
-			Set<PreviewChange> changes = entry.getValue();
 			IDocument document = connectAndGetDocument(path);
-
 			if (document == null)
 			{
 				continue;
 			}
 
-			DocumentRewriteSession docRewriteSession = null;
 			try
 			{
-				if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-				{
-					docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
-				}
-
-				for (PreviewChange change : changes)
-				{
-					int line = document.getLineOfOffset(change.startOffset);
-					int offset = document.getLineOffset(line);
-
-					if (change.isInsert)
-					{
-						// To "reject" an insertion, we replace the inserted length back to nothing.
-						int insertedLength = change.modifiedLine.length() + change.lineDelimiter.length();
-						document.replace(offset, insertedLength, "");
-					}
-					else
-					{
-						document.replace(offset, change.originalLength, change.originalLine);
-					}
-				}
+				applyChangesToDocument(path, document, entry.getValue());
 			}
 			catch (Exception e)
 			{
-				ServoyLog.logError("Cannot revert proposed source modification for " + path, e);
+				ServoyLog.logError("Cannot accept source modification for " + path, e);
 			}
 			finally
 			{
-				if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4 && docRewriteSession != null)
-				{
-					docextension4.stopRewriteSession(docRewriteSession);
-				}
 				disconnectPath(path);
 			}
 		}
 		clearPreview();
 	}
 
-	private IDocument connectAndGetDocument(IPath path)
+	private void applyChangesToDocument(IPath path, IDocument document, Set<PreviewChange> changes) throws Exception
 	{
-		// try to see if it's open in an editor to get the LIVE document
+		IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+		createLocalHistoryEntry(file);
+
+		IWorkbenchPage page = getActivePage();
+		IEditorPart openEditor = findEditor(page, file);
+		IDocumentProvider provider = (openEditor instanceof ITextEditor te) ? te.getDocumentProvider() : null;
+		Object input = (openEditor != null) ? openEditor.getEditorInput() : null;
+
+		DocumentRewriteSession session = null;
 		try
 		{
-			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-			IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-			if (window != null)
+			if (document instanceof IDocumentExtension4 ext4)
 			{
-				IWorkbenchPage page = window.getActivePage();
-				IEditorPart editor = findEditor(page, file);
+				session = ext4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+			}
 
-				if (editor instanceof ITextEditor textEditor)
+			if (provider != null)
+			{
+				provider.aboutToChange(input);
+			}
+
+			// CRITICAL: Sort DESCENDING by offset so applying a change doesn't invalidate 
+			// the offsets of subsequent changes in the same document.
+			List<PreviewChange> sorted = new ArrayList<>(changes);
+			sorted.sort(Comparator.comparingInt((PreviewChange c) -> c.startOffset).reversed());
+
+			for (PreviewChange change : sorted)
+			{
+				String textToInsert = "";
+				if (change.modifiedLine != null && !change.modifiedLine.isEmpty())
 				{
-					IDocumentProvider provider = textEditor.getDocumentProvider();
-					IDocument doc = provider.getDocument(textEditor.getEditorInput());
-					if (doc != null)
-					{
-						return doc;
-					}
+					textToInsert = change.modifiedLine + change.lineDelimiter;
 				}
+				Position pos = change.getPosition();
+				// pos.getOffset() will now be the CORRECT current offset, 
+				// even if lines above it were added or removed!
+				document.replace(pos.getOffset(), pos.getLength(), textToInsert);
+				document.removePosition(pos);
 			}
 		}
-		catch (Exception e)
+		finally
 		{
-			ServoyLog.logInfo("Editor not found or not a text editor for: " + path);
+			if (document instanceof IDocumentExtension4 ext4 && session != null)
+			{
+				ext4.stopRewriteSession(session);
+			}
+
+			if (provider != null)
+			{
+				provider.changed(input);
+			}
+
+			// If editor wasn't open, we need to commit the buffer manually
+			if (openEditor == null)
+			{
+				ITextFileBuffer buffer = FileBuffers.getTextFileBufferManager().getTextFileBuffer(path, LocationKind.IFILE);
+				if (buffer != null && buffer.isDirty())
+				{
+					buffer.commit(null, true);
+				}
+				file.refreshLocal(IResource.DEPTH_ZERO, null);
+			}
+		}
+	}
+
+	public void reject()
+	{
+		clearPreview();
+	}
+
+	@Override
+	public void clearPreview()
+	{
+		// Clear the CodeMining UI state for all documents involved
+		for (IPath path : fileChanges.keySet())
+		{
+			IDocument doc = connectAndGetDocument(path);
+			if (doc != null)
+			{
+				activeChangesMap.remove(doc);
+				triggerUIUpdate(path);
+			}
+		}
+		fileChanges.clear();
+	}
+
+	/**
+	 * Tells the Eclipse editor to re-query Code Mining providers.
+	 */
+	private void triggerUIUpdate(IPath path)
+	{
+		IWorkbenchPage page = getActivePage();
+		IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+		IEditorPart editor = findEditor(page, file);
+		if (editor != null)
+		{
+			ISourceViewerExtension5 ext5 = editor.getAdapter(ISourceViewerExtension5.class);
+			if (ext5 != null)
+			{
+				ext5.updateCodeMinings();
+			}
+		}
+	}
+
+	private IDocument connectAndGetDocument(IPath path)
+	{
+		IWorkbenchPage page = getActivePage();
+		if (page != null)
+		{
+			IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
+			IEditorPart editor = findEditor(page, file);
+			if (editor instanceof ITextEditor te)
+			{
+				return te.getDocumentProvider().getDocument(te.getEditorInput());
+			}
 		}
 
-		// fallback: Connect via Buffer Manager for closed files
 		ITextFileBufferManager bufferManager = FileBuffers.getTextFileBufferManager();
 		try
 		{
-			// Note: connect() is reference-counted; ensure you call disconnect() in the calling finally block
 			bufferManager.connect(path, LocationKind.IFILE, null);
-			ITextFileBuffer textFileBuffer = bufferManager.getTextFileBuffer(path, LocationKind.IFILE);
-			if (textFileBuffer != null)
-			{
-				return textFileBuffer.getDocument();
-			}
+			ITextFileBuffer buffer = bufferManager.getTextFileBuffer(path, LocationKind.IFILE);
+			return buffer != null ? buffer.getDocument() : null;
 		}
 		catch (Exception e)
 		{
-			ServoyLog.logError("Failed to connect to file buffer for path: " + path, e);
+			return null;
 		}
-		return null;
 	}
 
 	private void disconnectPath(IPath path)
@@ -318,13 +292,14 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		}
 		catch (CoreException e)
 		{
-			ServoyLog.logError("Failed to disconnect buffer for path: " + path, e);
+			ServoyLog.logError("Disconnect failed", e);
 		}
 	}
 
-	public void addAppliedChange(IPath path, PreviewChange pc)
+	private IWorkbenchPage getActivePage()
 	{
-		fileChanges.computeIfAbsent(path, k -> new LinkedHashSet<>()).add(pc);
+		IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+		return window != null ? window.getActivePage() : null;
 	}
 
 	private IEditorPart findEditor(IWorkbenchPage page, IFile fileToEdit)
@@ -333,24 +308,32 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 		{
 			return null;
 		}
-		IEditorReference[] editorRefs = page.getEditorReferences();
-		for (IEditorReference ref : editorRefs)
+		for (IEditorReference ref : page.getEditorReferences())
 		{
 			try
 			{
 				IEditorInput input = ref.getEditorInput();
 				IFile openFile = input != null ? input.getAdapter(IFile.class) : null;
-
-				if (openFile != null && openFile.equals(fileToEdit))
+				if (fileToEdit.equals(openFile))
 				{
 					return ref.getEditor(true);
 				}
 			}
 			catch (PartInitException e)
 			{
-				ServoyLog.logError("Failed to inspect editor reference", e);
+				ServoyLog.logError("Editor check failed", e);
 			}
 		}
 		return null;
+	}
+
+	public static List<PreviewChange> getActiveChanges(IDocument doc)
+	{
+		return activeChangesMap.getOrDefault(doc, java.util.Collections.emptyList());
+	}
+
+	public void addAppliedChange(IPath path, PreviewChange pc)
+	{
+		fileChanges.computeIfAbsent(path, k -> new LinkedHashSet<>()).add(pc);
 	}
 }

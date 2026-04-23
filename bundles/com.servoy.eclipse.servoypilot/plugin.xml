@@ -159,4 +159,23 @@
           id="com.servoy.eclipse.servoypilot.serviceprovider">
     </serviceprovider>
  </extension>
+	<extension point="org.eclipse.ui.workbench.texteditor.codeMiningProviders">
+		<codeMiningProvider
+			class="com.servoy.eclipse.servoypilot.context.AiPreviewCodeMiningProvider"
+			id="com.servoy.eclipse.servoypilot.aiPreviewProvider"
+			label="Servoy AI Code Change Suggestion Preview">
+			<enabledWhen>
+          <with
+               variable="editorInput">
+                <adapt type="org.eclipse.core.resources.IFile">
+                   <test property="org.eclipse.core.resources.contentTypeId" value="org.eclipse.dltk.javascriptContentType" />
+                </adapt>
+          </with></enabledWhen>
+		</codeMiningProvider>
+	</extension>
+	<extension point="org.eclipse.ui.genericeditor.reconcilers">
+    <reconciler
+        class="org.eclipse.jface.text.codemining.CodeMiningReconciler"
+        contentType="org.eclipse.dltk.javascriptContentType"> </reconciler>
+</extension>
 </plugin>

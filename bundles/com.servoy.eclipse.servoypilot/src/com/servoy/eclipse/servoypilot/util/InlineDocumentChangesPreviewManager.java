@@ -20,34 +20,27 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.Path;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentExtension4;
+import org.eclipse.jface.text.Position;
 import org.eclipse.jface.text.source.ISourceViewer;
+import org.eclipse.jface.text.source.ISourceViewerExtension5;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.LineBackgroundListener;
 import org.eclipse.swt.custom.StyledText;
-import org.eclipse.swt.events.FocusAdapter;
-import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.GC;
-import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
-import org.eclipse.swt.layout.RowData;
-import org.eclipse.swt.layout.RowLayout;
-import org.eclipse.swt.widgets.Canvas;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IFileEditorInput;
@@ -81,18 +74,23 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	private String originalContent;
 	private LineBackgroundListener backgroundListener;
 	private PaintListener paintListener;
-	private Composite floatingBar;
 
-	private final Set<Integer> addedLines = new HashSet<>();
 	private final Set<Integer> removedLines = new HashSet<>();
 
-	private final List<PreviewChange> previewChanges = new ArrayList<>();
+	//private final List<PreviewChange> previewChanges = new ArrayList<>(); //TODO rem preview changes
 
 	private final List<Color> colors = new ArrayList<>();
 	private FileCompareEditorInput compareEditorInput;
 	private StyledText textWidget;
 
 	private ScriptEditor scriptEditor;
+
+	private static final Map<IDocument, List<PreviewChange>> activeChangesMap = new ConcurrentHashMap<>();
+
+	public static List<PreviewChange> getActiveChanges(IDocument doc)
+	{
+		return activeChangesMap.get(doc);
+	}
 
 	public InlineDocumentChangesPreviewManager(ScriptEditor scriptEditor)
 	{
@@ -101,8 +99,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	}
 
 	@Override
-	public void preview(
-		List<SourceEdit> sourceEdits) throws Exception
+	public void preview(List<SourceEdit> sourceEdits) throws Exception
 	{
 		ISourceViewer viewer = scriptEditor.getViewer();
 		if (viewer == null || viewer.getTextWidget() == null)
@@ -114,115 +111,79 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		IDocument document = viewer.getDocument();
 
 		originalContent = document.get();
-
-		addedLines.clear();
-		removedLines.clear();
-		previewChanges.clear();
-
 		Display display = textWidget.getDisplay();
-		Color addedColor = new Color(display, 230, 255, 230);
 		Color removedColor = new Color(display, 255, 230, 230);
-		colors.add(addedColor);
 		colors.add(removedColor);
 		removedLines.clear();
-		addedLines.clear();
+		activeChangesMap.remove(document); // Clear old map entry
 
-		if (sourceEdits.isEmpty())
+		if (sourceEdits == null || sourceEdits.isEmpty())
 		{
-			ServoyLog.logInfo("No changes to preview.");
 			return;
 		}
 
-		String filePath = sourceEdits.get(0).filePath();
-		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
-		IFile file = ResourcesPlugin.getWorkspace().getRoot().getFile(path);
-		createLocalHistoryEntry(file);
-
-		DocumentRewriteSession docRewriteSession = null;
 		try
 		{
 			textWidget.setRedraw(false);
-			if (document instanceof IDocumentExtension4 docExt4)
+			calculateEdits(document, sourceEdits);
+
+			if (viewer instanceof ISourceViewerExtension5 ext5)
 			{
-				docRewriteSession = docExt4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+				ext5.updateCodeMinings();
 			}
 
-			applyEdits(document, sourceEdits);
+			// setup Red Background Listeners (for the deleted lines)
+			setupVisualListeners(removedColor);
 
-			backgroundListener = event -> {
-				try
-				{
-					int widgetOffset = event.lineOffset;
-					int documentOffset = widgetOffset;
-
-					// Convert Widget Offset -> Master Document Offset
-					if (viewer instanceof org.eclipse.jface.text.ITextViewerExtension5 ext5)
-					{
-						documentOffset = ext5.widgetOffset2ModelOffset(widgetOffset);
-					}
-
-					if (documentOffset != -1)
-					{
-						int documentLine = document.getLineOfOffset(documentOffset);
-						if (removedLines.contains(documentLine))
-						{
-							event.lineBackground = removedColor;
-						}
-						else if (addedLines.contains(documentLine))
-						{
-							event.lineBackground = addedColor;
-						}
-					}
-				}
-				catch (Exception ex)
-				{
-				}
-			};
-
-			textWidget.addLineBackgroundListener(backgroundListener);
-
-			paintListener = e -> {
-				GC gc = e.gc;
-				int clientWidth = textWidget.getClientArea().width;
-				drawDiffDecorations(gc, removedLines, "-", removedColor, clientWidth);
-				drawDiffDecorations(gc, addedLines, "+", addedColor, clientWidth);
-			};
-			textWidget.addPaintListener(paintListener);
 		}
 		finally
 		{
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-			{
-				docextension4.stopRewriteSession(docRewriteSession);
-			}
 			textWidget.setRedraw(true);
 			textWidget.redraw();
 		}
+	}
 
-		showAcceptRejectUI(scriptEditor);
+	private void setupVisualListeners(Color removedColor)
+	{
+		backgroundListener = event -> {
+			try
+			{
+				int docOffset = event.lineOffset;
+				if (scriptEditor.getViewer() instanceof org.eclipse.jface.text.ITextViewerExtension5 ext5)
+				{
+					docOffset = ext5.widgetOffset2ModelOffset(event.lineOffset);
+				}
+				int line = scriptEditor.getViewer().getDocument().getLineOfOffset(docOffset);
+				if (removedLines.contains(line))
+				{
+					event.lineBackground = removedColor;
+				}
+			}
+			catch (Exception ex)
+			{
+			}
+		};
+		textWidget.addLineBackgroundListener(backgroundListener);
+
+		paintListener = e -> {
+			drawDiffDecorations(e.gc, removedLines, "-", removedColor, textWidget.getClientArea().width);
+		};
+		textWidget.addPaintListener(paintListener);
 	}
 
 	@Override
 	public void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement)
 	{
-		previewChanges.add(change);
+		IDocument doc = scriptEditor.getViewer().getDocument();
+		activeChangesMap.computeIfAbsent(doc, k -> new ArrayList<>()).add(change);
 
 		int originalLineCount = edit.isInsert() ? 0 : countLines(original);
-		int addedLinesCount = countLines(replacement);
 
-		// Update the sets for the LineBackgroundPainter
 		if (!edit.isInsert())
 		{
 			for (int i = 0; i < originalLineCount; i++)
 			{
 				removedLines.add(startLine + i);
-			}
-		}
-		if (!edit.isDelete())
-		{
-			for (int i = 0; i < addedLinesCount; i++)
-			{
-				addedLines.add(startLine + originalLineCount + i);
 			}
 		}
 	}
@@ -331,104 +292,27 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	}
 
 	@Override
-	public void accept()
-	{
-		DocumentRewriteSession docRewriteSession = null;
-		IDocument document = null;
-		try
-		{
-			ISourceViewer viewer = scriptEditor.getViewer();
-			document = viewer.getDocument();
-
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-			{
-				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
-			}
-			for (PreviewChange change : previewChanges)
-			{
-				int line = document.getLineOfOffset(change.startOffset);
-				int offset = document.getLineOffset(line);
-				if (!change.isInsert)
-				{
-					//if it's an insert it's already in the document, so we don't need to do anything to "accept" it.
-					document.replace(offset, change.originalLength, change.modifiedLine + change.lineDelimiter);
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("Cannot accept source modification", e);
-		}
-		finally
-		{
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-			{
-				docextension4.stopRewriteSession(docRewriteSession);
-			}
-		}
-
-		cleanup();
-	}
-
-	@Override
-	public void reject()
-	{
-		DocumentRewriteSession docRewriteSession = null;
-		IDocument document = null;
-		try
-		{
-			ISourceViewer viewer = scriptEditor.getViewer();
-			if (viewer == null)
-			{
-				return;
-			}
-			document = viewer.getDocument();
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-			{
-				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
-			}
-
-			for (PreviewChange change : previewChanges)
-			{
-				int line = document.getLineOfOffset(change.startOffset);
-				int offset = document.getLineOffset(line);
-				if (change.isInsert)
-				{
-					// To "reject" an insertion, we replace the inserted length 
-					// (which was change.modifiedLine.length()) back to nothing.
-					// Note: This assumes the document currently contains the modifiedLine.
-					int insertedLength = change.modifiedLine.length() + change.lineDelimiter.length();
-					document.replace(offset, insertedLength, "");
-				}
-				else
-				{
-					document.replace(
-						offset,
-						change.originalLength,
-						change.originalLine);
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logError("Cannot revert the proposed source modification", e);
-		}
-		finally
-		{
-			if (document instanceof org.eclipse.jface.text.IDocumentExtension4 docextension4)
-			{
-				docextension4.stopRewriteSession(docRewriteSession);
-			}
-		}
-
-		cleanup();
-	}
-
-	@Override
 	public void clearPreview()
 	{
-		reject();
-		cleanup();
+		// Trigger a UI refresh to remove the drawings from the editor
+		// We use asyncExec to ensure we are on the UI thread
+		Display.getDefault().asyncExec(() -> {
+			if (scriptEditor != null && !scriptEditor.getViewer().getTextWidget().isDisposed())
+			{
+				ISourceViewer viewer = scriptEditor.getViewer();
+				List<PreviewChange> changes = activeChangesMap.get(viewer.getDocument());
+				if (changes != null)
+				{
+					changes.clear();
+				}
+				if (viewer instanceof ISourceViewerExtension5 extension)
+				{
+					extension.updateCodeMinings();
+				}
+
+				cleanup();
+			}
+		});
 	}
 
 	private void cleanup()
@@ -456,12 +340,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 				}
 			}
 			colors.clear();
-
-			addedLines.clear();
 			removedLines.clear();
-			previewChanges.clear();
-
-			disposeFloatingBar();
 
 			textWidget.redraw();
 
@@ -477,247 +356,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		}
 	}
 
-	private void showAcceptRejectUI(ScriptEditor scriptEditor)
-	{
-		StyledText text = scriptEditor.getViewer().getTextWidget();
-
-		disposeFloatingBar();
-
-		floatingBar = new Composite(text.getShell(), SWT.DOUBLE_BUFFERED | SWT.NO_TRIM | SWT.ON_TOP);
-		floatingBar.moveAbove(null);
-
-		RowLayout layout = new RowLayout(SWT.HORIZONTAL);
-		layout.marginTop = 3;
-		layout.marginBottom = 0;
-		layout.marginLeft = 0;
-		layout.marginRight = 0;
-		layout.spacing = 6;
-		layout.wrap = false;
-		layout.center = true;
-		floatingBar.setLayout(layout);
-		int lineHeight = text.getLineHeight() + 5;
-		Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
-		floatingBar.setSize(size.x, lineHeight);
-
-		Color blue = new Color(text.getDisplay(), 43, 173, 223);
-		colors.add(blue);
-		Color blueHover = new Color(text.getDisplay(), 30, 155, 205);
-		colors.add(blueHover);
-		Color neutral = new Color(text.getDisplay(), 200, 200, 200);
-		colors.add(neutral);
-		Color neutralHover = new Color(text.getDisplay(), 170, 170, 170);
-		colors.add(neutralHover);
-
-		createStyledButton(
-			floatingBar,
-			text,
-			"✔ Keep",
-			blue,
-			blueHover,
-			() -> {
-				accept();
-				disposeFloatingBar();
-			});
-
-		createStyledButton(
-			floatingBar,
-			text,
-			"✖ Undo",
-			neutral,
-			neutralHover,
-			() -> {
-				reject();
-				disposeFloatingBar();
-			});
-		createStyledButton(
-			floatingBar,
-			text,
-			"⇄ Diff",
-			neutral,
-			neutralHover,
-			() -> {
-				toggleDiffEditor();
-			});
-
-		floatingBar.pack();
-		positionFloatingBar(text);
-
-		// Reposition on scroll
-		text.addListener(SWT.MouseWheel, e -> positionFloatingBar(text));
-		text.addListener(SWT.Resize, e -> positionFloatingBar(text));
-		text.addListener(SWT.KeyDown, e -> positionFloatingBar(text));
-		text.getHorizontalBar().addListener(SWT.Selection, e -> positionFloatingBar(text));
-		text.getVerticalBar().addListener(SWT.Selection, e -> positionFloatingBar(text));
-
-		floatingBar.setVisible(true);
-
-		text.addFocusListener(new FocusAdapter()
-		{
-			@Override
-			public void focusLost(FocusEvent e)
-			{
-				if (floatingBar != null && !floatingBar.isDisposed())
-				{
-					floatingBar.setVisible(false);
-				}
-			}
-
-			@Override
-			public void focusGained(FocusEvent e)
-			{
-				if (floatingBar != null && !floatingBar.isDisposed())
-				{
-					floatingBar.setVisible(true);
-					positionFloatingBar(text);
-				}
-			}
-		});
-	}
-
-	private Control createStyledButton(
-		Composite parent,
-		StyledText styledText,
-		String text,
-		Color normalBg,
-		Color hoverBg,
-		Runnable action)
-	{
-		Canvas button = new Canvas(parent, SWT.DOUBLE_BUFFERED);
-		Display display = parent.getDisplay();
-
-		final int ARC = 8;
-		final int PADDING_X = 12;
-		final int lineHeight = styledText.getLineHeight() + 5;
-		button.setCursor(display.getSystemCursor(SWT.CURSOR_HAND));
-
-		final boolean[] hovered = { false };
-		button.addPaintListener(e -> {
-			GC gc = e.gc;
-			gc.setAntialias(SWT.ON);
-			Rectangle bounds = button.getClientArea();
-			gc.setBackground(hovered[0] ? hoverBg : normalBg);
-			gc.fillRoundRectangle(
-				bounds.x,
-				bounds.y,
-				bounds.width - 1,
-				bounds.height - 1,
-				ARC,
-				ARC);
-			gc.setForeground(display.getSystemColor(SWT.COLOR_WHITE));
-			Point textSize = gc.textExtent(text);
-			int textX = bounds.x + (bounds.width - textSize.x) / 2;
-			int textY = bounds.y + (bounds.height - textSize.y) / 2;
-			gc.drawText(text, textX, textY, true);
-		});
-
-		button.addListener(SWT.MouseEnter, e -> {
-			hovered[0] = true;
-			button.redraw();
-		});
-		button.addListener(SWT.MouseExit, e -> {
-			hovered[0] = false;
-			button.redraw();
-		});
-		button.addListener(SWT.MouseUp, e -> {
-			if (action != null)
-			{
-				action.run();
-			}
-		});
-
-		GC gc = new GC(button);
-		Point textSize = gc.textExtent(text);
-		gc.dispose();
-
-		int width = textSize.x + PADDING_X * 2;
-		button.setSize(width, lineHeight);
-		RowData rd = new RowData();
-		rd.height = lineHeight;
-		button.setLayoutData(rd);
-
-		return button;
-	}
-
-	private void positionFloatingBar(StyledText text)
-	{
-		if (floatingBar == null || floatingBar.isDisposed())
-		{
-			return;
-		}
-
-		text.getDisplay().asyncExec(() -> {
-			if (text.isDisposed() || floatingBar == null || floatingBar.isDisposed())
-			{
-				return;
-			}
-
-			int targetLine;
-			if (!addedLines.isEmpty())
-			{
-				targetLine = addedLines.iterator().next();
-			}
-			else if (!removedLines.isEmpty())
-			{
-				targetLine = removedLines.stream().max(Integer::compareTo).orElse(-1);
-			}
-			else
-			{
-				floatingBar.setVisible(false);
-				return;
-			}
-
-			try
-			{
-				ISourceViewer viewer = scriptEditor.getViewer();
-				if (viewer == null)
-				{
-					return;
-				}
-				IDocument document = viewer.getDocument();
-				org.eclipse.jface.text.ITextViewerExtension5 ext5 = (viewer instanceof org.eclipse.jface.text.ITextViewerExtension5)
-					? (org.eclipse.jface.text.ITextViewerExtension5)viewer : null;
-
-				int documentOffset = document.getLineOffset(targetLine);
-				int widgetOffset = ext5 != null ? ext5.modelOffset2WidgetOffset(documentOffset) : documentOffset;
-
-				if (widgetOffset == -1)
-				{
-					floatingBar.setVisible(false);
-					return;
-				}
-
-				int yInText = text.getLocationAtOffset(widgetOffset).y;
-				int lineHeight = text.getLineHeight(widgetOffset);
-
-				if (yInText < 0 || yInText > text.getClientArea().height - lineHeight)
-				{
-					floatingBar.setVisible(false); // hide if line not visible
-					return;
-				}
-
-				floatingBar.setVisible(true);
-				Point size = floatingBar.computeSize(SWT.DEFAULT, lineHeight);
-				Point displayPoint = text.toDisplay(0, yInText);
-				int x = displayPoint.x + text.getClientArea().width - size.x - 10;
-				int y = displayPoint.y - size.y - 10;
-
-				floatingBar.setBounds(x, y, size.x, lineHeight + 10);
-			}
-			catch (Exception ignore)
-			{
-			}
-		});
-	}
-
-	private void disposeFloatingBar()
-	{
-		if (floatingBar != null && !floatingBar.isDisposed())
-		{
-			floatingBar.dispose();
-		}
-	}
-
-	private void toggleDiffEditor()
+	public void toggleDiffEditor()
 	{
 		if (compareEditorInput == null)
 		{
@@ -750,6 +389,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	private String buildModifiedContent(IDocument document) throws Exception
 	{
 		StringBuilder builder = new StringBuilder(document.get());
+		List<PreviewChange> previewChanges = activeChangesMap.get(document);
 		for (int i = 0; i < previewChanges.size(); i++)
 		{
 			PreviewChange change = previewChanges.get(i);
@@ -763,6 +403,76 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 
 	public List<PreviewChange> getPreviewChanges()
 	{
-		return new ArrayList<>(previewChanges);
+		return new ArrayList<>(activeChangesMap.getOrDefault(scriptEditor.getViewer().getDocument(), Collections.emptyList()));
+	}
+
+	public ScriptEditor getEditor()
+	{
+		return scriptEditor;
+	}
+
+
+	public void accept(PreviewChange change)
+	{
+		DocumentRewriteSession docRewriteSession = null;
+		IDocument document = null;
+		try
+		{
+			ISourceViewer viewer = scriptEditor.getViewer();
+			document = viewer.getDocument();
+
+			if (document instanceof IDocumentExtension4 docextension4)
+			{
+				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED_SMALL);
+			}
+
+			String textToInsert = "";
+			if (change.modifiedLine != null && !change.modifiedLine.isEmpty())
+			{
+				textToInsert = change.modifiedLine + change.lineDelimiter;
+			}
+			Position pos = change.getPosition();
+			// pos.getOffset() will now be the CORRECT current offset, 
+			// even if lines above it were added or removed!
+			document.replace(pos.getOffset(), pos.getLength(), textToInsert);
+			document.removePosition(pos);
+			activeChangesMap.get(document).remove(change);
+			if (viewer instanceof ISourceViewerExtension5 extension)
+			{
+				extension.updateCodeMinings();
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot accept source modification", e);
+		}
+		finally
+		{
+			if (document instanceof IDocumentExtension4 docextension4 && docRewriteSession != null)
+			{
+				docextension4.stopRewriteSession(docRewriteSession);
+			}
+			cleanup(); //TODO remove only specific preview change related visuals instead of full cleanup
+		}
+	}
+
+	public void reject(PreviewChange change)
+	{
+		try
+		{
+			cleanup(); //TODO remove only specific preview change related visuals instead of full cleanup
+			IDocument document = scriptEditor.getViewer().getDocument();
+			document.removePosition(change.getPosition());
+			activeChangesMap.get(document).remove(change);
+			ISourceViewer viewer = scriptEditor.getViewer();
+			if (viewer instanceof ISourceViewerExtension5 extension)
+			{
+				extension.updateCodeMinings();
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot reject source modification", e);
+		}
 	}
 }

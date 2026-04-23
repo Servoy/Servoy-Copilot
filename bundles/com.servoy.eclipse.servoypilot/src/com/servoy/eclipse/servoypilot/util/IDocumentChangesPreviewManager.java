@@ -27,6 +27,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.dltk.javascript.ast.Statement;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.Position;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
@@ -40,12 +41,23 @@ public interface IDocumentChangesPreviewManager
 {
 	static class PreviewChange
 	{
-		int startOffset;
-		int originalLength;
-		String modifiedLine;
+		public int startOffset;
+		public int originalLength;
+		public String modifiedLine;
 		String lineDelimiter;
 		String originalLine;
 		public boolean isInsert;
+		private Position position;
+
+		public void setPosition(Position pos)
+		{
+			this.position = pos;
+		}
+
+		public Position getPosition()
+		{
+			return position;
+		}
 	}
 
 
@@ -53,16 +65,10 @@ public interface IDocumentChangesPreviewManager
 
 	void clearPreview();
 
-	// each implementation handles where to store or how to paint these
-	void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement);
 
-	/**
-	 * The shared logic for processing edits. 
-	 * Implementations call this to perform the actual document work.
-	 */
-	default void applyEdits(IDocument document, List<SourceEdit> sourceEdits) throws Exception
+	default void calculateEdits(IDocument document, List<SourceEdit> sourceEdits) throws Exception
 	{
-		// Sort bottom-to-top to keep offsets valid during multiple replacements
+		// Sort bottom-to-top 
 		List<SourceEdit> sortedEdits = new ArrayList<>(sourceEdits);
 		sortedEdits.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
 
@@ -74,64 +80,33 @@ public interface IDocumentChangesPreviewManager
 			int startOffset = document.getLineOffset(startLine);
 
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), startOffset);
-			int endLine = edit.forceEndLineUse() ? edit.endLine() : document.getLineOfOffset(statement.sourceEnd());
+			int endLine = document.getLineOfOffset(statement.sourceEnd());
 			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
 			String originalStatement = document.get(startOffset, endOffset - startOffset);
-			String lineDelimiter = document.getLineDelimiter(startLine);
-			if (lineDelimiter == null)
-			{
-				lineDelimiter = "\n";
-			}
+			String lineDelimiter = document.getLineDelimiter(startLine) != null ? document.getLineDelimiter(startLine) : "\n";
+
 			String indentedReplacement = codeFormatter.format(edit.replacement(), startOffset);
-			String previewBlock = null;
-			if (edit.isInsert())
-			{
-				previewBlock = indentedReplacement + lineDelimiter;
-			}
-			else if (edit.isReplacement())
-			{
-				previewBlock = originalStatement +
-					indentedReplacement +
-					lineDelimiter;
-			}
-			else if (edit.isDelete())
-			{
-				previewBlock = originalStatement;
-			}
-			else
-			{
-				ServoyLog.logWarning("Unsupported edit type for preview: " + edit, null);
-				continue; // skip invalid edits
-			}
 
 			PreviewChange change = new PreviewChange();
 			change.startOffset = startOffset;
-			change.originalLength = previewBlock.length();
+			change.originalLength = originalStatement.length(); // Just the length of the old code
 			change.modifiedLine = indentedReplacement;
 			change.originalLine = originalStatement;
 			change.lineDelimiter = lineDelimiter;
 			change.isInsert = edit.isInsert();
 
-			// Callback to the specific implementation (Inline vs Multi-file)
+			Position pos = new Position(change.startOffset, change.isInsert ? 0 : change.originalLength);
+			document.addPosition(pos); // Document now "tracks" this range
+			change.setPosition(pos);
+
+			// Store the change (but DO NOT call document.replace here!)
 			handleAppliedChange(edit, change, startLine, originalStatement, indentedReplacement);
-
-
-			if (shouldSkipChange(document, edit, startOffset, endOffset, originalStatement, indentedReplacement, previewBlock))
-			{
-				continue; //the change was already applied or previewed, skip it to avoid duplication
-			}
-
-			if (edit.isInsert())
-			{
-				document.replace(startOffset, 0, indentedReplacement + lineDelimiter);
-			}
-			else
-			{
-				document.replace(startOffset, endOffset - startOffset, previewBlock);
-			}
 		}
 	}
+
+	// each implementation handles where to store or how to paint these
+	void handleAppliedChange(SourceEdit edit, PreviewChange change, int startLine, String original, String replacement);
 
 	default void createLocalHistoryEntry(IFile file)
 	{
@@ -202,8 +177,4 @@ public interface IDocumentChangesPreviewManager
 			return false;
 		}
 	}
-
-	public void accept();
-
-	public void reject();
 }

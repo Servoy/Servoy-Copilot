@@ -28,6 +28,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.dltk.internal.ui.editor.ScriptEditor;
+import org.eclipse.jface.text.IDocument;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
@@ -102,12 +103,9 @@ public class QuickFixPresenter
 					openInlinePreview(path);
 				}
 
-				if (uniquePaths.size() > 1)
-				{
-					activeMultiManager = new MultiDocumentChangesPreviewManager();
-					//TODO check, do we need to clear, do we always get all the changes back?
-					activeMultiManager.preview(fix.codeChanges());
-				}
+				activeMultiManager = new MultiDocumentChangesPreviewManager();
+				//TODO check, do we need to clear, do we always get all the changes back?
+				activeMultiManager.preview(fix.codeChanges());
 			}
 			catch (Exception e)
 			{
@@ -234,5 +232,19 @@ public class QuickFixPresenter
 		}
 
 		clearManagers();
+	}
+
+
+	public InlineDocumentChangesPreviewManager getManagerFor(IDocument document)
+	{
+		for (InlineDocumentChangesPreviewManager manager : activeInlineManagers.values())
+		{
+			// Checking if the manager's editor viewer uses this document
+			if (manager.getEditor().getViewer().getDocument() == document)
+			{
+				return manager;
+			}
+		}
+		return null;
 	}
 }
