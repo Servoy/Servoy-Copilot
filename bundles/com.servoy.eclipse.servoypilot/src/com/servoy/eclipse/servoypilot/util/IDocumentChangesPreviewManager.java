@@ -60,7 +60,6 @@ public interface IDocumentChangesPreviewManager
 		}
 	}
 
-
 	void preview(List<SourceEdit> sourceEdits) throws Exception;
 
 	void clearPreview();
@@ -81,6 +80,11 @@ public interface IDocumentChangesPreviewManager
 
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), startOffset);
 			int endLine = document.getLineOfOffset(statement.sourceEnd());
+			if (edit.forceEndLineUse())
+			{
+				Statement endStatement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(edit.endLine() - 1));
+				endLine = document.getLineOfOffset(endStatement.sourceEnd());
+			}
 			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
 			String originalStatement = document.get(startOffset, endOffset - startOffset);
