@@ -141,6 +141,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			textWidget.setRedraw(true);
 			textWidget.redraw();
 		}
+		//TODO add focus listener to refresh the minings
 	}
 
 	private void setupVisualListeners(Color removedColor)
@@ -297,7 +298,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		// Trigger a UI refresh to remove the drawings from the editor
 		// We use asyncExec to ensure we are on the UI thread
 		Display.getDefault().asyncExec(() -> {
-			if (scriptEditor != null && !scriptEditor.getViewer().getTextWidget().isDisposed())
+			if (scriptEditor != null && scriptEditor.getViewer() != null && !scriptEditor.getViewer().getTextWidget().isDisposed())
 			{
 				ISourceViewer viewer = scriptEditor.getViewer();
 				List<PreviewChange> changes = activeChangesMap.get(viewer.getDocument());
@@ -320,39 +321,77 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 		try
 		{
 			ISourceViewer viewer = scriptEditor.getViewer();
-			if (viewer == null || viewer.getTextWidget() == null)
+			if (viewer == null || viewer.getTextWidget() == null || viewer.getTextWidget().isDisposed())
 			{
 				return;
 			}
-			StyledText textWidget = viewer.getTextWidget();
 
-			if (backgroundListener != null)
-			{
-				textWidget.removeLineBackgroundListener(backgroundListener);
-				textWidget.removePaintListener(paintListener);
-				backgroundListener = null;
-			}
-			for (Color color : colors)
-			{
-				if (color != null && !color.isDisposed())
-				{
-					color.dispose();
-				}
-			}
-			colors.clear();
+			StyledText textWidget = viewer.getTextWidget();
+			IDocument document = viewer.getDocument();
+
+			// 1. Clear the old, stale line numbers completely
 			removedLines.clear();
 
-			textWidget.redraw();
+			// 2. Check remaining changes
+			List<PreviewChange> remainingChanges = activeChangesMap.get(document);
+			boolean hasActiveChanges = (remainingChanges != null && !remainingChanges.isEmpty());
 
-			if (compareEditorInput != null)
+			if (hasActiveChanges)
 			{
-				CompareEditorService.getInstance().closeCompareEditor(compareEditorInput);
-				compareEditorInput = null;
+				// 3. REBUILD the removedLines list using the automatically-updated Positions
+				for (PreviewChange activeChange : remainingChanges)
+				{
+					Position pos = activeChange.getPosition();
+					if (pos != null && !pos.isDeleted())
+					{
+						int startOffset = pos.getOffset();
+						// DO NOT use activeChange.endOffset! Use the dynamic Position length.
+						int length = pos.getLength();
+						int endOffset = startOffset + Math.max(0, length - 1);
+
+						int startLine = document.getLineOfOffset(startOffset);
+						int endLine = document.getLineOfOffset(endOffset);
+
+						for (int i = startLine; i <= endLine; i++)
+						{
+							removedLines.add(i); // This is guaranteed to be the CORRECT new line number
+						}
+					}
+				}
 			}
+			else
+			{
+				// 4. Full Teardown if no changes are left
+				if (backgroundListener != null)
+				{
+					textWidget.removeLineBackgroundListener(backgroundListener);
+					textWidget.removePaintListener(paintListener);
+					backgroundListener = null;
+					paintListener = null;
+				}
+
+				for (Color color : colors)
+				{
+					if (color != null && !color.isDisposed())
+					{
+						color.dispose();
+					}
+				}
+				colors.clear();
+
+				if (compareEditorInput != null)
+				{
+					CompareEditorService.getInstance().closeCompareEditor(compareEditorInput);
+					compareEditorInput = null;
+				}
+			}
+
+			// 5. Redraw the text widget to apply the fresh, accurate lines
+			textWidget.redraw();
 		}
 		catch (Exception e)
 		{
-			ServoyLog.logError("Error on cleanup.", e);
+			ServoyLog.logError("Error on cleanup for specific change.", e);
 		}
 	}
 
@@ -437,6 +476,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			document.replace(pos.getOffset(), pos.getLength(), textToInsert);
 			document.removePosition(pos);
 			activeChangesMap.get(document).remove(change);
+			cleanup();
 			if (viewer instanceof ISourceViewerExtension5 extension)
 			{
 				extension.updateCodeMinings();
@@ -452,7 +492,6 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			{
 				docextension4.stopRewriteSession(docRewriteSession);
 			}
-			cleanup(); //TODO remove only specific preview change related visuals instead of full cleanup
 		}
 	}
 
@@ -460,14 +499,15 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	{
 		try
 		{
-			cleanup(); //TODO remove only specific preview change related visuals instead of full cleanup
 			IDocument document = scriptEditor.getViewer().getDocument();
 			document.removePosition(change.getPosition());
 			activeChangesMap.get(document).remove(change);
+			cleanup();
 			ISourceViewer viewer = scriptEditor.getViewer();
 			if (viewer instanceof ISourceViewerExtension5 extension)
 			{
 				extension.updateCodeMinings();
+				viewer.invalidateTextPresentation();
 			}
 		}
 		catch (Exception e)

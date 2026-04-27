@@ -24,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextViewer;
+import org.eclipse.jface.text.Position;
 import org.eclipse.jface.text.codemining.ICodeMining;
 import org.eclipse.jface.text.codemining.ICodeMiningProvider;
 
@@ -58,18 +59,17 @@ public class AiPreviewCodeMiningProvider implements ICodeMiningProvider
 			{
 				try
 				{
-					int line;
-					if (change.isInsert)
+					Position pos = change.getPosition();
+					if (pos == null || pos.isDeleted())
 					{
-						// For insertions, anchor it exactly to the line where text will appear
-						line = document.getLineOfOffset(
-							change.startOffset);
+						continue;
 					}
-					else
+
+					int line = document.getLineOfOffset(pos.getOffset());
+					if (!change.isInsert)
 					{
-						// For replacements/deletes, we anchor it to the line being modified
-						line = document.getLineOfOffset(
-							change.startOffset + change.originalLength);
+						// Anchor replacements/deletes to the end of the affected range
+						line = document.getLineOfOffset(pos.getOffset() + change.originalLength);
 					}
 
 					minings.add(new UnifiedDiffMining(
