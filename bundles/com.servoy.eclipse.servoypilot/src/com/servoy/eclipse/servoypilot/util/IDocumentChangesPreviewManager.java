@@ -48,6 +48,7 @@ public interface IDocumentChangesPreviewManager
 		String originalLine;
 		public boolean isInsert;
 		private Position position;
+		public int endOffset;
 
 		public void setPosition(Position pos)
 		{
@@ -79,11 +80,20 @@ public interface IDocumentChangesPreviewManager
 			int startOffset = document.getLineOffset(startLine);
 
 			Statement statement = ParserService.getInstance().getStatementAtOffset(document.get(), startOffset);
-			int endLine = document.getLineOfOffset(statement.sourceEnd());
+			int endLine = statement != null ? document.getLineOfOffset(statement.sourceEnd()) : edit.endLine() - 1;
 			if (edit.forceEndLineUse())
 			{
-				Statement endStatement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(edit.endLine() - 1));
-				endLine = document.getLineOfOffset(endStatement.sourceEnd());
+				Statement endStatement = null;
+				int end = edit.endLine() - 1;
+				while ((endStatement = ParserService.getInstance().getStatementAtOffset(document.get(), document.getLineOffset(end))) == null &&
+					end >= startLine)
+				{
+					end -= 1;
+				}
+				if (endStatement != null)
+				{
+					endLine = document.getLineOfOffset(endStatement.sourceEnd());
+				}
 			}
 			int endOffset = document.getLineOffset(endLine) + document.getLineLength(endLine);
 
@@ -99,6 +109,7 @@ public interface IDocumentChangesPreviewManager
 			change.originalLine = originalStatement;
 			change.lineDelimiter = lineDelimiter;
 			change.isInsert = edit.isInsert();
+			change.endOffset = endOffset;
 
 			Position pos = new Position(change.startOffset, change.isInsert ? 0 : change.originalLength);
 			document.addPosition(pos); // Document now "tracks" this range
