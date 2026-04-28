@@ -36,6 +36,8 @@ import org.eclipse.jface.text.source.ISourceViewerExtension5;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.LineBackgroundListener;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.events.FocusAdapter;
+import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
@@ -84,6 +86,7 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 	private StyledText textWidget;
 
 	private ScriptEditor scriptEditor;
+	private FocusAdapter focusListener;
 
 	private static final Map<IDocument, List<PreviewChange>> activeChangesMap = new ConcurrentHashMap<>();
 
@@ -135,13 +138,25 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			// setup Red Background Listeners (for the deleted lines)
 			setupVisualListeners(removedColor);
 
+			focusListener = new FocusAdapter()
+			{
+				@Override
+				public void focusGained(FocusEvent e)
+				{
+					if (viewer instanceof ISourceViewerExtension5 ext5)
+					{
+						ext5.updateCodeMinings();
+					}
+				}
+			};
+			textWidget.addFocusListener(focusListener);
+
 		}
 		finally
 		{
 			textWidget.setRedraw(true);
 			textWidget.redraw();
 		}
-		//TODO add focus listener to refresh the minings
 	}
 
 	private void setupVisualListeners(Color removedColor)
@@ -383,6 +398,11 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 				{
 					CompareEditorService.getInstance().closeCompareEditor(compareEditorInput);
 					compareEditorInput = null;
+				}
+				if (focusListener != null)
+				{
+					textWidget.removeFocusListener(focusListener);
+					focusListener = null;
 				}
 			}
 
