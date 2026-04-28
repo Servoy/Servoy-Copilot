@@ -909,7 +909,7 @@ public class ChatViewPresenter
 					String readableResponse = formatQuickFixForChat(newFix);
 					applyToView(part -> {
 						// human readable response
-						part.setMessageHtml(assistantMsgId, readableResponse);
+						part.setMessageHtml(assistantMsgId, readableResponse, true);
 					});
 					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
 				}
@@ -923,7 +923,7 @@ public class ChatViewPresenter
 				{
 					String readableResponse = formatQuickFixForChat(newFix);
 					applyToView(part -> {
-						part.setMessageHtml(assistantMsgId, readableResponse);
+						part.setMessageHtml(assistantMsgId, readableResponse, true);
 					});
 					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
 				}
