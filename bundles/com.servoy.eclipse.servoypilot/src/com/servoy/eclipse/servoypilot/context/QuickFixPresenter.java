@@ -247,4 +247,34 @@ public class QuickFixPresenter
 		}
 		return null;
 	}
+
+	public void keepFile(String filePath)
+	{
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		InlineDocumentChangesPreviewManager existingManager = activeInlineManagers.get(path);
+		if (existingManager != null)
+		{
+			existingManager.accept();
+			activeMultiManager.remove(path);
+			activeInlineManagers.remove(path);
+			pendingEdits.remove(path);
+		}
+		else
+		{
+			activeMultiManager.accept(path);
+		}
+	}
+
+	public void undoFile(String filePath)
+	{
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		InlineDocumentChangesPreviewManager existingManager = activeInlineManagers.get(path);
+		if (existingManager != null)
+		{
+			existingManager.reject();
+			activeInlineManagers.remove(path);
+			pendingEdits.remove(path);
+		}
+		activeMultiManager.remove(path);
+	}
 }

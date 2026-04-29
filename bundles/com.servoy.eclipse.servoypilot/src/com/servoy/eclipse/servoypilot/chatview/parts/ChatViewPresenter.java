@@ -1497,7 +1497,7 @@ public class ChatViewPresenter
 		uiSync.asyncExec(() -> {
 			try
 			{
-				if (currentAssistant == AssistantType.QUICKFIX)
+				if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
 				{
 					QuickFixPresenter.getInstance().openInlinePreview(filePath);
 					return;
@@ -1540,6 +1540,11 @@ public class ChatViewPresenter
 	 */
 	public void onKeepFile(String filePath)
 	{
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
+		{
+			QuickFixPresenter.getInstance().keepFile(filePath);
+			return;
+		}
 		FileModificationTracker.getInstance().keepFile(filePath);
 		logger.info("File kept: " + filePath);
 	}
@@ -1553,6 +1558,12 @@ public class ChatViewPresenter
 	public void onUndoFile(String filePath)
 	{
 		logger.info("Undoing file: " + filePath);
+
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
+		{
+			QuickFixPresenter.getInstance().undoFile(filePath);
+			return;
+		}
 
 		uiSync.asyncExec(() -> {
 			try

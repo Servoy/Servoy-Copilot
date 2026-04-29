@@ -535,4 +535,124 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			ServoyLog.logError("Cannot reject source modification", e);
 		}
 	}
+
+
+	public void accept()
+	{
+		ISourceViewer viewer = scriptEditor.getViewer();
+		if (viewer == null || viewer.getTextWidget() == null || viewer.getTextWidget().isDisposed())
+		{
+			return;
+		}
+
+		IDocument document = viewer.getDocument();
+		if (document == null)
+		{
+			return;
+		}
+
+		List<PreviewChange> activeChanges = activeChangesMap.get(document);
+		if (activeChanges == null || activeChanges.isEmpty())
+		{
+			return;
+		}
+
+		// Even though Position objects update automatically, sorting descending by offset
+		// is the safest way to perform bulk document replacements in Eclipse without 
+		// positions stepping on each other's toes.
+		List<PreviewChange> changesToApply = new ArrayList<>(activeChanges);
+		changesToApply.sort((a, b) -> Integer.compare(b.getPosition().getOffset(), a.getPosition().getOffset()));
+
+		DocumentRewriteSession docRewriteSession = null;
+		try
+		{
+			if (document instanceof IDocumentExtension4 docextension4)
+			{
+				// Use UNRESTRICTED for bulk operations. It tells Eclipse to pause 
+				// background reconcilers, code folding, and syntax highlighting 
+				// until the entire batch is done.
+				docRewriteSession = docextension4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED);
+			}
+
+			for (PreviewChange change : changesToApply)
+			{
+				String textToInsert = "";
+				if (change.modifiedLine != null && !change.modifiedLine.isEmpty())
+				{
+					textToInsert = change.modifiedLine + change.lineDelimiter;
+				}
+
+				Position pos = change.getPosition();
+				if (pos != null && !pos.isDeleted())
+				{
+					document.replace(pos.getOffset(), pos.getLength(), textToInsert);
+					document.removePosition(pos);
+				}
+			}
+
+			activeChanges.clear();
+			cleanup();
+
+			if (viewer instanceof ISourceViewerExtension5 extension)
+			{
+				extension.updateCodeMinings();
+				viewer.invalidateTextPresentation();
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot accept all source modifications", e);
+		}
+		finally
+		{
+			if (document instanceof IDocumentExtension4 docextension4 && docRewriteSession != null)
+			{
+				docextension4.stopRewriteSession(docRewriteSession);
+			}
+		}
+	}
+
+	public void reject()
+	{
+		try
+		{
+			ISourceViewer viewer = scriptEditor.getViewer();
+			if (viewer == null || viewer.getTextWidget() == null || viewer.getTextWidget().isDisposed())
+			{
+				return;
+			}
+
+			IDocument document = viewer.getDocument();
+			if (document == null)
+			{
+				return;
+			}
+
+			List<PreviewChange> activeChanges = activeChangesMap.get(document);
+			if (activeChanges == null || activeChanges.isEmpty())
+			{
+				return;
+			}
+
+			for (PreviewChange change : activeChanges)
+			{
+				Position pos = change.getPosition();
+				if (pos != null)
+				{
+					document.removePosition(pos);
+				}
+			}
+			activeChanges.clear();
+			cleanup();
+			if (viewer instanceof ISourceViewerExtension5 extension)
+			{
+				extension.updateCodeMinings();
+				viewer.invalidateTextPresentation();
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot reject all source modifications", e);
+		}
+	}
 }
