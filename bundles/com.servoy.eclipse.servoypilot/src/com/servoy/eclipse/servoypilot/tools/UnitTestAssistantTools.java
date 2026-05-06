@@ -25,6 +25,7 @@ import com.servoy.eclipse.servoypilot.tools.testgeneration.IAddTestMethodTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.IAnalyzeCodeForTestingTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.ICreateTestFileTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.IGenerateTestCasesTool;
+import com.servoy.eclipse.servoypilot.tools.testgeneration.IRunJsUnitTestsTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFindFilesTool;
@@ -77,6 +78,7 @@ public class UnitTestAssistantTools
 			ICreateTestFileTool.class,
 			IAddTestMethodTool.class,
 			IGenerateTestCasesTool.class,
+			IRunJsUnitTestsTool.class,
 			// Knowledge
 			IKnowledgeTool.class
 		);

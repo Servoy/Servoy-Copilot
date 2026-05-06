@@ -26,7 +26,8 @@ import dev.langchain4j.agent.tool.Tool;
 
 public interface IAddTestMethodTool
 {
-	@Tool("Adds a test method to an existing test file. " +
+	@Tool("Adds or replaces a test method in an existing test file. " +
+		"If a method with the same name already exists it is replaced (duplicates are also removed). " +
 		"Test method name must start with 'test_'. " +
 		"Generates proper @properties annotation with UUID automatically.")
 	default String addTestMethod(
