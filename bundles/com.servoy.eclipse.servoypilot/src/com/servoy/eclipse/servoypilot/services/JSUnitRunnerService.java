@@ -18,6 +18,7 @@ package com.servoy.eclipse.servoypilot.services;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -161,17 +162,39 @@ public class JSUnitRunnerService
 		if (lastSlash >= 0)
 			scopeName = scopeName.substring(lastSlash + 1);
 
+		// Strip dot-prefix notation — e.g. "forms.tab1" → "tab1"
+		int lastDot = scopeName.lastIndexOf('.');
+		if (lastDot >= 0)
+			scopeName = scopeName.substring(lastDot + 1);
+
 		// Check if the name refers to a form — forms require TestTarget(Form), not TestTarget(Pair).
-		// Using the global scope constructor for a form name causes "no jsunit tests" error.
-		// Use activeProject directly (same instance validated in runTests()) to avoid ServoyModelFinder
-		// returning a different or null model reference.
+		// Using the global scope constructor for a form name causes "no jsunit tests" error because
+		// addAllFormTests is skipped when getGlobalScopeToTest() is non-null.
+		//
+		// Try getEditingFlattenedSolution() first (preferred, already validated in Fix 4).
+		// If it is transiently null, fall back to iterating activeSolution.getForms() directly so
+		// that the form target is never silently downgraded to a global-scope target.
+		Form form = null;
 		FlattenedSolution flattenedSolution = activeProject.getEditingFlattenedSolution();
 		if (flattenedSolution != null)
 		{
-			Form form = flattenedSolution.getForm(scopeName);
-			if (form != null)
-				return new TestTarget(form);
+			form = flattenedSolution.getForm(scopeName);
 		}
+		if (form == null)
+		{
+			Iterator<Form> it = activeSolution.getForms(null, true);
+			while (it.hasNext())
+			{
+				Form candidate = it.next();
+				if (scopeName.equals(candidate.getName()))
+				{
+					form = candidate;
+					break;
+				}
+			}
+		}
+		if (form != null)
+			return new TestTarget(form);
 
 		return new TestTarget(new Pair<>(activeSolution, scopeName));
 	}
@@ -256,10 +279,15 @@ public class JSUnitRunnerService
 
 		StringBuilder sb = new StringBuilder();
 		sb.append("**JSUnit Test Results**\n\n");
-		sb.append("✅ Passed: ").append(passed);
-		sb.append("  ❌ Failed: ").append(failed);
-		sb.append("  💥 Errors: ").append(errors);
-		sb.append("  ⏭ Ignored: ").append(ignored).append("\n");
+
+		// Summary table — each count gets its own labelled cell so the chat view
+		// renders them as visually distinct coloured columns.
+		sb.append("| ✅ Passed | ❌ Failed | 💥 Errors | ⏭ Ignored |\n");
+		sb.append("|:---------:|:---------:|:---------:|:---------:|\n");
+		sb.append("| **").append(passed).append("**");
+		sb.append(" | **").append(failed).append("**");
+		sb.append(" | **").append(errors).append("**");
+		sb.append(" | **").append(ignored).append("** |\n");
 
 		if (failed == 0 && errors == 0)
 		{
