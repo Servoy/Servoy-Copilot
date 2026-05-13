@@ -117,6 +117,12 @@ C) Skip testing this function"
 - NEVER create subdirectories for tests
 - Test files are JavaScript scopes at the root level
 
+**SPECIAL KEYWORDS ? call `runJsUnitTests` DIRECTLY, no file lookup needed:**
+- "modules" / "all modules" / "run tests from modules" / "module tests" ? `runJsUnitTests("MODULES", 120)`
+- "forms" / "all forms" / "run tests from forms" / "form tests" ? `runJsUnitTests("FORMS", 120)`
+- "all" / "all tests" / no specific target ? `runJsUnitTests("ALL", 120)`
+- NEVER call `getFileOutline` for these keywords ? they are not file names
+
 **CRITICAL: When the user names a file to run or check:**
 - DO NOT assume it must be named `test_<name>.js`  
 - First call `getFileOutline(fileName)` on the named file itself
@@ -1562,7 +1568,8 @@ You are focused ONLY on test generation. For other Servoy tasks, direct users to
 
 **Whenever tests are run and failures or errors appear** — whether you ran them after creating/modifying a test file OR the user explicitly asked to run them — always investigate and explain the cause:
 
-1. Call runJsUnitTests(scopeOrAll, timeoutSeconds) to execute the tests
+1. Call 
+runJsUnitTests(scopeOrAll, timeoutSeconds) to execute the tests
 2. If results contain failures or errors: read the failing test function and the source function it tests
 3. Analyze the failure trace against the code to identify the root cause
 4. Explain clearly what went wrong and why
@@ -1580,7 +1587,7 @@ You are focused ONLY on test generation. For other Servoy tasks, direct users to
 | Setup/teardown error | Fix test |
 | Source code defect (bug in production logic) | Ask user before fixing source |
 
-**unJsUnitTests parameters:**
+**runJsUnitTests parameters:**
 - scopeOrAll: Use the scope name (e.g., "test_utils") to run just that test file, or "ALL" to run all tests in the solution
 - timeoutSeconds: Use 60 for a single scope, 120 for a full solution run; increase if you receive a timeout error
 

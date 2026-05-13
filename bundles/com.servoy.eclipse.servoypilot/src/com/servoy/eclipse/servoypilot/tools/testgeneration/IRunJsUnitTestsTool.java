@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -31,7 +31,7 @@ public interface IRunJsUnitTestsTool
 		"Use this to verify tests pass after creating or modifying test files, or to identify which tests are currently failing. " +
 		"Returns a markdown summary with counts and detailed failure/error traces.")
 	default String runJsUnitTests(
-		@P("What to test: a scope/file name (e.g. 'test_utils' or 'test_utils.js'), a form name (e.g. 'tab1' or 'forms/tab1.js'), or 'ALL' to run every test in the solution") String scopeOrAll,
+		@P("What to test: a scope/file name (e.g. 'test_utils'), a form name (e.g. 'tab1'), a module name (e.g. 'my_module'), 'ALL' to run every test, 'MODULES' to run each module separately, or 'FORMS' to run each form separately") String scopeOrAll,
 		@P("Maximum seconds to wait for the test run to complete. Use 60 for a single scope or form, 120 for a full solution run.") int timeoutSeconds)
 	{
 		try
