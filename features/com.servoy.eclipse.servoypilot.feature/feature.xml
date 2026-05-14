@@ -353,4 +353,8 @@ version(s), and exceptions or additional permissions here}.&quot;
          id="wrapped.com.microsoft.onnxruntime.onnxruntime"
          version="0.0.0"/>
 
+   <plugin
+         id="com.servoy.eclipse.developer.mcp"
+         version="0.0.0"/>
+
 </feature>
