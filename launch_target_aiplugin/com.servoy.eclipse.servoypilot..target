@@ -135,6 +135,12 @@
                     <type>jar</type>
                 </dependency>
                 <dependency>
+                    <groupId>com.ethlo.time</groupId>
+                    <artifactId>itu</artifactId>
+                    <version>1.14.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
                     <groupId>io.modelcontextprotocol.sdk</groupId>
                     <artifactId>mcp-json-jackson2</artifactId>
                     <version>1.1.2</version>
