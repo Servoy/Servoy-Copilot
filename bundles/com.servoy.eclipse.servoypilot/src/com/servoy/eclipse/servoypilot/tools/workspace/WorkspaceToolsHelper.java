@@ -124,6 +124,25 @@ public class WorkspaceToolsHelper
 		}
 
 		filePath = filePath.trim();
+
+		// Resolve "TARGET" as an alias for the active project name
+		if (filePath.startsWith("TARGET/") || filePath.equals("TARGET"))
+		{
+			try
+			{
+				IServoyModel servoyModel = ServoyModelFinder.getServoyModel();
+				if (servoyModel != null && servoyModel.getActiveProject() != null)
+				{
+					String activeProjectName = servoyModel.getActiveProject().getProject().getName();
+					filePath = activeProjectName + filePath.substring("TARGET".length());
+				}
+			}
+			catch (Exception e)
+			{
+				// continue with original path
+			}
+		}
+
 		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
 
 		IFile file = root.getFile(new Path(filePath));

@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.servoy</groupId>
+        <artifactId>com.servoy.eclipse.servoypilot.parent</artifactId>
+        <version>2026.3.0-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+    <artifactId>com.servoy.eclipse.servoypilot.assistenttests</artifactId>
+    <!-- eclipse-test-plugin: Tycho treats this as a PDE test bundle.
+         Layer 1 (unit/) tests run headlessly via tycho-surefire.
+         Layer 2 (integration/) and Layer 3 tests require a running Servoy IDE
+         and must be launched manually as JUnit Plugin Tests from Eclipse. -->
+    <packaging>eclipse-test-plugin</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-surefire-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <!-- Run only Layer 1 pure-logic tests headlessly.
+                         Layer 2/3 require a full Servoy IDE and are excluded from Maven build. -->
+                    <includes>
+                        <include>**/unit/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/integration/**</exclude>
+                    </excludes>
+                    <useUIHarness>false</useUIHarness>
+                    <useUIThread>false</useUIThread>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

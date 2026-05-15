@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -29,9 +29,9 @@ import org.eclipse.core.runtime.IPath;
  * for creating descriptors from Eclipse resource types.
  * 
  * URI Schemes:
- * - workspace:///ProjectName/path/to/file.java  â Workspace files (IFile)
- * - project:///ProjectName/layout               â Project structure
- * - console:///ConsoleName                      â Console output
+ * - workspace:///ProjectName/path/to/file.java  -> Workspace files (IFile)
+ * - project:///ProjectName/layout               -> Project structure
+ * - console:///ConsoleName                      -> Console output
  */
 public record ResourceDescriptor(
     URI uri,

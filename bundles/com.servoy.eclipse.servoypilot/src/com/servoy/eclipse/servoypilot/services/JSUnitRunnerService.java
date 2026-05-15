@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -40,7 +40,6 @@ import com.servoy.eclipse.model.test.TestTarget;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.j2db.FlattenedSolution;
 import com.servoy.j2db.persistence.Form;
-import com.servoy.j2db.persistence.ScriptMethod;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.util.Pair;
 
@@ -66,8 +65,7 @@ public class JSUnitRunnerService
 	/**
 	 * Runs JSUnit tests for the active Servoy solution and returns formatted results.
 	 *
-	 * @param scopeOrAll "ALL" or null for all tests; "MODULES" to run each module separately;
-	 *                   "FORMS" to run each form in the main solution separately;
+	 * @param scopeOrAll "ALL" or null for all tests; "MODULES" for all modules individually;
 	 *                   a scope/form/module name for a specific target
 	 * @param timeoutSeconds maximum seconds to wait for each test run to complete
 	 * @return formatted test results markdown, or an error message
@@ -76,85 +74,59 @@ public class JSUnitRunnerService
 	{
 		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		if (activeProject == null)
-		{
 			return "Error: No active Servoy project found. Please open a Servoy solution.";
-		}
 
 		Solution activeSolution = activeProject.getSolution();
 		if (activeSolution == null)
-		{
 			return "Error: No active Servoy solution found.";
-		}
-
 
 		try
 		{
-			String keyword = scopeOrAll != null ? scopeOrAll.trim().toUpperCase() : "";
-
 			// MODULES: run each module's tests in a separate launch so that main-solution
 			// tests are excluded. TestTarget(activeSolution) runs the full flattened solution
 			// (main + all modules) and cannot isolate module-only tests.
-			if ("MODULES".equals(keyword))
+			if ("MODULES".equalsIgnoreCase(scopeOrAll != null ? scopeOrAll.trim() : ""))
 			{
 				FlattenedSolution flattenedSolution = activeProject.getEditingFlattenedSolution();
 				Solution[] modules = flattenedSolution != null ? flattenedSolution.getModules() : null;
-
 				if (modules == null || modules.length == 0)
-				{
 					return "No modules found in the active solution.";
-				}
 
-				List<String> names = new ArrayList<>();
-				List<ITestRunSession> sessions = new ArrayList<>();
+				List<String> moduleNames = new ArrayList<>();
+				List<ITestRunSession> moduleSessions = new ArrayList<>();
 				for (Solution module : modules)
 				{
 					ITestRunSession session = runForTarget(new TestTarget(module), timeoutSeconds);
-					names.add(module.getName());
-					sessions.add(session);
+					moduleNames.add(module.getName());
+					moduleSessions.add(session); // may be null on timeout
 				}
 
 				String[] result = new String[1];
-				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Modules", names, sessions));
+				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Modules", moduleNames, moduleSessions));
 				return result[0];
 			}
 
-			// FORMS: run each form's tests in a separate launch so that global-scope
-			// tests are excluded. Only launches forms that have at least one test method
-			// (a method whose name starts with "test") — avoids Servoy's "The selection does
-			// not have jsunit tests" warning for non-test forms.
-			if ("FORMS".equals(keyword))
+			// FORMS: run each form's tests in a separate launch so that individual form
+			// test isolation mirrors what MODULES does for module-level tests.
+			if ("FORMS".equalsIgnoreCase(scopeOrAll != null ? scopeOrAll.trim() : ""))
 			{
-				Iterator<Form> it = activeSolution.getForms(null, true);
-				List<String> names = new ArrayList<>();
-				List<Form> forms = new ArrayList<>();
-				while (it.hasNext())
-				{
-					Form f = it.next();
-					if (hasTestMethods(f))
-					{
-						names.add(f.getName());
-						forms.add(f);
-					}
-					else
-					{
-						ServoyLog.logWarning("[JSUnitRunner] skipping form " + f.getName() + " (no test methods)", null);
-					}
-				}
+				List<String> formNames = new ArrayList<>();
+				List<ITestRunSession> formSessions = new ArrayList<>();
 
-				if (forms.isEmpty())
+				Iterator<Form> formIt = activeSolution.getForms(null, true);
+				while (formIt != null && formIt.hasNext())
 				{
-					return "No forms with test methods found in the active solution.";
-				}
-
-				List<ITestRunSession> sessions = new ArrayList<>();
-				for (Form form : forms)
-				{
+					Form form = formIt.next();
 					ITestRunSession session = runForTarget(new TestTarget(form), timeoutSeconds);
-					sessions.add(session);
+					formNames.add(form.getName());
+					formSessions.add(session);
 				}
+
+				if (formNames.isEmpty())
+					return "No forms found in the active solution.";
 
 				String[] result = new String[1];
-				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Forms", names, sessions));
+				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Forms", formNames, formSessions));
 				return result[0];
 			}
 
@@ -163,10 +135,8 @@ public class JSUnitRunnerService
 			ITestRunSession session = runForTarget(target, timeoutSeconds);
 
 			if (session == null)
-			{
 				return "Error: Test run timed out after " + timeoutSeconds + " seconds. " +
 					"Ensure the Servoy Application Server is running and the solution starts in JSUnit mode.";
-			}
 
 			String[] result = new String[1];
 			Display.getDefault().syncExec(() -> result[0] = formatResults(session));
@@ -182,24 +152,6 @@ public class JSUnitRunnerService
 			Thread.currentThread().interrupt();
 			return "Error: Test run was interrupted.";
 		}
-	}
-
-	/**
-	 * Returns true if the given form has at least one method whose name starts with "test".
-	 * Used to skip forms that have no JSUnit tests before launching a test run, avoiding
-	 * Servoy's "The selection does not have jsunit tests" warning.
-	 */
-	private static boolean hasTestMethods(Form form)
-	{
-		Iterator<ScriptMethod> methods = form.getScriptMethods(false);
-		while (methods.hasNext())
-		{
-			if (methods.next().getName().startsWith("test"))
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/**
@@ -222,16 +174,13 @@ public class JSUnitRunnerService
 			for (Object s : DLTKTestingPlugin.getModel().getTestRunSessions())
 			{
 				if (s instanceof ITestRunSession ts)
-				{
 					sessionsBefore.add(ts);
-				}
 			}
 		});
 
-		// This method runs on the AI worker thread (not the UI/Display thread), which is required:
-		// RunJSUnitHandler uses Display.syncExec internally and would deadlock if called from the UI thread.
-		ILaunch launch = config.launch(ILaunchManager.DEBUG_MODE, null);
-
+		// RUN_MODE (not DEBUG_MODE): JSUnit results flow via DLTK's socket protocol, not JVM debugging.
+		// DEBUG_MODE causes Eclipse to attach a debugger, which adds ~30 s to launch.terminate() cleanup.
+		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
 		try
 		{
 			return waitForSession(sessionsBefore, timeoutSeconds * 1000L);
@@ -258,38 +207,30 @@ public class JSUnitRunnerService
 		Solution activeSolution = activeProject.getSolution();
 
 		if (scopeOrAll == null || "ALL".equalsIgnoreCase(scopeOrAll.trim()))
-		{
 			return new TestTarget(activeSolution);
-		}
 
-		// Note: "MODULES" and "FORMS" are handled upstream in runTests() before buildTestTarget() is called.
+		// Note: "MODULES" is handled upstream in runTests() before buildTestTarget() is called.
 
 		String scopeName = scopeOrAll.trim();
 		if (scopeName.endsWith(".js"))
-		{
 			scopeName = scopeName.substring(0, scopeName.length() - 3);
-		}
 
 		// Strip any path prefix — Servoy expects just the scope/form name, not a file path.
 		// e.g. "forms/dateCalculation" or "/testcase_calculations/forms/dateCalculation" → "dateCalculation"
 		int lastSlash = scopeName.lastIndexOf('/');
 		if (lastSlash >= 0)
-		{
 			scopeName = scopeName.substring(lastSlash + 1);
-		}
 
 		// Strip dot-prefix notation — e.g. "forms.tab1" → "tab1"
 		int lastDot = scopeName.lastIndexOf('.');
 		if (lastDot >= 0)
-		{
 			scopeName = scopeName.substring(lastDot + 1);
-		}
 
 		// Check if the name refers to a form — forms require TestTarget(Form), not TestTarget(Pair).
 		// Using the global scope constructor for a form name causes "no jsunit tests" error because
 		// addAllFormTests is skipped when getGlobalScopeToTest() is non-null.
 		//
-		// Try getEditingFlattenedSolution() first (preferred).
+		// Try getEditingFlattenedSolution() first (preferred, already validated in Fix 4).
 		// If it is transiently null, fall back to iterating activeSolution.getForms() directly so
 		// that the form target is never silently downgraded to a global-scope target.
 		Form form = null;
@@ -312,9 +253,7 @@ public class JSUnitRunnerService
 			}
 		}
 		if (form != null)
-		{
 			return new TestTarget(form);
-		}
 
 		// Check if the name refers to a module — modules require TestTarget(Solution), not TestTarget(Pair).
 		// A module name like "calculations_module" would otherwise fall through to the global-scope
@@ -327,9 +266,7 @@ public class JSUnitRunnerService
 				for (Solution module : modules)
 				{
 					if (scopeName.equalsIgnoreCase(module.getName()))
-					{
 						return new TestTarget(module);
-					}
 				}
 			}
 		}
@@ -392,14 +329,10 @@ public class JSUnitRunnerService
 				long waitedMs = System.currentTimeMillis() - terminalFoundAt[0];
 
 				if (childCount > 0)
-				{
 					return found[0];
-				}
 
 				if (waitedMs >= CHILDREN_WAIT_MS)
-				{
 					return found[0]; // genuinely empty — accept 0 children
-				}
 			}
 
 			Thread.sleep(POLL_INTERVAL_MS);
@@ -410,18 +343,15 @@ public class JSUnitRunnerService
 	}
 
 	/**
-	 * Formats combined test results for a multi-target run (MODULES or FORMS).
-	 * Skips entries with 0 tests to keep output concise.
+	 * Formats combined test results for a grouped run (MODULES or FORMS).
+	 * The {@code groupType} string (e.g. {@code "Modules"} or {@code "Forms"}) is used in the
+	 * header and the per-entry section label.
 	 * Must be called on the UI thread (DLTK session data is written on the UI thread).
-	 *
-	 * @param groupLabel label for the result header, e.g. "Modules" or "Forms"
-	 * @param names      names of the targets (module names or form names)
-	 * @param sessions   corresponding DLTK sessions; may contain nulls for timed-out runs
 	 */
-	private String formatGroupedResults(String groupLabel, List<String> names, List<ITestRunSession> sessions)
+	private String formatGroupedResults(String groupType, List<String> names, List<ITestRunSession> sessions)
 	{
 		StringBuilder sb = new StringBuilder();
-		sb.append("**JSUnit Test Results \u2014 ").append(groupLabel).append("**\n\n");
+		sb.append("**JSUnit Test Results — ").append(groupType).append("**\n\n");
 
 		long totalPassed = 0, totalFailed = 0, totalErrors = 0, totalIgnored = 0;
 		List<String> details = new ArrayList<>();
@@ -433,17 +363,12 @@ public class JSUnitRunnerService
 
 			if (session == null)
 			{
-				details.add("\n**" + name + "** \u2014 \u23f1 timed out");
+				details.add("\n**" + name + "** — ⏱ timed out");
 				continue;
 			}
 
 			List<ITestCaseElement> testCases = new ArrayList<>();
 			collectTestCases(session.getChildren(), testCases);
-
-			if (testCases.isEmpty())
-			{
-				continue; // skip entries with no tests — keep output concise
-			}
 
 			long passed = testCases.stream().filter(t -> t.getTestResult(false) == ITestElement.Result.OK).count();
 			long failed = testCases.stream().filter(t -> t.getTestResult(false) == ITestElement.Result.FAILURE).count();
@@ -456,22 +381,17 @@ public class JSUnitRunnerService
 			totalIgnored += ignored;
 
 			StringBuilder detail = new StringBuilder();
-			detail.append("\n**").append(name).append("** \u2014 ");
-			detail.append("\u2705 ").append(passed).append("  \u274c ").append(failed).append("  \ud83d\udca5 ").append(errors);
-			if (ignored > 0)
-			{
-				detail.append("  \u23ed ").append(ignored);
-			}
+			detail.append("\n**").append(name).append("** — ");
+			detail.append("✅ ").append(passed).append("  ❌ ").append(failed).append("  💥 ").append(errors);
+			if (ignored > 0) detail.append("  ⏭ ").append(ignored);
 
 			for (ITestCaseElement testCase : testCases)
 			{
 				ITestElement.Result result = testCase.getTestResult(false);
 				if (result != ITestElement.Result.FAILURE && result != ITestElement.Result.ERROR)
-				{
 					continue;
-				}
 
-				String icon = result == ITestElement.Result.FAILURE ? "\u274c" : "\ud83d\udca5";
+				String icon = result == ITestElement.Result.FAILURE ? "❌" : "💥";
 				detail.append("\n  ").append(icon).append(" ").append(testCase.getTestName());
 
 				ITestElement.FailureTrace trace = testCase.getFailureTrace();
@@ -479,40 +399,29 @@ public class JSUnitRunnerService
 				{
 					if (trace.getExpected() != null)
 					{
-						detail.append(" \u2014 expected: ").append(trace.getExpected())
+						detail.append(" — expected: ").append(trace.getExpected())
 							.append(", actual: ").append(trace.getActual());
 					}
 					else if (trace.getTrace() != null)
 					{
 						String[] lines = trace.getTrace().split("\n", 3);
-						if (lines.length > 0)
-						{
-							detail.append(": ").append(lines[0].trim());
-						}
+						if (lines.length > 0) detail.append(": ").append(lines[0].trim());
 					}
 				}
 			}
 			details.add(detail.toString());
 		}
 
-		if (details.isEmpty())
-		{
-			sb.append("No tests found.");
-			return sb.toString();
-		}
-
 		// Aggregate summary table
-		sb.append("| \u2705 Passed | \u274c Failed | \ud83d\udca5 Errors | \u23ed Ignored |\n");
+		sb.append("| ✅ Passed | ❌ Failed | 💥 Errors | ⏭ Ignored |\n");
 		sb.append("|:---------:|:---------:|:---------:|:---------:|\n");
 		sb.append("| **").append(totalPassed).append("**");
 		sb.append(" | **").append(totalFailed).append("**");
 		sb.append(" | **").append(totalErrors).append("**");
 		sb.append(" | **").append(totalIgnored).append("** |\n");
-		sb.append("\n**Per ").append(groupLabel.toLowerCase()).append(":**");
+		sb.append("\n**Per ").append(groupType.toLowerCase()).append(":**");
 		for (String detail : details)
-		{
 			sb.append(detail).append("\n");
-		}
 
 		return sb.toString();
 	}
@@ -532,7 +441,7 @@ public class JSUnitRunnerService
 
 		// Summary table — each count gets its own labelled cell so the chat view
 		// renders them as visually distinct coloured columns.
-		sb.append("| \u2705 Passed | \u274c Failed | \ud83d\udca5 Errors | \u23ed Ignored |\n");
+		sb.append("| ✅ Passed | ❌ Failed | 💥 Errors | ⏭ Ignored |\n");
 		sb.append("|:---------:|:---------:|:---------:|:---------:|\n");
 		sb.append("| **").append(passed).append("**");
 		sb.append(" | **").append(failed).append("**");
@@ -541,7 +450,7 @@ public class JSUnitRunnerService
 
 		if (failed == 0 && errors == 0)
 		{
-			sb.append("\n\u2705 All ").append(passed).append(" test(s) passed!");
+			sb.append("\n✅ All ").append(passed).append(" test(s) passed!");
 			return sb.toString();
 		}
 
@@ -550,11 +459,9 @@ public class JSUnitRunnerService
 		{
 			ITestElement.Result result = testCase.getTestResult(false);
 			if (result != ITestElement.Result.FAILURE && result != ITestElement.Result.ERROR)
-			{
 				continue;
-			}
 
-			String icon = result == ITestElement.Result.FAILURE ? "\u274c" : "\ud83d\udca5";
+			String icon = result == ITestElement.Result.FAILURE ? "❌" : "💥";
 			sb.append("\n").append(icon).append(" ").append(testCase.getTestName()).append("\n");
 
 			ITestElement.FailureTrace trace = testCase.getFailureTrace();
@@ -585,13 +492,9 @@ public class JSUnitRunnerService
 		for (ITestElement element : elements)
 		{
 			if (element instanceof ITestElementContainer container)
-			{
 				collectTestCases(container.getChildren(), results);
-			}
 			else if (element instanceof ITestCaseElement testCase)
-			{
 				results.add(testCase);
-			}
 		}
 	}
 }

@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -44,6 +45,28 @@ public class TestFileService
 	}
 
 	/**
+	 * Resolves the IProject for the given solution name.
+	 * <p>
+	 * First queries the Servoy model (finds Servoy-natured projects that are part of
+	 * an active solution). If the Servoy model does not know about the name (e.g. in
+	 * a test environment where the project has no Servoy nature), falls back to a plain
+	 * Eclipse workspace project lookup by project name.
+	 *
+	 * @param solutionName Solution or project name; may be null
+	 * @return IProject that is open and exists, or {@code null} if not found
+	 */
+	private IProject findProject(String solutionName)
+	{
+		if (solutionName == null) return null;
+		ServoyProject sp = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+		if (sp != null) return sp.getProject();
+		// Fallback: plain workspace project (no Servoy nature required - used in test environments)
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
+		if (project.exists() && project.isOpen()) return project;
+		return null;
+	}
+
+	/**
 	 * Creates a new test file (JavaScript scope) in the solution root directory.
 	 * 
 	 * @param testFileName Name of test file (e.g., "test_utils.js")
@@ -54,14 +77,13 @@ public class TestFileService
 	{
 		try
 		{
-			ServoyProject servoyProject = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			IProject project = findProject(solutionName);
 
-			if (servoyProject == null)
+			if (project == null)
 			{
 				return "Error: Solution '" + solutionName + "' not found";
 			}
 
-			IProject project = servoyProject.getProject();
 			IFile testFile = project.getFile(testFileName);
 
 			if (testFile.exists())
@@ -103,14 +125,13 @@ public class TestFileService
 				return "Error: Test method name must start with 'test_' (got: " + testMethodName + ")";
 			}
 
-			ServoyProject servoyProject = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			IProject project = findProject(solutionName);
 
-			if (servoyProject == null)
+			if (project == null)
 			{
 				return "Error: Solution '" + solutionName + "' not found";
 			}
 
-			IProject project = servoyProject.getProject();
 			IFile testFile = project.getFile(testFileName);
 
 			if (!testFile.exists())
