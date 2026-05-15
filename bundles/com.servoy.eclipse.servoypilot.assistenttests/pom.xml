@@ -17,6 +17,14 @@
     <packaging>eclipse-test-plugin</packaging>
     <build>
         <plugins>
+            <!-- Skip JAR signing for the test bundle — it is never deployed or published. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jarsigner-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.eclipse.tycho</groupId>
                 <artifactId>tycho-surefire-plugin</artifactId>
