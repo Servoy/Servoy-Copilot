@@ -11,6 +11,7 @@ Require-Bundle: com.servoy.eclipse.servoypilot,
  com.servoy.eclipse.jsunit
 Import-Package: com.servoy.eclipse.model.nature,
  com.servoy.eclipse.model.util,
+ com.servoy.eclipse.model.extensions,
  com.servoy.eclipse.core,
  com.servoy.j2db.server.shared,
  org.eclipse.dltk.testing.model,

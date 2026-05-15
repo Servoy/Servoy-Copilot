@@ -60,7 +60,7 @@
     <bundle id="io.projectreactor.reactor-core">
        <category name="servoy.pilot.depdencies"/>
     </bundle>
-    <bundle id="org.reactivestreams.reactive-streams">
+    <bundle id="reactive-streams">
        <category name="servoy.pilot.depdencies"/>
     </bundle>
     <bundle id="org.jspecify.jspecify">
