@@ -11,9 +11,8 @@
     </parent>
     <artifactId>com.servoy.eclipse.servoypilot.assistenttests</artifactId>
     <!-- eclipse-test-plugin: Tycho treats this as a PDE test bundle.
-         Layer 1 (unit/) tests run headlessly via tycho-surefire.
-         Layer 2 (integration/) and Layer 3 tests require a running Servoy IDE
-         and must be launched manually as JUnit Plugin Tests from Eclipse. -->
+         Default build: Layer 1 unit tests only (headless, fast).
+         With -Pintegration: all tests including Layer 2/3/4 (requires UI harness + Xvfb on Linux). -->
     <packaging>eclipse-test-plugin</packaging>
     <build>
         <plugins>
@@ -30,8 +29,7 @@
                 <artifactId>tycho-surefire-plugin</artifactId>
                 <version>${tycho-version}</version>
                 <configuration>
-                    <!-- Run only Layer 1 pure-logic tests headlessly.
-                         Layer 2/3 require a full Servoy IDE and are excluded from Maven build. -->
+                    <!-- Default: run only Layer 1 pure-logic tests headlessly. -->
                     <includes>
                         <include>**/unit/*Test.java</include>
                     </includes>
@@ -44,4 +42,30 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <!-- Runs ALL tests (unit + integration) inside a full Eclipse workbench.
+                 The Servoy plugins activate automatically, starting the embedded app server.
+                 On Linux CI agents, Xvfb must be available for the Display.
+                 Usage: mvn verify -Pintegration -->
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.eclipse.tycho</groupId>
+                        <artifactId>tycho-surefire-plugin</artifactId>
+                        <version>${tycho-version}</version>
+                        <configuration>
+                            <includes>
+                                <include>**/*Test.java</include>
+                            </includes>
+                            <excludes/>
+                            <useUIHarness>true</useUIHarness>
+                            <useUIThread>true</useUIThread>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
