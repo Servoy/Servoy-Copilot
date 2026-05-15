@@ -10,8 +10,7 @@ Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.developer.mcp
 Bundle-ActivationPolicy: lazy
 Bundle-ClassPath: .,
- lib/mcp-json-jackson2-1.1.2.jar,
- lib/tomcat-embed-core-11.0.21.jar
+ lib/mcp-json-jackson2-1.1.2.jar
 Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.ui,
  org.eclipse.jface,
