@@ -53,6 +53,10 @@ public class QuickFixPresenter
 {
 	private static QuickFixPresenter INSTANCE = new QuickFixPresenter();
 
+	private QuickFixPresenter()
+	{
+	}
+
 	public static QuickFixPresenter getInstance()
 	{
 		return INSTANCE;

@@ -48,6 +48,10 @@ public class SearchService
 
 	private static final SearchService INSTANCE = new SearchService();
 
+	private SearchService()
+	{
+	}
+
 	public static SearchService getInstance()
 	{
 		return INSTANCE;

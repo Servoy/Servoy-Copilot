@@ -431,7 +431,10 @@ public class InlineDocumentChangesPreviewManager implements IDocumentChangesPrev
 			CompareEditorService compareService = CompareEditorService.getInstance();
 			try
 			{
-				compareEditorInput = compareService.openCompareEditor(file.getName(), originalContent, buildModifiedContent(document));
+				if (file != null)
+				{
+					compareEditorInput = compareService.openCompareEditor(file.getName(), originalContent, buildModifiedContent(document));
+				}
 			}
 			catch (Exception e)
 			{

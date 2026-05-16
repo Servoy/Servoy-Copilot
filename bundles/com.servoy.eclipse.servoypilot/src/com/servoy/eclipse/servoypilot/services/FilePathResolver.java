@@ -50,7 +50,7 @@ public class FilePathResolver
 	{
 	}
 
-	public static FilePathResolver getInstance()
+	public static synchronized FilePathResolver getInstance()
 	{
 		if (instance == null)
 		{

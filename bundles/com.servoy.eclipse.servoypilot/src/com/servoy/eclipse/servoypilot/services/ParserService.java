@@ -35,7 +35,11 @@ public class ParserService
 {
 	private static ParserService instance;
 
-	public static ParserService getInstance()
+	private ParserService()
+	{
+	}
+
+	public static synchronized ParserService getInstance()
 	{
 		if (instance == null)
 		{

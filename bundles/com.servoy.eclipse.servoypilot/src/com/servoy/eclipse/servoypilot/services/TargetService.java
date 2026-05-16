@@ -32,6 +32,10 @@ public class TargetService
 	private static TargetService instance;
 	private String currentTarget = null; // null = active solution
 
+	private TargetService()
+	{
+	}
+
 	public static synchronized TargetService getInstance()
 	{
 		if (instance == null)
