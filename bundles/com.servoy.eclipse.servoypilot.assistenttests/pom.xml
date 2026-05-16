@@ -29,15 +29,19 @@
                 <artifactId>tycho-surefire-plugin</artifactId>
                 <version>${tycho-version}</version>
                 <configuration>
-                    <!-- Default: run only Layer 1 pure-logic tests headlessly. -->
                     <includes>
                         <include>**/unit/*Test.java</include>
+                        <include>**/integration/*Test.java</include>
                     </includes>
-                    <excludes>
-                        <exclude>**/integration/**</exclude>
-                    </excludes>
-                    <useUIHarness>false</useUIHarness>
-                    <useUIThread>false</useUIThread>
+                    <useUIHarness>true</useUIHarness>
+                    <useUIThread>true</useUIThread>
+                    <application>org.eclipse.ui.ide.workbench</application>
+                    <dependencies>
+                        <dependency>
+                            <type>eclipse-plugin</type>
+                            <artifactId>com.servoy.eclipse.extension.compatibility</artifactId>
+                        </dependency>
+                    </dependencies>
                 </configuration>
             </plugin>
         </plugins>

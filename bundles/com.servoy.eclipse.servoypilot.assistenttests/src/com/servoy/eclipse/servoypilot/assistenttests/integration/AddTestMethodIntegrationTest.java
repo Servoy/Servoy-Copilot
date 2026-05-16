@@ -53,13 +53,13 @@ import com.servoy.eclipse.servoypilot.services.TestFileService;
  * </ul>
  */
 public class AddTestMethodIntegrationTest
-{
+{   
 	// Neutral name - NOT an existing Servoy solution so Servoy never tries to
 	// load it and show blocking error dialogs in the PDE test workspace.
 	private static final String SOLUTION_NAME = "test_layer2_workspace";
 	private static final String TEST_FILE_NAME = "test_addmethodtest.js";
 
-	private TestFileService service;
+	private TestFileService service;  
 	private ServoyProject servoyProject;
 
 	@Before
