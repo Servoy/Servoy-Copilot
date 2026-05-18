@@ -19,17 +19,110 @@ package com.servoy.eclipse.servoypilot.dto;
 
 import java.util.Objects;
 
-public record SourceEdit(
-	String filePath,
-	int startLine,
-	int endLine,
-	String startSentence,
-	String endSentence,
-	String replacement,
-	boolean forceEndLineUse)
+/**
+ * Represents a single source code edit produced by an AI assistant.
+ * <p>
+ * This is a POJO (not a record) so that Jackson can use setter-based deserialization.
+ * This allows duplicate JSON keys (which LLMs sometimes produce) to be handled gracefully
+ * via last-value-wins semantics, instead of crashing with
+ * "No fallback setter/field defined for creator property".
+ */
+public class SourceEdit
 {
+	private String filePath;
+	private int startLine;
+	private int endLine;
+	private String startSentence;
+	private String endSentence;
+	private String replacement;
+	private boolean forceEndLineUse;
 
-	public SourceEdit
+	public SourceEdit()
+	{
+	}
+
+	public SourceEdit(String filePath, int startLine, int endLine, String startSentence, String endSentence, String replacement, boolean forceEndLineUse)
+	{
+		this.filePath = filePath;
+		this.startLine = startLine;
+		this.endLine = endLine;
+		this.startSentence = startSentence;
+		this.endSentence = endSentence;
+		this.replacement = replacement;
+		this.forceEndLineUse = forceEndLineUse;
+	}
+
+	public String filePath()
+	{
+		return filePath;
+	}
+
+	public void setFilePath(String filePath)
+	{
+		this.filePath = filePath;
+	}
+
+	public int startLine()
+	{
+		return startLine;
+	}
+
+	public void setStartLine(int startLine)
+	{
+		this.startLine = startLine;
+	}
+
+	public int endLine()
+	{
+		return endLine;
+	}
+
+	public void setEndLine(int endLine)
+	{
+		this.endLine = endLine;
+	}
+
+	public String startSentence()
+	{
+		return startSentence;
+	}
+
+	public void setStartSentence(String startSentence)
+	{
+		this.startSentence = startSentence;
+	}
+
+	public String endSentence()
+	{
+		return endSentence;
+	}
+
+	public void setEndSentence(String endSentence)
+	{
+		this.endSentence = endSentence;
+	}
+
+	public String replacement()
+	{
+		return replacement;
+	}
+
+	public void setReplacement(String replacement)
+	{
+		this.replacement = replacement;
+	}
+
+	public boolean forceEndLineUse()
+	{
+		return forceEndLineUse;
+	}
+
+	public void setForceEndLineUse(boolean forceEndLineUse)
+	{
+		this.forceEndLineUse = forceEndLineUse;
+	}
+
+	public void validate()
 	{
 		if (filePath == null || filePath.isBlank())
 		{
@@ -60,42 +153,25 @@ public record SourceEdit(
 		}
 	}
 
-	/**
-	 * Insert means:
-	 * - same line
-	 * - no validation strings
-	 */
 	public boolean isInsert()
 	{
 		return startLine == endLine &&
-			startSentence.isEmpty() &&
-			endSentence.isEmpty() &&
+			(startSentence == null || startSentence.isEmpty()) &&
+			(endSentence == null || endSentence.isEmpty()) &&
 			replacement != null &&
 			!replacement.isEmpty();
 	}
 
-	/**
-	 * Replacement means:
-	 * - At least one anchor exists (start or end)
-	 * - replacement text exists
-	 */
 	public boolean isReplacement()
 	{
-		// A replacement is valid if we have something to find (either start or end)
-		// AND we have something to put in its place.
-		return (!startSentence.isEmpty() || !endSentence.isEmpty()) &&
+		return ((startSentence != null && !startSentence.isEmpty()) || (endSentence != null && !endSentence.isEmpty())) &&
 			replacement != null &&
 			!replacement.isEmpty();
 	}
 
-	/**
-	 * Delete means:
-	 * - At least one anchor exists
-	 * - replacement is empty or null
-	 */
 	public boolean isDelete()
 	{
-		return (!startSentence.isEmpty() || !endSentence.isEmpty()) &&
+		return ((startSentence != null && !startSentence.isEmpty()) || (endSentence != null && !endSentence.isEmpty())) &&
 			(replacement == null || replacement.isEmpty());
 	}
 
@@ -119,5 +195,26 @@ public record SourceEdit(
 			", endSentence=" + endSentence +
 			", replacement=" + Objects.toString(replacement) +
 			"]";
+	}
+
+	@Override
+	public boolean equals(Object o)
+	{
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		SourceEdit that = (SourceEdit)o;
+		return startLine == that.startLine &&
+			endLine == that.endLine &&
+			forceEndLineUse == that.forceEndLineUse &&
+			Objects.equals(filePath, that.filePath) &&
+			Objects.equals(startSentence, that.startSentence) &&
+			Objects.equals(endSentence, that.endSentence) &&
+			Objects.equals(replacement, that.replacement);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		return Objects.hash(filePath, startLine, endLine, startSentence, endSentence, replacement, forceEndLineUse);
 	}
 }

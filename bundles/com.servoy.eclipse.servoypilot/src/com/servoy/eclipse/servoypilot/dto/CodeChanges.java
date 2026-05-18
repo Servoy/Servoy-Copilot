@@ -20,10 +20,33 @@ package com.servoy.eclipse.servoypilot.dto;
 import java.util.List;
 
 /**
- * Wrapper object approach to avoid the PojoCollectionOutputParser crash in LangChain4j
+ * Wrapper object for AI-produced code changes.
+ * <p>
+ * Uses a POJO class (not a record) for consistent Jackson deserialization behavior
+ * with {@link SourceEdit}, allowing duplicate JSON keys to be handled gracefully.
+ *
  * @author emera
  */
-public record CodeChanges(
-	List<SourceEdit> codeChanges)
+public class CodeChanges
 {
+	private List<SourceEdit> codeChanges;
+
+	public CodeChanges()
+	{
+	}
+
+	public CodeChanges(List<SourceEdit> codeChanges)
+	{
+		this.codeChanges = codeChanges;
+	}
+
+	public List<SourceEdit> codeChanges()
+	{
+		return codeChanges;
+	}
+
+	public void setCodeChanges(List<SourceEdit> codeChanges)
+	{
+		this.codeChanges = codeChanges;
+	}
 }
