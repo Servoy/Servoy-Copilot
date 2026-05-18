@@ -11,7 +11,8 @@ Automatic-Module-Name: com.servoy.eclipse.developer.mcp
 Bundle-ActivationPolicy: lazy
 Bundle-ClassPath: .,
  lib/mcp-json-jackson2-1.1.2.jar
-Require-Bundle: org.eclipse.core.runtime,
+Require-Bundle: org.junit;bundle-version="4.13.0";resolution:=optional,
+ org.eclipse.core.runtime,
  org.eclipse.ui,
  org.eclipse.jface,
  org.eclipse.ui.ide,
@@ -19,7 +20,13 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.e4.ui.di,
  org.eclipse.e4.core.di.annotations,
  org.apache.tomcat,
- org.apache.commons.lang3
+ org.apache.commons.lang3,
+ org.eclipse.search.core,
+ org.eclipse.ui.console,
+ org.eclipse.ui.workbench.texteditor,
+ org.eclipse.jface.text,
+ org.eclipse.jgit,
+ org.eclipse.egit.core
 Import-Package: com.servoy.eclipse.model.util,
  org.slf4j;version="[2.0.0,3.0.0)",
  com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
