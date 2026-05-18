@@ -22,10 +22,6 @@ import java.util.List;
 
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServer;
-import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
-import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
-import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
-import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.servers.TimeServer;
 
 /**
@@ -43,10 +39,13 @@ public class McpServerBuiltins
 	public static final Class<?>[] BUILT_IN_SERVER_CLASSES = {
 		TimeServer.class,
 		MemoryServer.class,
-		ServoyContextServer.class,
-		ServoyCoderServer.class,
-		ServoyIdeServer.class,
-		ServoyGitServer.class,
+		// Phase 2+: more server classes will be added here, e.g.:
+		// ServoyIdeServer.class,
+		// ServoyCoderServer.class,
+		// ServoyRunnerServer.class,
+		// ServoyContextServer.class,
+		// ServoyGitServer.class,
+		// ServoyDevServer.class,
 	};
 
 	/**
