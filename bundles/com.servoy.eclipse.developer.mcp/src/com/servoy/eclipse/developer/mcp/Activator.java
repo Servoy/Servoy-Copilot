@@ -16,23 +16,24 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
-import org.eclipse.core.runtime.preferences.InstanceScope;
-import org.eclipse.jface.preference.IPreferenceStore;
-import org.eclipse.ui.preferences.ScopedPreferenceStore;
-import org.osgi.framework.BundleActivator;
+import org.eclipse.e4.core.contexts.ContextInjectionFactory;
+import org.eclipse.e4.core.contexts.EclipseContextFactory;
+import org.eclipse.e4.core.contexts.IEclipseContext;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
  * Bundle activator for the Servoy Developer MCP Server plugin.
+ * Extends AbstractUIPlugin to participate in E4 dependency injection.
  */
-public class Activator implements BundleActivator
+public class Activator extends AbstractUIPlugin
 {
 	public static final String PLUGIN_ID = "com.servoy.eclipse.developer.mcp";
 
 	private static Activator instance;
-	private ScopedPreferenceStore preferenceStore;
 
 	public static Activator getDefault()
 	{
@@ -42,6 +43,7 @@ public class Activator implements BundleActivator
 	@Override
 	public void start(BundleContext context) throws Exception
 	{
+		super.start(context);
 		instance = this;
 		ServoyLog.logInfo("Servoy Developer MCP Server plugin started.");
 	}
@@ -49,18 +51,32 @@ public class Activator implements BundleActivator
 	@Override
 	public void stop(BundleContext context) throws Exception
 	{
-		McpServerRegistry.getInstance().shutdown();
-		preferenceStore = null;
 		instance = null;
+		super.stop(context);
 		ServoyLog.logInfo("Servoy Developer MCP Server plugin stopped.");
 	}
 
-	public IPreferenceStore getPreferenceStore()
+	/**
+	 * Creates an instance of the given class using E4 dependency injection.
+	 * The instance is created in the workbench's Eclipse context, enabling
+	 * full E4 lifecycle support (@PostConstruct, @PostWorkbenchClose, etc.).
+	 */
+	public <T> T make(Class<T> clazz)
 	{
-		if (preferenceStore == null)
+		IEclipseContext context = getEclipseContext();
+		return ContextInjectionFactory.make(clazz, context);
+	}
+
+	public IEclipseContext getEclipseContext()
+	{
+		try
 		{
-			preferenceStore = new ScopedPreferenceStore(InstanceScope.INSTANCE, PLUGIN_ID);
+			return PlatformUI.getWorkbench().getService(IEclipseContext.class);
 		}
-		return preferenceStore;
+		catch (Exception e)
+		{
+			ServoyLog.logWarning("Workbench context not available, falling back to OSGi context.", e);
+			return EclipseContextFactory.getServiceContext(getBundle().getBundleContext());
+		}
 	}
 }

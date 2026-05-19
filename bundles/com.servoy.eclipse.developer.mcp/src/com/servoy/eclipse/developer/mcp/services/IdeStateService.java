@@ -50,6 +50,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
  * </ul>
  * </p>
  */
+@org.eclipse.e4.core.di.annotations.Creatable
 public class IdeStateService
 {
 	// --- Console ---

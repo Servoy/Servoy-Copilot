@@ -18,6 +18,10 @@ package com.servoy.eclipse.developer.mcp.servers;
 
 import java.util.Optional;
 
+import jakarta.inject.Inject;
+
+import org.eclipse.e4.core.di.annotations.Creatable;
+
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
@@ -32,10 +36,21 @@ import com.servoy.eclipse.developer.mcp.services.GitService;
  * Uses EGit/JGit APIs to interact with the Git repository associated with workspace projects.
  * </p>
  */
+@Creatable
 @McpServer(name = "servoy-git")
 public class ServoyGitServer
 {
-	private final GitService gitService = new GitService();
+	@Inject
+	private GitService gitService;
+
+	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	public ServoyGitServer() { }
+
+	/** Testing constructor — initialises services directly without E4 DI. */
+	ServoyGitServer(GitService gitService)
+	{
+		this.gitService = gitService;
+	}
 
 	@Tool(name = "gitStatus", description = "Shows the working tree status of the Git repository associated with the project. Displays staged, unstaged, untracked files and current branch info.", type = "object")
 	public String gitStatus(
@@ -142,5 +157,13 @@ public class ServoyGitServer
 		@ToolParam(name = "projectName", description = "The Eclipse project name", required = true) String projectName)
 	{
 		return gitService.stashList(projectName);
+	}
+
+	@Tool(name = "gitStagePatch", description = "Stages specific changes from a unified diff patch into the index without modifying the working tree. Use this to stage partial file changes for selective commits. The patch must be in standard unified diff format with file headers (--- a/path and +++ b/path) and @@ hunk headers.", type = "object")
+	public String gitStagePatch(
+		@ToolParam(name = "projectName", description = "The Eclipse project name", required = true) String projectName,
+		@ToolParam(name = "patch", description = "A unified diff patch string to stage. Must include file headers (--- a/path, +++ b/path) and @@ hunk headers.", required = true) String patch)
+	{
+		return gitService.stagePatch(projectName, patch);
 	}
 }

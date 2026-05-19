@@ -18,6 +18,10 @@ package com.servoy.eclipse.developer.mcp.servers;
 
 import java.util.Optional;
 
+import jakarta.inject.Inject;
+
+import org.eclipse.e4.core.di.annotations.Creatable;
+
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
@@ -45,10 +49,21 @@ import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
  * {@code organizeImportsInPackage}.
  * </p>
  */
+@Creatable
 @McpServer(name = "servoy-coder")
 public class ServoyCoderServer
 {
-	private final CodeEditingService codeEditingService = new CodeEditingService();
+	@Inject
+	private CodeEditingService codeEditingService;
+
+	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	public ServoyCoderServer() { }
+
+	/** Testing constructor — initialises services directly without E4 DI. */
+	ServoyCoderServer(CodeEditingService codeEditingService)
+	{
+		this.codeEditingService = codeEditingService;
+	}
 
 	@Tool(name = "createFile",
 		description = "Create and open a new file in a specified project. Ensure the file doesn't already exist.",
@@ -222,5 +237,74 @@ public class ServoyCoderServer
 		{
 			throw new RuntimeException(e.getMessage(), e);
 		}
+	}
+
+	// --- Dummy tools (JDT-only in Eclipse IDE, not available in Servoy Developer) ---
+
+	private static final String JDT_NOT_AVAILABLE =
+		"Not available in Servoy Developer MCP: this tool requires JDT (Java Development Tools) " +
+		"which is not present in the Servoy Developer runtime. Use the Eclipse IDE MCP endpoint instead.";
+
+	@Tool(name = "formatFile",
+		description = "Formats an entire Java file using Eclipse's code formatter. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String formatFile(
+		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "filePath", description = "The path to the Java file relative to the project root", required = true) String filePath)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "refactorRenameJavaType",
+		description = "Renames a Java class/interface/enum using Eclipse's refactoring mechanism. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String refactorRenameJavaType(
+		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "filePath", description = "The path to the Java file relative to the project root", required = true) String filePath,
+		@ToolParam(name = "newTypeName", description = "The new name for the Java type", required = true) String newTypeName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "refactorMoveJavaType",
+		description = "Moves a Java class/interface/enum to a different package using Eclipse's refactoring mechanism. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String refactorMoveJavaType(
+		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "filePath", description = "The path to the Java file relative to the project root", required = true) String filePath,
+		@ToolParam(name = "targetPackage", description = "The fully qualified target package name", required = true) String targetPackage)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "refactorRenamePackage",
+		description = "Renames a Java package using Eclipse's refactoring mechanism. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String refactorRenamePackage(
+		@ToolParam(name = "projectName", description = "The name of the project containing the package", required = true) String projectName,
+		@ToolParam(name = "packageName", description = "The current fully qualified package name", required = true) String packageName,
+		@ToolParam(name = "newPackageName", description = "The new package name", required = true) String newPackageName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "organizeImports",
+		description = "Organizes imports in a Java file using Eclipse's organize imports mechanism. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String organizeImports(
+		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "filePath", description = "The path to the Java file relative to the project root", required = true) String filePath)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "organizeImportsInPackage",
+		description = "Organizes imports in all Java files within a package. NOT AVAILABLE in Servoy Developer — requires JDT.",
+		type = "object")
+	public String organizeImportsInPackage(
+		@ToolParam(name = "projectName", description = "The name of the project containing the package", required = true) String projectName,
+		@ToolParam(name = "packageName", description = "The fully qualified package name", required = true) String packageName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
 	}
 }

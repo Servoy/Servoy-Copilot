@@ -38,7 +38,7 @@ import com.servoy.eclipse.developer.mcp.guard.ServoyFileFormatProtectedException
  */
 public class ServoyCoderServerTest
 {
-	private final ServoyCoderServer server = new ServoyCoderServer();
+	private final ServoyCoderServer server = new ServoyCoderServer(new com.servoy.eclipse.developer.mcp.services.CodeEditingService());
 
 	// --- File-format guard tests ---
 
@@ -176,8 +176,8 @@ public class ServoyCoderServerTest
 			.filter(m -> m.isAnnotationPresent(
 				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
 			.count();
-		assertTrue("ServoyCoderServer must have exactly 11 @Tool methods, found: " + toolCount,
-			toolCount == 11);
+		assertTrue("ServoyCoderServer must have exactly 17 @Tool methods, found: " + toolCount,
+			toolCount == 17);
 	}
 
 	@Test

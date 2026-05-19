@@ -25,6 +25,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.tomcat.starter.ServletInstance;
+import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.e4.ui.workbench.lifecycle.PostWorkbenchClose;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilter;
@@ -34,6 +36,8 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
+import jakarta.annotation.PostConstruct;
+import jakarta.inject.Singleton;
 import jakarta.servlet.http.HttpServlet;
 
 /**
@@ -43,15 +47,19 @@ import jakarta.servlet.http.HttpServlet;
  * <p>Each built-in MCP server gets its own transport provider servlet mapped to
  * {@code /svymcp/{serverName}/}. A bearer-token filter is applied to all endpoints.</p>
  *
- * <p>This class is a singleton — access via {@link #getInstance()}.</p>
+ * <p>This class is managed by E4 dependency injection. Use
+ * {@link Activator#make(Class)} to obtain the singleton instance, or
+ * {@link #getInstance()} for backward compatibility.</p>
  */
+@Creatable
+@Singleton
 public class McpServerRegistry
 {
-	/** URL prefix for all MCP endpoints — distinct from the existing /mcp path used by workflows. */
+	/** URL prefix for all MCP endpoints â distinct from the existing /mcp path used by workflows. */
 	public static final String MCP_PATH_PREFIX = "/svymcp";
 
 	/**
-	 * Named servlet wrapper classes — one per planned endpoint.
+	 * Named servlet wrapper classes â one per planned endpoint.
 	 * Tomcat uses getClass().getSimpleName() as the wrapper name, so each
 	 * registered ServletInstance must be an instance of a distinct class.
 	 * These named inner classes provide that uniqueness without touching TomcatStartStop.
@@ -89,7 +97,7 @@ public class McpServerRegistry
 		public TimeServlet(String token, HttpServlet delegate) { super(token, delegate); }
 	}
 
-	/** Maps server name → named servlet class to use as the Tomcat wrapper. */
+	/** Maps server name â named servlet class to use as the Tomcat wrapper. */
 	private static final Map<String, java.util.function.BiFunction<String, HttpServlet, BearerTokenAuthenticationFilter>> SERVLET_FACTORIES;
 	static
 	{
@@ -104,20 +112,31 @@ public class McpServerRegistry
 		SERVLET_FACTORIES.put("time",              (t, d) -> new TimeServlet(t, d));
 	}
 
-	private static final McpServerRegistry INSTANCE = new McpServerRegistry();
+	private static volatile McpServerRegistry instance;
 
 	private final List<McpSyncServer> syncServers = new CopyOnWriteArrayList<>();
 	private final List<ServletInstance> servletInstances = new ArrayList<>();
 	private final JacksonMcpJsonMapperSupplier jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
 	private volatile boolean initialized = false;
 
-	private McpServerRegistry()
+	public McpServerRegistry()
 	{
+		instance = this;
 	}
 
+	/**
+	 * Returns the E4-managed singleton instance.
+	 * Available after {@link McpStartup} has bootstrapped the registry.
+	 */
 	public static McpServerRegistry getInstance()
 	{
-		return INSTANCE;
+		return instance;
+	}
+
+	@PostConstruct
+	void init()
+	{
+		ServoyLog.logInfo("Servoy Developer MCP Server: E4 registry initialized.");
 	}
 
 	/**
@@ -138,7 +157,7 @@ public class McpServerRegistry
 		IPreferenceStore prefs = Activator.getDefault().getPreferenceStore();
 		String token = prefs.getString(McpPreferenceConstants.MCP_AUTH_TOKEN);
 
-		List<Object> serverImpls = McpServerBuiltins.createServerInstances();
+		List<Object> serverImpls = McpServerBuiltins.createServerInstances(Activator.getDefault().getEclipseContext());
 
 		for (Object impl : serverImpls)
 		{
@@ -158,13 +177,11 @@ public class McpServerRegistry
 			McpSyncServer syncServer = McpServerFactory.getInstance().createSyncServer(impl, transport);
 			syncServers.add(syncServer);
 
-			// Each endpoint needs a distinct class so Tomcat's wrapper.setName(getSimpleName())
-			// produces a unique name. Named inner classes above provide this.
 			var factory = SERVLET_FACTORIES.get(serverName);
 			if (factory == null)
 			{
 				ServoyLog.logWarning("Servoy Developer MCP: no named servlet class for server '" + serverName +
-					"' — skipping endpoint " + endpointPath, null);
+					"' â skipping endpoint " + endpointPath, null);
 				continue;
 			}
 
@@ -178,8 +195,8 @@ public class McpServerRegistry
 		ServoyLog.logInfo("Servoy Developer MCP Server: initialized " + syncServers.size() + " server(s).");
 	}
 
-	/** Gracefully closes all MCP sync servers. Called from {@link Activator#stop}. */
-	public void shutdown()
+	@PostWorkbenchClose
+	void shutdown()
 	{
 		syncServers.forEach(s ->
 		{
@@ -195,5 +212,6 @@ public class McpServerRegistry
 		syncServers.clear();
 		servletInstances.clear();
 		initialized = false;
+		ServoyLog.logInfo("Servoy Developer MCP Server: shutdown complete.");
 	}
 }

@@ -49,7 +49,7 @@ public class ServoyContextServerTest
 	@Before
 	public void setUp() throws Exception
 	{
-		server = new ServoyContextServer();
+		server = new ServoyContextServer(new com.servoy.eclipse.developer.mcp.services.LocalHistoryService());
 		// Clear the singleton cache between tests
 		ServoyResourceCache cache = ServoyResourceCache.getInstance();
 		Field entriesField = ServoyResourceCache.class.getDeclaredField("entries");

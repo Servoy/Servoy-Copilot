@@ -16,10 +16,15 @@
 */
 package com.servoy.eclipse.developer.mcp.services;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.text.SimpleDateFormat;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.core.resources.IProject;
@@ -33,8 +38,13 @@ import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.RawTextComparator;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheEditor;
+import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.lib.BranchTrackingStatus;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -53,6 +63,7 @@ import org.eclipse.jgit.treewalk.CanonicalTreeParser;
  * </ul>
  * </p>
  */
+@org.eclipse.e4.core.di.annotations.Creatable
 @SuppressWarnings("restriction")
 public class GitService
 {
@@ -437,6 +448,84 @@ public class GitService
 	}
 
 	// --- Private helpers ---
+
+	public String stagePatch(String projectName, String patch)
+	{
+		Repository repository = getRepository(projectName);
+		try (Git gitCmd = new Git(repository))
+		{
+			java.io.File workTree = repository.getWorkTree();
+
+			org.eclipse.jgit.patch.Patch parsedPatch = new org.eclipse.jgit.patch.Patch();
+			parsedPatch.parse(new ByteArrayInputStream(patch.getBytes(StandardCharsets.UTF_8)));
+
+			if (parsedPatch.getFiles().isEmpty())
+			{
+				return "No files affected by patch.";
+			}
+
+			Map<java.io.File, byte[]> savedWorkingTree = new HashMap<>();
+			for (var fileHeader : parsedPatch.getFiles())
+			{
+				java.io.File file = new java.io.File(workTree, fileHeader.getNewPath());
+				if (file.exists())
+					savedWorkingTree.put(file, Files.readAllBytes(file.toPath()));
+			}
+
+			var checkoutCmd = gitCmd.checkout();
+			for (var fileHeader : parsedPatch.getFiles())
+				checkoutCmd.addPath(fileHeader.getNewPath());
+			checkoutCmd.call();
+
+			org.eclipse.jgit.api.ApplyResult result = gitCmd.apply()
+				.setPatch(new ByteArrayInputStream(patch.getBytes(StandardCharsets.UTF_8)))
+				.call();
+
+			DirCache dirCache = repository.lockDirCache();
+			try
+			{
+				DirCacheEditor editor = dirCache.editor();
+				ObjectInserter inserter = repository.newObjectInserter();
+
+				for (var file : result.getUpdatedFiles())
+				{
+					byte[] content = Files.readAllBytes(file.toPath());
+					ObjectId blobId = inserter.insert(Constants.OBJ_BLOB, content);
+					String repoRelativePath = workTree.toPath()
+						.relativize(file.toPath()).toString().replace('\\', '/');
+
+					editor.add(new DirCacheEditor.PathEdit(repoRelativePath)
+					{
+						@Override
+						public void apply(DirCacheEntry ent)
+						{
+							ent.setObjectId(blobId);
+							ent.setFileMode(org.eclipse.jgit.lib.FileMode.REGULAR_FILE);
+							ent.setLength(content.length);
+							ent.setLastModified(java.time.Instant.now());
+						}
+					});
+				}
+
+				inserter.flush();
+				editor.commit();
+			}
+			finally
+			{
+				dirCache.unlock();
+			}
+
+			for (var entry : savedWorkingTree.entrySet())
+				Files.write(entry.getKey().toPath(), entry.getValue());
+
+			refreshProject(projectName);
+			return "Patch staged successfully. Files: " + result.getUpdatedFiles().size();
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to stage patch: " + e.getMessage(), e);
+		}
+	}
 
 	private static AbstractTreeIterator prepareTreeParser(Repository repository, ObjectId objectId) throws IOException
 	{

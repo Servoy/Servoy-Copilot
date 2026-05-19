@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.eclipse.e4.core.contexts.ContextInjectionFactory;
+import org.eclipse.e4.core.contexts.IEclipseContext;
+
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
@@ -50,10 +53,21 @@ public class McpServerBuiltins
 	};
 
 	/**
-	 * Instantiates one instance of each registered server class.
-	 * Returns an empty list until server classes are added to {@link #BUILT_IN_SERVER_CLASSES}.
+	 * Instantiates one instance of each registered server class using E4 DI.
+	 * Falls back to plain reflection if no E4 context is available (e.g. in tests).
 	 */
 	public static List<Object> createServerInstances()
+	{
+		return createServerInstances(null);
+	}
+
+	/**
+	 * Instantiates one instance of each registered server class.
+	 * When {@code context} is non-null, uses {@link ContextInjectionFactory#make} so
+	 * {@code @Inject} fields on server and service classes are fulfilled.
+	 * Falls back to plain reflection when {@code context} is null (tests, headless).
+	 */
+	public static List<Object> createServerInstances(IEclipseContext context)
 	{
 		if (BUILT_IN_SERVER_CLASSES.length == 0)
 		{
@@ -64,7 +78,10 @@ public class McpServerBuiltins
 		{
 			try
 			{
-				instances.add(clazz.getDeclaredConstructor().newInstance());
+				Object instance = (context != null)
+					? ContextInjectionFactory.make(clazz, context)
+					: clazz.getDeclaredConstructor().newInstance();
+				instances.add(instance);
 			}
 			catch (Exception e)
 			{

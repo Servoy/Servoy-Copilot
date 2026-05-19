@@ -19,6 +19,10 @@ package com.servoy.eclipse.developer.mcp.servers;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.inject.Inject;
+
+import org.eclipse.e4.core.di.annotations.Creatable;
+
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
@@ -49,13 +53,31 @@ import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResult;
  * {@code findReferences}, {@code getImportSuggestions}, {@code executeQuickFix}.
  * </p>
  */
+@Creatable
 @McpServer(name = "servoy-ide")
 public class ServoyIdeServer
 {
-	private final ProjectService projectService = new ProjectService();
-	private final WorkspaceService workspaceService = new WorkspaceService();
-	private final MarkdownService markdownService = new MarkdownService();
-	private final IdeStateService ideStateService = new IdeStateService();
+	@Inject
+	private ProjectService projectService;
+	@Inject
+	private WorkspaceService workspaceService;
+	@Inject
+	private MarkdownService markdownService;
+	@Inject
+	private IdeStateService ideStateService;
+
+	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	public ServoyIdeServer() { }
+
+	/** Testing constructor — initialises services directly without E4 DI. */
+	ServoyIdeServer(ProjectService projectService, WorkspaceService workspaceService,
+		MarkdownService markdownService, IdeStateService ideStateService)
+	{
+		this.projectService = projectService;
+		this.workspaceService = workspaceService;
+		this.markdownService = markdownService;
+		this.ideStateService = ideStateService;
+	}
 
 	@Tool(name = "listProjects",
 		description = "List all available projects in the workspace with their detected natures (Java, Maven, Servoy, etc.).",
@@ -264,5 +286,190 @@ public class ServoyIdeServer
 			sb.append(" â ").append(r.lineContent().trim()).append("\n");
 		}
 		return sb.toString();
+	}
+
+	// --- Dummy tools (JDT-only — not available in Servoy Developer) ---
+
+	private static final String JDT_NOT_AVAILABLE =
+		"Not available in Servoy Developer MCP: this tool requires JDT (Java Development Tools) " +
+		"which is not present in the Servoy Developer runtime. Use the Eclipse IDE MCP endpoint instead.";
+
+	private static final String MAVEN_NOT_AVAILABLE =
+		"Not available in Servoy Developer MCP: this tool requires Maven integration " +
+		"which is not applicable in the Servoy Developer runtime.";
+
+	private static final String JUNIT_NOT_AVAILABLE =
+		"Not available in Servoy Developer MCP: this tool requires the JUnit test runner " +
+		"which is not applicable in the Servoy Developer runtime.";
+
+	@Tool(name = "formatCode", description = "Formats code according to the current Eclipse formatter settings. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String formatCode(
+		@ToolParam(name = "code", description = "The code to be formatted", required = true) String code,
+		@ToolParam(name = "projectName", description = "Optional project name to use project-specific formatter settings", required = false) String projectName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getJavaDoc", description = "Get the JavaDoc for the given compilation unit. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getJavaDoc(
+		@ToolParam(name = "fullyQualifiedName", description = "A fully qualified name of the compilation unit", required = true) String fullyQualifiedName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getSource", description = "Get the source for the given class. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getSource(
+		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name of the Java class", required = true) String fullyQualifiedClassName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getClassOutline", description = "Returns a compact outline of a Java class. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getClassOutline(
+		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
+		@ToolParam(name = "includeFields", description = "Whether to include field declarations (default: true)", required = false) String includeFields)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getMethodSource", description = "Returns the source code of specific method(s) with line numbers. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getMethodSource(
+		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
+		@ToolParam(name = "methodNames", description = "Comma-separated method names to retrieve", required = true) String methodNames,
+		@ToolParam(name = "methodSignature", description = "Optional parameter type hint to disambiguate overloaded methods", required = false) String methodSignature,
+		@ToolParam(name = "includeJavadoc", description = "Whether to include Javadoc comments (default: true)", required = false) String includeJavadoc)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getFilteredSource", description = "Returns source code with optional import exclusion and selective method expansion. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getFilteredSource(
+		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
+		@ToolParam(name = "excludeImports", description = "Whether to collapse the import block (default: true)", required = false) String excludeImports,
+		@ToolParam(name = "methodNames", description = "Comma-separated method names to fully expand", required = false) String methodNames)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getMethodCallHierarchy", description = "Retrieves the call hierarchy for a specified method. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getMethodCallHierarchy(
+		@ToolParam(name = "fullyQualifiedClassName", description = "The fully qualified name of the class containing the method", required = true) String fullyQualifiedClassName,
+		@ToolParam(name = "methodName", description = "The name of the method to analyze", required = true) String methodName,
+		@ToolParam(name = "methodSignature", description = "The signature of the method (optional)", required = false) String methodSignature,
+		@ToolParam(name = "maxDepth", description = "Maximum depth of the call hierarchy to retrieve (default: 3)", required = false) String maxDepth)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getTypeHierarchy", description = "Retrieves the type hierarchy for a given Java class or interface. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getTypeHierarchy(
+		@ToolParam(name = "fullyQualifiedClassName", description = "The fully qualified name of the class", required = true) String fullyQualifiedClassName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "findReferences", description = "Finds all references/usages of a Java type, method, or field. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String findReferences(
+		@ToolParam(name = "fullyQualifiedClassName", description = "The fully qualified name of the class containing the element", required = true) String fullyQualifiedClassName,
+		@ToolParam(name = "elementName", description = "Optional method or field name to search for", required = false) String elementName)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getImportSuggestions", description = "Finds import candidates for unresolved types in a Java file. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String getImportSuggestions(
+		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "filePath", description = "The path to the Java file relative to the project root", required = true) String filePath)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "executeQuickFix", description = "Applies a specific quick fix proposal to a compilation problem. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	public String executeQuickFix(
+		@ToolParam(name = "markerId", description = "The Marker ID of the problem", required = true) String markerId,
+		@ToolParam(name = "proposalIndex", description = "The 0-based index of the quick fix proposal to apply", required = true) String proposalIndex)
+	{
+		throw new RuntimeException(JDT_NOT_AVAILABLE);
+	}
+
+	// --- Dummy tools (JUnit runner — not applicable in Servoy Developer) ---
+
+	@Tool(name = "findTestClasses", description = "Finds all test classes in a project. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String findTestClasses(
+		@ToolParam(name = "projectName", description = "The exact Eclipse project name to search", required = true) String projectName)
+	{
+		throw new RuntimeException(JUNIT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "runAllTests", description = "Runs all JUnit tests in a specified project. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String runAllTests(
+		@ToolParam(name = "projectName", description = "The exact Eclipse project name containing the test classes", required = true) String projectName,
+		@ToolParam(name = "timeout", description = "Maximum time in seconds to wait for test completion (default: 60)", required = false) String timeout,
+		@ToolParam(name = "withCoverage", description = "If 'true', runs tests with code coverage. Default: false", required = false) String withCoverage)
+	{
+		throw new RuntimeException(JUNIT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "runPackageTests", description = "Runs all JUnit tests in a specific package. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String runPackageTests(
+		@ToolParam(name = "projectName", description = "The exact Eclipse project name containing the test classes", required = true) String projectName,
+		@ToolParam(name = "packageName", description = "The fully qualified package name", required = true) String packageName,
+		@ToolParam(name = "timeout", description = "Maximum time in seconds to wait for test completion (default: 60)", required = false) String timeout,
+		@ToolParam(name = "withCoverage", description = "If 'true', runs tests with code coverage. Default: false", required = false) String withCoverage)
+	{
+		throw new RuntimeException(JUNIT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "runClassTests", description = "Runs all JUnit tests in a specific test class. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String runClassTests(
+		@ToolParam(name = "projectName", description = "The exact Eclipse project name containing the test class", required = true) String projectName,
+		@ToolParam(name = "className", description = "The fully qualified class name", required = true) String className,
+		@ToolParam(name = "timeout", description = "Maximum time in seconds to wait for test completion (default: 60)", required = false) String timeout,
+		@ToolParam(name = "withCoverage", description = "If 'true', runs tests with code coverage. Default: false", required = false) String withCoverage)
+	{
+		throw new RuntimeException(JUNIT_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "runTestMethod", description = "Runs a single JUnit test method. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String runTestMethod(
+		@ToolParam(name = "projectName", description = "The exact Eclipse project name containing the test class", required = true) String projectName,
+		@ToolParam(name = "className", description = "The fully qualified class name", required = true) String className,
+		@ToolParam(name = "methodName", description = "The test method name without parentheses", required = true) String methodName,
+		@ToolParam(name = "timeout", description = "Maximum time in seconds to wait for test completion (default: 60)", required = false) String timeout,
+		@ToolParam(name = "withCoverage", description = "If 'true', runs tests with code coverage. Default: false", required = false) String withCoverage)
+	{
+		throw new RuntimeException(JUNIT_NOT_AVAILABLE);
+	}
+
+	// --- Dummy tools (Maven — not applicable in Servoy Developer) ---
+
+	@Tool(name = "listMavenProjects", description = "Lists all available Maven projects in the workspace. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String listMavenProjects()
+	{
+		throw new RuntimeException(MAVEN_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "runMavenBuild", description = "Runs a Maven build with the specified goals on a project. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String runMavenBuild(
+		@ToolParam(name = "projectName", description = "The name of the project to build", required = true) String projectName,
+		@ToolParam(name = "goals", description = "The Maven goals to execute", required = true) String goals,
+		@ToolParam(name = "profiles", description = "Optional Maven profiles to activate", required = false) String profiles,
+		@ToolParam(name = "timeout", description = "Maximum time in seconds to wait for build completion (0 for no timeout)", required = false) String timeout)
+	{
+		throw new RuntimeException(MAVEN_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getEffectivePom", description = "Gets the effective POM for a Maven project. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String getEffectivePom(
+		@ToolParam(name = "projectName", description = "The name of the Maven project", required = true) String projectName)
+	{
+		throw new RuntimeException(MAVEN_NOT_AVAILABLE);
+	}
+
+	@Tool(name = "getProjectDependencies", description = "Gets Maven project dependencies. NOT AVAILABLE in Servoy Developer.", type = "object")
+	public String getProjectDependencies(
+		@ToolParam(name = "projectName", description = "The name of the Maven project", required = true) String projectName)
+	{
+		throw new RuntimeException(MAVEN_NOT_AVAILABLE);
 	}
 }

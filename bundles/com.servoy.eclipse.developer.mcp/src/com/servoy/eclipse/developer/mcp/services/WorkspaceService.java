@@ -53,6 +53,7 @@ import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
  * </ul>
  * </p>
  */
+@org.eclipse.e4.core.di.annotations.Creatable
 public class WorkspaceService
 {
 	// --- findFiles ---

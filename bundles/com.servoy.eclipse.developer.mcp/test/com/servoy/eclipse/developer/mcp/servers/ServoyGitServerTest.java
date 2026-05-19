@@ -37,7 +37,7 @@ import org.junit.Test;
  */
 public class ServoyGitServerTest
 {
-	private final ServoyGitServer server = new ServoyGitServer();
+	private final ServoyGitServer server = new ServoyGitServer(new com.servoy.eclipse.developer.mcp.services.GitService());
 
 	// --- Annotation and registration checks ---
 
@@ -58,7 +58,7 @@ public class ServoyGitServerTest
 			.filter(m -> m.isAnnotationPresent(
 				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
 			.count();
-		assertEquals("ServoyGitServer must have exactly 13 @Tool methods", 13, toolCount);
+		assertEquals("ServoyGitServer must have exactly 14 @Tool methods", 14, toolCount);
 	}
 
 	@Test
@@ -79,7 +79,7 @@ public class ServoyGitServerTest
 	@Test
 	public void testServoyGitServer_canBeInstantiated()
 	{
-		ServoyGitServer instance = new ServoyGitServer();
+		ServoyGitServer instance = new ServoyGitServer(new com.servoy.eclipse.developer.mcp.services.GitService());
 		assertNotNull(instance);
 	}
 
@@ -277,6 +277,6 @@ public class ServoyGitServerTest
 				assertFalse("Duplicate tool name: " + name, names.contains(name));
 				names.add(name);
 			});
-		assertEquals(13, names.size());
+		assertEquals(14, names.size());
 	}
 }

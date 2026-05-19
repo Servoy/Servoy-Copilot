@@ -35,6 +35,7 @@ import org.eclipse.core.runtime.IPath;
  * Ported from AssistAI's {@code MarkdownService} â no changes needed, pure Eclipse resources API.
  * </p>
  */
+@org.eclipse.e4.core.di.annotations.Creatable
 public class MarkdownService
 {
 	private static final Pattern ATX_HEADING = Pattern.compile("^(#{1,6})\\s+(.+?)\\s*#*\\s*$");

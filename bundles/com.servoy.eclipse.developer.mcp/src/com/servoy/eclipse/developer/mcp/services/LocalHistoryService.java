@@ -42,6 +42,7 @@ import org.eclipse.core.runtime.IPath;
  * </ul>
  * </p>
  */
+@org.eclipse.e4.core.di.annotations.Creatable
 public class LocalHistoryService
 {
 	private static final DateTimeFormatter TIMESTAMP_FMT = DateTimeFormatter

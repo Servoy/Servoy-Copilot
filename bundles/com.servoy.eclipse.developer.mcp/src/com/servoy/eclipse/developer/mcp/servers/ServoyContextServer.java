@@ -20,6 +20,10 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+import jakarta.inject.Inject;
+
+import org.eclipse.e4.core.di.annotations.Creatable;
+
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
@@ -45,6 +49,7 @@ import com.servoy.eclipse.developer.mcp.services.LocalHistoryService;
  * </ul>
  * </p>
  */
+@Creatable
 @McpServer(name = "servoy-context")
 public class ServoyContextServer
 {
@@ -53,7 +58,17 @@ public class ServoyContextServer
 		.withZone(ZoneId.systemDefault());
 
 	private final ServoyResourceCache cache = ServoyResourceCache.getInstance();
-	private final LocalHistoryService localHistoryService = new LocalHistoryService();
+	@Inject
+	private LocalHistoryService localHistoryService;
+
+	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	public ServoyContextServer() { }
+
+	/** Testing constructor — initialises services directly without E4 DI. */
+	ServoyContextServer(LocalHistoryService localHistoryService)
+	{
+		this.localHistoryService = localHistoryService;
+	}
 
 	// --- Cache tools ---
 

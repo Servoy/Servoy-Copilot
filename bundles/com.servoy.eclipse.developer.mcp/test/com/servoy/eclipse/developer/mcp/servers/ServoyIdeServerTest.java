@@ -37,7 +37,11 @@ import org.junit.Test;
  */
 public class ServoyIdeServerTest
 {
-	private final ServoyIdeServer server = new ServoyIdeServer();
+	private final ServoyIdeServer server = new ServoyIdeServer(
+		new com.servoy.eclipse.developer.mcp.services.ProjectService(),
+		new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
+		new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
+		new com.servoy.eclipse.developer.mcp.services.IdeStateService());
 
 	// --- Annotation and registration checks ---
 
@@ -58,7 +62,7 @@ public class ServoyIdeServerTest
 			.filter(m -> m.isAnnotationPresent(
 				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
 			.count();
-		assertEquals("ServoyIdeServer must have exactly 14 @Tool methods", 14, toolCount);
+		assertEquals("ServoyIdeServer must have exactly 34 @Tool methods", 34, toolCount);
 	}
 
 	@Test
@@ -79,7 +83,11 @@ public class ServoyIdeServerTest
 	@Test
 	public void testServoyIdeServer_canBeInstantiated()
 	{
-		ServoyIdeServer instance = new ServoyIdeServer();
+		ServoyIdeServer instance = new ServoyIdeServer(
+			new com.servoy.eclipse.developer.mcp.services.ProjectService(),
+			new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
+			new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
+			new com.servoy.eclipse.developer.mcp.services.IdeStateService());
 		assertNotNull(instance);
 	}
 
@@ -250,6 +258,6 @@ public class ServoyIdeServerTest
 				assertFalse("Duplicate tool name: " + name, names.contains(name));
 				names.add(name);
 			});
-		assertEquals(14, names.size());
+		assertEquals(34, names.size());
 	}
 }

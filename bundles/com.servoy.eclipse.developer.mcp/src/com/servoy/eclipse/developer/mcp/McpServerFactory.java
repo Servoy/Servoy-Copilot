@@ -26,8 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
@@ -53,8 +51,6 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 public class McpServerFactory
 {
 	private static final McpServerFactory INSTANCE = new McpServerFactory();
-
-	private final ILog logger = Platform.getLog(McpServerFactory.class);
 
 	private McpServerFactory()
 	{
@@ -125,7 +121,7 @@ public class McpServerFactory
 
 		if (tools.isEmpty())
 		{
-			logger.warn("No @Tool methods found on " + serverImpl.getClass().getName());
+			Platform.getLog(McpServerFactory.class).warn("No @Tool methods found on " + serverImpl.getClass().getName());
 		}
 
 		return tools.stream()
@@ -180,8 +176,10 @@ public class McpServerFactory
 		}
 		catch (Exception e)
 		{
-			logger.error(e.getMessage(), e);
-			String cause = ExceptionUtils.getRootCauseMessage(e);
+			Platform.getLog(McpServerFactory.class).error(e.getMessage(), e);
+			Throwable root = e;
+			while (root.getCause() != null) root = root.getCause();
+			String cause = root.getMessage() != null ? root.getMessage() : e.getClass().getSimpleName();
 			var content = new McpSchema.TextContent("Error: " + cause);
 			return McpSchema.CallToolResult.builder().addContent(content).isError(true).build();
 		}
