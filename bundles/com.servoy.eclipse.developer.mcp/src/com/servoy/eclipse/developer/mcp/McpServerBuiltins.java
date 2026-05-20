@@ -27,6 +27,7 @@ import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.servers.TimeServer;
@@ -50,6 +51,7 @@ public class McpServerBuiltins
 		ServoyCoderServer.class,
 		ServoyIdeServer.class,
 		ServoyGitServer.class,
+		ServoyDevServer.class,
 	};
 
 	/**
