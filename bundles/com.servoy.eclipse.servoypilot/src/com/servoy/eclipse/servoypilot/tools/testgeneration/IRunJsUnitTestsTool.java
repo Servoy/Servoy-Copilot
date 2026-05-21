@@ -17,7 +17,7 @@
 package com.servoy.eclipse.servoypilot.tools.testgeneration;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.servoypilot.services.JSUnitRunnerService;
+import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -36,7 +36,7 @@ public interface IRunJsUnitTestsTool
 	{
 		try
 		{
-			return JSUnitRunnerService.getInstance().runTests(scopeOrAll, timeoutSeconds);
+			return new JSUnitRunnerService().runTests(scopeOrAll, timeoutSeconds);
 		}
 		catch (Exception e)
 		{

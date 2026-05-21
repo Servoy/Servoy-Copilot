@@ -30,6 +30,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.servers.TimeServer;
 
 /**
@@ -52,6 +53,7 @@ public class McpServerBuiltins
 		ServoyIdeServer.class,
 		ServoyGitServer.class,
 		ServoyDevServer.class,
+		ServoyTestingServer.class,
 	};
 
 	/**

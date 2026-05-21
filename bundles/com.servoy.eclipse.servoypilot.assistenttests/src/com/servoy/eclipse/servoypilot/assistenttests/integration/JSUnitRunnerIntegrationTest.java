@@ -26,7 +26,7 @@ import org.junit.Test;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.eclipse.servoypilot.services.JSUnitRunnerService;
+import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 
 /**
  * Layer 3 integration tests for {@link JSUnitRunnerService}.
@@ -64,7 +64,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 	@Before
 	public void setUp() throws Exception
 	{
-		runner = JSUnitRunnerService.getInstance();
+		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available (Display.syncExec is used inside the runner).
 		assumeNotNull("No Display available - test requires a running Eclipse UI",

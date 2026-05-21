@@ -9,6 +9,7 @@ Eclipse-BundleShape: dir
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.developer.mcp
 Bundle-ActivationPolicy: lazy
+Export-Package: com.servoy.eclipse.developer.mcp.services
 Bundle-ClassPath: .,
  lib/mcp-json-jackson2-1.1.2.jar
 Require-Bundle: org.junit;bundle-version="4.13.0";resolution:=optional,
@@ -31,8 +32,17 @@ Require-Bundle: org.junit;bundle-version="4.13.0";resolution:=optional,
  org.eclipse.ui.workbench.texteditor,
  org.eclipse.jface.text,
  org.eclipse.jgit,
- org.eclipse.egit.core
+ org.eclipse.egit.core,
+ org.eclipse.debug.core,
+ org.eclipse.dltk.testing,
+ com.servoy.eclipse.core,
+ com.servoy.eclipse.jsunit,
+ com.servoy.eclipse.model
 Import-Package: com.servoy.eclipse.model.util,
+ com.servoy.j2db,
+ com.servoy.j2db.persistence,
+ com.servoy.j2db.server.shared,
+ com.servoy.j2db.util,
  org.slf4j;version="[2.0.0,3.0.0)",
  com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",

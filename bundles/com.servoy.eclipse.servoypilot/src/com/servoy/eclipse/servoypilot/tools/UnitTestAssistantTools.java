@@ -38,6 +38,7 @@ import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileRangesTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFunctionTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
+import com.servoy.eclipse.servoypilot.tools.workspace.IShowFormInBrowserTool;
 import com.servoy.eclipse.servoypilot.util.ToolComposer;
 import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
 
@@ -79,6 +80,8 @@ public class UnitTestAssistantTools
 			IAddTestMethodTool.class,
 			IGenerateTestCasesTool.class,
 			IRunJsUnitTestsTool.class,
+			// Form UI preview
+			IShowFormInBrowserTool.class,
 			// Knowledge
 			IKnowledgeTool.class
 		);
