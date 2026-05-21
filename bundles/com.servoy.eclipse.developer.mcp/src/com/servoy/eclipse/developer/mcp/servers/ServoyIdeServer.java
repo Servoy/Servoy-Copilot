@@ -29,6 +29,7 @@ import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
 import com.servoy.eclipse.developer.mcp.services.MarkdownService;
 import com.servoy.eclipse.developer.mcp.services.ProjectService;
+import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchAndReplaceResult;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResult;
@@ -65,6 +66,8 @@ public class ServoyIdeServer
 	private MarkdownService markdownService;
 	@Inject
 	private IdeStateService ideStateService;
+	@Inject
+	private ServoyScriptResolver servoyScriptResolver;
 
 	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyIdeServer() { }
@@ -77,6 +80,7 @@ public class ServoyIdeServer
 		this.workspaceService = workspaceService;
 		this.markdownService = markdownService;
 		this.ideStateService = ideStateService;
+		this.servoyScriptResolver = new ServoyScriptResolver();
 	}
 
 	@Tool(name = "listProjects",
@@ -317,11 +321,21 @@ public class ServoyIdeServer
 		throw new RuntimeException(JDT_NOT_AVAILABLE);
 	}
 
-	@Tool(name = "getSource", description = "Get the source for the given class. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	@Tool(name = "getSource", description = "Get the JavaScript source for a Servoy form or scope by name.", type = "object")
 	public String getSource(
-		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name of the Java class", required = true) String fullyQualifiedClassName)
+		@ToolParam(name = "name", description = "Form name or scope name (e.g. 'customers', 'utils')", required = true) String name,
+		@ToolParam(name = "moduleName", description = "Module name to search in. If omitted, searches in the active solution.", required = false) String moduleName)
 	{
-		throw new RuntimeException(JDT_NOT_AVAILABLE);
+		if (name == null || name.isBlank())
+			throw new RuntimeException("Error: 'name' is required.");
+
+		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
+		if (file == null)
+			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
+
+		String projectName = file.getProject().getName();
+		String resourcePath = file.getProjectRelativePath().toString();
+		return workspaceService.readProjectResource(projectName, resourcePath, true, 0, 0);
 	}
 
 	@Tool(name = "getClassOutline", description = "Returns a compact outline of a Java class. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")

@@ -17,6 +17,20 @@ CRITICAL: Never run any git commands, never stage files, never commit, and never
 suggest committing anything in this project. All git operations are fully manual
 and at the user's sole discretion.
 
+## Servoy File Format Rule
+
+CRITICAL: Never write Servoy structural files (`.frm`, `.obj`, `.tbl`, `.val`, `.rel`, `.dbi`, `.js` with `@properties`) directly as text/JSON.
+
+Always use the Servoy persistence API to create and modify Servoy artifacts:
+- `solution.createNewForm(...)` to create forms
+- `form.createNewPart(...)` to add body parts
+- `form.setUseCssPosition(...)` / `form.setResponsiveLayout(...)` for layout type
+- `servoyProject.saveEditingSolutionNodes(...)` to persist to disk
+
+Writing these files manually as JSON strings bypasses Servoy's internal model,
+risks UUID corruption, and produces files that may be incompatible with the
+Servoy runtime. It is **forbidden** regardless of how simple the content appears.
+
 ## Project Overview
 
 This is the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. The plugin provides AI-assisted development features including code analysis, test generation, knowledge base indexing, and MCP (Model Context Protocol) integration.
