@@ -17,6 +17,8 @@
 
 package com.servoy.eclipse.servoypilot.context;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -66,11 +68,12 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 	private String processedText;
 	private String cachedLabel;
 
-	private static final String[] BTN_LABELS = { "✔ Keep", "✖ Undo", "⇄ Diff" };
+	private static final String[] BTN_LABELS = { "\u2714 Keep", "\u2716 Undo", "\u21C4 Diff" };
 	private static final int BTN_SPACING = 6;
 	private static final int BTN_RIGHT_MARGIN = 10;
 	private static final int BTN_ARC = 8;
 	private static final int BTN_PADDING_X = 12;
+	private static final int LEFT_MARGIN = 20;
 
 	public UnifiedDiffMining(int line,
 		IDocument doc,
@@ -144,18 +147,63 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 			return cachedLabel;
 		}
 
-		String[] lines = change.modifiedLine.split("\\r?\\n");
+		String[] logicalLines = change.modifiedLine.split("\\r?\\n");
+		int estimatedVisualLines = 0;
+		for (String line : logicalLines)
+		{
+			int len = line.replace("\t", "    ").length();
+			estimatedVisualLines += Math.max(1, (int)Math.ceil(len / 80.0));
+		}
+
 		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < lines.length; i++)
+		for (int i = 0; i < estimatedVisualLines; i++)
 		{
 			sb.append(" ");
-			if (i < lines.length - 1)
+			if (i < estimatedVisualLines - 1)
 			{
 				sb.append("\n");
 			}
 		}
 		cachedLabel = sb.toString();
 		return cachedLabel;
+	}
+
+	private List<String> wrapLine(GC gc, String line, int maxWidth)
+	{
+		List<String> wrapped = new ArrayList<>();
+		if (maxWidth <= 0)
+		{
+			wrapped.add(line);
+			return wrapped;
+		}
+
+		int textWidth = gc.textExtent(line).x;
+		if (textWidth <= maxWidth)
+		{
+			wrapped.add(line);
+			return wrapped;
+		}
+
+		int start = 0;
+		while (start < line.length())
+		{
+			int end = line.length();
+			while (end > start + 1 && gc.textExtent(line.substring(start, end)).x > maxWidth)
+			{
+				end = start + (end - start) / 2;
+			}
+			while (end < line.length() && gc.textExtent(line.substring(start, end + 1)).x <= maxWidth)
+			{
+				end++;
+			}
+			if (end == start)
+			{
+				end = start + 1;
+			}
+			wrapped.add(line.substring(start, end));
+			start = end;
+		}
+		return wrapped;
 	}
 
 	@Override
@@ -170,7 +218,7 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 
 		boolean isDeletion = change.modifiedLine == null || change.modifiedLine.trim().isEmpty();
 		int lineHeight = textWidget.getLineHeight();
-		int width = textWidget.getClientArea().width;
+		int clientWidth = textWidget.getClientArea().width;
 
 		// Recompute every time — lineHeight can change (zoom, font)
 		customButtonHeight = lineHeight + 5;
@@ -190,26 +238,33 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 				processedText = change.modifiedLine.replace("\t", cachedTabSpaces);
 				lines = processedText.split("\\r?\\n");
 			}
-			totalHeight = lines.length * lineHeight;
-		}
 
-		if (!isDeletion)
-		{
+			int availableWidth = clientWidth - LEFT_MARGIN;
+			List<String> visualLines = new ArrayList<>();
+
+			for (String line : lines)
+			{
+				List<String> wrappedSegments = wrapLine(gc, line, availableWidth);
+				visualLines.addAll(wrappedSegments);
+			}
+
+			totalHeight = visualLines.size() * lineHeight;
+
 			gc.setBackground(greenBg);
-			gc.fillRectangle(0, y, width, totalHeight);
+			gc.fillRectangle(0, y, clientWidth, totalHeight);
 
 			gc.setForeground(darkGreen);
-			for (int i = 0; i < lines.length; i++)
+			for (int i = 0; i < visualLines.size(); i++)
 			{
 				int lineY = y + (i * lineHeight);
 				gc.drawText("+", 5, lineY, true);
-				gc.drawText(lines[i], 0, lineY, true);
+				gc.drawText(visualLines.get(i), LEFT_MARGIN, lineY, true);
 			}
 		}
 
-		drawButtons(gc, textWidget, y, totalHeight, width);
+		drawButtons(gc, textWidget, y, totalHeight, clientWidth);
 
-		return new Point(width, totalHeight);
+		return new Point(clientWidth, totalHeight);
 	}
 
 	private void drawButtons(GC gc, StyledText text, int y, int height, int viewportWidth)
