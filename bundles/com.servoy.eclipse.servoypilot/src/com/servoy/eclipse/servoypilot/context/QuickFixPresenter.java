@@ -263,7 +263,7 @@ public class QuickFixPresenter
 			activeInlineManagers.remove(path);
 			pendingEdits.remove(path);
 		}
-		else
+		else if (activeMultiManager != null)
 		{
 			activeMultiManager.accept(path);
 		}
@@ -279,6 +279,9 @@ public class QuickFixPresenter
 			activeInlineManagers.remove(path);
 			pendingEdits.remove(path);
 		}
-		activeMultiManager.remove(path);
+		if (activeMultiManager != null)
+		{
+			activeMultiManager.remove(path);
+		}
 	}
 }
