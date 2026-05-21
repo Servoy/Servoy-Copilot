@@ -37,7 +37,8 @@ Require-Bundle: org.junit;bundle-version="4.13.0";resolution:=optional,
  org.eclipse.dltk.testing,
  com.servoy.eclipse.core,
  com.servoy.eclipse.jsunit,
- com.servoy.eclipse.model
+ com.servoy.eclipse.model,
+ com.servoy.eclipse.ngclient.ui
 Import-Package: com.servoy.eclipse.model.util,
  com.servoy.j2db,
  com.servoy.j2db.persistence,
