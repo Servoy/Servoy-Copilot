@@ -1,5 +1,3 @@
 target/
 bin/
 bundles/application_server/
-.opencode/index/
-.DS_Store
