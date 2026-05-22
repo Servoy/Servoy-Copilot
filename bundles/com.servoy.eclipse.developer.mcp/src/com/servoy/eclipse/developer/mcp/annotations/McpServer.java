@@ -23,7 +23,7 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a class as an MCP server implementation.
- * The {@link #name()} value becomes the endpoint path segment: {@code /svymcp/{name}/}.
+ * The {@link #name()} value becomes the endpoint path segment: {@code /mcp/{name}/}.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)

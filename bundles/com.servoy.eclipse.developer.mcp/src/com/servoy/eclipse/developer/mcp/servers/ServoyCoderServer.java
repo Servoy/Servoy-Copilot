@@ -32,7 +32,7 @@ import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 /**
  * MCP server providing generic file-editing tools for the Servoy Developer MCP endpoint.
  * <p>
- * Endpoint: {@code /svymcp/servoy-coder}
+ * Endpoint: {@code /mcp/servoy-coder}
  * </p>
  * <p>
  * Destructive tools ({@code insertIntoFile}, {@code replaceString}, {@code replaceFileContent},

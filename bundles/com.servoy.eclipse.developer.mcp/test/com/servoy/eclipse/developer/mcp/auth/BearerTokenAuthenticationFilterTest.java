@@ -171,9 +171,9 @@ public class BearerTokenAuthenticationFilterTest
 		@Override public boolean isUserInRole(String role) { return false; }
 		@Override public java.security.Principal getUserPrincipal() { return null; }
 		@Override public String getRequestedSessionId() { return null; }
-		@Override public String getRequestURI() { return "/svymcp/test"; }
-		@Override public StringBuffer getRequestURL() { return new StringBuffer("http://localhost:8183/svymcp/test"); }
-		@Override public String getServletPath() { return "/svymcp/test"; }
+		@Override public String getRequestURI() { return "/mcp/test"; }
+		@Override public StringBuffer getRequestURL() { return new StringBuffer("http://localhost:8183/mcp/test"); }
+		@Override public String getServletPath() { return "/mcp/test"; }
 		@Override public jakarta.servlet.http.HttpSession getSession(boolean create) { return null; }
 		@Override public jakarta.servlet.http.HttpSession getSession() { return null; }
 		@Override public String changeSessionId() { return null; }

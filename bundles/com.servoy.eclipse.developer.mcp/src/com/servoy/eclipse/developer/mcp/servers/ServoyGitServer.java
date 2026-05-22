@@ -30,7 +30,7 @@ import com.servoy.eclipse.developer.mcp.services.GitService;
 /**
  * MCP server providing Git operations for the Servoy Developer MCP endpoint.
  * <p>
- * Endpoint: {@code /svymcp/servoy-git}
+ * Endpoint: {@code /mcp/servoy-git}
  * </p>
  * <p>
  * Uses EGit/JGit APIs to interact with the Git repository associated with workspace projects.

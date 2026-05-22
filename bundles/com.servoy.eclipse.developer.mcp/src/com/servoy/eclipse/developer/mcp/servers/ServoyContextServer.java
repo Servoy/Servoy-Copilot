@@ -34,7 +34,7 @@ import com.servoy.eclipse.developer.mcp.services.LocalHistoryService;
 /**
  * MCP server providing workspace context tools for the Servoy Developer MCP endpoint.
  * <p>
- * Endpoint: {@code /svymcp/servoy-context}
+ * Endpoint: {@code /mcp/servoy-context}
  * </p>
  * <p>
  * Tools:

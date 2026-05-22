@@ -3,6 +3,7 @@
 <plugin>
 
 
+   <!-- Chat view disabled - commented out
    <extension
          id="com.servoy.eclipse.servoypilot.chatview.fragment"
          point="org.eclipse.e4.workbench.model">
@@ -20,7 +21,9 @@
             class="com.servoy.eclipse.servoypilot.chatview.processors.ChatViewIconProcessor">
       </processor>
    </extension>
+   -->
 
+   <!-- Preference page disabled - commented out
    <extension
          point="org.eclipse.ui.preferencePages">
       <page
@@ -30,6 +33,7 @@
             name="Servoy AI Pilot">
       </page>
    </extension>
+   -->
 <!--   
    <extension
          id="AICompletionProposalComputer"
@@ -152,6 +156,7 @@
             nature="org.eclipse.dltk.javascript.core.nature">
       </correctionProcessor>
 </extension>
+ <!-- MCP server disabled - commented out
  <extension
        point="org.apache.tomcat.serviceprovider">
     <serviceprovider
@@ -159,6 +164,7 @@
           id="com.servoy.eclipse.servoypilot.serviceprovider">
     </serviceprovider>
  </extension>
+ -->
 	<extension point="org.eclipse.ui.workbench.texteditor.codeMiningProviders">
 		<codeMiningProvider
 			class="com.servoy.eclipse.servoypilot.context.AiPreviewCodeMiningProvider"

@@ -45,7 +45,7 @@ import jakarta.servlet.http.HttpServlet;
  * {@link ServletInstance}s to be registered with Servoy's embedded Tomcat.
  *
  * <p>Each built-in MCP server gets its own transport provider servlet mapped to
- * {@code /svymcp/{serverName}/}. A bearer-token filter is applied to all endpoints.</p>
+ * {@code /mcp/{serverName}/}. A bearer-token filter is applied to all endpoints.</p>
  *
  * <p>This class is managed by E4 dependency injection. Use
  * {@link Activator#make(Class)} to obtain the singleton instance, or
@@ -56,7 +56,7 @@ import jakarta.servlet.http.HttpServlet;
 public class McpServerRegistry
 {
 	/** URL prefix for all MCP endpoints â distinct from the existing /mcp path used by workflows. */
-	public static final String MCP_PATH_PREFIX = "/svymcp";
+	public static final String MCP_PATH_PREFIX = "/mcp";
 
 	/**
 	 * Named servlet wrapper classes â one per planned endpoint.

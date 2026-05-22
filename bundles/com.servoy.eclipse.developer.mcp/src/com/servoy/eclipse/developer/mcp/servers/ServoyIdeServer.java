@@ -37,7 +37,7 @@ import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResult;
 /**
  * MCP server providing IDE integration tools for the Servoy Developer MCP endpoint.
  * <p>
- * Endpoint: {@code /svymcp/servoy-ide}
+ * Endpoint: {@code /mcp/servoy-ide}
  * </p>
  * <p>
  * Provides project browsing, file reading, text search, markdown navigation,
