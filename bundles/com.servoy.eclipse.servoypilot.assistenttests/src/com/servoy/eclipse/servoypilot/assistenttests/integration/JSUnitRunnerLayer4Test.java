@@ -164,7 +164,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	public void testLayer4_summaryTablePresent()
 	{
 		assertTrue("Output must contain the markdown table header",
-			allResult.contains("| \u2705 Passed"));
+			allResult.contains("| Passed"));
 		assertTrue("Output must contain the table separator line",
 			allResult.contains("|:-"));
 	}
@@ -319,9 +319,9 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	@Test
 	public void testLayer4_errorEmojiPresent()
 	{
-		// formatResults() uses 💥 (\uD83D\uDCA5) for ERROR results, not ❌ (FAILURE).
-		assertTrue("Output must contain the 💥 error emoji for the intentional error",
-			allResult.contains("\ud83d\udca5"));
+		// formatResults() uses "ERROR" prefix for ERROR results, not emojis.
+		assertTrue("Output must contain the ERROR marker for the intentional error",
+			allResult.contains("ERROR"));
 	}
 
 	@Test
@@ -331,7 +331,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		// With 1 error this branch must be skipped entirely.
 		assertFalse(
 			"The 'all passed' success line must NOT appear when errors > 0; result:\n" + allResult,
-			allResult.contains("\u2705 All"));
+			allResult.contains("All") && allResult.contains("test(s) passed!"));
 	}
 
 	@Test

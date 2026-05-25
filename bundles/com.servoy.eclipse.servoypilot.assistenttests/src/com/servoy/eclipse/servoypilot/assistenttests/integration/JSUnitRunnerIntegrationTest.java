@@ -106,8 +106,8 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 				") - skipping markdown format assertion",
 			!result.startsWith("Error"));
 
-		assertTrue("Output should contain markdown table header with \u2705",
-			result.contains("| \u2705 Passed")); // encoding-safe
+		assertTrue("Output should contain markdown table header with Passed column",
+			result.contains("| Passed"));
 		assertTrue("Output should contain table separator line",
 			result.contains("|:-"));
 	}
@@ -163,7 +163,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertTrue(
 			"null-scope output should be a markdown table, an error message, or a 'no tests' notice; got: " +
 				result.substring(0, Math.min(result.length(), 120)),
-			result.contains("| \u2705 Passed") || result.startsWith("Error") || result.contains("No "));
+			result.contains("| Passed") || result.startsWith("Error") || result.contains("No "));
 	}
 
 	// -----------------------------------------------------------------------
@@ -233,7 +233,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertTrue(
 			"Output must end with either the all-passed line or the failure section; got:\n" +
 				result.substring(0, Math.min(result.length(), 200)),
-			result.contains("\u2705 All") || result.contains("Failed / Error tests:"));
+			result.contains("All") && result.contains("test(s) passed!") || result.contains("Failed / Error tests:"));
 	}
 
 	@Test
@@ -257,9 +257,9 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 			errors == 0);
 
 		assertTrue(
-			"Output must contain 'All X test(s) passed!' for a solution with no failures; got:\n" +
+			"Output must contain 'All X test(s) passed!' for a solution with no failures; got:\n" +
 				result.substring(0, Math.min(result.length(), 200)),
-			result.contains("\u2705 All") && result.contains("test(s) passed!"));
+			result.contains("All ") && result.contains("test(s) passed!"));
 	}
 
 	@Test

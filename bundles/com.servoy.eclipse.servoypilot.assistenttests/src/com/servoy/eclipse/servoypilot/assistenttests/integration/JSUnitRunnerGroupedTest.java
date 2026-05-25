@@ -191,7 +191,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	public void testGrouped_modules_summaryTablePresent()
 	{
 		assertTrue("MODULES result must contain the markdown summary table",
-			modulesResult.contains("| \u2705 Passed"));
+			modulesResult.contains("| Passed"));
 	}
 
 	@Test
@@ -280,7 +280,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	public void testGrouped_forms_summaryTablePresent()
 	{
 		assertTrue("FORMS result must contain the markdown summary table",
-			formsResult.contains("| \u2705 Passed"));
+			formsResult.contains("| Passed"));
 	}
 
 	@Test
