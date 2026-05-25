@@ -48,9 +48,11 @@
    <bundle id="org.apache.commons.commons-logging">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
+   <!-- ONNX disabled
    <bundle id="onnx-models-bge-small-en">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
+   -->
     <bundle id="io.modelcontextprotocol.sdk.mcp-core">
        <category name="servoy.pilot.depdencies"/>
     </bundle>

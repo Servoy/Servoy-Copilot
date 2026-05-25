@@ -17,7 +17,7 @@
 package com.servoy.eclipse.knowledgebase.service;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
+// ONNX disabled - import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -28,17 +28,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.core.runtime.Platform;
-import org.osgi.framework.Bundle;
+// ONNX disabled - import org.eclipse.core.runtime.Platform;
+// ONNX disabled - import org.osgi.framework.Bundle;
 import org.sablo.specification.Package.IPackageReader;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.extensions.OrtxPackage;
+// ONNX disabled - import ai.onnxruntime.OnnxTensor;
+// ONNX disabled - import ai.onnxruntime.OrtEnvironment;
+// ONNX disabled - import ai.onnxruntime.OrtException;
+// ONNX disabled - import ai.onnxruntime.OrtSession;
+// ONNX disabled - import ai.onnxruntime.extensions.OrtxPackage;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -56,9 +56,9 @@ public class ServoyEmbeddingService
 	private static ServoyEmbeddingService instance;
 	private static final double SCORE_THRESHOLD = 0.8; // Minimum similarity score percentage
 
-	private OrtEnvironment env;
-	private OrtSession modelSession;
-	private OrtSession tokenizerSession;
+	// ONNX disabled - private OrtEnvironment env;
+	// ONNX disabled - private OrtSession modelSession;
+	// ONNX disabled - private OrtSession tokenizerSession;
 	private final InMemoryEmbeddingStore<TextSegment> embeddingStore;
 	private int embeddingCount = 0;
 
@@ -71,54 +71,50 @@ public class ServoyEmbeddingService
 	 * Initialize the service with ONNX models.
 	 * Called once at plugin startup by Activator.
 	 * Knowledge bases are loaded separately via loadKnowledgeBaseFromReader().
+	 * ONNX disabled - this method is a no-op.
 	 */
 	private void initialize()
 	{
-		ServoyLog.logInfo("[ServoyEmbeddings] Initializing ONNX embedding service with ONNX tokenizer...");
-
-		try
-		{
-			env = OrtEnvironment.getEnvironment();
-
-			ServoyLog.logInfo("[ServoyEmbeddings] Loading ONNX embedding model from bundle...");
-			Bundle modelsBundle = Platform.getBundle("onnx-models-bge-small-en");
-			if (modelsBundle == null)
-			{
-				throw new RuntimeException("Models bundle not found: onnx-models-bge-small-en");
-			}
-
-			URL modelURL = modelsBundle.getEntry("models/bge-small-en-v1.5/model.onnx");
-			if (modelURL == null)
-			{
-				throw new RuntimeException("Model file not found in bundle");
-			}
-			InputStream modelStream = modelURL.openStream();
-			byte[] modelBytes = modelStream.readAllBytes();
-			modelStream.close();
-
-			modelSession = env.createSession(modelBytes);
-			
-			URL tokenizerURL = modelsBundle.getEntry("models/bge-small-en-v1.5/tokenizer.onnx");
-			if (tokenizerURL == null)
-			{
-				throw new RuntimeException("Tokenizer file not found in bundle");
-			}
-			InputStream tokenizerStream = tokenizerURL.openStream();
-			byte[] tokenizerBytes = tokenizerStream.readAllBytes();
-			tokenizerStream.close();
-
-			OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
-			sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
-			tokenizerSession = env.createSession(tokenizerBytes, sessionOptions);
-			
-			ServoyLog.logInfo("[ServoyEmbeddings] ONNX model and tokenizer loaded successfully");		
-			ServoyLog.logInfo("[ServoyEmbeddings] Embedding service ready! Knowledge bases will be loaded from workspace packages.");
-		}
-		catch (Throwable e)
-		{
-			ServoyLog.logError("[ServoyEmbeddings] Failed to initialize: " + e.getMessage());
-			throw new RuntimeException("Failed to initialize embedding service", e);
-		}
+		ServoyLog.logInfo("[ServoyEmbeddings] ONNX embedding service disabled - running in no-op mode.");
+		// ONNX disabled - the following initialization code has been commented out:
+//		ServoyLog.logInfo("[ServoyEmbeddings] Initializing ONNX embedding service with ONNX tokenizer...");
+//		try
+//		{
+//			env = OrtEnvironment.getEnvironment();
+//			ServoyLog.logInfo("[ServoyEmbeddings] Loading ONNX embedding model from bundle...");
+//			Bundle modelsBundle = Platform.getBundle("onnx-models-bge-small-en");
+//			if (modelsBundle == null)
+//			{
+//				throw new RuntimeException("Models bundle not found: onnx-models-bge-small-en");
+//			}
+//			URL modelURL = modelsBundle.getEntry("models/bge-small-en-v1.5/model.onnx");
+//			if (modelURL == null)
+//			{
+//				throw new RuntimeException("Model file not found in bundle");
+//			}
+//			InputStream modelStream = modelURL.openStream();
+//			byte[] modelBytes = modelStream.readAllBytes();
+//			modelStream.close();
+//			modelSession = env.createSession(modelBytes);
+//			URL tokenizerURL = modelsBundle.getEntry("models/bge-small-en-v1.5/tokenizer.onnx");
+//			if (tokenizerURL == null)
+//			{
+//				throw new RuntimeException("Tokenizer file not found in bundle");
+//			}
+//			InputStream tokenizerStream = tokenizerURL.openStream();
+//			byte[] tokenizerBytes = tokenizerStream.readAllBytes();
+//			tokenizerStream.close();
+//			OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
+//			sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
+//			tokenizerSession = env.createSession(tokenizerBytes, sessionOptions);
+//			ServoyLog.logInfo("[ServoyEmbeddings] ONNX model and tokenizer loaded successfully");
+//			ServoyLog.logInfo("[ServoyEmbeddings] Embedding service ready! Knowledge bases will be loaded from workspace packages.");
+//		}
+//		catch (Throwable e)
+//		{
+//			ServoyLog.logError("[ServoyEmbeddings] Failed to initialize: " + e.getMessage());
+//			throw new RuntimeException("Failed to initialize embedding service", e);
+//		}
 	}
 
 	/**
@@ -174,50 +170,42 @@ public class ServoyEmbeddingService
 	}
 
 	/**
-	 * Generate embedding for text using ONNX model with ONNX tokenizer
+	 * Generate embedding for text using ONNX model with ONNX tokenizer.
+	 * ONNX disabled - returns empty array.
 	 */
-	private float[] generateEmbedding(String text) throws OrtException
+	private float[] generateEmbedding(String text)
 	{
-		Map<String, OnnxTensor> tokenizerInputs = new HashMap<>();
-		String[] textArray = new String[] { text };
-		OnnxTensor textTensor = OnnxTensor.createTensor(env, textArray);
-		tokenizerInputs.put("text", textTensor);
-
-		OrtSession.Result tokenizerResults = tokenizerSession.run(tokenizerInputs);
-
-		long[] inputIds = (long[])tokenizerResults.get(0).getValue();
-		long[] attentionMask = (long[])tokenizerResults.get(2).getValue();
-		long[] tokenTypeIds = (long[])tokenizerResults.get(1).getValue();
-		textTensor.close();
-		tokenizerResults.close();
-
-		long[][] inputIdsArray = new long[][] { inputIds };
-		long[][] attentionMaskArray = new long[][] { attentionMask };
-		long[][] tokenTypeIdsArray = new long[][] { tokenTypeIds };
-
-		OnnxTensor inputIdsTensor = OnnxTensor.createTensor(env, inputIdsArray);
-		OnnxTensor attentionMaskTensor = OnnxTensor.createTensor(env, attentionMaskArray);
-		OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, tokenTypeIdsArray);
-
-		Map<String, OnnxTensor> modelInputs = new HashMap<>();
-		modelInputs.put("input_ids", inputIdsTensor);
-		modelInputs.put("attention_mask", attentionMaskTensor);
-		modelInputs.put("token_type_ids", tokenTypeIdsTensor);
-
-		OrtSession.Result modelResults = modelSession.run(modelInputs);
-
-		float[][][] output = (float[][][])modelResults.get(0).getValue();
-
-		float[] embedding = meanPooling(output[0], attentionMask);
-
-		normalize(embedding);
-
-		inputIdsTensor.close();
-		attentionMaskTensor.close();
-		tokenTypeIdsTensor.close();
-		modelResults.close();
-
-		return embedding;
+		// ONNX disabled - returns empty embedding
+		return new float[0];
+//		Map<String, OnnxTensor> tokenizerInputs = new HashMap<>();
+//		String[] textArray = new String[] { text };
+//		OnnxTensor textTensor = OnnxTensor.createTensor(env, textArray);
+//		tokenizerInputs.put("text", textTensor);
+//		OrtSession.Result tokenizerResults = tokenizerSession.run(tokenizerInputs);
+//		long[] inputIds = (long[])tokenizerResults.get(0).getValue();
+//		long[] attentionMask = (long[])tokenizerResults.get(2).getValue();
+//		long[] tokenTypeIds = (long[])tokenizerResults.get(1).getValue();
+//		textTensor.close();
+//		tokenizerResults.close();
+//		long[][] inputIdsArray = new long[][] { inputIds };
+//		long[][] attentionMaskArray = new long[][] { attentionMask };
+//		long[][] tokenTypeIdsArray = new long[][] { tokenTypeIds };
+//		OnnxTensor inputIdsTensor = OnnxTensor.createTensor(env, inputIdsArray);
+//		OnnxTensor attentionMaskTensor = OnnxTensor.createTensor(env, attentionMaskArray);
+//		OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, tokenTypeIdsArray);
+//		Map<String, OnnxTensor> modelInputs = new HashMap<>();
+//		modelInputs.put("input_ids", inputIdsTensor);
+//		modelInputs.put("attention_mask", attentionMaskTensor);
+//		modelInputs.put("token_type_ids", tokenTypeIdsTensor);
+//		OrtSession.Result modelResults = modelSession.run(modelInputs);
+//		float[][][] output = (float[][][])modelResults.get(0).getValue();
+//		float[] embedding = meanPooling(output[0], attentionMask);
+//		normalize(embedding);
+//		inputIdsTensor.close();
+//		attentionMaskTensor.close();
+//		tokenTypeIdsTensor.close();
+//		modelResults.close();
+//		return embedding;
 	}
 
 	/**
