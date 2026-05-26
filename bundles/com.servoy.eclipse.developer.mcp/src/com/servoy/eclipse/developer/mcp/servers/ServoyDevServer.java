@@ -21,7 +21,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.eclipse.core.resources.ICommand;
@@ -29,6 +35,8 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IResourceVisitor;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
@@ -36,17 +44,26 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.swt.widgets.Display;
 
+import com.servoy.base.persistence.IBaseColumn;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.j2db.persistence.TableChangeHandler;
+import com.servoy.eclipse.core.util.EclipseDatabaseUtils;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ui.views.solutionexplorer.actions.CreateMediaWebAppManifest;
+import com.servoy.j2db.persistence.Column;
+import com.servoy.j2db.persistence.ColumnInfo;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRepository;
+import com.servoy.j2db.persistence.IServerInternal;
+import com.servoy.j2db.persistence.ITable;
+import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Media;
 import com.servoy.j2db.persistence.MethodTemplate;
 import com.servoy.j2db.persistence.Part;
@@ -56,8 +73,15 @@ import com.servoy.j2db.persistence.ScriptMethod;
 import com.servoy.j2db.persistence.ScriptNameValidator;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.SolutionMetaData;
+import com.servoy.j2db.persistence.ValidatorSearchContext;
+import com.servoy.j2db.query.ColumnType;
 import com.servoy.j2db.server.ngclient.less.resources.ThemeResourceLoader;
+import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.util.DatabaseUtils;
 import com.servoy.j2db.util.UUID;
+import com.servoy.j2db.util.Utils;
+import com.servoy.j2db.util.xmlxport.ColumnInfoDef;
+import com.servoy.j2db.util.xmlxport.TableDef;
 
 /**
  * MCP server for Servoy Developer tools (stub for future development).
@@ -464,5 +488,357 @@ public class ServoyDevServer
 		{
 			file.create(new ByteArrayInputStream(bytes), true, monitor);
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// syncDbiWithDatabase tool
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "syncDbiWithDatabase",
+		description = "Synchronizes the database schema with .dbi file definitions for a given server. Creates tables that exist in .dbi files but not in the DB, reports tables that exist in the DB but have no .dbi file, and for existing tables syncs columns (add/remove/update) to match the .dbi definitions. Call after git pulls or .dbi file changes to keep the database in sync.",
+		type = "object")
+	public String syncDbiWithDatabase(
+		@ToolParam(name = "serverName", description = "Name of the database server to synchronize.", required = true) String serverName,
+		@ToolParam(name = "tableName", description = "Optional table name to sync only a specific table. If not specified, syncs all tables.", required = false) String tableName)
+	{
+		if (serverName == null || serverName.isBlank())
+		{
+			return "{\"errors\":[\"serverName is required\"]}";
+		}
+		String filterTableName = (tableName != null && !tableName.isBlank()) ? tableName : null;
+
+		IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
+		if (server == null)
+		{
+			return "{\"errors\":[\"Server not found: " + escapeJson(serverName) + "\"]}";
+		}
+
+		DataModelManager dmm = ServoyModelManager.getServoyModelManager().getServoyModel().getDataModelManager();
+		if (dmm == null)
+		{
+			return "{\"errors\":[\"DataModelManager not available\"]}";
+		}
+
+		List<String> tablesCreated = new ArrayList<>();
+		List<String> orphanTables = new ArrayList<>();
+		List<Map<String, Object>> tablesModified = new ArrayList<>();
+		List<String> errors = new ArrayList<>();
+
+		try
+		{
+			dmm.setWritesEnabled(false);
+
+			syncMissingTables(server, dmm, filterTableName, tablesCreated, errors);
+			findOrphanTables(server, dmm, filterTableName, orphanTables);
+			syncExistingTableColumns(server, dmm, filterTableName, tablesModified, errors);
+		}
+		catch (Exception e)
+		{
+			errors.add("Unexpected error: " + e.getMessage());
+			ServoyLog.logError("syncDbiWithDatabase failed", e);
+		}
+		finally
+		{
+			dmm.setWritesEnabled(true);
+		}
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("{\"tablesCreated\":").append(toJsonArray(tablesCreated));
+		sb.append(",\"orphanTables\":").append(toJsonArray(orphanTables));
+		sb.append(",\"tablesModified\":").append(toJsonModifiedArray(tablesModified));
+		sb.append(",\"errors\":").append(toJsonArray(errors));
+		sb.append("}");
+		return sb.toString();
+	}
+
+	private void syncMissingTables(IServerInternal server, DataModelManager dmm, String filterTableName,
+		List<String> tablesCreated, List<String> errors)
+	{
+		try
+		{
+			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
+			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+
+			Collection<String> existingTables = server.getTableAndViewNames(true);
+			List<String> newTableNames = new ArrayList<>();
+
+			serverInfoFolder.accept((IResourceVisitor)resource -> {
+				if (resource.getType() != IResource.FILE) return true;
+				String fileName = resource.getName();
+				if (!fileName.endsWith(DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT)) return true;
+
+				String tName = fileName.substring(0, fileName.length() - DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT.length());
+
+				if (filterTableName != null && !filterTableName.equals(tName)) return true;
+				if (tName.startsWith(DataModelManager.TEMP_UPPERCASE_PREFIX)) return true;
+				if (!tName.equals(tName.toLowerCase())) return true;
+				if (existingTables.contains(tName)) return true;
+
+				try
+				{
+					IFile dbiFile = dmm.getDBIFile(server.getName(), tName);
+					if (dbiFile == null || !dbiFile.exists()) return true;
+
+					String dbiContent;
+					try (InputStream is = dbiFile.getContents())
+					{
+						dbiContent = Utils.getTXTFileContent(is, Charset.forName("UTF8"));
+					}
+
+					if (dbiContent != null && !dbiContent.isBlank())
+					{
+						EclipseDatabaseUtils.createNewTableFromColumnInfo(server, tName, dbiContent, EclipseDatabaseUtils.UPDATE_NOW, false);
+						newTableNames.add(tName);
+						tablesCreated.add(tName);
+					}
+				}
+				catch (Exception e)
+				{
+					errors.add("Failed to create table '" + tName + "': " + e.getMessage());
+					ServoyLog.logWarning("syncDbiWithDatabase: failed to create table " + tName, e);
+				}
+				return true;
+			}, IResource.DEPTH_ONE, IResource.NONE);
+
+			if (!newTableNames.isEmpty())
+			{
+				TableChangeHandler.getInstance().fireTablesAdded(server, newTableNames.toArray(new String[0]));
+			}
+		}
+		catch (Exception e)
+		{
+			errors.add("Phase 1 error: " + e.getMessage());
+			ServoyLog.logError("syncDbiWithDatabase phase 1 failed", e);
+		}
+	}
+
+	private void findOrphanTables(IServerInternal server, DataModelManager dmm, String filterTableName,
+		List<String> orphanTables)
+	{
+		try
+		{
+			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
+			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+
+			Collection<String> existingTables = server.getTableAndViewNames(true);
+			for (String tName : existingTables)
+			{
+				if (filterTableName != null && !filterTableName.equals(tName)) continue;
+				IFile dbiFile = serverInfoFolder.getFile(tName + DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT);
+				if (!dbiFile.exists())
+				{
+					orphanTables.add(tName);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logWarning("syncDbiWithDatabase: findOrphanTables failed", e);
+		}
+	}
+
+	private void syncExistingTableColumns(IServerInternal server, DataModelManager dmm, String filterTableName,
+		List<Map<String, Object>> tablesModified, List<String> errors)
+	{
+		try
+		{
+			Collection<String> existingTables = server.getTableAndViewNames(true);
+			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
+			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+
+			for (String tName : existingTables)
+			{
+				if (filterTableName != null && !filterTableName.equals(tName)) continue;
+
+				IFile dbiFile = serverInfoFolder.getFile(tName + DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT);
+				if (!dbiFile.exists()) continue;
+
+				try
+				{
+					String dbiContent;
+					try (InputStream is = dbiFile.getContents())
+					{
+						dbiContent = Utils.getTXTFileContent(is, Charset.forName("UTF8"));
+					}
+					if (dbiContent == null || dbiContent.isBlank()) continue;
+
+					TableDef tableDef = DatabaseUtils.deserializeTableInfo(dbiContent);
+					if (tableDef == null) continue;
+
+					ITable table = server.getTable(tName);
+					if (table == null) continue;
+
+					Map<String, Object> tableInfo = syncTableColumns(server, dmm, table, tableDef, errors);
+					if (tableInfo != null)
+					{
+						tablesModified.add(tableInfo);
+					}
+				}
+				catch (Exception e)
+				{
+					errors.add("Failed to sync columns for '" + tName + "': " + e.getMessage());
+					ServoyLog.logWarning("syncDbiWithDatabase: failed to sync " + tName, e);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			errors.add("Phase 3 error: " + e.getMessage());
+			ServoyLog.logError("syncDbiWithDatabase phase 3 failed", e);
+		}
+	}
+
+	@SuppressWarnings("restriction")
+	private Map<String, Object> syncTableColumns(IServerInternal server, DataModelManager dmm, ITable table,
+		TableDef tableDef, List<String> errors)
+	{
+		List<String> columnsAdded = new ArrayList<>();
+		List<String> columnsRemoved = new ArrayList<>();
+		List<String> columnsUpdated = new ArrayList<>();
+		IValidateName validator = createLenientValidator();
+
+		try
+		{
+			Map<String, Column> existingColumns = new HashMap<>();
+			for (Column col : table.getColumns())
+			{
+				existingColumns.put(col.getName(), col);
+			}
+
+			Map<String, ColumnInfoDef> dbiColumns = new HashMap<>();
+			if (tableDef.columnInfoDefSet != null)
+			{
+				for (ColumnInfoDef cid : tableDef.columnInfoDefSet)
+				{
+					dbiColumns.put(cid.name, cid);
+				}
+			}
+
+			for (Map.Entry<String, ColumnInfoDef> entry : dbiColumns.entrySet())
+			{
+				String colName = entry.getKey();
+				ColumnInfoDef cid = entry.getValue();
+				Column existingCol = existingColumns.get(colName);
+
+				if (existingCol == null)
+				{
+					Column newCol = table.createNewColumn(validator, cid.name, cid.columnType);
+					if (newCol != null)
+					{
+						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0) newCol.setDatabasePK(true);
+						newCol.setFlags(cid.flags);
+						newCol.setAllowNull(cid.allowNull);
+						int seqType = cid.autoEnterSubType;
+						if (seqType > 0 && !server.supportsSequenceType(seqType, null))
+						{
+							seqType = ColumnInfo.SERVOY_SEQUENCE;
+						}
+						newCol.setSequenceType(seqType);
+						columnsAdded.add(colName);
+					}
+				}
+				else if (!Column.isColumnInfoCompatible(existingCol.getColumnType(), cid.columnType, true))
+				{
+					table.removeColumn(existingCol);
+					Column newCol = table.createNewColumn(validator, cid.name, cid.columnType);
+					if (newCol != null)
+					{
+						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0) newCol.setDatabasePK(true);
+						newCol.setFlags(cid.flags);
+						newCol.setAllowNull(cid.allowNull);
+						int seqType = cid.autoEnterSubType;
+						if (seqType > 0 && !server.supportsSequenceType(seqType, null))
+						{
+							seqType = ColumnInfo.SERVOY_SEQUENCE;
+						}
+						newCol.setSequenceType(seqType);
+						columnsUpdated.add(colName);
+					}
+				}
+			}
+
+			for (Map.Entry<String, Column> entry : existingColumns.entrySet())
+			{
+				if (!dbiColumns.containsKey(entry.getKey()))
+				{
+					table.removeColumn(entry.getValue());
+					columnsRemoved.add(entry.getKey());
+				}
+			}
+
+			if (!columnsAdded.isEmpty() || !columnsRemoved.isEmpty() || !columnsUpdated.isEmpty())
+			{
+				server.syncTableObjWithDB(table, false, true);
+				dmm.loadAllColumnInfo(table);
+
+				Map<String, Object> result = new HashMap<>();
+				result.put("name", table.getName());
+				result.put("columnsAdded", columnsAdded);
+				result.put("columnsRemoved", columnsRemoved);
+				result.put("columnsUpdated", columnsUpdated);
+				return result;
+			}
+		}
+		catch (Exception e)
+		{
+			errors.add("Error syncing columns for '" + table.getName() + "': " + e.getMessage());
+			ServoyLog.logWarning("syncDbiWithDatabase: syncTableColumns failed for " + table.getName(), e);
+		}
+		return null;
+	}
+
+	private IValidateName createLenientValidator()
+	{
+		return new IValidateName()
+		{
+			@Override
+			public void checkName(String nameToCheck, UUID skip_element_uuid, ValidatorSearchContext searchContext, boolean sqlRelated) throws RepositoryException
+			{
+				try
+				{
+					new ScriptNameValidator().checkName(nameToCheck, skip_element_uuid, searchContext, sqlRelated);
+				}
+				catch (RepositoryException e)
+				{
+					ServoyLog.logWarning("syncDbiWithDatabase: name validation warning for '" + nameToCheck + "': " + e.getMessage(), null);
+				}
+			}
+		};
+	}
+
+	private String toJsonArray(List<String> list)
+	{
+		StringBuilder sb = new StringBuilder("[");
+		for (int i = 0; i < list.size(); i++)
+		{
+			if (i > 0) sb.append(",");
+			sb.append("\"").append(escapeJson(list.get(i))).append("\"");
+		}
+		sb.append("]");
+		return sb.toString();
+	}
+
+	@SuppressWarnings("unchecked")
+	private String toJsonModifiedArray(List<Map<String, Object>> list)
+	{
+		StringBuilder sb = new StringBuilder("[");
+		for (int i = 0; i < list.size(); i++)
+		{
+			if (i > 0) sb.append(",");
+			Map<String, Object> entry = list.get(i);
+			sb.append("{\"name\":\"").append(escapeJson((String)entry.get("name"))).append("\"");
+			sb.append(",\"columnsAdded\":").append(toJsonArray((List<String>)entry.get("columnsAdded")));
+			sb.append(",\"columnsRemoved\":").append(toJsonArray((List<String>)entry.get("columnsRemoved")));
+			sb.append(",\"columnsUpdated\":").append(toJsonArray((List<String>)entry.get("columnsUpdated")));
+			sb.append("}");
+		}
+		sb.append("]");
+		return sb.toString();
+	}
+
+	private String escapeJson(String s)
+	{
+		if (s == null) return "";
+		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
 	}
 }
