@@ -73,7 +73,6 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 	private static final int BTN_RIGHT_MARGIN = 10;
 	private static final int BTN_ARC = 8;
 	private static final int BTN_PADDING_X = 12;
-	private static final int LEFT_MARGIN = 20;
 
 	public UnifiedDiffMining(int line,
 		IDocument doc,
@@ -239,13 +238,18 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 				lines = processedText.split("\\r?\\n");
 			}
 
-			int availableWidth = clientWidth - LEFT_MARGIN;
+			int availableWidth = clientWidth;
 			List<String> visualLines = new ArrayList<>();
+			List<Boolean> isFirstSegment = new ArrayList<>();
 
 			for (String line : lines)
 			{
 				List<String> wrappedSegments = wrapLine(gc, line, availableWidth);
-				visualLines.addAll(wrappedSegments);
+				for (int i = 0; i < wrappedSegments.size(); i++)
+				{
+					visualLines.add(wrappedSegments.get(i));
+					isFirstSegment.add(i == 0);
+				}
 			}
 
 			totalHeight = visualLines.size() * lineHeight;
@@ -257,8 +261,11 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 			for (int i = 0; i < visualLines.size(); i++)
 			{
 				int lineY = y + (i * lineHeight);
-				gc.drawText("+", 5, lineY, true);
-				gc.drawText(visualLines.get(i), LEFT_MARGIN, lineY, true);
+				if (isFirstSegment.get(i))
+				{
+					gc.drawText("+", 0, lineY, true);
+				}
+				gc.drawText(visualLines.get(i), 0, lineY, true);
 			}
 		}
 
