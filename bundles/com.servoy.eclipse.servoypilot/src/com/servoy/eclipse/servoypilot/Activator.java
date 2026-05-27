@@ -30,7 +30,10 @@ import com.servoy.eclipse.servoypilot.ai.DocumentationAssistant;
 import com.servoy.eclipse.servoypilot.ai.ExplainAssistant;
 import com.servoy.eclipse.servoypilot.ai.ServoyAiModel;
 import com.servoy.eclipse.servoypilot.context.SelectionTracker;
+import com.servoy.eclipse.servoypilot.mcp.client.McpServerConnectionService;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
+import com.servoy.eclipse.servoypilot.preferences.McpConfiguration;
+import com.servoy.eclipse.servoypilot.preferences.McpPreferenceConstants;
 import com.servoy.eclipse.servoypilot.preferences.PreferenceConstants;
 
 public class Activator implements BundleActivator
@@ -43,6 +46,7 @@ public class Activator implements BundleActivator
 	private ScopedPreferenceStore preferenceStore;
 	private AiConfiguration aiConfiguration;
 	private ServoyAiModel servoyAIModel;
+	private McpServerConnectionService mcpServerConnectionService;
 	private final List<Runnable> servoyAIModelChangeListeners = new ArrayList<>();
 
 	public static Activator getDefault()
@@ -65,12 +69,19 @@ public class Activator implements BundleActivator
 	{
 		bundle = this;
 		PreferenceConstants.initializeDefaults(getPreferenceStore());
+		McpPreferenceConstants.initializeDefaults(getPreferenceStore());
 	}
 
 	@Override
 	public void stop(BundleContext bundleContext) throws Exception
 	{
 		SelectionTracker.getInstance().dispose();
+
+		if (mcpServerConnectionService != null)
+		{
+			mcpServerConnectionService.closeAll();
+			mcpServerConnectionService = null;
+		}
 
 		preferenceStore = null;
 		clearServoyAiModel();
@@ -93,6 +104,15 @@ public class Activator implements BundleActivator
 			aiConfiguration = new AiConfiguration();
 		}
 		return aiConfiguration;
+	}
+
+	public McpServerConnectionService getMcpServerConnectionService()
+	{
+		if (mcpServerConnectionService == null)
+		{
+			mcpServerConnectionService = new McpServerConnectionService(new McpConfiguration());
+		}
+		return mcpServerConnectionService;
 	}
 
 	public void clearServoyAiModel()

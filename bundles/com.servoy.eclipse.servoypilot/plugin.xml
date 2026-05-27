@@ -29,6 +29,12 @@
             id="com.servoy.eclipse.servoypilot.preferences"
             name="Servoy AI Pilot">
       </page>
+      <page
+            category="com.servoy.eclipse.servoypilot.preferences"
+            class="com.servoy.eclipse.servoypilot.preferences.McpServersPreferencePage"
+            id="com.servoy.eclipse.servoypilot.preferences.mcp"
+            name="MCP Servers In Use">
+      </page>
    </extension>
 <!--   
    <extension

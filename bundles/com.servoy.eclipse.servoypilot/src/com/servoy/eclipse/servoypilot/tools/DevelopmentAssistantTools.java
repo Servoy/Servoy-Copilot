@@ -25,16 +25,16 @@ import com.servoy.eclipse.servoypilot.tools.component.bootstrap.IButtonComponent
 import com.servoy.eclipse.servoypilot.tools.component.bootstrap.ILabelComponentTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDatabaseTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDeleteFormsTool;
-import com.servoy.eclipse.servoypilot.tools.core.IGetFormsTool;
-import com.servoy.eclipse.servoypilot.tools.core.IOpenFormTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDeleteRelationsTool;
-import com.servoy.eclipse.servoypilot.tools.core.IGetRelationsTool;
-import com.servoy.eclipse.servoypilot.tools.core.IOpenRelationTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDeleteStyleTool;
-import com.servoy.eclipse.servoypilot.tools.core.IGetStylesTool;
-import com.servoy.eclipse.servoypilot.tools.core.IOpenStyleTool;
 import com.servoy.eclipse.servoypilot.tools.core.IDeleteValueListsTool;
+import com.servoy.eclipse.servoypilot.tools.core.IGetFormsTool;
+import com.servoy.eclipse.servoypilot.tools.core.IGetRelationsTool;
+import com.servoy.eclipse.servoypilot.tools.core.IGetStylesTool;
 import com.servoy.eclipse.servoypilot.tools.core.IGetValueListsTool;
+import com.servoy.eclipse.servoypilot.tools.core.IOpenFormTool;
+import com.servoy.eclipse.servoypilot.tools.core.IOpenRelationTool;
+import com.servoy.eclipse.servoypilot.tools.core.IOpenStyleTool;
 import com.servoy.eclipse.servoypilot.tools.core.IOpenValueListTool;
 import com.servoy.eclipse.servoypilot.tools.core.ITargetTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
@@ -91,7 +91,6 @@ public class DevelopmentAssistantTools
 			// Utility
 			IDatabaseTool.class,
 			ITargetTool.class,
-			IKnowledgeTool.class
-		);
+			IKnowledgeTool.class);
 	}
 }

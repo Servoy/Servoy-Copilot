@@ -19,7 +19,8 @@ Require-Bundle: org.eclipse.jface,
  org.eclipse.dltk.javascript.core,
  org.eclipse.dltk.javascript.ui,
  org.eclipse.dltk.ui,
- org.apache.tomcat
+ org.apache.tomcat,
+ org.eclipse.swt
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot
 Import-Package: com.equo.chromium.swt;resolution:=optional,
@@ -51,8 +52,14 @@ Import-Package: com.equo.chromium.swt;resolution:=optional,
  dev.langchain4j.agent.tool;version="[1.10.0,2.0.0)",
  dev.langchain4j.data.message;version="[1.10.0,2.0.0)",
  dev.langchain4j.internal;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp;version="[1.13.0,2.0.0)",
  dev.langchain4j.mcp.client;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.client.transport;version="[1.14.0,2.0.0)",
+ dev.langchain4j.mcp.client.transport.http;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.client.transport.stdio;version="[1.13.0,2.0.0)",
  dev.langchain4j.mcp.protocol;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.registryclient;version="[1.13.0,2.0.0)",
+ dev.langchain4j.mcp.registryclient.model;version="[1.13.0,2.0.0)",
  dev.langchain4j.memory;version="[1.10.0,2.0.0)",
  dev.langchain4j.memory.chat;version="[1.10.0,2.0.0)",
  dev.langchain4j.model.catalog;version="[1.10.0,2.0.0)",
@@ -103,5 +110,6 @@ Import-Package: com.equo.chromium.swt;resolution:=optional,
  org.json,
  org.osgi.framework;version="[1.10.0,2.0.0)",
  org.osgi.service.event,
+ org.osgi.service.prefs;version="[1.1.0,2.0.0)",
  org.sablo.specification
 Bundle-ActivationPolicy: lazy

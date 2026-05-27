@@ -16,6 +16,7 @@
  */
 package com.servoy.eclipse.servoypilot.ai;
 
+import com.servoy.eclipse.servoypilot.mcp.client.McpToolsProvider;
 import com.servoy.eclipse.servoypilot.preferences.AiConfiguration;
 import com.servoy.eclipse.servoypilot.prompts.SystemPrompts;
 import com.servoy.eclipse.servoypilot.tools.DocumentationAssistantTools;
@@ -26,7 +27,12 @@ import com.servoy.eclipse.servoypilot.tools.ReviewAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.UnitTestAssistantTools;
 import com.servoy.eclipse.servoypilot.tools.DevelopmentAssistantTools;
 
+import java.util.HashMap;
+import java.util.Map;
+
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.service.tool.ToolExecutor;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
@@ -219,8 +225,8 @@ public class ServoyAiModel
 			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register tools
-		builder.tools(DevelopmentAssistantTools.getTools());
+		// Register tools (built-in + MCP)
+		builder.tools(mergeMcpTools(DevelopmentAssistantTools.getTools(), AssistantType.DEVELOPMENT));
 
 		return builder.build();
 	}
@@ -272,8 +278,8 @@ public class ServoyAiModel
 			.build());
 		builder.systemMessageProvider(memoryId -> systemPrompt);
 
-		// Register tools
-		builder.tools(DocumentationAssistantTools.getTools());
+		// Register tools (built-in + MCP)
+		builder.tools(mergeMcpTools(DocumentationAssistantTools.getTools(), AssistantType.DOCUMENTATION));
 
 		return builder.build();
 	}
@@ -291,7 +297,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(QuickFixAssistantTools.getTools())
+			.tools(mergeMcpTools(QuickFixAssistantTools.getTools(), AssistantType.QUICKFIX))
 			.build();
 	}
 
@@ -308,7 +314,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(ExplainAssistantTools.getTools())
+			.tools(mergeMcpTools(ExplainAssistantTools.getTools(), AssistantType.EXPLAIN))
 			.build();
 	}
 
@@ -325,7 +331,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(ReviewAssistantTools.getTools())
+			.tools(mergeMcpTools(ReviewAssistantTools.getTools(), AssistantType.REVIEW))
 			.build();
 	}
 
@@ -342,7 +348,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(UnitTestAssistantTools.getTools())
+			.tools(mergeMcpTools(UnitTestAssistantTools.getTools(), AssistantType.UNIT_TEST))
 			.build();
 	}
 
@@ -370,7 +376,7 @@ public class ServoyAiModel
 				.chatMemoryStore(sharedMemoryStore)
 				.build())
 			.systemMessageProvider(memoryId -> systemPrompt)
-			.tools(QueryBuilderAssistantTools.getTools())
+			.tools(mergeMcpTools(QueryBuilderAssistantTools.getTools(), AssistantType.QUERY_BUILDER))
 			.build();
 	}
 
@@ -411,5 +417,39 @@ public class ServoyAiModel
 	public ChatMemoryStore getSharedMemoryStore()
 	{
 		return sharedMemoryStore;
+	}
+
+	/**
+	 * Merges built-in tools with MCP tools for the given assistant type.
+	 * MCP tools are added after built-in tools; built-in tools take precedence
+	 * if a name collision occurs (MCP tool with same name is skipped).
+	 */
+	private Map<ToolSpecification, ToolExecutor> mergeMcpTools(
+		Map<ToolSpecification, ToolExecutor> builtIn, AssistantType assistantType)
+	{
+		Map<ToolSpecification, ToolExecutor> mcpTools = McpToolsProvider.getToolsForAssistant(assistantType);
+		if (mcpTools.isEmpty())
+		{
+			return builtIn;
+		}
+
+		Map<ToolSpecification, ToolExecutor> merged = new HashMap<>(builtIn);
+
+		// Collect built-in tool names for collision detection
+		java.util.Set<String> builtInNames = new java.util.HashSet<>();
+		for (ToolSpecification spec : builtIn.keySet())
+		{
+			builtInNames.add(spec.name());
+		}
+
+		for (Map.Entry<ToolSpecification, ToolExecutor> entry : mcpTools.entrySet())
+		{
+			if (!builtInNames.contains(entry.getKey().name()))
+			{
+				merged.put(entry.getKey(), entry.getValue());
+			}
+		}
+
+		return merged;
 	}
 }
