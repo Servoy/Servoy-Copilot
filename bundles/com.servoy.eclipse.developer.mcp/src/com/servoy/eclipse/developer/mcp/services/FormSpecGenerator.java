@@ -45,26 +45,39 @@ public class FormSpecGenerator
 				return "Error: Form file not found: forms/" + formName + ".frm";
 			}
 
-			IFile specFile = project.getFile("forms/" + formName + ".spec.js");
-			if (specFile.exists())
+			IFile pwSpecFile = project.getFile("forms/" + formName + ".spec.pw.js");
+			IFile setupSpecFile = project.getFile("forms/" + formName + ".spec.js");
+
+			if (pwSpecFile.exists() && setupSpecFile.exists())
 			{
-				return "Spec file already exists: forms/" + formName + ".spec.js";
+				return "Spec files already exist: forms/" + formName + ".spec.pw.js and forms/" + formName + ".spec.js";
 			}
 
-			String frmContent = new String(frmFile.getLocation().toFile().toPath().toAbsolutePath()
-				.toFile().getAbsolutePath().isEmpty() ? new byte[0]
-				: Files.readAllBytes(frmFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
+			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
 
 			FormMetadata metadata = parseFrmFile(frmContent, formName);
 
-			String specContent = generateSpecContent(metadata);
+			StringBuilder result = new StringBuilder();
 
-			Path specPath = frmFile.getLocation().toFile().toPath().getParent().resolve(formName + ".spec.js");
-			Files.writeString(specPath, specContent, StandardCharsets.UTF_8);
+			if (!pwSpecFile.exists())
+			{
+				String pwContent = generateSpecContent(metadata);
+				Path pwPath = frmFile.getLocation().toFile().toPath().getParent().resolve(formName + ".spec.pw.js");
+				Files.writeString(pwPath, pwContent, StandardCharsets.UTF_8);
+				result.append("Created: forms/").append(formName).append(".spec.pw.js (").append(metadata.namedElements.size()).append(" element assertions)\n");
+			}
+
+			if (!setupSpecFile.exists())
+			{
+				String setupContent = generateSetupContent(metadata);
+				Path setupPath = frmFile.getLocation().toFile().toPath().getParent().resolve(formName + ".spec.js");
+				Files.writeString(setupPath, setupContent, StandardCharsets.UTF_8);
+				result.append("Created: forms/").append(formName).append(".spec.js (setUp/tearDown for data setup)");
+			}
 
 			project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
 
-			return "Created spec file: forms/" + formName + ".spec.js with " + metadata.namedElements.size() + " element assertions.";
+			return result.toString().trim();
 		}
 		catch (Exception e)
 		{
@@ -78,7 +91,7 @@ public class FormSpecGenerator
 		{
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 			if (activeProject == null) return false;
-			IFile specFile = activeProject.getProject().getFile("forms/" + formName + ".spec.js");
+			IFile specFile = activeProject.getProject().getFile("forms/" + formName + ".spec.pw.js");
 			return specFile.exists();
 		}
 		catch (Exception e)
@@ -215,6 +228,52 @@ public class FormSpecGenerator
 		{
 			return "http://localhost:8080/solution/unknown/index.html?formpreview=" + formName + "&svy_testmode=true";
 		}
+	}
+
+	private String generateSetupContent(FormMetadata metadata)
+	{
+		StringBuilder sb = new StringBuilder();
+
+		sb.append("/**\n");
+		sb.append(" * Form test setup/teardown for: ").append(metadata.formName).append("\n");
+		if (metadata.dataSource != null)
+		{
+			sb.append(" * DataSource: ").append(metadata.dataSource).append("\n");
+		}
+		sb.append(" *\n");
+		sb.append(" * This file runs inside the Servoy runtime BEFORE the Playwright assertions.\n");
+		sb.append(" * Use spec_setUp() to prepare test data (load records, set variables, etc.)\n");
+		sb.append(" * Use spec_tearDown() to clean up after tests.\n");
+		sb.append(" */\n\n");
+
+		sb.append("/**\n");
+		sb.append(" * @properties={typeid:24,uuid:\"").append(UUID.randomUUID()).append("\"}\n");
+		sb.append(" */\n");
+		sb.append("function spec_setUp() {\n");
+		if (metadata.dataSource != null)
+		{
+			sb.append("\t// DataSource: ").append(metadata.dataSource).append("\n");
+			sb.append("\t// Load specific records for testing:\n");
+			sb.append("\t// foundset.loadAllRecords();\n");
+			sb.append("\t// Or filter to specific test data:\n");
+			sb.append("\t// foundset.find();\n");
+			sb.append("\t// foundset.search();\n");
+		}
+		else
+		{
+			sb.append("\t// No dataSource on this form - set up form variables or other state\n");
+		}
+		sb.append("}\n\n");
+
+		sb.append("/**\n");
+		sb.append(" * @properties={typeid:24,uuid:\"").append(UUID.randomUUID()).append("\"}\n");
+		sb.append(" */\n");
+		sb.append("function spec_tearDown() {\n");
+		sb.append("\t// Clean up test data if needed\n");
+		sb.append("\t// databaseManager.rollbackEditedRecords();\n");
+		sb.append("}\n");
+
+		return sb.toString();
 	}
 
 	private static class FormMetadata

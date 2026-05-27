@@ -26,10 +26,13 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
+import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
+import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 
 /**
  * JUnit 4 test suite for all Servoy Developer MCP tests.
- * Run via: Run As â JUnit Plugin Test
+ * Run via: Run As - JUnit Plugin Test
  */
 @RunWith(Suite.class)
 @SuiteClasses({
@@ -39,6 +42,9 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
 	ServoyCoderServerTest.class,
 	ServoyIdeServerTest.class,
 	ServoyGitServerTest.class,
+	ServoyTestingServerTest.class,
+	FormSpecGeneratorTest.class,
+	FormSpecRunnerTest.class,
 })
 public class AllDeveloperMcpTests
 {

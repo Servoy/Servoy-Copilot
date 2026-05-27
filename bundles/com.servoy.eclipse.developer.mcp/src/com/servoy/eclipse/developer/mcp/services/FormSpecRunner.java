@@ -37,10 +37,10 @@ public class FormSpecRunner
 			}
 
 			IProject project = activeProject.getProject();
-			IFile specFile = project.getFile("forms/" + formName + ".spec.js");
+			IFile specFile = project.getFile("forms/" + formName + ".spec.pw.js");
 			if (!specFile.exists())
 			{
-				return "Error: Spec file not found: forms/" + formName + ".spec.js. Use showFormInBrowser first to auto-generate it.";
+				return "Error: Spec file not found: forms/" + formName + ".spec.pw.js. Use showFormInBrowser first to auto-generate it.";
 			}
 
 			Path playwrightDir = getPlaywrightDir();
