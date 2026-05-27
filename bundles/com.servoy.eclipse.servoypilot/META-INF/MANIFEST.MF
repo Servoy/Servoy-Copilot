@@ -6,7 +6,8 @@ Bundle-Version: 2026.3.0.qualifier
 Export-Package: com.servoy.eclipse.servoypilot.mcp.server,
  com.servoy.eclipse.servoypilot.services,
  com.servoy.eclipse.servoypilot.tools.testgeneration,
- com.servoy.eclipse.servoypilot.tools.workspace
+ com.servoy.eclipse.servoypilot.tools.workspace,
+ com.servoy.eclipse.servoypilot.tools.codecontext
 Bundle-Activator: com.servoy.eclipse.servoypilot.Activator
 Bundle-Vendor: Servoy
 Require-Bundle: org.eclipse.jface,
