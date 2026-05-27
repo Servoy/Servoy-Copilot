@@ -14,7 +14,7 @@ Require-Bundle: com.servoy.eclipse.servoypilot,
  org.eclipse.dltk.javascript.core;x-friends:="com.servoy.eclipse.servoypilot.assistenttests",
  org.eclipse.text,
  com.servoy.eclipse.debug,
- servoy_shared;bundle-version="[2026.6.0,2027.0.0)",
+ servoy_shared,
  sablo
 Import-Package: com.fasterxml.jackson.core,
  com.fasterxml.jackson.databind,
