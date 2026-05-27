@@ -70,14 +70,13 @@ import com.servoy.eclipse.servoypilot.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.util.ResourceUtilities;
 
-import dev.langchain4j.exception.InvalidRequestException;
-import dev.langchain4j.service.output.OutputParsingException;
-
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.exception.InvalidRequestException;
+import dev.langchain4j.service.output.OutputParsingException;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -89,8 +88,7 @@ public class ChatViewPresenter
 	@Inject
 	private ILog logger;
 
-	private static final String JSON_RETRY_PROMPT =
-		"Return ONLY a CodeChanges JSON object based on your previous analysis. " +
+	private static final String JSON_RETRY_PROMPT = "Return ONLY a CodeChanges JSON object based on your previous analysis. " +
 		"No markdown, no explanation, no code blocks. Output must start with { and end with }.";
 
 	// Apply Fix validation metrics
@@ -1690,7 +1688,7 @@ public class ChatViewPresenter
 	 */
 	public void onKeepAll()
 	{
-		if (currentAssistant == AssistantType.QUICKFIX)
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
 		{
 			QuickFixPresenter.getInstance().onUserClickedKeepAll();
 			return;
@@ -1707,7 +1705,7 @@ public class ChatViewPresenter
 	{
 		logger.info("Undoing all files");
 
-		if (currentAssistant == AssistantType.QUICKFIX)
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
 		{
 			QuickFixPresenter.getInstance().onUserClickedUndoAll();
 			return;
