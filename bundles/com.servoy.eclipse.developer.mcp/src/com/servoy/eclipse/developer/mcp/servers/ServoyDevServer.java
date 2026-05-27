@@ -131,12 +131,24 @@ public class ServoyDevServer
 
 		try
 		{
+			 // Check if solution already exists
+		    IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
+		    if (sol.exists())
+		    {
+		        if (doActivate)
+		        {
+		            doActivateSolution(name, true);
+		            return "Solution '" + name + "' already exists. Activated.";
+		        }
+		        return "Solution '" + name + "' already exists.";
+		    }
+			
 			createEclipseProjects(name);
 			createServoyArtifacts(name);
 
 			if (doActivate)
 			{
-				activateSolution(name);
+				doActivateSolution(name, true);
 				return "Created and activated test solution '" + name + "' in workspace.";
 			}
 			return "Created test solution '" + name + "' in workspace (not activated).";
@@ -244,45 +256,53 @@ public class ServoyDevServer
 	}
 
 	// -------------------------------------------------------------------------
-	// Step 2: Activate solution so getEditingSolution() works
+	// Step 2: Activate solution (shared implementation)
 	// -------------------------------------------------------------------------
 
-	private void activateSolution(String solutionName) throws InterruptedException
+	private String doActivateSolution(String solutionName, boolean refreshAndWait)
+		throws InterruptedException
 	{
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-		model.refreshServoyProjects();
-		pumpEvents(1000);
 
-		ServoyProject toActivate = null;
-		for (ServoyProject p : model.getServoyProjects())
+		if (refreshAndWait)
 		{
-			if (solutionName.equals(p.getProject().getName()))
+			model.refreshServoyProjects();
+			pumpEvents(1000);
+		}
+
+		ServoyProject project = model.getServoyProject(solutionName);
+		if (project == null)
+		{
+			return "Error: Solution '" + solutionName + "' not found in the workspace.";
+		}
+
+		ServoyProject activeProject = model.getActiveProject();
+		if (activeProject != null && activeProject.getProject().getName().equals(solutionName))
+		{
+			return "Solution '" + solutionName + "' is already the active solution.";
+		}
+
+		String previousName = activeProject != null ? activeProject.getProject().getName() : "(none)";
+
+		model.setActiveProject(project, true);
+
+		if (refreshAndWait)
+		{
+			long activateEnd = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
+			Display display = Display.getDefault();
+			if (display != null && display.getThread() == Thread.currentThread())
 			{
-				toActivate = p;
-				break;
+				while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
+					display.readAndDispatch();
+			}
+			else
+			{
+				while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
+					Thread.sleep(200);
 			}
 		}
 
-		if (toActivate == null)
-		{
-			ServoyLog.logWarning("createTestSolution: project '" + solutionName + "' not found in Servoy model after refresh", null);
-			return;
-		}
-
-		model.setActiveProject(toActivate, true);
-
-		long activateEnd = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		Display display = Display.getDefault();
-		if (display != null && display.getThread() == Thread.currentThread())
-		{
-			while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
-				display.readAndDispatch();
-		}
-		else
-		{
-			while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
-				Thread.sleep(200);
-		}
+		return "Solution '" + solutionName + "' activated successfully. Previous active solution: " + previousName + ".";
 	}
 
 	// -------------------------------------------------------------------------
@@ -840,5 +860,27 @@ public class ServoyDevServer
 	{
 		if (s == null) return "";
 		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+	}
+
+	// -------------------------------------------------------------------------
+	// activateSolution MCP tool
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "activateSolution",
+		description = "Activates a Servoy solution as the active solution in the Developer IDE. "
+			+ "This loads the solution and its modules, and triggers a workspace build.",
+		type = "object")
+	public String activateSolution(
+		@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName)
+	{
+		try
+		{
+			return doActivateSolution(solutionName, false);
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			return "Error: activation interrupted.";
+		}
 	}
 }
