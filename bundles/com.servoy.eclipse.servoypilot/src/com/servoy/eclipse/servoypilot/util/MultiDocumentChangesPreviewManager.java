@@ -73,7 +73,7 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 	@Override
 	public void preview(List<SourceEdit> allEdits) throws Exception
 	{
-		//TODO check clearPreview(); // Clean start
+		clearPreview(); // Clean start
 
 		Map<IPath, List<SourceEdit>> editsByFile = allEdits.stream()
 			.collect(Collectors.groupingBy(e -> {
@@ -335,5 +335,46 @@ public class MultiDocumentChangesPreviewManager implements IDocumentChangesPrevi
 	public void addAppliedChange(IPath path, PreviewChange pc)
 	{
 		fileChanges.computeIfAbsent(path, k -> new LinkedHashSet<>()).add(pc);
+	}
+
+	public void accept(IPath path)
+	{
+		Set<PreviewChange> changes = fileChanges.get(path);
+		if (changes == null || changes.isEmpty())
+		{
+			return;
+		}
+
+		IDocument document = connectAndGetDocument(path);
+		if (document == null)
+		{
+			return;
+		}
+
+		try
+		{
+			applyChangesToDocument(path, document, changes);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Cannot accept source modification for " + path, e);
+		}
+		finally
+		{
+			disconnectPath(path);
+		}
+
+		fileChanges.remove(path);
+		if (fileChanges.isEmpty())
+		{
+			clearPreview();
+		}
+	}
+
+
+	public void remove(IPath path)
+	{
+		fileChanges.remove(path);
+		FileModificationTracker.getInstance().removeFile(path.toString());
 	}
 }

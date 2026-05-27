@@ -215,6 +215,7 @@ Output rules:
 - The `codeChanges` field must always exist
 - `codeChanges` must always be a list
 - Even if there is only one fix
+- Each JSON key must appear exactly once per object — duplicate keys are forbidden
 - No markdown
 - No explanations
 - No comments

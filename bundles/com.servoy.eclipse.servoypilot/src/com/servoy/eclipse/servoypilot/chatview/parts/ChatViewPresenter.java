@@ -70,6 +70,9 @@ import com.servoy.eclipse.servoypilot.dto.CodeChanges;
 import com.servoy.eclipse.servoypilot.dto.SourceEdit;
 import com.servoy.eclipse.servoypilot.util.ResourceUtilities;
 
+import dev.langchain4j.exception.InvalidRequestException;
+import dev.langchain4j.service.output.OutputParsingException;
+
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -85,6 +88,10 @@ public class ChatViewPresenter
 
 	@Inject
 	private ILog logger;
+
+	private static final String JSON_RETRY_PROMPT =
+		"Return ONLY a CodeChanges JSON object based on your previous analysis. " +
+		"No markdown, no explanation, no code blocks. Output must start with { and end with }.";
 
 	// Apply Fix validation metrics
 	private int validationsPassed = 0;
@@ -901,37 +908,99 @@ public class ChatViewPresenter
 				}
 				else if (currentAssistant == AssistantType.QUICKFIX)
 			{
-				QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
-				CodeChanges newFix = quickFixAssistant.fix(userMessage);
-
-				if (newFix != null && !newFix.codeChanges().isEmpty())
+				try
 				{
-					String readableResponse = formatQuickFixForChat(newFix);
-					applyToView(part -> {
-						// human readable response
-						part.setMessageHtml(assistantMsgId, readableResponse);
-					});
-					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+					QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+					CodeChanges newFix = quickFixAssistant.fix(userMessage);
+
+					if (newFix != null && !newFix.codeChanges().isEmpty())
+					{
+						String readableResponse = formatQuickFixForChat(newFix);
+						applyToView(part -> {
+							// human readable response
+							part.setMessageHtml(assistantMsgId, readableResponse, true);
+						});
+						QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+					}
+				}
+				catch (OutputParsingException | InvalidRequestException e)
+				{
+					logger.warn("Initial QuickFix parse failed, retrying", e);
+					try
+					{
+						QuickFixAssistant quickFixAssistant = Activator.getDefault().getServoyAiModel().getQuickFixAssistant();
+						CodeChanges retryFix = quickFixAssistant.fix(JSON_RETRY_PROMPT);
+
+						if (retryFix != null && !retryFix.codeChanges().isEmpty())
+						{
+							String readableResponse = formatQuickFixForChat(retryFix);
+							applyToView(part -> {
+								part.setMessageHtml(assistantMsgId, readableResponse, true);
+							});
+							QuickFixPresenter.getInstance().previewFix(userMessage, retryFix);
+						}
+					}
+					catch (Exception retryEx)
+					{
+						applyToView(part -> {
+							part.setMessageHtml(assistantMsgId, "The AI produced a response that could not be parsed — please try again.");
+						});
+						logger.error("Failed to parse QuickFix AI response after retry", retryEx);
+					}
 				}
 			}
 				else if (currentAssistant == AssistantType.QUERY_BUILDER)
 			{
-				QueryBuilderAssistant queryBuilderAssistant = Activator.getDefault().getServoyAiModel().getQueryBuilderAssistant();
-				CodeChanges newFix = queryBuilderAssistant.fix(userMessage);
+				try
+				{
+					QueryBuilderAssistant queryBuilderAssistant = Activator.getDefault().getServoyAiModel().getQueryBuilderAssistant();
+					CodeChanges newFix = queryBuilderAssistant.fix(userMessage);
 
-				if (newFix != null && !newFix.codeChanges().isEmpty())
-				{
-					String readableResponse = formatQuickFixForChat(newFix);
-					applyToView(part -> {
-						part.setMessageHtml(assistantMsgId, readableResponse);
-					});
-					QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+					if (newFix != null && !newFix.codeChanges().isEmpty())
+					{
+						String readableResponse = formatQuickFixForChat(newFix);
+						applyToView(part -> {
+							part.setMessageHtml(assistantMsgId, readableResponse, true);
+						});
+						QuickFixPresenter.getInstance().previewFix(userMessage, newFix);
+					}
+					else
+					{
+						applyToView(part -> {
+							part.setMessageHtml(assistantMsgId, "No Query Builder issues or plain SQL usage detected in the selected code.");
+						});
+					}
 				}
-				else
+				catch (OutputParsingException | InvalidRequestException e)
 				{
-					applyToView(part -> {
-						part.setMessageHtml(assistantMsgId, "No Query Builder issues or plain SQL usage detected in the selected code.");
-					});
+					logger.warn("Initial QueryBuilder parse failed, retrying", e);
+					try
+					{
+						QueryBuilderAssistant queryBuilderAssistant = Activator.getDefault().getServoyAiModel().getQueryBuilderAssistant();
+						CodeChanges retryFix = queryBuilderAssistant.fix(JSON_RETRY_PROMPT);
+
+						if (retryFix != null && !retryFix.codeChanges().isEmpty())
+						{
+							String readableResponse = formatQuickFixForChat(retryFix);
+							applyToView(part -> {
+								part.setMessageHtml(assistantMsgId, readableResponse, true);
+							});
+							QuickFixPresenter.getInstance().previewFix(userMessage, retryFix);
+						}
+						else
+						{
+							applyToView(part -> {
+								part.setMessageHtml(assistantMsgId, "No Query Builder issues or plain SQL usage detected in the selected code.");
+							});
+						}
+					}
+					catch (Exception retryEx)
+					{
+						applyToView(part -> {
+							part.setMessageHtml(assistantMsgId, "The AI produced a response that could not be parsed — please try again.");
+						});
+						logger.error("Failed to parse QueryBuilder AI response after retry", retryEx);
+					}
 				}
 			}
 			})
@@ -1497,7 +1566,7 @@ public class ChatViewPresenter
 		uiSync.asyncExec(() -> {
 			try
 			{
-				if (currentAssistant == AssistantType.QUICKFIX)
+				if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
 				{
 					QuickFixPresenter.getInstance().openInlinePreview(filePath);
 					return;
@@ -1540,6 +1609,11 @@ public class ChatViewPresenter
 	 */
 	public void onKeepFile(String filePath)
 	{
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
+		{
+			QuickFixPresenter.getInstance().keepFile(filePath);
+			return;
+		}
 		FileModificationTracker.getInstance().keepFile(filePath);
 		logger.info("File kept: " + filePath);
 	}
@@ -1553,6 +1627,12 @@ public class ChatViewPresenter
 	public void onUndoFile(String filePath)
 	{
 		logger.info("Undoing file: " + filePath);
+
+		if (currentAssistant == AssistantType.QUICKFIX || currentAssistant == AssistantType.QUERY_BUILDER)
+		{
+			QuickFixPresenter.getInstance().undoFile(filePath);
+			return;
+		}
 
 		uiSync.asyncExec(() -> {
 			try

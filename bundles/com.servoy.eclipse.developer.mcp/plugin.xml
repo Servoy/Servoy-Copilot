@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+
+   <extension point="org.eclipse.ui.startup">
+      <startup class="com.servoy.eclipse.developer.mcp.McpStartup"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.preferencePages">
+      <page
+            category="com.servoy.eclipse.ui.preference"
+            class="com.servoy.eclipse.developer.mcp.preferences.McpPreferencePage"
+            id="com.servoy.eclipse.developer.mcp.preferences"
+            name="Servoy Developer MCP">
+      </page>
+   </extension>
+
+   <extension point="org.eclipse.core.runtime.preferences">
+      <initializer class="com.servoy.eclipse.developer.mcp.preferences.McpPreferenceInitializer"/>
+   </extension>
+
+   <!-- MCP servlet registration with Servoy's embedded Tomcat -->
+   <extension point="org.apache.tomcat.serviceprovider">
+      <serviceprovider
+            class="com.servoy.eclipse.developer.mcp.McpServiceProvider"
+            id="com.servoy.eclipse.developer.mcp.serviceprovider">
+      </serviceprovider>
+   </extension>
+
+</plugin>

@@ -84,7 +84,7 @@ public class CodeChunkReader
 		// Singleton
 	}
 
-	public static CodeChunkReader getInstance()
+	public static synchronized CodeChunkReader getInstance()
 	{
 		if (instance == null)
 		{

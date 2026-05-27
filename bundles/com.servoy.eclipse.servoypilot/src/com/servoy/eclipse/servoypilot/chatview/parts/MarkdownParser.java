@@ -94,6 +94,7 @@ public class MarkdownParser
 	private final String prompt;
 
 	private final MarkdownTable table = new MarkdownTable();
+	private boolean inlinePreviewMode;
 
 	private class MarkdownTable
 	{
@@ -154,6 +155,12 @@ public class MarkdownParser
 	public MarkdownParser(String prompt)
 	{
 		this.prompt = prompt;
+	}
+
+	public MarkdownParser(String prompt, boolean inlinePreviewMode)
+	{
+		this.prompt = prompt;
+		this.inlinePreviewMode = inlinePreviewMode;
 	}
 
 	/**
@@ -470,11 +477,12 @@ public class MarkdownParser
 		{
 			String codeBlockId = UUID.randomUUID().toString();
 			String blockClass = "diff".equals(lang) ? "diff-block" : "code-block";
+			String codeBlockButtonsClass = inlinePreviewMode ? "hidden" : "";
 
 			// Removed newline after <pre><code> tag to fix the extra line issue
 			out.append("""
 				<div class="codeBlock %s" id="block-%s">
-				<div class="codeBlockButtons">
+				<div class="codeBlockButtons %s">
 				<input type="button" onClick="eclipseCopyCode(document.getElementById('%s').innerText)" value="Copy" />
 				<input class="code-only" type="button" onClick="eclipseInsertCode(document.getElementById('%s').innerText)" value="Insert" />
 				<input class="code-only" type="button" onClick="eclipseNewFile(document.getElementById('%s').innerText, '%s')" value="New File" />
@@ -482,7 +490,8 @@ public class MarkdownParser
 				<input class="diff-only" type="button" onClick="eclipseApplyPatch(document.getElementById('%s').innerText)" value="Apply"/>
 				<input class="error-fix-only" type="button" data-block-id="%s" value="Quick Fix" style="display:none;" />
 				</div>
-				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockId, codeBlockId, codeBlockId, lang, codeBlockId, codeBlockId,
+				<pre><code lang="%s" id="%s">""".formatted(blockClass, codeBlockId, codeBlockButtonsClass, codeBlockId, codeBlockId, codeBlockId, lang,
+				codeBlockId, codeBlockId,
 				codeBlockId, lang,
 				codeBlockId));
 			state.add(ParserState.CODE_BLOCK);

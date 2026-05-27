@@ -635,10 +635,15 @@ public class ChatView
 
 	public void setMessageHtml(String messageId, String messageBody)
 	{
+		setMessageHtml(messageId, messageBody, false);
+	}
+
+	public void setMessageHtml(String messageId, String messageBody, boolean inlinePreviewMode)
+	{
 		uiSync.asyncExec(() -> {
 			String msg = messageBody == null ? "" : messageBody;
 
-			MarkdownParser parser = new MarkdownParser(msg);
+			MarkdownParser parser = new MarkdownParser(msg, inlinePreviewMode);
 
 			String fixedHtml = escapeHtmlQuotes(fixLineBreaks(parser.parseToHtml()));
 			// inject and highlight html message
@@ -651,6 +656,7 @@ public class ChatView
 			}
 		});
 	}
+
 
 	/**
 	 * Appends content to an existing message.

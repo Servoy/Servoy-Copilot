@@ -285,3 +285,7 @@ summary {
     opacity: 1;
   }
 }
+
+.codeBlockButtons.hidden {
+    display: none;
+}

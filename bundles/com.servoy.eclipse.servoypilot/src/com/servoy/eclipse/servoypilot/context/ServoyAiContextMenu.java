@@ -19,6 +19,7 @@ package com.servoy.eclipse.servoypilot.context;
 import org.eclipse.jface.action.IContributionItem;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.Separator;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.ui.IWorkbenchWindow;
@@ -26,6 +27,9 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.actions.CompoundContributionItem;
 import org.eclipse.ui.menus.CommandContributionItem;
 import org.eclipse.ui.menus.CommandContributionItemParameter;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
+
+import com.servoy.eclipse.ui.tweaks.IconPreferences;
 
 /**
  * Dynamic context menu contribution for Servoy AI code analysis features.
@@ -44,7 +48,11 @@ public class ServoyAiContextMenu extends CompoundContributionItem
 		}
 
 		IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-		MenuManager subMenuManager = new MenuManager("Servoy AI", "com.servoy.eclipse.servoypilot.contextmenu");
+		boolean isDarkTheme = IconPreferences.getInstance().getUseDarkThemeIcons();
+		String iconFolder = isDarkTheme ? "darkicons" : "icons";
+		ImageDescriptor icon = AbstractUIPlugin.imageDescriptorFromPlugin(
+			"com.servoy.eclipse.servoypilot", iconFolder + "/aichat.png");
+		MenuManager subMenuManager = new MenuManager("Servoy AI", icon, "com.servoy.eclipse.servoypilot.contextmenu");
 
 		// Debug command
 		CommandContributionItemParameter debugParam = new CommandContributionItemParameter(

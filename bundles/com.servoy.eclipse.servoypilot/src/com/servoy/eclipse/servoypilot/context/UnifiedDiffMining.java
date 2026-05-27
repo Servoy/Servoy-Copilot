@@ -17,6 +17,8 @@
 
 package com.servoy.eclipse.servoypilot.context;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -50,6 +52,28 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 	private Rectangle undoBtnRect;
 	private Rectangle diffBtnRect;
 
+	// Cached resources
+	private Color greenBg;
+	private Color darkGreen;
+	private Color blue;
+	private Color neutral;
+	private Font normalFont;
+
+	private int[] cachedBtnWidths;
+	private int cachedTotalBtnsWidth;
+	private String cachedTabSpaces;
+	private String[] lines;
+	private int totalHeight;
+	private int customButtonHeight = -1;
+	private String processedText;
+	private String cachedLabel;
+
+	private static final String[] BTN_LABELS = { "\u2714 Keep", "\u2716 Undo", "\u21C4 Diff" };
+	private static final int BTN_SPACING = 6;
+	private static final int BTN_RIGHT_MARGIN = 10;
+	private static final int BTN_ARC = 8;
+	private static final int BTN_PADDING_X = 12;
+
 	public UnifiedDiffMining(int line,
 		IDocument doc,
 		ICodeMiningProvider provider,
@@ -65,6 +89,45 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 		this.onDiff = onDiff;
 	}
 
+	private void initResources(StyledText textWidget, GC gc)
+	{
+		Display display = textWidget.getDisplay();
+
+		if (greenBg == null)
+		{
+			greenBg = new Color(display, 230, 255, 230);
+			darkGreen = new Color(display, 0, 100, 0);
+			blue = new Color(display, 43, 173, 223);
+			neutral = new Color(display, 200, 200, 200);
+		}
+
+		if (normalFont == null)
+		{
+			FontData[] fd = gc.getFont().getFontData();
+			for (FontData f : fd)
+			{
+				f.setStyle(SWT.NORMAL);
+			}
+			normalFont = new Font(display, fd);
+			cachedBtnWidths = null; // font changed, remeasure
+		}
+
+		if (cachedBtnWidths == null)
+		{
+			Font prev = gc.getFont();
+			gc.setFont(normalFont);
+			cachedBtnWidths = new int[BTN_LABELS.length];
+			cachedTotalBtnsWidth = 0;
+			for (int i = 0; i < BTN_LABELS.length; i++)
+			{
+				cachedBtnWidths[i] = gc.textExtent(BTN_LABELS[i]).x + (BTN_PADDING_X * 2);
+				cachedTotalBtnsWidth += cachedBtnWidths[i];
+			}
+			cachedTotalBtnsWidth += BTN_SPACING * (BTN_LABELS.length - 1);
+			gc.setFont(prev);
+		}
+	}
+
 	@Override
 	public String getLabel()
 	{
@@ -78,18 +141,68 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 			return " ";
 		}
 
-		String[] lines = change.modifiedLine.split("\\r?\\n");
+		if (cachedLabel != null)
+		{
+			return cachedLabel;
+		}
+
+		String[] logicalLines = change.modifiedLine.split("\\r?\\n");
+		int estimatedVisualLines = 0;
+		for (String line : logicalLines)
+		{
+			int len = line.replace("\t", "    ").length();
+			estimatedVisualLines += Math.max(1, (int)Math.ceil(len / 80.0));
+		}
+
 		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < lines.length; i++)
+		for (int i = 0; i < estimatedVisualLines; i++)
 		{
 			sb.append(" ");
-			if (i < lines.length - 1)
+			if (i < estimatedVisualLines - 1)
 			{
 				sb.append("\n");
 			}
 		}
+		cachedLabel = sb.toString();
+		return cachedLabel;
+	}
 
-		return sb.toString();
+	private List<String> wrapLine(GC gc, String line, int maxWidth)
+	{
+		List<String> wrapped = new ArrayList<>();
+		if (maxWidth <= 0)
+		{
+			wrapped.add(line);
+			return wrapped;
+		}
+
+		int textWidth = gc.textExtent(line).x;
+		if (textWidth <= maxWidth)
+		{
+			wrapped.add(line);
+			return wrapped;
+		}
+
+		int start = 0;
+		while (start < line.length())
+		{
+			int end = line.length();
+			while (end > start + 1 && gc.textExtent(line.substring(start, end)).x > maxWidth)
+			{
+				end = start + (end - start) / 2;
+			}
+			while (end < line.length() && gc.textExtent(line.substring(start, end + 1)).x <= maxWidth)
+			{
+				end++;
+			}
+			if (end == start)
+			{
+				end = start + 1;
+			}
+			wrapped.add(line.substring(start, end));
+			start = end;
+		}
+		return wrapped;
 	}
 
 	@Override
@@ -100,117 +213,86 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 			return new Point(0, 0);
 		}
 
-		// 1. Check if this is a deletion (no new text to show)
+		initResources(textWidget, gc);
+
 		boolean isDeletion = change.modifiedLine == null || change.modifiedLine.trim().isEmpty();
-
 		int lineHeight = textWidget.getLineHeight();
-		int leftPadding = 5;
-		int width = textWidget.getClientArea().width;
-		int totalHeight;
+		int clientWidth = textWidget.getClientArea().width;
 
-		String[] lines = new String[0];
-		int customButtonHeight = textWidget.getLineHeight() + 5;
+		// Recompute every time — lineHeight can change (zoom, font)
+		customButtonHeight = lineHeight + 5;
 
 		if (isDeletion)
 		{
-			// For deletes, we only need a single line height to show the buttons
 			totalHeight = customButtonHeight;
 		}
 		else
 		{
-			// 2. Process indentation for Inserts/Replacements
+			// Reprocess lines only if tab width changed
 			int tabWidth = textWidget.getTabs();
-			String tabSpaces = " ".repeat(tabWidth);
-			String processedText = change.modifiedLine.replace("\t", tabSpaces);
-			lines = processedText.split("\\r?\\n");
-
-			totalHeight = lines.length * lineHeight;
-
-			// Measure text for width
-			Point textBlockSize = gc.textExtent("+ " + processedText);
-			width = Math.max(width, textBlockSize.x + (leftPadding * 2));
-		}
-
-		Display display = textWidget.getDisplay();
-		Color greenBg = new Color(display, 230, 255, 230);
-		Color darkGreen = new Color(display, 0, 100, 0);
-		Color blue = new Color(display, 43, 173, 223);
-		Color neutral = new Color(display, 200, 200, 200);
-
-		try
-		{
-			// 3. Only draw the background and text if NOT a deletion
-			if (!isDeletion)
+			String newTabSpaces = " ".repeat(tabWidth);
+			if (!newTabSpaces.equals(cachedTabSpaces) || lines == null)
 			{
-				gc.setBackground(greenBg);
-				gc.fillRectangle(0, y, width, totalHeight);
+				cachedTabSpaces = newTabSpaces;
+				processedText = change.modifiedLine.replace("\t", cachedTabSpaces);
+				lines = processedText.split("\\r?\\n");
+			}
 
-				gc.setForeground(darkGreen);
-				for (int i = 0; i < lines.length; i++)
+			int availableWidth = clientWidth;
+			List<String> visualLines = new ArrayList<>();
+			List<Boolean> isFirstSegment = new ArrayList<>();
+
+			for (String line : lines)
+			{
+				List<String> wrappedSegments = wrapLine(gc, line, availableWidth);
+				for (int i = 0; i < wrappedSegments.size(); i++)
 				{
-					int lineY = y + (i * lineHeight);
-					gc.drawText("+", leftPadding, lineY, true);
-					gc.drawText(lines[i], 0, lineY, true);
+					visualLines.add(wrappedSegments.get(i));
+					isFirstSegment.add(i == 0);
 				}
 			}
 
-			// 4. Always draw buttons (at the end of the line/block)
-			drawButtons(gc, textWidget, y, totalHeight, width, blue, neutral);
-		}
-		finally
-		{
-			greenBg.dispose();
-			darkGreen.dispose();
-			blue.dispose();
-			neutral.dispose();
+			totalHeight = visualLines.size() * lineHeight;
+
+			gc.setBackground(greenBg);
+			gc.fillRectangle(0, y, clientWidth, totalHeight);
+
+			gc.setForeground(darkGreen);
+			for (int i = 0; i < visualLines.size(); i++)
+			{
+				int lineY = y + (i * lineHeight);
+				if (isFirstSegment.get(i))
+				{
+					gc.drawText("+", 0, lineY, true);
+				}
+				gc.drawText(visualLines.get(i), 0, lineY, true);
+			}
 		}
 
-		return new Point(width, totalHeight);
+		drawButtons(gc, textWidget, y, totalHeight, clientWidth);
+
+		return new Point(clientWidth, totalHeight);
 	}
 
-	private void drawButtons(GC gc, StyledText text, int y, int height, int width, Color blue, Color neutral)
+	private void drawButtons(GC gc, StyledText text, int y, int height, int viewportWidth)
 	{
 		gc.setAntialias(SWT.ON);
 
-		// 1. Force the font to be NORMAL
-		Font originalFont = gc.getFont();
-		FontData[] fontData = originalFont.getFontData();
-		for (FontData fd : fontData)
-		{
-			fd.setStyle(SWT.NORMAL); // Remove Bold or Italic styles
-		}
-		Font normalFont = new Font(text.getDisplay(), fontData);
-		gc.setFont(normalFont);
+		Font prev = gc.getFont();
+		gc.setFont(normalFont); // use cached font, no new Font() here
 
 		try
 		{
-			int btnH = text.getLineHeight() + 5;
-			int spacing = 6;
-			int rightMargin = 10;
-			int ARC = 8;
-			int PADDING_X = 12;
+			int btnH = customButtonHeight;
+			int btnY = y + (height - btnH) / 2;
+			int currentX = viewportWidth - cachedTotalBtnsWidth - BTN_RIGHT_MARGIN;
 
-			String[] labels = { "✔ Keep", "✖ Undo", "⇄ Diff" };
 			Color[] btnColors = { blue, neutral, neutral };
 
-			// Measure and calculate starting X
-			int totalBtnsWidth = 0;
-			int[] btnWidths = new int[labels.length];
-			for (int i = 0; i < labels.length; i++)
+			for (int i = 0; i < BTN_LABELS.length; i++)
 			{
-				btnWidths[i] = gc.textExtent(labels[i]).x + (PADDING_X * 2);
-				totalBtnsWidth += btnWidths[i];
-			}
-			totalBtnsWidth += (spacing * (labels.length - 1));
+				Rectangle rect = new Rectangle(currentX, btnY, cachedBtnWidths[i], btnH);
 
-			int currentX = width - totalBtnsWidth - rightMargin;
-			int btnY = y + (height - btnH) / 2;
-
-			for (int i = 0; i < labels.length; i++)
-			{
-				Rectangle rect = new Rectangle(currentX, btnY, btnWidths[i], btnH);
-
-				// Save rects for MouseListener
 				if (i == 0)
 				{
 					keepBtnRect = rect;
@@ -219,29 +301,24 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 				{
 					undoBtnRect = rect;
 				}
-				else if (i == 2)
+				else
 				{
 					diffBtnRect = rect;
 				}
 
-				// Draw Rounded Background
 				gc.setBackground(btnColors[i]);
-				gc.fillRoundRectangle(rect.x, rect.y, rect.width, rect.height, ARC, ARC);
+				gc.fillRoundRectangle(rect.x, rect.y, rect.width, rect.height, BTN_ARC, BTN_ARC);
 
-				// Draw White Text (Now guaranteed to be normal/upright)
 				gc.setForeground(text.getDisplay().getSystemColor(SWT.COLOR_WHITE));
-				Point textSize = gc.textExtent(labels[i]);
-				int textX = rect.x + (rect.width - textSize.x) / 2;
-				int textY = rect.y + (rect.height - textSize.y) / 2;
-				gc.drawText(labels[i], textX, textY, true);
+				Point ts = gc.textExtent(BTN_LABELS[i]);
+				gc.drawText(BTN_LABELS[i], rect.x + (rect.width - ts.x) / 2, rect.y + (rect.height - ts.y) / 2, true);
 
-				currentX += btnWidths[i] + spacing;
+				currentX += cachedBtnWidths[i] + BTN_SPACING;
 			}
 		}
 		finally
 		{
-			gc.setFont(originalFont);
-			normalFont.dispose();
+			gc.setFont(prev);
 		}
 	}
 
@@ -270,5 +347,41 @@ public class UnifiedDiffMining extends LineHeaderCodeMining
 		return CompletableFuture.runAsync(() -> {
 			super.setLabel(getText());
 		});
+	}
+
+	@Override
+	public void dispose()
+	{
+		keepBtnRect = null;
+		undoBtnRect = null;
+		diffBtnRect = null;
+
+		if (greenBg != null)
+		{
+			greenBg.dispose();
+			greenBg = null;
+		}
+		if (darkGreen != null)
+		{
+			darkGreen.dispose();
+			darkGreen = null;
+		}
+		if (blue != null)
+		{
+			blue.dispose();
+			blue = null;
+		}
+		if (neutral != null)
+		{
+			neutral.dispose();
+			neutral = null;
+		}
+		if (normalFont != null)
+		{
+			normalFont.dispose();
+			normalFont = null;
+		}
+
+		super.dispose();
 	}
 }

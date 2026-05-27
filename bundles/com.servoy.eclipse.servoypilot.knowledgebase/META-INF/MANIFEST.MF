@@ -12,16 +12,13 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.ui.workbench,
  com.servoy.eclipse.core,
  com.servoy.eclipse.model,
- servoy_shared,
- onnx-models-bge-small-en;bundle-version="1.5.0"
+ servoy_shared
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot.knowledgebase
 Bundle-ActivationPolicy: lazy
 Export-Package: com.servoy.eclipse.knowledgebase,
  com.servoy.eclipse.knowledgebase.service
-Import-Package: ai.onnxruntime,
- ai.onnxruntime.extensions,
- com.fasterxml.jackson.databind,
+Import-Package: com.fasterxml.jackson.databind,
  dev.langchain4j.data.document,
  dev.langchain4j.data.embedding,
  dev.langchain4j.data.segment,

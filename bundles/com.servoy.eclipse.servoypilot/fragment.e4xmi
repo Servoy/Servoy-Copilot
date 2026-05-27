@@ -9,9 +9,8 @@
     <elements xsi:type="commands:Handler" xmi:id="_HS3-MAKHEfGRM83nivCAQQ" elementId="com.servoypilot.command.saveinstructions" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.handlers.ResetInstructionsHandler" command="_BbwZ0AKHEfGRM83nivCAQQ"/>
   </fragments>
   <fragments xsi:type="fragment:StringModelFragment" xmi:id="_EI7oACerEeWxCPrV0pAZQQ" featurename="descriptors" parentElementId="xpath:/">
-    <elements xsi:type="basic:PartDescriptor" xmi:id="_KMklcCerEeWxCPrV0pAZQQ" elementId="com.servoypilot.chatview" label="Servoy AI Chat" iconURI="platform:/plugin/com.servoy.eclipse.servoypilot/icons/aichat.png" tooltip="Servoy AI Chat" category="Servoy" closeable="true" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.parts.ChatView">
+    <elements xsi:type="basic:PartDescriptor" xmi:id="_KMklcCerEeWxCPrV0pAZQQ" elementId="com.servoypilot.chatview" label="Servoy AI Chat" iconURI="platform:/plugin/com.servoy.eclipse.servoypilot/icons/aichat.png" tooltip="Servoy AI Chat" closeable="true" toBeRendered="false" contributionURI="bundleclass://com.servoy.eclipse.servoypilot/com.servoy.eclipse.servoypilot.chatview.parts.ChatView">
       <tags>View</tags>
-      <tags>categoryTag:Servoy</tags>
       <menus xmi:id="_CsIugAKFEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.menu.myviewmenu" label="MyViewMenu">
         <tags>ViewMenu</tags>
         <children xsi:type="menu:HandledMenuItem" xmi:id="_FVn5QAKFEfGRM83nivCAQQ" elementId="com.servoy.eclipse.servoypilot.handledmenuitem.clearchat" label="Refresh Instructions/Prompts" tooltip="Refreshes the instructions and prompts from the active solution" command="com.servoypilot.command.clear"/>

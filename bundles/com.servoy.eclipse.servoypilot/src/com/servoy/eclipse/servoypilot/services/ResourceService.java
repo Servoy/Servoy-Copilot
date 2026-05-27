@@ -45,6 +45,10 @@ public class ResourceService
 
 	private static final ResourceService INSTANCE = new ResourceService();
 
+	private ResourceService()
+	{
+	}
+
 	public static ResourceService getInstance()
 	{
 		return INSTANCE;

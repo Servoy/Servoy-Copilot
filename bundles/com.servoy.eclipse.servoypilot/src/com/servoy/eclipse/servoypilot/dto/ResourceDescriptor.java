@@ -29,9 +29,9 @@ import org.eclipse.core.runtime.IPath;
  * for creating descriptors from Eclipse resource types.
  * 
  * URI Schemes:
- * - workspace:///ProjectName/path/to/file.java  ... Workspace files (IFile)
- * - project:///ProjectName/layout               ... Project structure
- * - console:///ConsoleName                      ... Console output
+ * - workspace:///ProjectName/path/to/file.java  -> Workspace files (IFile)
+ * - project:///ProjectName/layout               -> Project structure
+ * - console:///ConsoleName                      -> Console output
  */
 public record ResourceDescriptor(
 	URI uri,

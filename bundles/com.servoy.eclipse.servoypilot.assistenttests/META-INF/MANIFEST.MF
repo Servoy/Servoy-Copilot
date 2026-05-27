@@ -1,0 +1,21 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Servoy AI Pilot - Unit Test Assistant Tests
+Bundle-SymbolicName: com.servoy.eclipse.servoypilot.assistenttests
+Bundle-Version: 2026.3.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: com.servoy.eclipse.servoypilot,
+ com.servoy.eclipse.developer.mcp,
+ org.junit;bundle-version="4.13.0",
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ com.servoy.eclipse.jsunit
+Import-Package: com.servoy.eclipse.core,
+ com.servoy.eclipse.model.extensions,
+ com.servoy.eclipse.model.nature,
+ com.servoy.eclipse.model.util,
+ com.servoy.j2db.persistence,
+ com.servoy.j2db.server.shared,
+ dev.langchain4j.agent.tool;version="[1.13.0,2.0.0)",
+ org.eclipse.dltk.testing.model,
+ org.eclipse.swt.widgets

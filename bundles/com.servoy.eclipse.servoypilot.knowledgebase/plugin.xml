@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?eclipse version="3.4"?>
 <plugin>
-   <!-- Ensure plugin starts early to initialize ONNX models -->
+   <!-- ONNX disabled - KnowledgeBaseStartup no longer needed without ONNX
    <extension point="org.eclipse.ui.startup">
       <startup class="com.servoy.eclipse.knowledgebase.KnowledgeBaseStartup"/>
    </extension>
+   -->
 </plugin>

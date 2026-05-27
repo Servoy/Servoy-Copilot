@@ -53,7 +53,7 @@ public class FileStructureService
 		// Singleton
 	}
 
-	public static FileStructureService getInstance()
+	public static synchronized FileStructureService getInstance()
 	{
 		if (instance == null)
 		{

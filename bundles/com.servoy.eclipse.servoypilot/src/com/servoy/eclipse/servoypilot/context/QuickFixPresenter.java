@@ -53,6 +53,10 @@ public class QuickFixPresenter
 {
 	private static QuickFixPresenter INSTANCE = new QuickFixPresenter();
 
+	private QuickFixPresenter()
+	{
+	}
+
 	public static QuickFixPresenter getInstance()
 	{
 		return INSTANCE;
@@ -246,5 +250,38 @@ public class QuickFixPresenter
 			}
 		}
 		return null;
+	}
+
+	public void keepFile(String filePath)
+	{
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		InlineDocumentChangesPreviewManager existingManager = activeInlineManagers.get(path);
+		if (existingManager != null)
+		{
+			existingManager.accept();
+			activeMultiManager.remove(path);
+			activeInlineManagers.remove(path);
+			pendingEdits.remove(path);
+		}
+		else if (activeMultiManager != null)
+		{
+			activeMultiManager.accept(path);
+		}
+	}
+
+	public void undoFile(String filePath)
+	{
+		IPath path = new Path(filePath.startsWith("L/") ? filePath.substring(2) : filePath);
+		InlineDocumentChangesPreviewManager existingManager = activeInlineManagers.get(path);
+		if (existingManager != null)
+		{
+			existingManager.reject();
+			activeInlineManagers.remove(path);
+			pendingEdits.remove(path);
+		}
+		if (activeMultiManager != null)
+		{
+			activeMultiManager.remove(path);
+		}
 	}
 }
