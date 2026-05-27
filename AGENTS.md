@@ -1,288 +1,100 @@
-# AGENTS.md
+# Agent Guidelines for Servoy Copilot Codebase
 
-## Scope Restriction
+Welcome, AI Agent! This repository contains the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. The **active focus** of this repository is the `com.servoy.eclipse.developer.mcp` bundle — the Eclipse IDE MCP server that exposes IDE tools to AI agents. Several other bundles exist in the repository but are no longer actively developed; they are kept for reference only. To ensure safety, consistency, and proper integration with the Eclipse workspace environment, you must adhere strictly to the following developer and automation workflows.
 
-CRITICAL: Only edit files within the `Servoy-Copilot` project
-(i.e. under `/Volumes/ServoyWork/git/master/Servoy-Copilot/`).
+---
 
-Do NOT edit files in any other Eclipse project or workspace location,
-even if MCP tools provide access to them.
+## 1. Repository Projects Analysis
 
-If a task would require editing another project, stop and explicitly ask
-the user for permission before proceeding.
+This Git repository contains the following core projects/plugins:
 
-## Git Operations
+### 1. `com.servoy.eclipse.developer.mcp` ⬅ ACTIVE FOCUS
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** Eclipse IDE MCP server (AssistAI) — exposes IDE tools to AI agents.
+- **Key Focus:** Implements the MCP server that runs inside the Eclipse JVM and exposes Eclipse IDE operations (file read/write, search, compilation, git, PDE tests) as MCP tools callable by external AI agents.
+- **Crucial Detail:** Two-JVM architecture — this bundle runs inside Eclipse; the MCP client runs in the agent's JVM. Changes here affect what tools are available to all AI agents working in this workspace.
 
-CRITICAL: Never run any git commands, never stage files, never commit, and never
-suggest committing anything in this project. All git operations are fully manual
-and at the user's sole discretion.
+> The following bundles are **no longer actively developed**. They are kept in the repository for reference only. Do not make changes to them unless explicitly instructed.
 
-## Servoy File Format Rule
+### 2. `com.servoy.eclipse.servoypilot` _(reference only — not active)_
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** Main plugin — AI assistant UI, tools, chat, and completion.
+- **Key Focus:** Entry point for all AI-assisted developer features. Integrates the chat UI, code completion hooks, and orchestrates calls to the LLM and knowledge base bundles.
+- **Crucial Detail:** Depends on `com.servoy.eclipse.servoypilot.langchain4j` and `com.servoy.eclipse.servoypilot.knowledgebase`. All user-facing AI features live here.
 
-CRITICAL: Never write Servoy structural files (`.frm`, `.obj`, `.tbl`, `.val`, `.rel`, `.dbi`, `.js` with `@properties`) directly as text/JSON.
+### 3. `com.servoy.eclipse.servoypilot.langchain4j` _(reference only — not active)_
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** LangChain4j wrapper bundle — AI/LLM integration library.
+- **Key Focus:** Wraps the LangChain4j library for use inside OSGi. Provides the LLM client abstraction used by the main plugin.
+- **Crucial Detail:** Acts as a library bundle. Do not add UI or Eclipse-specific logic here.
 
-Always use the Servoy persistence API to create and modify Servoy artifacts:
-- `solution.createNewForm(...)` to create forms
-- `form.createNewPart(...)` to add body parts
-- `form.setUseCssPosition(...)` / `form.setResponsiveLayout(...)` for layout type
-- `servoyProject.saveEditingSolutionNodes(...)` to persist to disk
+### 4. `com.servoy.eclipse.servoypilot.knowledgebase` _(reference only — not active)_
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** Knowledge base indexing, ONNX embeddings, and RAG (Retrieval-Augmented Generation).
+- **Key Focus:** Indexes Servoy project sources and documentation into a vector store using ONNX-based embeddings. Provides retrieval APIs consumed by the main plugin.
+- **Crucial Detail:** Heavy dependency on ONNX runtime and PDFBox/Tika for document parsing.
 
-Writing these files manually as JSON strings bypasses Servoy's internal model,
-risks UUID corruption, and produces files that may be incompatible with the
-Servoy runtime. It is **forbidden** regardless of how simple the content appears.
+### 5. `com.servoy.eclipse.servoypilot.assistenttests` _(reference only — not active)_
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** Servoy Developer tools for AI-assisted test generation and execution.
+- **Key Focus:** Provides tooling to generate and run tests with AI assistance inside the Servoy Developer environment.
 
-## Project Overview
+> The following are **active** build and distribution artifacts.
 
-This is the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. The plugin provides AI-assisted development features including code analysis, test generation, knowledge base indexing, and MCP (Model Context Protocol) integration.
+### 6. `com.servoy.eclipse.servoypilot.feature`
+- **Type:** Eclipse Feature (`eclipse-feature`)
+- **Main Role:** Feature packaging — bundles all plugins and platform-specific fragments for distribution.
 
-## Project Structure
+### 7. `repository.site_aiplugin`
+- **Type:** Eclipse Repository (`eclipse-repository`)
+- **Main Role:** P2 update site for distribution of the Servoy Copilot feature.
 
-| Path | Type | Description |
-|------|------|-------------|
-| `bundles/com.servoy.eclipse.servoypilot` | eclipse-plugin | Main plugin: AI assistant UI, tools, chat, completion |
-| `bundles/com.servoy.eclipse.servoypilot.langchain4j` | eclipse-plugin | LangChain4j wrapper bundle (AI/LLM integration library) |
-| `bundles/com.servoy.eclipse.servoypilot.knowledgebase` | eclipse-plugin | Knowledge base indexing, ONNX embeddings, RAG |
-| `bundles/com.servoy.eclipse.developer.mcp` | eclipse-plugin | MCP server for Servoy Developer (port 8183, path `/svymcp`) |
-| `bundles/com.servoy.eclipse.servoypilot.assistenttests` | eclipse-test-plugin | Unit + integration tests (Tycho surefire) |
-| `features/com.servoy.eclipse.servoypilot.feature` | eclipse-feature | Feature packaging all plugins + platform-specific fragments |
-| `repository.site_aiplugin` | eclipse-repository | P2 update site for distribution |
-| `launch_target_aiplugin` | target-definition | Target platform definition for building/running |
-| `launch_target` | (legacy) | Old target, not used in Maven build |
-| `bundles/application_server` | resource | Servoy app server resources for test runtime |
-| `bundles/org.eclipse.jface` | patch | JFace patch/overlay — warnings/errors here can always be ignored |
+### 8. `launch_target_aiplugin`
+- **Type:** Target Definition
+- **Main Role:** Target platform definition for building and running the plugin.
+- **Crucial Detail:** Resolves against `https://build.servoy.com/latest/servoy_release/update_site/` plus Maven Central and the Servoy Maven repo. Dependencies already provided by the Servoy target must NOT be duplicated here.
 
-## MCP Endpoints
+---
 
-Two separate MCP servers exist in this workspace — they run in different JVMs:
+## 2. Prioritize Eclipse MCP Tools Over Standard Tools
 
-| JVM | Port | Path prefix | Bundle | Tools |
-|-----|------|-------------|--------|-------|
-| Eclipse IDE (AssistAI) | 8085 | `/mcp` | `com.servoy.eclipse.servoypilot` | Eclipse IDE tools (JDT, git, runner, PDE) |
-| Servoy Developer | 8183 | `/svymcp` | `com.servoy.eclipse.developer.mcp` | Servoy-specific tools (context, coder, ide, git) |
+Since this workspace is a complex, multi-project Eclipse environment, **always prioritize Eclipse-specific MCP/PDE tools** over standard, general-purpose command-line or filesystem tools. This ensures that the Eclipse index, builder, and classpath are kept in sync.
 
-**Critical:** When testing `developer.mcp` endpoints, use project names from the **Servoy Developer workspace** (e.g. `Example_AI_Plugin`), NOT Eclipse IDE workspace projects (e.g. `Servoy-Copilot`).
+- **File Reading:** Use `eclipse-ide_readProjectResource` instead of the generic `read` tool.
+- **File Writing & Creating:** Use `eclipse-coder_createFile` or `eclipse-coder_replaceFileContent` instead of the generic `write` tool.
+- **File Editing:** Use `eclipse-coder_applyPatch`, `eclipse-coder_insertIntoFile`, `eclipse-coder_replaceString`, or `eclipse-coder_deleteLinesInFile` instead of the generic `edit` tool.
+- **File / Class Searching:** Use `eclipse-ide_fileSearch`, `eclipse-ide_fileSearchRegExp`, or `eclipse-ide_findFiles` instead of generic `grep` or `glob`.
+- **Git Operations:** Use `eclipse-git_*` tools instead of standard shell `git` commands in `bash`.
+- **Testing:** Prefer `eclipse-ide_runAllTests`, `eclipse-ide_runClassTests`, `eclipse-ide_runTestMethod`, or `eclipse-pde_runJUnitPluginTests` over generic shell test commands.
 
-### developer.mcp endpoints (port 8183)
+---
 
-| Endpoint | Tools |
-|----------|-------|
-| `/svymcp/servoy-context` | listCachedResources, getCachedResource, getCacheStats, getFileHistory, getFileHistoryContent, compareWithHistory, restoreFileVersion (dummy) |
-| `/svymcp/servoy-coder` | createFile, insertIntoFile, replaceString, undoEdit, createDirectories, renameFile, moveResource, deleteFile, replaceFileContent, deleteLinesInFile, applyPatch + 6 JDT dummies |
-| `/svymcp/servoy-ide` | listProjects, getProjectLayout, getProjectProperties, readProjectResource, findFiles, fileSearch, fileSearchRegExp, searchAndReplace, getMarkdownOutline, getMarkdownSection, getCurrentlyOpenedFile, getEditorSelection, getConsoleOutput, getCompilationErrors + 20 dummies |
-| `/svymcp/servoy-git` | gitStatus, gitLog, gitAdd, gitCommit, gitDiff, gitBranch, gitCreateBranch, gitDeleteBranch, gitCheckout, gitReset, gitStash, gitStashPop, gitStashList, gitStagePatch |
+## 3. Commit Message Convention `[ai]`
 
-Auth token: `bd6f7df6-2872-4e5c-9387-ae5fae62ca3c`
+To maintain clarity and transparency about the origin of codebase changes, any Git commit consisting primarily of AI-generated or AI-assisted changes must follow this rule:
+- **The commit subject line must end with ` [ai]`** (case-insensitive, space followed by bracketed `ai`). Examples: `Fix NullPointerException during client initialization [ai]` or `Implement support for modern TLS protocols in server connection [ai]`
+- **Commit messages for cases:** When a commit is related to a Jira case, the case number (e.g. `SVY-123`, `SVYX-456`, `SERVOY-293`) must be included in the commit subject line. Example: `SERVOY-293 fix NPE in WAR export copyRequiredBundles [ai]`
 
-### developer.mcp architecture
+---
 
-- Bundle: `com.servoy.eclipse.developer.mcp`
-- Runs inside Servoy Developer's embedded Tomcat via `IServicesProvider` extension point
-- E4 DI: server classes use `@Creatable` + `@Inject`; instantiated via `ContextInjectionFactory.make()`
-- `McpServerBuiltins.createServerInstances(IEclipseContext)` — pass context for E4 DI, null for tests
-- Testing constructor pattern: each server class has a package-private constructor accepting services directly
-- `ServoyFileGuard` — refuses destructive edits on `.frm`, `.obj`, `.tbl`, `.val`, `.rel`, `.dbi`
-- `ServoyResourceCache` — singleton, not injectable, accessed via `getInstance()`
+## 4. Post-Modification Compilation & Quick-Fix Loop
 
-## Build
+After making any code modifications or creating files using the Eclipse MCP tools, you must execute a self-verification compile loop:
 
-```bash
-# Full build (compile + site, skip tests)
-mvn clean verify -Dmaven.test.skip=true
+1. **Check for errors:** Call `eclipse-ide_getCompilationErrors()` immediately to check the build state.
+2. **Review quick fixes:** If any compilation errors are introduced or identified, look at the returned quick fixes list.
+3. **Apply quick fixes:** If a quick fix is applicable and safe, immediately apply it using `eclipse-ide_executeQuickFix` by passing the corresponding `markerId` and `proposalIndex`.
+4. **Re-check:** Verify compilation again to ensure the workspace is clean.
 
-# Build with unit + integration tests
-mvn clean verify
+---
 
-# Only unit tests (fast, headless)
-mvn verify -pl bundles/com.servoy.eclipse.servoypilot.assistenttests -am
-```
+## 5. Spotbugs Error Resolution
 
-The build uses **Tycho 4.0.12** and targets **JavaSE-21**.
+Spotbugs is used to find bugs in Java code. You must pay special attention to Spotbugs issues:
+- **Identify Spotbugs Errors:** Spotbugs errors of the **two highest severity levels** are treated as blocking errors.
+- **Proactive Fixing:** Always try to fix these Spotbugs errors in any new or modified code to keep the codebase robust and clean.
 
-## Target Platform
+---
 
-The target (`launch_target_aiplugin/com.servoy.eclipse.servoypilot..target`) resolves against:
-- `https://build.servoy.com/latest/servoy_release/update_site/` (Servoy feature + Eclipse platform)
-- Maven Central + Servoy Maven repo for additional dependencies (ONNX, PDFBox, Tika, MCP SDK, Reactor)
 
-The main Servoy product target is at: https://github.com/Servoy/servoy-eclipse/blob/release/launch_targets/com.servoy.eclipse.target.target
-
-Dependencies already provided by the Servoy target should NOT be duplicated here.
-
-## Testing
-
-Tests are in `bundles/com.servoy.eclipse.servoypilot.assistenttests`:
-- `src/.../unit/` — Pure logic unit tests (no OSGi runtime needed)
-- `src/.../integration/` — Integration tests requiring full Eclipse workbench + Servoy runtime
-
-Both run via `tycho-surefire-plugin` with `useUIHarness=true` and `useUIThread=true`.
-
-### developer.mcp JUnit tests
-
-Tests are in `bundles/com.servoy.eclipse.developer.mcp/test/`. Run manually via **Run As → JUnit Plugin Test** using `DeveloperMcpTests.launch`. The `eclipse-pde_runJUnitPluginTestClass` MCP tool does NOT work for this bundle.
-
-### Running tests from Eclipse
-
-Use the correct Eclipse MCP tool depending on the test type:
-
-| Test class | Type | Run with |
-|---|---|---|
-| `...unit.AnalyzeCodeToolTest` | unit | `runClassTests` |
-| `...unit.GenerateTestCasesToolTest` | unit | `runClassTests` |
-| `...unit.TestFileServiceReflectionTest` | unit | `runClassTests` |
-| `...integration.AddTestMethodIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.CreateTestFileIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerGroupedTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerLayer4Test` | integration (PDE) | `runJUnitPluginTestClass` |
-
-- Unit tests (`**/unit/*`): use `runClassTests` or `runTestMethod` — these are plain JUnit, no OSGi needed.
-- Integration tests (`**/integration/*`): use `runJUnitPluginTestClass` or `runJUnitPluginTests` — these require the full PDE runtime with workbench.
-
-Project name for all: `com.servoy.eclipse.servoypilot.assistenttests`
-
-## Tool Preferences
-
-When working in this project, prefer Eclipse MCP tools over built-in tools:
-
-| Task | Use (Eclipse MCP) | Avoid (built-in) |
-|------|-------------------|-------------------|
-| Read Java source | `getSource`, `getFilteredSource`, `getMethodSource` | `read` (for Java files) |
-| Class structure | `getClassOutline` | `grep` for class members |
-| Find references | `findReferences` | `grep` for usages |
-| Search code | `fileSearch`, `fileSearchRegExp` | `grep` |
-| Find files | `findFiles` | `glob` |
-| Project layout | `getProjectLayout` | `read` directory |
-| Compilation errors | `getCompilationErrors` | reading build output |
-| Run tests | `runClassTests`, `runAllTests`, `runTestMethod` | `bash mvn test` |
-| Organize imports | `organizeImports` | manual edit |
-| Format code | `formatFile` | manual formatting |
-| Type hierarchy | `getTypeHierarchy` | grep for extends/implements |
-| Call hierarchy | `getMethodCallHierarchy` | grep for method name |
-| Quick fixes | `executeQuickFix` | manual fix |
-| Git operations | `eclipse-git` tools | `bash git` |
-| Refactoring (rename/move) | `refactorRenameJavaType`, `refactorMoveJavaType` | manual rename + find/replace |
-| Maven build | `runMavenBuild` | `bash mvn` |
-| PDE tests | `eclipse-pde` tools | `bash mvn verify` |
-
-Use built-in `read`/`glob`/`grep` only for non-Java files (XML, properties, markdown, pom.xml) or when Eclipse tools are not applicable.
-
-**Exception:** For a full CI/CD-style build (compile + tests + site), use the shell/bash `mvn` command directly. This ensures the build is tested exactly as it runs in CI. Example:
-
-```bash
-mvn clean verify -Dmaven.test.skip=true
-```
-
-## Lint / Typecheck
-
-There is no separate lint or typecheck command. Compilation is handled by the Eclipse JDT compiler via Tycho. Use `getCompilationErrors` to check for issues after edits.
-
-After making changes, always run `getCompilationErrors` to verify there are no new issues. SpotBugs findings marked as ERROR severity should also be fixed when possible (e.g. unsynchronized singleton getInstance, non-private constructors, potential null pointer dereferences).
-
-This is the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. The plugin provides AI-assisted development features including code analysis, test generation, knowledge base indexing, and MCP (Model Context Protocol) integration.
-
-## Project Structure
-
-| Path | Type | Description |
-|------|------|-------------|
-| `bundles/com.servoy.eclipse.servoypilot` | eclipse-plugin | Main plugin: AI assistant UI, tools, chat, completion |
-| `bundles/com.servoy.eclipse.servoypilot.langchain4j` | eclipse-plugin | LangChain4j wrapper bundle (AI/LLM integration library) |
-| `bundles/com.servoy.eclipse.servoypilot.knowledgebase` | eclipse-plugin | Knowledge base indexing, ONNX embeddings, RAG |
-| `bundles/com.servoy.eclipse.developer.mcp` | eclipse-plugin | MCP server implementation for Servoy Developer |
-| `bundles/com.servoy.eclipse.servoypilot.assistenttests` | eclipse-test-plugin | Unit + integration tests (Tycho surefire) |
-| `features/com.servoy.eclipse.servoypilot.feature` | eclipse-feature | Feature packaging all plugins + platform-specific fragments |
-| `repository.site_aiplugin` | eclipse-repository | P2 update site for distribution |
-| `launch_target_aiplugin` | target-definition | Target platform definition for building/running |
-| `launch_target` | (legacy) | Old target, not used in Maven build |
-| `bundles/application_server` | resource | Servoy app server resources for test runtime |
-| `bundles/org.eclipse.jface` | patch | JFace patch/overlay included only so tests pick it up in their launch classpath. Warnings/errors in this project can always be ignored. |
-
-## Build
-
-```bash
-# Full build (compile + site, skip tests)
-mvn clean verify -Dmaven.test.skip=true
-
-# Build with unit + integration tests
-mvn clean verify
-
-# Only unit tests (fast, headless)
-mvn verify -pl bundles/com.servoy.eclipse.servoypilot.assistenttests -am
-```
-
-The build uses **Tycho 4.0.12** and targets **JavaSE-21**.
-
-## Target Platform
-
-The target (`launch_target_aiplugin/com.servoy.eclipse.servoypilot..target`) resolves against:
-- `https://build.servoy.com/latest/servoy_release/update_site/` (Servoy feature + Eclipse platform)
-- Maven Central + Servoy Maven repo for additional dependencies (ONNX, PDFBox, Tika, MCP SDK, Reactor)
-
-The main Servoy product target is at: https://github.com/Servoy/servoy-eclipse/blob/release/launch_targets/com.servoy.eclipse.target.target
-
-Dependencies already provided by the Servoy target should NOT be duplicated here.
-
-## Testing
-
-Tests are in `bundles/com.servoy.eclipse.servoypilot.assistenttests`:
-- `src/.../unit/` — Pure logic unit tests (no OSGi runtime needed)
-- `src/.../integration/` — Integration tests requiring full Eclipse workbench + Servoy runtime
-
-Both run via `tycho-surefire-plugin` with `useUIHarness=true` and `useUIThread=true`.
-
-### Running tests from Eclipse
-
-Use the correct Eclipse MCP tool depending on the test type:
-
-| Test class | Type | Run with |
-|---|---|---|
-| `...unit.AnalyzeCodeToolTest` | unit | `runClassTests` |
-| `...unit.GenerateTestCasesToolTest` | unit | `runClassTests` |
-| `...unit.TestFileServiceReflectionTest` | unit | `runClassTests` |
-| `...integration.AddTestMethodIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.CreateTestFileIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerGroupedTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerIntegrationTest` | integration (PDE) | `runJUnitPluginTestClass` |
-| `...integration.JSUnitRunnerLayer4Test` | integration (PDE) | `runJUnitPluginTestClass` |
-
-- Unit tests (`**/unit/*`): use `runClassTests` or `runTestMethod` — these are plain JUnit, no OSGi needed.
-- Integration tests (`**/integration/*`): use `runJUnitPluginTestClass` or `runJUnitPluginTests` — these require the full PDE runtime with workbench.
-
-Project name for all: `com.servoy.eclipse.servoypilot.assistenttests`
-
-## Tool Preferences
-
-When working in this project, prefer Eclipse MCP tools over built-in tools:
-
-| Task | Use (Eclipse MCP) | Avoid (built-in) |
-|------|-------------------|-------------------|
-| Read Java source | `getSource`, `getFilteredSource`, `getMethodSource` | `read` (for Java files) |
-| Class structure | `getClassOutline` | `grep` for class members |
-| Find references | `findReferences` | `grep` for usages |
-| Search code | `fileSearch`, `fileSearchRegExp` | `grep` |
-| Find files | `findFiles` | `glob` |
-| Project layout | `getProjectLayout` | `read` directory |
-| Compilation errors | `getCompilationErrors` | reading build output |
-| Run tests | `runClassTests`, `runAllTests`, `runTestMethod` | `bash mvn test` |
-| Organize imports | `organizeImports` | manual edit |
-| Format code | `formatFile` | manual formatting |
-| Type hierarchy | `getTypeHierarchy` | grep for extends/implements |
-| Call hierarchy | `getMethodCallHierarchy` | grep for method name |
-| Quick fixes | `executeQuickFix` | manual fix |
-| Git operations | `eclipse-git` tools | `bash git` |
-| Refactoring (rename/move) | `refactorRenameJavaType`, `refactorMoveJavaType` | manual rename + find/replace |
-| Maven build | `runMavenBuild` | `bash mvn` |
-| PDE tests | `eclipse-pde` tools | `bash mvn verify` |
-
-Use built-in `read`/`glob`/`grep` only for non-Java files (XML, properties, markdown, pom.xml) or when Eclipse tools are not applicable.
-
-**Exception:** For a full CI/CD-style build (compile + tests + site), use the shell/bash `mvn` command directly. This ensures the build is tested exactly as it runs in CI. Example:
-
-```bash
-mvn clean verify -Dmaven.test.skip=true
-```
-
-## Lint / Typecheck
-
-There is no separate lint or typecheck command. Compilation is handled by the Eclipse JDT compiler via Tycho. Use `getCompilationErrors` to check for issues after edits.
-
-After making changes, always run `getCompilationErrors` to verify there are no new issues. SpotBugs findings marked as ERROR severity should also be fixed when possible (e.g. unsynchronized singleton getInstance, non-private constructors, potential null pointer dereferences).
+*Thank you for keeping the Servoy Copilot codebase healthy, compilation-error free, and highly consistent!*
