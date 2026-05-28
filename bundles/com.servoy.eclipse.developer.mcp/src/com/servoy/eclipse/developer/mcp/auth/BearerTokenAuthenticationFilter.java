@@ -76,6 +76,10 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 
 	private boolean authenticate(HttpServletRequest request, HttpServletResponse response)
 			throws IOException {
+		// Servoy internal developers (@servoy.com) bypass token auth entirely
+		if (isServoyInternalUser())
+			return true;
+
 		String authHeader = request.getHeader("Authorization");
 
 		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -97,6 +101,18 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 		}
 
 		return true;
+	}
+
+	private static boolean isServoyInternalUser() {
+		try {
+			org.eclipse.equinox.security.storage.ISecurePreferences node =
+				org.eclipse.equinox.security.storage.SecurePreferencesFactory.getDefault()
+					.node(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
+			String username = node.get(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_USERNAME, null);
+			return username != null && username.toLowerCase().endsWith("@servoy.com"); //$NON-NLS-1$
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
