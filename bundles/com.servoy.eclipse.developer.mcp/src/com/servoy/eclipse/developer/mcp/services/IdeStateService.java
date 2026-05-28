@@ -182,13 +182,14 @@ public class IdeStateService
 
 	// --- Compilation errors (generic marker API, no JDT) ---
 
-	public String getCompilationErrors(String projectName, String severity, int maxResults)
+	public String getCompilationErrors(String projectName, String severity, int maxResults, String filePattern)
 	{
 		if (maxResults <= 0) maxResults = 50;
 
 		int severityFilter = -1; // -1 = all
 		if ("ERROR".equalsIgnoreCase(severity)) severityFilter = IMarker.SEVERITY_ERROR;
 		else if ("WARNING".equalsIgnoreCase(severity)) severityFilter = IMarker.SEVERITY_WARNING;
+		else if ("INFO".equalsIgnoreCase(severity)) severityFilter = IMarker.SEVERITY_INFO;
 
 		StringBuilder result = new StringBuilder();
 		result.append("# Compilation Problems\n\n");
@@ -211,6 +212,14 @@ public class IdeStateService
 
 			IMarker[] markers = scope.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
 
+			// Compile glob pattern for file filtering if provided
+			java.util.regex.Pattern fileGlob = null;
+			if (filePattern != null && !filePattern.isBlank())
+			{
+				String regex = filePattern.trim().replace(".", "\\.").replace("*", ".*").replace("?", ".");
+				fileGlob = java.util.regex.Pattern.compile(".*" + regex + "$", java.util.regex.Pattern.CASE_INSENSITIVE);
+			}
+
 			int count = 0;
 			for (IMarker marker : markers)
 			{
@@ -218,6 +227,14 @@ public class IdeStateService
 
 				int markerSeverity = marker.getAttribute(IMarker.SEVERITY, -1);
 				if (severityFilter >= 0 && markerSeverity != severityFilter) continue;
+
+				// Apply file pattern filter
+				if (fileGlob != null)
+				{
+					String filePath = marker.getResource() != null
+						? marker.getResource().getFullPath().toString() : "";
+					if (!fileGlob.matcher(filePath).matches()) continue;
+				}
 
 				String severityLabel = switch (markerSeverity)
 				{

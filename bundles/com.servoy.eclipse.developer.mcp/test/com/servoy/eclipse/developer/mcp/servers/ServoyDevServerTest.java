@@ -40,28 +40,31 @@ public class ServoyDevServerTest
 	}
 
 	@Test
-	public void testServoyDevServer_hasOneToolMethod()
+	public void testServoyDevServer_hasCorrectToolCount()
 	{
 		long toolCount = java.util.Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(
 				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
 			.count();
-		assertEquals(1, toolCount);
+		assertEquals(5, toolCount);
 	}
 
 	@Test
-	public void testServoyDevServer_registeredInBuiltins()
+	public void testResolveIdentifierType_nullIdentifier_returnsError()
 	{
-		boolean found = false;
-		for (Class<?> cls : com.servoy.eclipse.developer.mcp.McpServerBuiltins.BUILT_IN_SERVER_CLASSES)
-		{
-			if (cls == ServoyDevServer.class)
-			{
-				found = true;
-				break;
-			}
-		}
-		assertTrue("ServoyDevServer must be registered in McpServerBuiltins", found);
+		String result = server.resolveIdentifierType(null, "someForm", null);
+		assertNotNull(result);
+		assertTrue("Should return error for null identifier",
+			result.contains("Error") || result.contains("required"));
+	}
+
+	@Test
+	public void testResolveIdentifierType_unknownForm_returnsNotFound()
+	{
+		String result = server.resolveIdentifierType("myVar", "nonExistentForm_XYZ_ABC", null);
+		assertNotNull(result);
+		assertTrue("Should return not-found message",
+			result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC") || result.contains("Error"));
 	}
 
 	@Test

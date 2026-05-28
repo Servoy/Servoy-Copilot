@@ -26,6 +26,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.services.FileStructureService;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
 import com.servoy.eclipse.developer.mcp.services.MarkdownService;
 import com.servoy.eclipse.developer.mcp.services.ProjectService;
@@ -68,6 +69,9 @@ public class ServoyIdeServer
 	private IdeStateService ideStateService;
 	@Inject
 	private ServoyScriptResolver servoyScriptResolver;
+	@Inject
+	private FileStructureService fileStructureService;
+
 
 	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyIdeServer() { }
@@ -81,6 +85,7 @@ public class ServoyIdeServer
 		this.markdownService = markdownService;
 		this.ideStateService = ideStateService;
 		this.servoyScriptResolver = new ServoyScriptResolver();
+		this.fileStructureService = new FileStructureService();
 	}
 
 	@Tool(name = "listProjects",
@@ -128,6 +133,120 @@ public class ServoyIdeServer
 		int start = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(0);
 		int end = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(0);
 		return workspaceService.readProjectResource(projectName, resourcePath, lineNumbers, start, end);
+	}
+
+	@Tool(name = "getFileInfo",
+		description = "Gets metadata about a file without reading its full content: size in bytes, line count, and existence. "
+			+ "Use this to check file size before deciding whether to read it in full or in ranges.",
+		type = "object")
+	public String getFileInfo(
+		@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
+		@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath)
+	{
+		WorkspaceService.FileInfo info = workspaceService.getFileInfo(projectName, resourcePath);
+		if (!info.exists())
+			return "Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.";
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# File Info\n\n");
+		sb.append("- **Path:** ").append(info.fullPath()).append("\n");
+		sb.append("- **Project:** ").append(info.projectName()).append("\n");
+		sb.append("- **File name:** ").append(info.fileName()).append("\n");
+		sb.append("- **Size:** ").append(info.sizeBytes()).append(" bytes\n");
+		sb.append("- **Lines:** ").append(info.lineCount()).append("\n");
+		if (info.lineCount() > WorkspaceService.MAX_LINES_DEFAULT)
+			sb.append("- **Note:** File exceeds ").append(WorkspaceService.MAX_LINES_DEFAULT)
+				.append(" lines. Use startLine/endLine in readProjectResource or readFileRanges to read specific sections.\n");
+		return sb.toString();
+	}
+
+	@Tool(name = "readFileRanges",
+		description = "Reads multiple non-contiguous line ranges from a file in a single call. "
+			+ "Useful for reading several locations at once (e.g. multiple stack trace lines) without multiple tool calls. "
+			+ "Provide ranges as comma-separated pairs: '10-20,50-60,100-110'.",
+		type = "object")
+	public String readFileRanges(
+		@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
+		@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath,
+		@ToolParam(name = "ranges", description = "Comma-separated line ranges in format 'start1-end1,start2-end2' (e.g. '10-20,50-60'). Line numbers are 1-based.", required = true) String ranges)
+	{
+		List<WorkspaceService.RangeResult> results = workspaceService.readFileRanges(projectName, resourcePath, ranges);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# File Ranges: ").append(resourcePath).append("\n\n");
+		for (WorkspaceService.RangeResult r : results)
+		{
+			sb.append("## Lines ").append(r.startLine()).append("-").append(r.endLine()).append("\n\n");
+			sb.append("```\n").append(r.content()).append("```\n\n");
+		}
+		return sb.toString();
+	}
+
+
+	@Tool(name = "readFileContext",
+		description = "Reads lines around a specific line number (smart windowing). "
+			+ "Perfect for analyzing errors at a specific line without reading the entire file. "
+			+ "Returns lines from centerLine-windowSize to centerLine+windowSize.",
+		type = "object")
+	public String readFileContext(
+		@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
+		@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath,
+		@ToolParam(name = "centerLine", description = "The line number to center the reading window on (1-based)", required = true) String centerLine,
+		@ToolParam(name = "windowSize", description = "Number of lines to read before and after centerLine. Default: 30.", required = false) String windowSize)
+	{
+		int center = Integer.parseInt(centerLine);
+		int window = Optional.ofNullable(windowSize).map(Integer::parseInt).orElse(30);
+		WorkspaceService.FileContextResult r = workspaceService.readFileContext(projectName, resourcePath, center, window);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# File Context: ").append(resourcePath).append("\n\n");
+		sb.append("Center line: ").append(r.centerLine())
+			.append(", showing lines ").append(r.startLine()).append("-").append(r.endLine())
+			.append(" of ").append(r.totalLines()).append("\n\n");
+		sb.append("```\n").append(r.content()).append("```\n");
+		return sb.toString();
+	}
+
+	@Tool(name = "getFileOutline",
+		description = "Gets an outline of functions/methods in a file without reading full content. "
+			+ "Returns function names with their starting line numbers. "
+			+ "Useful for navigating large files before using readFunction or readProjectResource.",
+		type = "object")
+	public String getFileOutline(
+		@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
+		@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath)
+	{
+		List<WorkspaceService.OutlineEntry> entries = workspaceService.getFileOutline(projectName, resourcePath);
+
+		if (entries.isEmpty())
+			return "No functions found in '" + resourcePath + "'.";
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# File Outline: ").append(resourcePath).append("\n\n");
+		sb.append("Found ").append(entries.size()).append(" function(s):\n\n");
+		for (WorkspaceService.OutlineEntry e : entries)
+			sb.append("- Line ").append(e.lineNumber()).append(": ").append(e.functionName()).append("()\n");
+		return sb.toString();
+	}
+
+	@Tool(name = "readFunction",
+		description = "Reads a complete function/method definition from a file by function name. "
+			+ "Finds the function and returns all its lines using brace matching. "
+			+ "Use getFileOutline first to discover available function names.",
+		type = "object")
+	public String readFunction(
+		@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
+		@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath,
+		@ToolParam(name = "functionName", description = "Name of the function to read (without parentheses)", required = true) String functionName)
+	{
+		WorkspaceService.FunctionResult r = workspaceService.readFunction(projectName, resourcePath, functionName);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# Function: ").append(r.functionName()).append("\n\n");
+		sb.append("File: ").append(r.fullPath())
+			.append(", lines ").append(r.startLine()).append("-").append(r.endLine()).append("\n\n");
+		sb.append("```javascript\n").append(r.content()).append("```\n");
+		return sb.toString();
 	}
 
 	@Tool(name = "findFiles",
@@ -259,11 +378,12 @@ public class ServoyIdeServer
 		type = "object")
 	public String getCompilationErrors(
 		@ToolParam(name = "projectName", description = "The name of the specific project to check (optional, leave empty for all projects)", required = false) String projectName,
-		@ToolParam(name = "severity", description = "Filter by severity level: 'ERROR', 'WARNING', or 'ALL' (default)", required = false) String severity,
-		@ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults)
+		@ToolParam(name = "severity", description = "Filter by severity level: 'ERROR', 'WARNING', 'INFO', or 'ALL' (default)", required = false) String severity,
+		@ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults,
+		@ToolParam(name = "filePattern", description = "Optional glob pattern to filter by file name (e.g. '*.js', '*.frm'). If omitted, all files are included.", required = false) String filePattern)
 	{
 		int max = Optional.ofNullable(maxResults).map(Integer::parseInt).orElse(50);
-		return ideStateService.getCompilationErrors(projectName, severity, max);
+		return ideStateService.getCompilationErrors(projectName, severity, max, filePattern);
 	}
 
 	// --- Private helpers ---
@@ -338,31 +458,121 @@ public class ServoyIdeServer
 		return workspaceService.readProjectResource(projectName, resourcePath, true, 0, 0);
 	}
 
-	@Tool(name = "getClassOutline", description = "Returns a compact outline of a Java class. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	@Tool(name = "getClassOutline",
+		description = "Returns a compact outline of a Servoy JavaScript file: all function/method names with line numbers and parameter names. "
+			+ "Much more token-efficient than reading the full file. "
+			+ "Accepts a form name (e.g. 'customers'), scope name (e.g. 'utils'), or project-relative path. "
+			+ "Use this first, then getMethodSource for specific functions.",
+		type = "object")
 	public String getClassOutline(
-		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
-		@ToolParam(name = "includeFields", description = "Whether to include field declarations (default: true)", required = false) String includeFields)
+		@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
+		@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName)
 	{
-		throw new RuntimeException(JDT_NOT_AVAILABLE);
-	}
+		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
+		if (file == null)
+			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
 
-	@Tool(name = "getMethodSource", description = "Returns the source code of specific method(s) with line numbers. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+		FileStructureService.FileStructure structure = fileStructureService.analyzeFile(file);
+		return structure.toFormattedString();
+	}
+	@Tool(name = "getMethodSource",
+		description = "Returns the source code of a specific function by name from a Servoy JavaScript file. "
+			+ "Accepts a form name, scope name, or project-relative path. "
+			+ "Use getClassOutline first to discover available function names.",
+		type = "object")
 	public String getMethodSource(
-		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
-		@ToolParam(name = "methodNames", description = "Comma-separated method names to retrieve", required = true) String methodNames,
-		@ToolParam(name = "methodSignature", description = "Optional parameter type hint to disambiguate overloaded methods", required = false) String methodSignature,
-		@ToolParam(name = "includeJavadoc", description = "Whether to include Javadoc comments (default: true)", required = false) String includeJavadoc)
+		@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
+		@ToolParam(name = "methodNames", description = "Comma-separated function names to retrieve (e.g. 'onLoad,saveRecord')", required = true) String methodNames,
+		@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName,
+		@ToolParam(name = "includeJavadoc", description = "Not used â kept for API compatibility.", required = false) String includeJavadoc)
 	{
-		throw new RuntimeException(JDT_NOT_AVAILABLE);
+		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
+		if (file == null)
+			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
+
+		if (methodNames == null || methodNames.isBlank())
+			return "Error: 'methodNames' is required.";
+
+		StringBuilder sb = new StringBuilder();
+		for (String methodName : methodNames.split(","))
+		{
+			String trimmed = methodName.trim();
+			if (trimmed.isBlank()) continue;
+			try
+			{
+				WorkspaceService.FunctionResult r = workspaceService.readFunction(
+					file.getProject().getName(), file.getProjectRelativePath().toString(), trimmed);
+				sb.append("## ").append(r.functionName())
+					.append(" (lines ").append(r.startLine()).append("-").append(r.endLine()).append(")\n\n");
+				sb.append("```javascript\n").append(r.content()).append("```\n\n");
+			}
+			catch (RuntimeException e)
+			{
+				sb.append("## ").append(trimmed).append("\n\n");
+				sb.append(e.getMessage()).append("\n\n");
+			}
+		}
+		return sb.toString();
 	}
 
-	@Tool(name = "getFilteredSource", description = "Returns source code with optional import exclusion and selective method expansion. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")
+	@Tool(name = "getFilteredSource",
+		description = "Returns the source of a Servoy JavaScript file with selective function expansion. "
+			+ "Functions listed in 'methodNames' are shown in full; all others are collapsed to their signature and line number. "
+			+ "Accepts a form name, scope name, or project-relative path.",
+		type = "object")
 	public String getFilteredSource(
-		@ToolParam(name = "fullyQualifiedClassName", description = "A fully qualified class name", required = true) String fullyQualifiedClassName,
-		@ToolParam(name = "excludeImports", description = "Whether to collapse the import block (default: true)", required = false) String excludeImports,
-		@ToolParam(name = "methodNames", description = "Comma-separated method names to fully expand", required = false) String methodNames)
+		@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
+		@ToolParam(name = "methodNames", description = "Comma-separated function names to fully expand. Functions not listed are collapsed to their signature.", required = false) String methodNames,
+		@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName,
+		@ToolParam(name = "excludeImports", description = "Not used â kept for API compatibility.", required = false) String excludeImports)
 	{
-		throw new RuntimeException(JDT_NOT_AVAILABLE);
+		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
+		if (file == null)
+			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
+
+		String projectName = file.getProject().getName();
+		String resourcePath = file.getProjectRelativePath().toString();
+
+		// Get outline for all symbols
+		java.util.List<WorkspaceService.OutlineEntry> outline = workspaceService.getFileOutline(projectName, resourcePath);
+
+		// Parse requested methods
+		java.util.Set<String> expand = new java.util.HashSet<>();
+		if (methodNames != null && !methodNames.isBlank())
+			for (String m : methodNames.split(","))
+				expand.add(m.trim());
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("# ").append(resourcePath).append("\n\n");
+
+		if (outline.isEmpty())
+		{
+			// No symbols found â return full file
+			return workspaceService.readProjectResource(projectName, resourcePath, true, 0, 0);
+		}
+
+		for (WorkspaceService.OutlineEntry entry : outline)
+		{
+			if (expand.isEmpty() || expand.contains(entry.functionName()))
+			{
+				// Expand fully
+				try
+				{
+					WorkspaceService.FunctionResult r = workspaceService.readFunction(projectName, resourcePath, entry.functionName());
+					sb.append("```javascript\n").append(r.content()).append("```\n\n");
+				}
+				catch (RuntimeException e)
+				{
+					sb.append("- Line ").append(entry.lineNumber()).append(": ").append(entry.functionName()).append("() [could not read]\n");
+				}
+			}
+			else
+			{
+				// Collapsed
+				sb.append("- Line ").append(entry.lineNumber()).append(": ").append(entry.functionName()).append("()\n");
+			}
+		}
+		return sb.toString();
 	}
 
 	@Tool(name = "getMethodCallHierarchy", description = "Retrieves the call hierarchy for a specified method. NOT AVAILABLE in Servoy Developer — requires JDT.", type = "object")

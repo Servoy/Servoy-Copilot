@@ -101,6 +101,12 @@ public class ServoyDevServer
 	private static final int DEFAULT_ENCAPSULATION = PersistEncapsulation.HIDE_DATAPROVIDERS |
 		PersistEncapsulation.HIDE_ELEMENTS | PersistEncapsulation.HIDE_CONTAINERS | PersistEncapsulation.HIDE_FOUNDSET;
 
+	private final com.servoy.eclipse.developer.mcp.services.ScriptContextService scriptContextService =
+		new com.servoy.eclipse.developer.mcp.services.ScriptContextService();
+	private final com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver scriptResolver =
+		new com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver();
+
+
 	public ServoyDevServer()
 	{
 	}
@@ -862,6 +868,51 @@ public class ServoyDevServer
 		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
 	}
 
+
+	// -------------------------------------------------------------------------
+	// getTarget / setTarget MCP tools
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "getTarget",
+		description = "Returns the currently active Servoy solution (target) in the Developer IDE. "
+			+ "Also lists all available solutions in the workspace.",
+		type = "object")
+	public String getTarget()
+	{
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		ServoyProject activeProject = model.getActiveProject();
+
+		StringBuilder sb = new StringBuilder();
+		if (activeProject != null)
+		{
+			sb.append("Active solution: ").append(activeProject.getProject().getName()).append("\n");
+		}
+		else
+		{
+			sb.append("No active solution.\n");
+		}
+
+		ServoyProject[] allProjects = model.getServoyProjects();
+		if (allProjects != null && allProjects.length > 0)
+		{
+			sb.append("\nAvailable solutions:\n");
+			for (ServoyProject p : allProjects)
+				sb.append("- ").append(p.getProject().getName()).append("\n");
+		}
+
+		return sb.toString();
+	}
+
+	@Tool(name = "setTarget",
+		description = "Sets the active Servoy solution (target) in the Developer IDE. "
+			+ "Equivalent to activateSolution â loads the solution and its modules, and triggers a workspace build.",
+		type = "object")
+	public String setTarget(
+		@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName)
+	{
+		return activateSolution(solutionName);
+	}
+
 	// -------------------------------------------------------------------------
 	// activateSolution MCP tool
 	// -------------------------------------------------------------------------
@@ -882,5 +933,30 @@ public class ServoyDevServer
 			Thread.currentThread().interrupt();
 			return "Error: activation interrupted.";
 		}
+	}
+
+
+	// -------------------------------------------------------------------------
+	// resolveIdentifierType MCP tool
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "resolveIdentifierType",
+		description = "Resolves the type of an identifier in a Servoy JavaScript file. "
+			+ "Uses DLTK type inference to determine the Servoy type: foundset, JSForm, application, databaseManager, "
+			+ "plugins.*, RuntimeWebComponent<name>, WebService<name>, or user-defined function. "
+			+ "Returns type name, source (local variable / Servoy API / method declaration), parameters for functions, "
+			+ "and JSDoc @type annotation if available. "
+			+ "Accepts a form name, scope name, or project-relative path.",
+		type = "object")
+	public String resolveIdentifierType(
+		@ToolParam(name = "identifier", description = "Identifier name to resolve (e.g. 'foundset', 'databaseManager', 'myVar')", required = true) String identifier,
+		@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
+		@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName)
+	{
+		IFile file = scriptResolver.resolveScript(name, moduleName);
+		if (file == null)
+			return scriptResolver.buildNotFoundMessage(name, moduleName);
+
+		return scriptContextService.resolveIdentifierType(identifier, file);
 	}
 }

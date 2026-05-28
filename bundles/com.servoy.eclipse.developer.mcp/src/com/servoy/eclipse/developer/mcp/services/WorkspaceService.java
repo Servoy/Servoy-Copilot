@@ -105,6 +105,9 @@ public class WorkspaceService
 
 	// --- readProjectResource ---
 
+	/** Maximum lines returned when no endLine is specified. Prevents accidental full-file dumps. */
+	public static final int MAX_LINES_DEFAULT = 500;
+
 	public String readProjectResource(String projectName, String resourcePath,
 		boolean showLineNumbers, int startLine, int endLine)
 	{
@@ -124,13 +127,14 @@ public class WorkspaceService
 			List<String> lines = readFileLines(file);
 			int totalLines = lines.size();
 			int effectiveStart = (startLine > 0) ? Math.min(startLine, totalLines) : 1;
-			int effectiveEnd = (endLine > 0) ? Math.min(endLine, totalLines) : totalLines;
+			int effectiveEnd = (endLine > 0) ? Math.min(endLine, totalLines) : Math.min(effectiveStart + MAX_LINES_DEFAULT - 1, totalLines);
 
 			StringBuilder response = new StringBuilder();
 			response.append("# Content of ").append(resourcePath).append(" in project ").append(projectName);
-			if (startLine > 0 || endLine > 0)
-				response.append(" (lines ").append(effectiveStart).append("-").append(effectiveEnd)
-					.append(" of ").append(totalLines).append(")");
+			response.append(" (lines ").append(effectiveStart).append("-").append(effectiveEnd)
+				.append(" of ").append(totalLines).append(")");
+			if (effectiveEnd < totalLines && endLine <= 0)
+				response.append(" [truncated at ").append(MAX_LINES_DEFAULT).append(" lines â use startLine/endLine for more]");
 			response.append("\n\n```\n");
 
 			int width = String.valueOf(totalLines).length();
@@ -158,6 +162,92 @@ public class WorkspaceService
 	}
 
 	// --- fileSearch ---
+
+	// --- getFileInfo ---
+
+	public record FileInfo(String fullPath, String projectName, String fileName, long sizeBytes, int lineCount, boolean exists) {}
+
+	public FileInfo getFileInfo(String projectName, String resourcePath)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		if (project == null || !project.exists() || !project.isOpen())
+			return new FileInfo("/" + projectName + "/" + resourcePath, projectName,
+				Path.of(resourcePath).getFileName().toString(), -1, -1, false);
+
+		IPath path = IPath.fromPath(Path.of(resourcePath));
+		IFile file = project.getFile(path);
+		if (!file.exists())
+			return new FileInfo(file.getFullPath().toString(), projectName,
+				file.getName(), -1, -1, false);
+
+		try
+		{
+			long sizeBytes = file.getLocation().toFile().length();
+			List<String> lines = readFileLines(file);
+			return new FileInfo(file.getFullPath().toString(), projectName,
+				file.getName(), sizeBytes, lines.size(), true);
+		}
+		catch (CoreException | IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
+	// --- readFileRanges ---
+
+	public record RangeResult(int startLine, int endLine, String content) {}
+
+	/**
+	 * Reads multiple non-contiguous line ranges from a file in a single call.
+	 * Ranges are specified as a comma-separated string, e.g. {@code "10-20,50-60,100-110"}.
+	 */
+	public List<RangeResult> readFileRanges(String projectName, String resourcePath, String ranges)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		if (project == null || !project.exists())
+			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+		if (!project.isOpen())
+			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+
+		IPath path = IPath.fromPath(Path.of(resourcePath));
+		IFile file = project.getFile(path);
+		if (!file.exists())
+			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+
+		if (ranges == null || ranges.isBlank())
+			throw new IllegalArgumentException("ranges must not be null/blank. Use format: '10-20,50-60'");
+
+		try
+		{
+			List<String> lines = readFileLines(file);
+			int totalLines = lines.size();
+			List<RangeResult> results = new ArrayList<>();
+
+			for (String rangePart : ranges.split(","))
+			{
+				rangePart = rangePart.trim();
+				String[] bounds = rangePart.split("-");
+				if (bounds.length != 2)
+					throw new IllegalArgumentException("Invalid range format: '" + rangePart + "'. Expected 'start-end'.");
+
+				int start = Math.max(1, Integer.parseInt(bounds[0].trim()));
+				int end = Math.min(totalLines, Integer.parseInt(bounds[1].trim()));
+				if (start > end)
+					throw new IllegalArgumentException("Invalid range: start " + start + " > end " + end);
+
+				StringBuilder content = new StringBuilder();
+				for (int i = start - 1; i < end; i++)
+					content.append(String.format("%d\t%s\n", i + 1, lines.get(i)));
+
+				results.add(new RangeResult(start, end, content.toString()));
+			}
+			return results;
+		}
+		catch (CoreException | IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
 
 	public record SearchResult(String filePath, int lineNumber, String lineContent) {}
 
@@ -254,6 +344,174 @@ public class WorkspaceService
 	}
 
 	// --- Private helpers ---
+
+	// --- readFileContext ---
+
+	/**
+	 * Reads lines around a center line (smart windowing).
+	 *
+	 * @param projectName  Eclipse project name
+	 * @param resourcePath path relative to project root
+	 * @param centerLine   1-based line to center the window on
+	 * @param windowSize   number of lines before and after centerLine (default 30)
+	 */
+	public record FileContextResult(String fullPath, int totalLines, int centerLine, int windowSize, int startLine, int endLine, String content) {}
+
+	public FileContextResult readFileContext(String projectName, String resourcePath, int centerLine, int windowSize)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		if (project == null || !project.exists())
+			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+		if (!project.isOpen())
+			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+
+		IPath path = IPath.fromPath(Path.of(resourcePath));
+		IFile file = project.getFile(path);
+		if (!file.exists())
+			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+
+		if (windowSize <= 0) windowSize = 30;
+
+		try
+		{
+			List<String> lines = readFileLines(file);
+			int totalLines = lines.size();
+
+			if (centerLine < 1 || centerLine > totalLines)
+				throw new RuntimeException("Error: Center line " + centerLine + " is out of bounds (file has " + totalLines + " lines).");
+
+			int startLine = Math.max(1, centerLine - windowSize);
+			int endLine = Math.min(totalLines, centerLine + windowSize);
+
+			StringBuilder content = new StringBuilder();
+			for (int i = startLine - 1; i < endLine; i++)
+				content.append(String.format("%d\t%s\n", i + 1, lines.get(i)));
+
+			return new FileContextResult(file.getFullPath().toString(), totalLines,
+				centerLine, windowSize, startLine, endLine, content.toString());
+		}
+		catch (CoreException | IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
+	// --- getFileOutline ---
+
+	public record OutlineEntry(int lineNumber, String functionName) {}
+
+	/**
+	 * Extracts function/method names with their starting line numbers using regex.
+	 * Handles: {@code function foo}, {@code var foo = function}, {@code async function foo}.
+	 */
+	public List<OutlineEntry> getFileOutline(String projectName, String resourcePath)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		if (project == null || !project.exists())
+			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+		if (!project.isOpen())
+			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+
+		IPath path = IPath.fromPath(Path.of(resourcePath));
+		IFile file = project.getFile(path);
+		if (!file.exists())
+			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+
+		try
+		{
+			List<String> lines = readFileLines(file);
+			List<OutlineEntry> entries = new ArrayList<>();
+			Pattern functionPattern = Pattern.compile(
+				"^\\s*(?:(?:async\\s+)?function\\s+(\\w+)|(?:var|let|const)\\s+(\\w+)\\s*=\\s*(?:async\\s+)?function|(\\w+)\\s*:\\s*(?:async\\s+)?function)");
+
+			for (int i = 0; i < lines.size(); i++)
+			{
+				java.util.regex.Matcher m = functionPattern.matcher(lines.get(i));
+				if (m.find())
+				{
+					String name = m.group(1) != null ? m.group(1) : m.group(2) != null ? m.group(2) : m.group(3);
+					if (name != null) entries.add(new OutlineEntry(i + 1, name));
+				}
+			}
+			return entries;
+		}
+		catch (CoreException | IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
+	// --- readFunction ---
+
+	public record FunctionResult(String fullPath, String functionName, int startLine, int endLine, String content) {}
+
+	/**
+	 * Reads a complete function body by name using brace matching.
+	 */
+	public FunctionResult readFunction(String projectName, String resourcePath, String functionName)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		if (project == null || !project.exists())
+			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+		if (!project.isOpen())
+			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+
+		IPath path = IPath.fromPath(Path.of(resourcePath));
+		IFile file = project.getFile(path);
+		if (!file.exists())
+			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+
+		if (functionName == null || functionName.isBlank())
+			throw new IllegalArgumentException("functionName must not be null/blank");
+
+		try
+		{
+			List<String> lines = readFileLines(file);
+			Pattern functionPattern = Pattern.compile(
+				"^\\s*(?:(?:async\\s+)?function\\s+" + Pattern.quote(functionName) +
+				"|(?:var|let|const)\\s+" + Pattern.quote(functionName) + "\\s*=\\s*(?:async\\s+)?function" +
+				"|" + Pattern.quote(functionName) + "\\s*:\\s*(?:async\\s+)?function)");
+
+			int startLine = -1;
+			for (int i = 0; i < lines.size(); i++)
+			{
+				if (functionPattern.matcher(lines.get(i)).find())
+				{
+					startLine = i;
+					break;
+				}
+			}
+
+			if (startLine == -1)
+				throw new RuntimeException("Error: Function '" + functionName + "' not found in file '" + resourcePath + "'.");
+
+			// Brace matching to find end of function
+			int braceCount = 0;
+			int endLine = startLine;
+			boolean inFunction = false;
+			for (int i = startLine; i < lines.size(); i++)
+			{
+				for (char c : lines.get(i).toCharArray())
+				{
+					if (c == '{') { braceCount++; inFunction = true; }
+					else if (c == '}') { braceCount--; }
+				}
+				if (inFunction && braceCount == 0) { endLine = i; break; }
+			}
+
+			StringBuilder content = new StringBuilder();
+			for (int i = startLine; i <= endLine; i++)
+				content.append(String.format("%d\t%s\n", i + 1, lines.get(i)));
+
+			return new FunctionResult(file.getFullPath().toString(), functionName,
+				startLine + 1, endLine + 1, content.toString());
+		}
+		catch (CoreException | IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
 
 	private List<SearchResult> search(Pattern pattern, String... fileNamePatterns)
 	{
