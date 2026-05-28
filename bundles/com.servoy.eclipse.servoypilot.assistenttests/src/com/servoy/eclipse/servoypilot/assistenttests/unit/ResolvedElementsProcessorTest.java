@@ -308,6 +308,38 @@ public class ResolvedElementsProcessorTest
 		assertEquals("The name of the record", node.get("description").asText());
 	}
 
+
+	@Test
+	public void testProcessModelElements_IField() throws Exception
+	{
+		SelectionResult result = new SelectionResult();
+		result.modelElements.add(createFieldProxy("myField", "String", "/project/file.js", "MyScope"));
+
+		processor.processModelElements("/project/file.js", resolvedElements, result);
+
+		assertEquals(1, resolvedElements.size());
+		JsonNode el = resolvedElements.get(0);
+		assertEquals("myField", el.get("name").asText());
+		assertEquals("model", el.get("source").asText());
+		assertEquals("field", el.get("kind").asText());
+		assertEquals("String", el.get("type").asText());
+		assertEquals("MyScope", el.get("declaringType").asText());
+	}
+
+	@Test
+	public void testProcessModelElements_IMethod_withDeclaringType() throws Exception
+	{
+		SelectionResult result = new SelectionResult();
+		result.modelElements.add(createMethodProxyWithDeclaringType("doSomething", "/project/file.js",
+			new org.eclipse.dltk.core.IParameter[0], "MyScope"));
+
+		processor.processModelElements("/project/file.js", resolvedElements, result);
+
+		JsonNode el = resolvedElements.get(0);
+		assertEquals("method", el.get("kind").asText());
+		assertEquals("MyScope", el.get("declaringType").asText());
+	}
+
 	@Test
 	public void testProcessElementSource_noDescription() throws Exception
 	{
@@ -1645,4 +1677,61 @@ public class ResolvedElementsProcessorTest
 			return null;
 		}
 	}
+
+	private static org.eclipse.dltk.core.IField createFieldProxy(String name, String type, String path, String declaringTypeName)
+	{
+		return createProxy(org.eclipse.dltk.core.IField.class, (proxy, method, args) -> {
+			return switch (method.getName())
+			{
+				case "getElementName" -> name;
+				case "getType" -> type;
+				case "getPath" -> new org.eclipse.core.runtime.Path(path);
+				case "getDeclaringType" -> declaringTypeName != null
+					? createProxy(org.eclipse.dltk.core.IType.class, (p2, m2, a2) -> {
+						if ("getElementName".equals(m2.getName())) return declaringTypeName;
+						return null;
+					})
+					: null;
+				case "exists" -> true;
+				default -> null;
+			};
+		});
+	}
+
+	private static org.eclipse.dltk.core.IType createTypeProxy(String name, String path, String[] superClasses)
+	{
+		return createProxy(org.eclipse.dltk.core.IType.class, (proxy, method, args) -> {
+			return switch (method.getName())
+			{
+				case "getElementName" -> name;
+				case "getPath" -> new org.eclipse.core.runtime.Path(path);
+				case "getSuperClasses" -> superClasses;
+				case "getDeclaringType" -> null;
+				case "exists" -> true;
+				default -> null;
+			};
+		});
+	}
+
+	private static org.eclipse.dltk.core.IMethod createMethodProxyWithDeclaringType(String name, String path,
+		org.eclipse.dltk.core.IParameter[] params, String declaringTypeName)
+	{
+		return createProxy(org.eclipse.dltk.core.IMethod.class, (proxy, method, args) -> {
+			return switch (method.getName())
+			{
+				case "getElementName" -> name;
+				case "getPath" -> new org.eclipse.core.runtime.Path(path);
+				case "getParameters" -> params;
+				case "getDeclaringType" -> declaringTypeName != null
+					? createProxy(org.eclipse.dltk.core.IType.class, (p2, m2, a2) -> {
+						if ("getElementName".equals(m2.getName())) return declaringTypeName;
+						return null;
+					})
+					: null;
+				case "exists" -> true;
+				default -> null;
+			};
+		});
+	}
+
 }
