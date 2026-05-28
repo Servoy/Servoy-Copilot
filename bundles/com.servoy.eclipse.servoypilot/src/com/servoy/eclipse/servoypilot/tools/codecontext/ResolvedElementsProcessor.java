@@ -20,9 +20,11 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.dltk.core.IField;
 import org.eclipse.dltk.core.ILocalVariable;
 import org.eclipse.dltk.core.IMethod;
 import org.eclipse.dltk.core.IModelElement;
+import org.eclipse.dltk.core.IType;
 import org.eclipse.dltk.core.ModelException;
 import org.eclipse.dltk.internal.core.SourceRefElement;
 import org.eclipse.dltk.javascript.typeinfo.IRConstructor;
@@ -104,7 +106,36 @@ public class ResolvedElementsProcessor
 					node.put("type", localVariable.getType());
 				}
 			}
-			if (element instanceof IMethod method)
+			else if (element instanceof IField field)
+			{
+				node.put("kind", "field");
+				if (field.getType() != null)
+				{
+					node.put("type", field.getType());
+				}
+				if (field.getDeclaringType() != null)
+				{
+					node.put("declaringType", field.getDeclaringType().getElementName());
+				}
+			}
+			else if (element instanceof IType type)
+			{
+				node.put("kind", "type");
+				String[] superClasses = type.getSuperClasses();
+				if (superClasses != null && superClasses.length > 0)
+				{
+					ArrayNode supers = node.putArray("superClasses");
+					for (String sc : superClasses)
+					{
+						supers.add(sc);
+					}
+				}
+				if (type.getDeclaringType() != null)
+				{
+					node.put("declaringType", type.getDeclaringType().getElementName());
+				}
+			}
+			else if (element instanceof IMethod method)
 			{
 				node.put("kind", "method");
 				ArrayNode params = node.putArray("parameters");
@@ -116,6 +147,10 @@ public class ResolvedElementsProcessor
 					{
 						param.put("type", p.getType());
 					}
+				}
+				if (method.getDeclaringType() != null)
+				{
+					node.put("declaringType", method.getDeclaringType().getElementName());
 				}
 			}
 			if (filePath != null && !filePath.replace("L/", "/").equals(element.getPath().toString()))
