@@ -42,6 +42,7 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+// ResolvedElementsProcessor is in the same package — no import needed
 
 /**
  * Resolves the type of an identifier in a Servoy JavaScript file using DLTK's
@@ -100,10 +101,29 @@ public class ScriptContextService
 			int lineNumber = document.getLineOfOffset(offset) + 1;
 			SelectionResult selectedElements = getModelElements(filePath, offset);
 
-			if (selectedElements != null)
-				return formatTypeInfo(selectedElements, identifier, filePath, lineNumber, fileContent, offset);
+		if (selectedElements != null)
+		{
+			// Use ResolvedElementsProcessor for rich structured JSON output
+			if (!selectedElements.modelElements.isEmpty() || !selectedElements.foreignElements.isEmpty())
+			{
+				try
+				{
+					return ResolvedElementsProcessor.getInstance().toJson(filePath, selectedElements);
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logWarning("ScriptContextService: ResolvedElementsProcessor failed, falling back to simple format", e);
+					return formatTypeInfo(selectedElements, identifier, filePath, lineNumber, fileContent, offset);
+				}
+			}
+		}
 
-			return "Error: No type information available for identifier '" + identifier + "'";
+		// JSDoc fallback when no model/foreign elements found
+		String jsDocType = extractJSDocType(fileContent, offset);
+		if (jsDocType != null)
+			return "{ \"resolvedElements\": [{ \"name\": \"" + identifier + "\", \"source\": \"jsdoc\", \"type\": \"" + jsDocType + "\", \"location\": \"" + filePath + ":" + lineNumber + "\" }] }";
+
+		return "Error: No type information available for identifier '" + identifier + "'";
 		}
 		catch (Exception e)
 		{
