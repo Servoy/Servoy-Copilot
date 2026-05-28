@@ -172,7 +172,7 @@ public class ServoyDevServer
 
 	private void createEclipseProjects(String solutionName) throws Exception
 	{
-		// Resolve resources project — same logic as NewSolutionWizard:
+		// Resolve resources project - same logic as NewSolutionWizard:
 		// 1. Use active resources project if available
 		// 2. Find existing project named "resources"
 		// 3. Create a new one with name "resources" (or "resources1", "resources2", ...)
@@ -183,7 +183,7 @@ public class ServoyDevServer
 
 			if (!resourcesProject.isOpen()) resourcesProject.open(monitor);
 
-			// Solution project — natures + builders only, no Servoy structural files
+			// Solution project - natures + builders only, no Servoy structural files
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
 			if (!sol.exists())
 			{
@@ -202,7 +202,7 @@ public class ServoyDevServer
 			}
 			if (!sol.isOpen()) sol.open(monitor);
 
-			// .buildpath — not a Servoy structural file, safe to write directly
+			// .buildpath - not a Servoy structural file, safe to write directly
 			writeTextFile(sol, ".buildpath",
 				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
 				"<buildpath>\n" +
@@ -325,7 +325,7 @@ public class ServoyDevServer
 			throw new RepositoryException("ServoyProject not found: " + solutionName);
 		}
 
-		// Create the Solution root object via EclipseRepository — this writes rootmetadata.obj + solution_settings.obj
+		// Create the Solution root object via EclipseRepository - this writes rootmetadata.obj + solution_settings.obj
 		com.servoy.eclipse.model.repository.EclipseRepository repository =
 			(com.servoy.eclipse.model.repository.EclipseRepository)com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getDeveloperRepository();
 
@@ -421,7 +421,7 @@ public class ServoyDevServer
 		// Set firstFormID
 		solution.setFirstFormID(cssForm.getUUID().toString());
 
-		// --- Save all to disk — single updateRootObject at the end ---
+		// --- Save all to disk - single updateRootObject at the end ---
 		java.util.List<IPersist> toSave = new java.util.ArrayList<>();
 		toSave.add(solution);
 		toSave.add(solutionLess);
@@ -458,7 +458,7 @@ public class ServoyDevServer
 	private void copyNgPackages(IFolder ngFolder, org.eclipse.core.runtime.IProgressMonitor monitor)
 		throws CoreException
 	{
-		// Read directly from wizardpackages/ on disk — the source of truth populated at Servoy Developer startup.
+		// Read directly from wizardpackages/ on disk - the source of truth populated at Servoy Developer startup.
 		File wizardPackagesDir = new File(
 			com.servoy.eclipse.ui.Activator.getDefault().getStateLocation().toFile(), "wizardpackages");
 
@@ -958,5 +958,154 @@ public class ServoyDevServer
 			return scriptResolver.buildNotFoundMessage(name, moduleName);
 
 		return scriptContextService.resolveIdentifierType(identifier, file);
+	}
+
+	// -------------------------------------------------------------------------
+	// createSolution MCP tool - creates a new Servoy solution like the wizard
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "createSolution",
+		description = "Creates a new Servoy solution in the workspace, similar to the New Solution wizard. "
+			+ "Creates the Eclipse project with Servoy natures, a resources project reference, "
+			+ "default theme (.less), web app manifest, and optionally activates the solution. "
+			+ "Unlike createTestSolution, this creates a clean empty solution without test forms or scopes.",
+		type = "object")
+	public String createSolution(
+		@ToolParam(name = "solutionName", description = "Name of the solution to create (e.g. 'my_app', 'customer_portal')", required = true) String solutionName,
+		@ToolParam(name = "solutionType", description = "Solution type: 'solution' (default), 'module', 'ng_module', 'ng_client_only'. Maps to SolutionMetaData constants.", required = false) String solutionType,
+		@ToolParam(name = "activate", description = "Whether to activate the solution after creation. Default: true.", required = false) String activate,
+		@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme)
+	{
+		if (solutionName == null || solutionName.isBlank())
+		{
+			return "Error: solutionName is required.";
+		}
+
+		boolean doActivate = Optional.ofNullable(activate).map(Boolean::parseBoolean).orElse(true);
+		boolean doAddTheme = Optional.ofNullable(addDefaultTheme).map(Boolean::parseBoolean).orElse(true);
+		int type = parseSolutionType(solutionType);
+
+		try
+		{
+			IProject existing = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
+			if (existing.exists())
+			{
+				if (doActivate)
+				{
+					doActivateSolution(solutionName, true);
+					return "Solution '" + solutionName + "' already exists. Activated.";
+				}
+				return "Solution '" + solutionName + "' already exists.";
+			}
+
+			// Step 1: Create Eclipse project with natures and resources reference
+			createEclipseProjects(solutionName);
+
+			// Step 2: Create Servoy solution via persistence API
+			createSolutionArtifacts(solutionName, type, doAddTheme);
+
+			// Step 3: Activate if requested
+			if (doActivate)
+			{
+				doActivateSolution(solutionName, true);
+				return "Created and activated solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ").";
+			}
+			return "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ", not activated).";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("createSolution failed", e);
+			return "Error creating solution: " + e.getMessage();
+		}
+	}
+
+	private void createSolutionArtifacts(String solutionName, int solutionType, boolean addDefaultTheme) throws RepositoryException
+	{
+		com.servoy.eclipse.model.repository.EclipseRepository repository =
+			(com.servoy.eclipse.model.repository.EclipseRepository)com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getDeveloperRepository();
+
+		Solution solution = (Solution)repository.createNewRootObject(solutionName, IRepository.SOLUTIONS);
+		solution.setSolutionType(solutionType);
+		solution.setVersion("1.0");
+		repository.updateRootObject(solution);
+
+		if (addDefaultTheme)
+		{
+			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			model.refreshServoyProjects();
+			ServoyProject servoyProject = model.getServoyProject(solutionName);
+			if (servoyProject != null)
+			{
+				Solution editingSolution = servoyProject.getEditingSolution();
+				if (editingSolution != null)
+				{
+					ScriptNameValidator scriptValidator = new ScriptNameValidator();
+
+					Media solutionLess = editingSolution.createNewMedia(scriptValidator, solutionName + ".less");
+					solutionLess.setMimeType("text/css");
+					solutionLess.setPermMediaData(ThemeResourceLoader.getDefaultSolutionLess());
+
+					Media solutionPropsLess = editingSolution.createNewMedia(scriptValidator, ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
+					solutionPropsLess.setMimeType("text/css");
+					solutionPropsLess.setPermMediaData(ThemeResourceLoader.getCustomProperties());
+
+					Media variantsJson = editingSolution.createNewMedia(scriptValidator, ThemeResourceLoader.VARIANTS_JSON);
+					variantsJson.setMimeType("application/json");
+					variantsJson.setPermMediaData(ThemeResourceLoader.getVariantsFile());
+
+					try
+					{
+						Media manifestJson = editingSolution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.FILE_NAME);
+						manifestJson.setMimeType("application/json");
+						manifestJson.setPermMediaData(CreateMediaWebAppManifest.createManifest(solutionName));
+
+						Media webappIcon = editingSolution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.ICON_NAME);
+						webappIcon.setMimeType("image/png");
+						webappIcon.setPermMediaData(CreateMediaWebAppManifest.getIcon());
+					}
+					catch (IOException e)
+					{
+						ServoyLog.logWarning("createSolution: could not create manifest/icon", e);
+					}
+
+					editingSolution.setStyleSheetID(solutionLess.getUUID().toString());
+					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingSolution }, true);
+					repository.updateRootObject(editingSolution);
+				}
+			}
+		}
+	}
+
+	private int parseSolutionType(String solutionType)
+	{
+		if (solutionType == null || solutionType.isBlank()) return SolutionMetaData.NG_CLIENT_ONLY;
+		switch (solutionType.toLowerCase().trim())
+		{
+			case "module":
+				return SolutionMetaData.MODULE;
+			case "ng_module":
+				return SolutionMetaData.NG_MODULE;
+			case "ng_client_only":
+				return SolutionMetaData.NG_CLIENT_ONLY;
+			case "solution":
+				return SolutionMetaData.SOLUTION;
+			default:
+				return SolutionMetaData.NG_CLIENT_ONLY;
+		}
+	}
+
+	private String getSolutionTypeName(int type)
+	{
+		switch (type)
+		{
+			case SolutionMetaData.MODULE:
+				return "module";
+			case SolutionMetaData.NG_MODULE:
+				return "ng_module";
+			case SolutionMetaData.NG_CLIENT_ONLY:
+				return "ng_client_only";
+			default:
+				return "solution";
+		}
 	}
 }
