@@ -27,8 +27,8 @@ import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
-import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
+import com.servoy.eclipse.model.nature.ServoyProject;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService}.

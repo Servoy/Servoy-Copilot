@@ -2,3 +2,4 @@ target/
 bin/
 bundles/application_server/
 .opencode/index/
+.opencode/opencode.json

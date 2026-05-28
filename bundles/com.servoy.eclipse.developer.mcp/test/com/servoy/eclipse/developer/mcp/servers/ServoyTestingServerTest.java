@@ -28,12 +28,12 @@ public class ServoyTestingServerTest
 	}
 
 	@Test
-	public void testServoyTestingServer_hasSevenToolMethods()
+	public void testServoyTestingServer_hasNineToolMethods()
 	{
 		long toolCount = Arrays.stream(ServoyTestingServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals("ServoyTestingServer should have 7 @Tool methods", 7, toolCount);
+		assertEquals("ServoyTestingServer should have 9 @Tool methods", 9, toolCount);
 	}
 
 	@Test

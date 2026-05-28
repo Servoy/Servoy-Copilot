@@ -21,7 +21,7 @@ import java.lang.reflect.Method;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.servoypilot.services.TestFileService;
+import com.servoy.eclipse.developer.mcp.services.TestFileService;
 
 /**
  * Layer 1 unit tests for the private string-manipulation methods of {@link TestFileService}.

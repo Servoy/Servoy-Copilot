@@ -201,4 +201,200 @@ public class ServoyTestingServer
 			return "Error: " + e.getMessage();
 		}
 	}
+
+	@Tool(name = "createTestFile",
+		description = "Creates a new JSUnit test file (JavaScript scope) in the active solution's root directory. " +
+			"File name must follow convention: test_functionName.js or test_fileName.js. " +
+			"The file is created with a standard JSUnit header comment.",
+		type = "object")
+	public String createTestFile(
+		@ToolParam(description = "Test file name (e.g., 'test_utils.js' or 'test_calculateTotal.js'). Must start with 'test_' and end with '.js'.") String testFileName,
+		@ToolParam(description = "Solution name to create the file in. Use 'TARGET' to use the current active solution.") String solutionName)
+	{
+		try
+		{
+			if (!testFileName.startsWith("test_"))
+			{
+				return "Error: Test file name must start with 'test_' (e.g., 'test_utils.js')";
+			}
+			if (!testFileName.endsWith(".js"))
+			{
+				return "Error: Test file name must end with '.js' (e.g., 'test_utils.js')";
+			}
+
+			String actualSolutionName = solutionName;
+			if ("TARGET".equalsIgnoreCase(solutionName))
+			{
+				com.servoy.eclipse.model.nature.ServoyProject activeProject =
+					com.servoy.eclipse.core.ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+				if (activeProject != null)
+				{
+					actualSolutionName = activeProject.getProject().getName();
+				}
+				else
+				{
+					return "Error: No active project found. Please open a Servoy solution.";
+				}
+			}
+
+			return com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance()
+				.createTestFile(testFileName, actualSolutionName);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in createTestFile tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "addTestMethod",
+		description = "Adds or replaces a test method in an existing JSUnit test file. " +
+			"If a method with the same name already exists it is replaced (duplicates are also removed). " +
+			"Generates proper @properties annotation with UUID automatically.",
+		type = "object")
+	public String addTestMethod(
+		@ToolParam(description = "Test file name (e.g., 'test_utils.js')") String testFileName,
+		@ToolParam(description = "Test method name (must start with 'test_', e.g., 'test_calculateTotal_withDiscount')") String testMethodName,
+		@ToolParam(description = "Complete test function body (without function declaration or @properties)") String testCode)
+	{
+		try
+		{
+			com.servoy.eclipse.model.nature.ServoyProject activeProject =
+				com.servoy.eclipse.core.ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			if (activeProject == null)
+			{
+				return "Error: No active project found. Please open a Servoy solution.";
+			}
+
+			String solutionName = activeProject.getProject().getName();
+			return com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance()
+				.addTestMethod(testFileName, testMethodName, testCode, solutionName);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in addTestMethod tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "generateTestCases",
+		description = "Suggests test cases for a function based on its signature and logic. " +
+			"Returns structured list of test scenarios covering happy path, edge cases, and error conditions. " +
+			"Does NOT create files - only provides suggestions for test coverage.",
+		type = "object")
+	public String generateTestCases(
+		@ToolParam(description = "Source code or function signature to analyze") String sourceCode,
+		@ToolParam(description = "Function name to generate test cases for") String functionName)
+	{
+		try
+		{
+			String[] params = extractTestParameters(sourceCode, functionName);
+
+			StringBuilder suggestions = new StringBuilder();
+			suggestions.append("**Suggested Test Cases for ").append(functionName).append("():**\n\n");
+
+			if (params != null && params.length > 0)
+			{
+				suggestions.append("**Function Parameters:** ").append(String.join(", ", params)).append("\n\n");
+			}
+
+			suggestions.append("**1. Happy Path Tests:**\n");
+			suggestions.append("   - test_").append(functionName).append("_normalCase\n");
+			suggestions.append("   - test_").append(functionName).append("_validInputs\n\n");
+
+			suggestions.append("**2. Edge Case Tests:**\n");
+			if (params != null && params.length > 0)
+			{
+				suggestions.append("   - test_").append(functionName).append("_nullParameters\n");
+				suggestions.append("   - test_").append(functionName).append("_undefinedParameters\n");
+				suggestions.append("   - test_").append(functionName).append("_emptyValues\n");
+			}
+			suggestions.append("   - test_").append(functionName).append("_boundaryValues\n\n");
+
+			suggestions.append("**3. Error Case Tests:**\n");
+			suggestions.append("   - test_").append(functionName).append("_invalidInput\n");
+			suggestions.append("   - test_").append(functionName).append("_throwsException\n\n");
+
+			suggestions.append("**4. Specific Scenarios:**\n");
+			suggestions.append("   - test_").append(functionName).append("_returnsCorrectType\n");
+			suggestions.append("   - test_").append(functionName).append("_handlesSpecialCases\n\n");
+
+			suggestions.append("**Note:** Review function implementation to identify additional specific test cases.");
+
+			return suggestions.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in generateTestCases tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "analyzeCodeForTesting",
+		description = "Analyzes selected code to identify testable functions. " +
+			"Returns function name and parameters extracted from the code snippet.",
+		type = "object")
+	public String analyzeCodeForTesting(
+		@ToolParam(description = "Selected code snippet to analyze for testable functions") String selection)
+	{
+		try
+		{
+			if (selection == null || selection.isBlank())
+			{
+				return "Error: Selection parameter is required";
+			}
+
+			String functionName = extractFunctionName(selection);
+
+			if (functionName != null)
+			{
+				String[] params = extractTestParameters(selection, functionName);
+				StringBuilder result = new StringBuilder();
+				result.append("**Code Analysis for Testing:**\n\n");
+				result.append("Detected function: ").append(functionName).append("\n");
+				if (params.length > 0)
+				{
+					result.append("Parameters: ").append(String.join(", ", params)).append("\n");
+				}
+				result.append("\nCode snippet:\n```javascript\n").append(selection).append("\n```\n");
+				return result.toString();
+			}
+
+			return "**Inline Code Analysis:**\n\n" +
+				"Code snippet provided (no clear function detected):\n```javascript\n" + selection + "\n```\n\n" +
+				"Recommendation: Select a complete function for better analysis.";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in analyzeCodeForTesting tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	private static String extractFunctionName(String code)
+	{
+		if (code == null) return null;
+		java.util.regex.Matcher matcher = java.util.regex.Pattern
+			.compile("function\\s+(\\w+)\\s*\\(")
+			.matcher(code);
+		return matcher.find() ? matcher.group(1) : null;
+	}
+
+	private static String[] extractTestParameters(String code, String functionName)
+	{
+		if (code == null || functionName == null) return new String[0];
+		java.util.regex.Matcher matcher = java.util.regex.Pattern
+			.compile("function\\s+" + java.util.regex.Pattern.quote(functionName) + "\\s*\\(([^)]*)")
+			.matcher(code);
+		if (matcher.find())
+		{
+			String paramStr = matcher.group(1).trim();
+			if (paramStr.isEmpty()) return new String[0];
+			return java.util.Arrays.stream(paramStr.split(","))
+				.map(String::trim)
+				.filter(s -> !s.isEmpty())
+				.toArray(String[]::new);
+		}
+		return new String[0];
+	}
 }

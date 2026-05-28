@@ -23,8 +23,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.servoy.eclipse.developer.mcp.services.TestFileService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.eclipse.servoypilot.services.TestFileService;
 
 /**
  * Layer 2 PDE integration tests for {@link TestFileService#createTestFile}.
