@@ -16,6 +16,8 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
+import java.util.UUID;
+
 import org.eclipse.e4.core.contexts.ContextInjectionFactory;
 import org.eclipse.e4.core.contexts.EclipseContextFactory;
 import org.eclipse.e4.core.contexts.IEclipseContext;
@@ -29,28 +31,27 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * Bundle activator for the Servoy Developer MCP Server plugin.
  * Extends AbstractUIPlugin to participate in E4 dependency injection.
  */
-public class Activator extends AbstractUIPlugin
-{
+public class Activator extends AbstractUIPlugin {
 	public static final String PLUGIN_ID = "com.servoy.eclipse.developer.mcp";
+
+	/** Bearer token for this Eclipse session. Generated fresh on every startup. */
+	public static final String SESSION_AUTH_TOKEN = UUID.randomUUID().toString();
 
 	private static Activator instance;
 
-	public static Activator getDefault()
-	{
+	public static Activator getDefault() {
 		return instance;
 	}
 
 	@Override
-	public void start(BundleContext context) throws Exception
-	{
+	public void start(BundleContext context) throws Exception {
 		super.start(context);
 		instance = this;
 		ServoyLog.logInfo("Servoy Developer MCP Server plugin started.");
 	}
 
 	@Override
-	public void stop(BundleContext context) throws Exception
-	{
+	public void stop(BundleContext context) throws Exception {
 		instance = null;
 		super.stop(context);
 		ServoyLog.logInfo("Servoy Developer MCP Server plugin stopped.");
@@ -61,20 +62,15 @@ public class Activator extends AbstractUIPlugin
 	 * The instance is created in the workbench's Eclipse context, enabling
 	 * full E4 lifecycle support (@PostConstruct, @PostWorkbenchClose, etc.).
 	 */
-	public <T> T make(Class<T> clazz)
-	{
+	public <T> T make(Class<T> clazz) {
 		IEclipseContext context = getEclipseContext();
 		return ContextInjectionFactory.make(clazz, context);
 	}
 
-	public IEclipseContext getEclipseContext()
-	{
-		try
-		{
+	public IEclipseContext getEclipseContext() {
+		try {
 			return PlatformUI.getWorkbench().getService(IEclipseContext.class);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logWarning("Workbench context not available, falling back to OSGi context.", e);
 			return EclipseContextFactory.getServiceContext(getBundle().getBundleContext());
 		}

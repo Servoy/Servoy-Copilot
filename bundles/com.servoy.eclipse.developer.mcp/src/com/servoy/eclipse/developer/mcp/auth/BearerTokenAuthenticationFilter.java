@@ -18,6 +18,8 @@ package com.servoy.eclipse.developer.mcp.auth;
 
 import java.io.IOException;
 
+import com.servoy.eclipse.model.util.ServoyLog;
+
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterConfig;
@@ -32,58 +34,64 @@ import jakarta.servlet.http.HttpServletResponse;
 /**
  * Jakarta Servlet {@link Filter} that enforces Bearer token authentication on
  * all MCP endpoints. Wraps a delegate {@link Servlet} so it can be registered
- * as a single {@code ServletInstance} via {@link org.apache.tomcat.starter.IServicesProvider}.
+ * as a single {@code ServletInstance} via
+ * {@link org.apache.tomcat.starter.IServicesProvider}.
  *
- * <p>Unlike a Tomcat {@code ValveBase}, a filter is scoped to a specific servlet
- * mapping and does NOT intercept unrelated Servoy Tomcat requests.</p>
+ * <p>
+ * Unlike a Tomcat {@code ValveBase}, a filter is scoped to a specific servlet
+ * mapping and does NOT intercept unrelated Servoy Tomcat requests.
+ * </p>
  */
-public class BearerTokenAuthenticationFilter extends HttpServlet implements Filter
-{
+public class BearerTokenAuthenticationFilter extends HttpServlet implements Filter {
 	private static final long serialVersionUID = 1L;
 
 	private final String expectedToken;
 	private final HttpServlet delegate;
 
 	/**
-	 * @param expectedToken the bearer token that clients must present; if blank, all requests are rejected
+	 * @param expectedToken the bearer token that clients must present; if blank,
+	 *                      all requests are rejected
 	 * @param delegate      the servlet to forward authenticated requests to
 	 */
-	public BearerTokenAuthenticationFilter(String expectedToken, HttpServlet delegate)
-	{
+	public BearerTokenAuthenticationFilter(String expectedToken, HttpServlet delegate) {
 		this.expectedToken = expectedToken;
 		this.delegate = delegate;
 	}
 
 	@Override
 	protected void service(HttpServletRequest request, HttpServletResponse response)
-		throws ServletException, IOException
-	{
-		if (!authenticate(request, response)) return;
+			throws ServletException, IOException {
+		if (!authenticate(request, response))
+			return;
 		delegate.service(request, response);
 	}
 
 	@Override
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-		throws IOException, ServletException
-	{
-		if (!authenticate((HttpServletRequest)request, (HttpServletResponse)response)) return;
+			throws IOException, ServletException {
+		if (!authenticate((HttpServletRequest) request, (HttpServletResponse) response))
+			return;
 		chain.doFilter(request, response);
 	}
 
 	private boolean authenticate(HttpServletRequest request, HttpServletResponse response)
-		throws IOException
-	{
+			throws IOException {
 		String authHeader = request.getHeader("Authorization");
 
-		if (authHeader == null || !authHeader.startsWith("Bearer "))
-		{
+		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: expected 'Bearer <token>', got: "
+					+
+					(authHeader == null ? "<no Authorization header>" : "'" + authHeader.split(" ")[0] + " ...'"),
+					null);
 			sendUnauthorized(response, "Missing or invalid Authorization header");
 			return false;
 		}
 
 		String token = authHeader.substring(7);
-		if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token))
-		{
+		if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token)) {
+			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: token mismatch" +
+					" (received length=" + token.length() + ", expected length="
+					+ (expectedToken == null ? "null" : expectedToken.length()) + ")", null);
 			sendUnauthorized(response, "Invalid token");
 			return false;
 		}
@@ -91,22 +99,19 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 		return true;
 	}
 
-	private void sendUnauthorized(HttpServletResponse response, String message) throws IOException
-	{
+	private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 		response.setContentType("application/json");
 		response.getWriter().write("{\"error\": \"" + message + "\"}");
 	}
 
 	@Override
-	public void init(FilterConfig filterConfig) throws ServletException
-	{
+	public void init(FilterConfig filterConfig) throws ServletException {
 		// nothing to initialise
 	}
 
 	@Override
-	public void destroy()
-	{
+	public void destroy() {
 		// nothing to clean up
 	}
 }

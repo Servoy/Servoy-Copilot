@@ -6,17 +6,8 @@
       <startup class="com.servoy.eclipse.developer.mcp.McpStartup"/>
    </extension>
 
-   <extension point="org.eclipse.ui.preferencePages">
-      <page
-            category="com.servoy.eclipse.ui.preference"
-            class="com.servoy.eclipse.developer.mcp.preferences.McpPreferencePage"
-            id="com.servoy.eclipse.developer.mcp.preferences"
-            name="Servoy Developer MCP">
-      </page>
-   </extension>
-
-   <extension point="org.eclipse.core.runtime.preferences">
-      <initializer class="com.servoy.eclipse.developer.mcp.preferences.McpPreferenceInitializer"/>
+   <extension point="com.servoy.eclipse.opencode.mcpEndpoint">
+      <endpoint class="com.servoy.eclipse.developer.mcp.McpEndpointProvider"/>
    </extension>
 
    <!-- MCP servlet registration with Servoy's embedded Tomcat -->
