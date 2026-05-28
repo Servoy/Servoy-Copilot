@@ -348,6 +348,14 @@ public class ResolvedElementsProcessor
 	{
 		node.put("resourceKind", "formElement");
 		node.put("elementName", formElement.getName());
+		if (formElement instanceof com.servoy.j2db.persistence.WebComponent webComponent)
+		{
+			String typeName = webComponent.getTypeName();
+			if (typeName != null)
+			{
+				node.put("componentType", typeName);
+			}
+		}
 		IPersist parent = formElement.getParent();
 		if (parent instanceof Form parentForm)
 		{
@@ -357,12 +365,24 @@ public class ResolvedElementsProcessor
 			{
 				node.put("formFile", scriptPath);
 			}
+			if (parentForm.getDataSource() != null)
+			{
+				node.put("formDataSource", parentForm.getDataSource());
+			}
 		}
 	}
 
 	private String extractFormInfo(ObjectNode node, Form frm)
 	{
 		node.put("resourceKind", "form");
+		if (frm.getDataSource() != null)
+		{
+			node.put("dataSource", frm.getDataSource());
+		}
+		if (Boolean.TRUE.equals(frm.isFormComponent()))
+		{
+			node.put("formComponent", true);
+		}
 		IPersist superForm = PersistHelper.getSuperPersist(frm);
 		if (superForm != null)
 		{
@@ -377,6 +397,15 @@ public class ResolvedElementsProcessor
 	{
 		node.put("resourceKind", "valuelist");
 		node.put("valuelistName", valuelist.getName());
+		int valueListType = valuelist.getValueListType();
+		String valueListTypeName = switch (valueListType)
+		{
+			case 1 -> "TABLE_VALUES";
+			case 2 -> "GLOBAL_METHOD";
+			case 4 -> "GLOBAL_METHOD_VALUES";
+			default -> "CUSTOM_VALUES";
+		};
+		node.put("valueListType", valueListTypeName);
 		if (valuelist.getDataSource() != null)
 		{
 			node.put("dataSource", valuelist.getDataSource());
@@ -384,6 +413,14 @@ public class ResolvedElementsProcessor
 		if (valuelist.getRelationName() != null)
 		{
 			node.put("relation", valuelist.getRelationName());
+		}
+		if (valuelist.getDisplayValueType() != 0)
+		{
+			node.put("displayValueType", valuelist.getDisplayValueType());
+		}
+		if (valuelist.getRealValueType() != 0)
+		{
+			node.put("realValueType", valuelist.getRealValueType());
 		}
 		if (valuelist.getCustomValues() != null && !valuelist.getCustomValues().isEmpty())
 		{
@@ -423,6 +460,21 @@ public class ResolvedElementsProcessor
 	{
 		node.put("resourceKind", "relation");
 		node.put("relationName", relation.getName());
+		if (relation.getPrimaryDataSource() != null)
+		{
+			node.put("primaryDataSource", relation.getPrimaryDataSource());
+		}
+		if (relation.getForeignDataSource() != null)
+		{
+			node.put("foreignDataSource", relation.getForeignDataSource());
+		}
+		int joinType = relation.getJoinType();
+		node.put("joinType", joinType == 1 ? "LEFT_OUTER_JOIN" : "INNER_JOIN");
+		node.put("allowCreationRelatedRecords", relation.getAllowCreationRelatedRecords());
+		if (relation.getDeleteRelatedRecords())
+		{
+			node.put("deleteRelatedRecords", true);
+		}
 		ArrayNode hints = getOrCreateHints(node);
 		hints.add("Use readPersistFile tool to read the .rel file and .dbi files to check record properties");
 
