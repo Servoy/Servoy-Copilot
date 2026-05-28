@@ -70,8 +70,8 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.servoypilot.context.IdentifierCollectingVisitor;
 import com.servoy.eclipse.servoypilot.dto.CodeContext;
 import com.servoy.eclipse.servoypilot.dto.IdentifierContext;
-import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 import com.servoy.eclipse.servoypilot.dto.IdentifierContext.IdentifierKind;
+import com.servoy.eclipse.servoypilot.dto.SelectionInfo;
 import com.servoy.j2db.documentation.ClientSupport;
 import com.servoy.j2db.documentation.DocumentationUtil;
 import com.servoy.j2db.documentation.IFunctionDocumentation;
@@ -192,10 +192,10 @@ public class CodeContextService
 							}
 						});
 
-					// Convert to list
-					List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
+						// Convert to list
+						List<IdentifierContext> identifierContexts = new ArrayList<>(uniqueIdentifiers.values());
 
-					return CodeContext.success(selectionInfo, identifierContexts);
+						return CodeContext.success(selectionInfo, identifierContexts);
 					}
 					return CodeContext.error(selectionInfo, "Failed to parse JavaScript file");
 				}
@@ -1240,10 +1240,10 @@ public class CodeContextService
 					String type = localVariable.getType();
 					if (type != null && !type.isBlank())
 					{
-					result.append("TYPE: ").append(type).append("\n");
-					result.append("SOURCE: Local variable\n");
-					result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
-					return result.toString();
+						result.append("TYPE: ").append(type).append("\n");
+						result.append("SOURCE: Local variable\n");
+						result.append("LOCATION: ").append(filePath).append(", line ").append(lineNumber).append("\n\n");
+						return result.toString();
 					}
 				}
 
