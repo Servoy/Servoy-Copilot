@@ -28,12 +28,12 @@ public class ServoyTestingServerTest
 	}
 
 	@Test
-	public void testServoyTestingServer_hasNineToolMethods()
+	public void testServoyTestingServer_hasElevenToolMethods()
 	{
 		long toolCount = Arrays.stream(ServoyTestingServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals("ServoyTestingServer should have 9 @Tool methods", 9, toolCount);
+		assertEquals("ServoyTestingServer should have 11 @Tool methods", 11, toolCount);
 	}
 
 	@Test
@@ -193,6 +193,143 @@ public class ServoyTestingServerTest
 		assertTrue("showFormInBrowser description should mention spec auto-generation",
 			tool.description().contains("spec"));
 	}
+
+	@Test
+	public void testServoyTestingServer_hasCreateTestFileTool()
+	{
+		assertTrue("ServoyTestingServer must have a 'createTestFile' tool", hasToolNamed("createTestFile"));
+	}
+
+	@Test
+	public void testServoyTestingServer_hasAddTestMethodTool()
+	{
+		assertTrue("ServoyTestingServer must have an 'addTestMethod' tool", hasToolNamed("addTestMethod"));
+	}
+
+	@Test
+	public void testServoyTestingServer_hasGenerateTestCasesTool()
+	{
+		assertTrue("ServoyTestingServer must have a 'generateTestCases' tool", hasToolNamed("generateTestCases"));
+	}
+
+	@Test
+	public void testServoyTestingServer_hasAnalyzeCodeForTestingTool()
+	{
+		assertTrue("ServoyTestingServer must have an 'analyzeCodeForTesting' tool", hasToolNamed("analyzeCodeForTesting"));
+	}
+
+	@Test
+	public void testServoyTestingServer_createTestFileHasTwoParams()
+	{
+		Method method = findToolMethod("createTestFile");
+		assertNotNull(method);
+		assertEquals("createTestFile must have 2 parameters", 2, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyTestingServer_addTestMethodHasThreeParams()
+	{
+		Method method = findToolMethod("addTestMethod");
+		assertNotNull(method);
+		assertEquals("addTestMethod must have 3 parameters", 3, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyTestingServer_generateTestCasesHasTwoParams()
+	{
+		Method method = findToolMethod("generateTestCases");
+		assertNotNull(method);
+		assertEquals("generateTestCases must have 2 parameters", 2, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyTestingServer_analyzeCodeForTestingHasOneParam()
+	{
+		Method method = findToolMethod("analyzeCodeForTesting");
+		assertNotNull(method);
+		assertEquals("analyzeCodeForTesting must have 1 parameter", 1, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyTestingServer_createTestFile_validatesPrefix()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("invalid_name.js", "someSolution");
+		assertTrue("createTestFile must reject names not starting with 'test_'",
+			result.contains("Error") && result.contains("test_"));
+	}
+
+	@Test
+	public void testServoyTestingServer_createTestFile_validatesExtension()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("test_something.txt", "someSolution");
+		assertTrue("createTestFile must reject names not ending with '.js'",
+			result.contains("Error") && result.contains(".js"));
+	}
+
+	@Test
+	public void testServoyTestingServer_generateTestCases_returnsMarkdown()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases("function calculateTotal(price, qty) { return price * qty; }", "calculateTotal");
+		assertTrue("generateTestCases must return markdown with function name",
+			result.contains("calculateTotal"));
+		assertTrue("generateTestCases must include happy path section",
+			result.contains("Happy Path"));
+		assertTrue("generateTestCases must include edge cases section",
+			result.contains("Edge Case"));
+	}
+
+	@Test
+	public void testServoyTestingServer_generateTestCases_extractsParams()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases("function add(a, b) { return a + b; }", "add");
+		assertTrue("generateTestCases must list parameters",
+			result.contains("a") && result.contains("b"));
+		assertTrue("generateTestCases must suggest null parameter tests",
+			result.contains("nullParameters"));
+	}
+
+	@Test
+	public void testServoyTestingServer_analyzeCodeForTesting_detectsFunction()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.analyzeCodeForTesting("function myHelper(x, y) { return x + y; }");
+		assertTrue("analyzeCodeForTesting must detect function name",
+			result.contains("myHelper"));
+		assertTrue("analyzeCodeForTesting must list parameters",
+			result.contains("x") && result.contains("y"));
+	}
+
+	@Test
+	public void testServoyTestingServer_analyzeCodeForTesting_handlesNoFunction()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.analyzeCodeForTesting("var x = 42;");
+		assertTrue("analyzeCodeForTesting must indicate no function detected",
+			result.contains("no clear function"));
+	}
+
+	@Test
+	public void testServoyTestingServer_analyzeCodeForTesting_rejectsNull()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.analyzeCodeForTesting(null);
+		assertTrue("analyzeCodeForTesting must return error for null",
+			result.contains("Error"));
+	}
+
+	@Test
+	public void testServoyTestingServer_analyzeCodeForTesting_rejectsEmpty()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.analyzeCodeForTesting("   ");
+		assertTrue("analyzeCodeForTesting must return error for blank",
+			result.contains("Error"));
+	}
+
 
 	private boolean hasToolNamed(String name)
 	{
