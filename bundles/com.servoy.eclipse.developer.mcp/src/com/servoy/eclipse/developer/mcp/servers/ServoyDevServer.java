@@ -52,10 +52,24 @@ import com.servoy.eclipse.core.util.EclipseDatabaseUtils;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.dto.DocumentationItem;
+import com.servoy.eclipse.developer.mcp.dto.IdentifierContext;
+import com.servoy.eclipse.developer.mcp.guard.ServoyFileFormatProtectedException;
+import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
+import com.servoy.eclipse.developer.mcp.services.CodeContextService;
+import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorService;
+import com.servoy.eclipse.developer.mcp.services.FilePathResolver;
+import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
+import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
+import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
+import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ui.views.solutionexplorer.actions.CreateMediaWebAppManifest;
+import com.servoy.j2db.documentation.ClientSupport;
+import com.servoy.j2db.documentation.IObjectDocumentation;
+import com.servoy.j2db.documentation.IFunctionDocumentation;
 import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.ColumnInfo;
 import com.servoy.j2db.persistence.Form;
@@ -101,10 +115,13 @@ public class ServoyDevServer
 	private static final int DEFAULT_ENCAPSULATION = PersistEncapsulation.HIDE_DATAPROVIDERS |
 		PersistEncapsulation.HIDE_ELEMENTS | PersistEncapsulation.HIDE_CONTAINERS | PersistEncapsulation.HIDE_FOUNDSET;
 
-	private final com.servoy.eclipse.developer.mcp.services.ScriptContextService scriptContextService =
-		new com.servoy.eclipse.developer.mcp.services.ScriptContextService();
-	private final com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver scriptResolver =
-		new com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver();
+	private final ScriptContextService scriptContextService = new ScriptContextService();
+	private final ServoyScriptResolver scriptResolver = new ServoyScriptResolver();
+	private final FilePathResolver filePathResolver = new FilePathResolver();
+	private final ServoyDocumentationService docService = new ServoyDocumentationService();
+	private final CodeContextService codeContextService = new CodeContextService();
+	private final DocumentationValidatorService docValidator = new DocumentationValidatorService();
+	private final JsCodeValidatorService jsCodeValidator = new JsCodeValidatorService();
 
 
 	public ServoyDevServer()
@@ -1106,6 +1123,434 @@ public class ServoyDevServer
 				return "ng_client_only";
 			default:
 				return "solution";
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Documentation MCP tools (Faza 1a/1b/1c)
+	// -------------------------------------------------------------------------
+
+	private static final int MEMBERS_THRESHOLD = 50;
+
+	@Tool(name = "getDocumentationForTypeMember",
+		description = "Returns full documentation for one specific method or property of a Servoy API type — description, all parameters, return type, and overloads. "
+			+ "Works without any file or editor context.",
+		type = "object")
+	public String getDocumentationForTypeMember(
+		@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet')", required = true) String typeName,
+		@ToolParam(name = "memberName", description = "Member name to look up — case-insensitive (e.g. 'getFoundSet', 'loadAllRecords', 'showInfoDialog')", required = true) String memberName)
+	{
+		if (typeName == null || typeName.trim().isEmpty())
+			return "Error: typeName parameter is required";
+		if (memberName == null || memberName.trim().isEmpty())
+			return "Error: memberName parameter is required";
+
+		try
+		{
+			com.servoy.eclipse.debug.script.TypeCreator typeCreator =
+				com.servoy.eclipse.debug.script.TypeProviderFactory.getTypeProvider().getTypeCreator();
+			if (typeCreator == null)
+				return "Error: TypeCreator not available";
+
+			org.eclipse.dltk.javascript.typeinfo.model.Type type = typeCreator.findType(null, typeName);
+			if (type == null)
+			{
+				String scriptingName = docService.mapClassNameToScriptingName(typeName);
+				if (scriptingName != null && !scriptingName.equals(typeName))
+					type = typeCreator.findType(null, scriptingName);
+			}
+			if (type == null)
+				return "Error: Type '" + typeName + "' not found";
+
+			List<org.eclipse.dltk.javascript.typeinfo.model.Member> matchingMembers = new ArrayList<>();
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers())
+			{
+				if (member.getName().equalsIgnoreCase(memberName))
+					matchingMembers.add(member);
+			}
+
+			if (matchingMembers.isEmpty())
+				return "Error: Member '" + memberName + "' not found in type '" + type.getName() + "'";
+
+			StringBuilder response = new StringBuilder();
+			response.append("=== DOCUMENTATION FOR: ").append(type.getName()).append(".").append(memberName).append(" ===\n\n");
+			if (matchingMembers.size() > 1)
+				response.append("[Note: ").append(matchingMembers.size()).append(" overloads found]\n\n");
+
+			int overloadNum = 1;
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : matchingMembers)
+			{
+				if (matchingMembers.size() > 1)
+					response.append("--- OVERLOAD ").append(overloadNum).append(" of ").append(matchingMembers.size()).append(" ---\n");
+				response.append(docService.formatMemberDocumentation(member, type.getName()));
+				response.append("\n");
+				overloadNum++;
+			}
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting documentation for member: " + typeName + "." + memberName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "getAvailableMembersForType",
+		description = "Returns lightweight method and property signatures for a Servoy API type. "
+			+ "Returns signatures like 'getFoundSet(query): JSFoundSet', 'loadAllRecords(): Boolean'. "
+			+ "Truncates at 50 members — use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.",
+		type = "object")
+	public String getAvailableMembersForType(
+		@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet', 'controller')", required = true) String typeName,
+		@ToolParam(name = "memberFilter", description = "Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter)
+	{
+		if (typeName == null || typeName.trim().isEmpty())
+			return "Error: typeName parameter is required";
+
+		try
+		{
+			com.servoy.eclipse.debug.script.TypeCreator typeCreator =
+				com.servoy.eclipse.debug.script.TypeProviderFactory.getTypeProvider().getTypeCreator();
+			if (typeCreator == null)
+				return "Error: TypeCreator not available";
+
+			org.eclipse.dltk.javascript.typeinfo.model.Type type = typeCreator.findType(null, typeName);
+			if (type == null)
+			{
+				String scriptingName = docService.mapClassNameToScriptingName(typeName);
+				if (scriptingName != null && !scriptingName.equals(typeName))
+					type = typeCreator.findType(null, scriptingName);
+			}
+			if (type == null)
+				return "Error: Type '" + typeName + "' not found. Try using scriptingName like 'application' instead of 'JSApplication'.";
+
+			String filter = (memberFilter != null && !memberFilter.trim().isEmpty()) ? memberFilter.trim() : "*";
+			java.util.regex.Pattern pattern = filter.equals("*")
+				? null
+				: java.util.regex.Pattern.compile(filter, java.util.regex.Pattern.CASE_INSENSITIVE);
+
+			List<org.eclipse.dltk.javascript.typeinfo.model.Member> methods = new ArrayList<>();
+			List<org.eclipse.dltk.javascript.typeinfo.model.Member> properties = new ArrayList<>();
+
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers())
+			{
+				if (pattern != null && !pattern.matcher(member.getName()).matches()) continue;
+				if (member instanceof org.eclipse.dltk.javascript.typeinfo.model.Method)
+					methods.add(member);
+				else if (member instanceof org.eclipse.dltk.javascript.typeinfo.model.Property)
+					properties.add(member);
+			}
+
+			int totalFiltered = methods.size() + properties.size();
+			boolean truncated = totalFiltered > MEMBERS_THRESHOLD;
+
+			StringBuilder response = new StringBuilder();
+			response.append("=== AVAILABLE MEMBERS FOR TYPE: ").append(type.getName()).append(" ===\n\n");
+			if (!filter.equals("*"))
+				response.append("Filter: ").append(filter).append("\n");
+			response.append("Total found: ").append(totalFiltered).append(" members\n\n");
+
+			if (!methods.isEmpty())
+			{
+				response.append("METHODS (").append(methods.size()).append("):\n");
+				int count = 0;
+				for (org.eclipse.dltk.javascript.typeinfo.model.Member method : methods)
+				{
+					if (truncated && count >= MEMBERS_THRESHOLD) break;
+					response.append("  - ").append(docService.formatMemberSignature(method)).append("\n");
+					count++;
+				}
+				response.append("\n");
+			}
+
+			if (!properties.isEmpty())
+			{
+				response.append("PROPERTIES (").append(properties.size()).append("):\n");
+				int count = methods.size();
+				for (org.eclipse.dltk.javascript.typeinfo.model.Member property : properties)
+				{
+					if (truncated && count >= MEMBERS_THRESHOLD) break;
+					response.append("  - ").append(docService.formatMemberSignature(property)).append("\n");
+					count++;
+				}
+				response.append("\n");
+			}
+
+			if (truncated)
+			{
+				response.append("[WARNING: ").append(totalFiltered).append(" members found, showing first ").append(MEMBERS_THRESHOLD);
+				response.append(". Use memberFilter with regex like 'get.*', 'show.*', or 'is.*' to narrow results]\n");
+			}
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting available members for type: " + typeName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "getDocumentationForIdentifiers",
+		description = "Returns Servoy API documentation for a list of identifiers. "
+			+ "Accepts full method paths (e.g. 'databaseManager.getFoundSet', 'foundset.loadAllRecords') and Servoy types (e.g. JSEvent, JSRecord, QBSelect). "
+			+ "Returns descriptions, parameter types, and return types for each identifier. "
+			+ "Uses DLTK type inference on the file content to resolve identifiers in context.",
+		type = "object")
+	public String getDocumentationForIdentifiers(
+		@ToolParam(name = "identifiers", description = "Comma-separated full identifier paths to look up (e.g., 'databaseManager.getFoundSet,JSRecord,plugins.dialogs.showInfoDialog')", required = true) String identifiers,
+		@ToolParam(name = "filePath", description = "File path (form name, scope name, or workspace path) — provides the context for type inference", required = true) String filePath)
+	{
+		if (identifiers == null || identifiers.trim().isEmpty())
+			return "Error: identifiers parameter is required";
+		if (filePath == null || filePath.trim().isEmpty())
+			return "Error: filePath parameter is required";
+
+		try
+		{
+			String[] identifierArray = java.util.Arrays.stream(identifiers.split(","))
+				.map(String::trim)
+				.filter(s -> !s.isEmpty())
+				.toArray(String[]::new);
+
+			if (identifierArray.length == 0)
+				return "Error: no valid identifiers in input";
+
+			IFile file = filePathResolver.resolveFile(filePath);
+			if (file == null || !file.exists())
+				return filePathResolver.buildNotFoundMessage(filePath);
+
+			com.servoy.eclipse.developer.mcp.dto.SelectionInfo selection = codeContextService.createSelectionInfoFromFile(file);
+			if (selection == null)
+				return "Error: Could not create selection info for: " + filePath;
+
+			com.servoy.eclipse.developer.mcp.dto.CodeContext context = codeContextService.getCodeContext(selection, identifierArray);
+
+			if (context.hasError())
+				return "Error extracting context: " + context.getErrorMessage();
+
+			StringBuilder response = new StringBuilder();
+			response.append("--- DOCUMENTATION FOR: ");
+			for (int i = 0; i < identifierArray.length; i++)
+			{
+				if (i > 0) response.append(", ");
+				response.append(identifierArray[i]);
+			}
+			response.append(" ---\n\n");
+
+			int foundCount = 0;
+			for (String requestedId : identifierArray)
+			{
+				boolean found = false;
+				String baseRequestedId = requestedId;
+				int lastDotIndex = requestedId.lastIndexOf('.');
+				if (lastDotIndex > 0) baseRequestedId = requestedId.substring(0, lastDotIndex);
+
+				for (IdentifierContext identifierContext : context.getIdentifiers())
+				{
+					if (identifierContext.getName().equals(requestedId) || identifierContext.getName().equals(baseRequestedId))
+					{
+						String xml = identifierContext.toFormattedXML();
+						if (xml != null && !xml.trim().isEmpty())
+						{
+							response.append(xml).append("\n");
+							found = true;
+							foundCount++;
+							break;
+						}
+					}
+				}
+
+				if (!found)
+				{
+					response.append("<type>").append(requestedId).append(": NOT FOUND</type>\n");
+					response.append("<description>No documentation available for this identifier</description>\n\n");
+				}
+			}
+
+			response.append("--- END DOCUMENTATION ---\n\n");
+			response.append("Found documentation for ").append(foundCount).append(" out of ").append(identifierArray.length).append(" identifiers.");
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting documentation for identifiers: " + identifiers, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "applyDocumentations",
+		description = "Writes JSDoc documentation items to a Servoy JavaScript file. "
+			+ "Supports INSERT (no existing JSDoc) and REPLACE (existing JSDoc). "
+			+ "Items must be provided as a JSON array string with fields: startLine, endLine, startSentence, endSentence, jsdoc. "
+			+ "Items are applied bottom-to-top automatically to preserve line numbers. "
+			+ "UUID values in @properties lines are automatically restored if accidentally changed.",
+		type = "object")
+	public String applyDocumentations(
+		@ToolParam(name = "filePath", description = "Workspace-relative file path or form/scope name (e.g. '/svyPilotTest/utils.js' or 'utils')", required = true) String filePath,
+		@ToolParam(name = "itemsJson", description = "JSON array of documentation items: [{startLine, endLine, startSentence, endSentence, jsdoc}]. INSERT: startLine==endLine and empty startSentence/endSentence. REPLACE: startLine/endLine cover the existing JSDoc block, startSentence='/**', endSentence='*/'", required = true) String itemsJson)
+	{
+		if (filePath == null || filePath.isBlank()) return "Error: filePath is required";
+		if (itemsJson == null || itemsJson.isBlank()) return "Error: itemsJson is required";
+
+		IFile file = filePathResolver.resolveFile(filePath);
+		if (file == null || !file.exists()) return filePathResolver.buildNotFoundMessage(filePath);
+
+		try
+		{
+			ServoyFileGuard.assertEditable(file.getProjectRelativePath().toString());
+		}
+		catch (ServoyFileFormatProtectedException e)
+		{
+			return "Error: " + e.getMessage();
+		}
+
+		try
+		{
+			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+			List<DocumentationItem> items = mapper.readValue(itemsJson,
+				mapper.getTypeFactory().constructCollectionType(List.class, DocumentationItem.class));
+
+			if (items == null || items.isEmpty()) return "Error: No documentation items provided";
+
+			String resolvedPath = file.getFullPath().toString();
+			String originalContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
+
+			List<String> lineList = new ArrayList<>();
+			for (String line : originalContent.split("\r\n|\r|\n", -1)) lineList.add(line);
+
+			List<DocumentationItem> sortedItems = new ArrayList<>(items);
+			sortedItems.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
+
+			List<String> errors = new ArrayList<>();
+			int successCount = 0;
+
+			for (DocumentationItem item : sortedItems)
+			{
+				try
+				{
+					if (item.startLine() < 0 || item.endLine() >= lineList.size())
+					{
+						errors.add("Line range out of bounds: " + item.startLine() + "-" + item.endLine() +
+							" (file has " + lineList.size() + " lines)");
+						continue;
+					}
+
+					if (item.isInsert())
+					{
+						String indentation = docValidator.extractIndentation(lineList.get(item.startLine()));
+						List<String> formattedLines = new ArrayList<>();
+						for (String jsdocLine : item.jsdoc().split("\n"))
+							formattedLines.add(indentation + jsdocLine);
+						lineList.addAll(item.startLine(), formattedLines);
+						successCount++;
+					}
+					else
+					{
+						String startLineContent = lineList.get(item.startLine()).trim();
+						String endLineContent = lineList.get(item.endLine()).trim();
+
+						if (!startLineContent.startsWith(item.startSentence()) || !endLineContent.endsWith(item.endSentence()))
+						{
+							errors.add("Validation failed at lines " + item.startLine() + "-" + item.endLine() +
+								": start='" + startLineContent.substring(0, Math.min(20, startLineContent.length())) +
+								"' end='" + endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'");
+							continue;
+						}
+
+						StringBuilder replacedContent = new StringBuilder();
+						for (int i = item.startLine(); i <= item.endLine(); i++)
+							replacedContent.append(lineList.get(i)).append("\n");
+						List<String> originalUUIDs = docValidator.extractUUIDs(replacedContent.toString());
+						String fixedJSDoc = docValidator.restoreUUIDs(item.jsdoc(), originalUUIDs);
+
+						String indentation = docValidator.extractIndentation(lineList.get(item.startLine()));
+						List<String> formattedLines = new ArrayList<>();
+						for (String jsdocLine : fixedJSDoc.split("\n"))
+							formattedLines.add(indentation + jsdocLine);
+
+						for (int i = item.endLine(); i >= item.startLine(); i--)
+							lineList.remove(i);
+						lineList.addAll(item.startLine(), formattedLines);
+
+						try
+						{
+							docValidator.validateJSDocSyntax(fixedJSDoc);
+							successCount++;
+						}
+						catch (DocumentationValidatorService.ValidationException ve)
+						{
+							errors.add("JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() + ": " + ve.getMessage());
+						}
+					}
+				}
+				catch (Exception e)
+				{
+					errors.add("Failed to process lines " + item.startLine() + "-" + item.endLine() + ": " + e.getMessage());
+				}
+			}
+
+			StringBuilder newContent = new StringBuilder();
+			for (int i = 0; i < lineList.size(); i++)
+			{
+				if (i > 0) newContent.append("\n");
+				newContent.append(lineList.get(i));
+			}
+
+			file.setContents(new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
+				true, false, null);
+
+			if (errors.isEmpty())
+				return String.format("Success: Applied %d documentation items to %s", successCount, resolvedPath);
+
+			StringBuilder response = new StringBuilder();
+			response.append("Partial success: Applied ").append(successCount).append(" out of ").append(items.size())
+				.append(" documentation items.\n\nErrors encountered:\n");
+			for (String error : errors) response.append("  - ").append(error).append("\n");
+			return response.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error applying documentations to " + filePath, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// validate MCP tool (Faza 2)
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "validate",
+		description = "Validates a JavaScript code snippet by parsing it via DLTK's JavaScript parser. "
+			+ "Returns a success message if the code parses cleanly, or a list of syntax errors otherwise. "
+			+ "Use this to verify AI-generated code before applying it to a file.",
+		type = "object")
+	public String validate(
+		@ToolParam(name = "code", description = "JavaScript code snippet to validate (e.g. a function body, a statement, or a full file)", required = true) String code)
+	{
+		if (code == null || code.isBlank()) return "Error: code parameter is required";
+
+		try
+		{
+			List<org.eclipse.dltk.compiler.problem.DefaultProblem> problems = jsCodeValidator.validate(code);
+			if (problems.isEmpty())
+				return "Valid: code parses successfully.";
+
+			StringBuilder sb = new StringBuilder();
+			sb.append("Invalid: ").append(problems.size()).append(" problem(s) found.\n\n");
+			int n = 1;
+			for (org.eclipse.dltk.compiler.problem.DefaultProblem p : problems)
+			{
+				sb.append(n++).append(". ").append(p.getMessage());
+				if (p.getSourceLineNumber() > 0)
+					sb.append(" (line ").append(p.getSourceLineNumber()).append(")");
+				sb.append("\n");
+			}
+			return sb.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error validating code", e);
+			return "Error: " + e.getMessage();
 		}
 	}
 }
