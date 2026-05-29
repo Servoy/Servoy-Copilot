@@ -64,6 +64,7 @@ import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
 import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
+import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -124,6 +125,7 @@ public class ServoyDevServer
 	private final DocumentationValidatorService docValidator = new DocumentationValidatorService();
 	private final JsCodeValidatorService jsCodeValidator = new JsCodeValidatorService();
 	private final ServoySolutionService solutionService = new ServoySolutionService();
+	private final ServoyArtifactCreationService artifactService = new ServoyArtifactCreationService();
 
 
 	public ServoyDevServer()
@@ -1634,5 +1636,179 @@ public class ServoyDevServer
 		if (names == null || names.isBlank()) return "Error: names parameter is required";
 		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
 		return solutionService.deleteValueLists(nameList);
+	}
+
+	// -------------------------------------------------------------------------
+	// Servoy Artifact creation tools (Faza 4)
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "openForm",
+		description = "Creates a new Servoy form in the active solution. "
+			+ "Supports CSS-position and responsive layouts. "
+			+ "Optionally sets dataSource, parent form (inheritance), and event handlers. "
+			+ "Event handlers are auto-created as methods if they don't exist.",
+		type = "object")
+	public String openForm(
+		@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
+		@ToolParam(name = "style", description = "Form style: 'css' (default) or 'responsive'", required = false) String style,
+		@ToolParam(name = "width", description = "Form width in pixels (default: 640)", required = false) String width,
+		@ToolParam(name = "height", description = "Form height in pixels (default: 480)", required = false) String height,
+		@ToolParam(name = "dataSource", description = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
+		@ToolParam(name = "extendsForm", description = "Parent form name for inheritance", required = false) String extendsForm,
+		@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events)
+	{
+		try
+		{
+			int w = width != null ? Integer.parseInt(width) : 640;
+			int h = height != null ? Integer.parseInt(height) : 480;
+			Map<String, String> eventMap = null;
+			if (events != null && !events.isBlank())
+			{
+				eventMap = new java.util.HashMap<>();
+				for (String pair : events.split(","))
+				{
+					String[] kv = pair.trim().split(":");
+					if (kv.length == 2) eventMap.put(kv[0].trim(), kv[1].trim());
+				}
+			}
+			return artifactService.createForm(name, style != null ? style : "css", w, h, dataSource, extendsForm, eventMap);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error creating form: " + name, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "openRelation",
+		description = "Creates a new Servoy relation in the active solution. "
+			+ "Requires primary and foreign dataSources. "
+			+ "Optionally maps columns and sets join type.",
+		type = "object")
+	public String openRelation(
+		@ToolParam(name = "name", description = "Relation name (e.g. 'customers_to_orders')", required = true) String name,
+		@ToolParam(name = "primaryDataSource", description = "Primary table datasource (format: 'db:/server_name/table_name')", required = true) String primaryDataSource,
+		@ToolParam(name = "foreignDataSource", description = "Foreign table datasource (format: 'db:/server_name/table_name')", required = true) String foreignDataSource,
+		@ToolParam(name = "primaryColumn", description = "Primary key column name for the join condition", required = false) String primaryColumn,
+		@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition", required = false) String foreignColumn,
+		@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType)
+	{
+		try
+		{
+			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, primaryColumn, foreignColumn, joinType);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error creating relation: " + name, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "openValueList",
+		description = "Creates a new Servoy valuelist in the active solution. "
+			+ "Supports types: 'custom' (fixed values), 'database' (table values), 'related' (via relation), 'global_method'.",
+		type = "object")
+	public String openValueList(
+		@ToolParam(name = "name", description = "ValueList name (e.g. 'statusList', 'countries')", required = true) String name,
+		@ToolParam(name = "type", description = "ValueList type: 'custom' (default), 'database', 'related', 'global_method'", required = false) String type,
+		@ToolParam(name = "customValues", description = "For custom type: newline-separated values (e.g. 'Active\\nInactive\\nPending')", required = false) String customValues,
+		@ToolParam(name = "dataSource", description = "For database type: datasource (format: 'db:/server_name/table_name')", required = false) String dataSource,
+		@ToolParam(name = "relationName", description = "For related type: relation name", required = false) String relationName,
+		@ToolParam(name = "displayColumn", description = "Column to display", required = false) String displayColumn,
+		@ToolParam(name = "returnColumn", description = "Column to return as value", required = false) String returnColumn)
+	{
+		try
+		{
+			return artifactService.createValueList(name, type, customValues, dataSource, relationName, displayColumn, returnColumn);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error creating valuelist: " + name, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Database schema tools
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "listTables",
+		description = "Lists all tables in a database server. Returns table names for the specified server.",
+		type = "object")
+	public String listTables(
+		@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName)
+	{
+		if (serverName == null || serverName.isBlank()) return "Error: serverName parameter is required";
+
+		try
+		{
+			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
+			if (server == null) return "Error: Database server '" + serverName + "' not found";
+
+			java.util.List<String> tables = server.getTableNames(false);
+			StringBuilder result = new StringBuilder();
+			result.append("Database Server: ").append(serverName).append("\n");
+			result.append("Tables (").append(tables.size()).append("):\n\n");
+			if (tables.isEmpty()) result.append("(No tables found)\n");
+			for (String tableName : tables) result.append("  - ").append(tableName).append("\n");
+			return result.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error listing tables for server: " + serverName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "getTableInfo",
+		description = "Retrieves comprehensive information about a database table including columns, primary keys, types, and metadata.",
+		type = "object")
+	public String getTableInfo(
+		@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName,
+		@ToolParam(name = "tableName", description = "Table name", required = true) String tableName)
+	{
+		if (serverName == null || serverName.isBlank()) return "Error: serverName parameter is required";
+		if (tableName == null || tableName.isBlank()) return "Error: tableName parameter is required";
+
+		try
+		{
+			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
+			if (server == null) return "Error: Database server '" + serverName + "' not found";
+
+			ITable table = server.getTable(tableName);
+			if (table == null) return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
+
+			StringBuilder result = new StringBuilder();
+			result.append("Table: ").append(table.getSQLName()).append("\n");
+			result.append("DataSource: ").append(table.getDataSource()).append("\n\n");
+			result.append("Columns:\n\n");
+
+			java.util.Collection<Column> columns = table.getColumns();
+			if (columns == null || columns.isEmpty())
+			{
+				result.append("(No columns found)\n");
+				return result.toString();
+			}
+
+			java.util.Set<String> pkNames = new java.util.HashSet<>();
+			java.util.List<Column> pkColumns = table.getRowIdentColumns();
+			if (pkColumns != null)
+				for (Column col : pkColumns) pkNames.add(col.getName());
+
+			int colNum = 1;
+			for (Column col : columns)
+			{
+				result.append(colNum++).append(". ").append(col.getName()).append("\n");
+				result.append("   Type: ").append(col.getColumnType()).append("\n");
+				result.append("   PK: ").append(pkNames.contains(col.getName())).append("\n");
+				result.append("   Nullable: ").append(col.getAllowNull()).append("\n\n");
+			}
+			return result.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error getting table info: " + serverName + "." + tableName, e);
+			return "Error: " + e.getMessage();
+		}
 	}
 }
