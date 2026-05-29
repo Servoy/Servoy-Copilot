@@ -1,6 +1,5 @@
 package com.servoy.eclipse.developer.mcp.services;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,22 +11,34 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
+/**
+ * Generates Playwright test spec files (.spec.pw.js) and Servoy setUp/tearDown scripts (.spec.js)
+ * for Servoy forms. Files are written to {solutionProject}/medias/pwtests/ which is
+ * excluded from the DLTK buildpath (no StackOverflow on modern JS syntax) and accessible
+ * via readProjectResource.
+ */
 @Creatable
 @SuppressWarnings("restriction")
 public class FormSpecGenerator
 {
+	private static final String PWTESTS_DIR = "medias/pwtests";
+
 	private static final Pattern DATA_SOURCE_PATTERN = Pattern.compile("\"dataSource\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern ELEMENT_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern TYPE_NAME_PATTERN = Pattern.compile("\"typeName\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern DATA_PROVIDER_PATTERN = Pattern.compile("\"dataProviderID\"\\s*:\\s*\"([^\"]+)\"");
-	private static final Pattern FORM_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\n.*\"typeid\"\\s*:\\s*3");
 
+	/**
+	 * Generates spec files for the given form.
+	 * Files are written to {solutionProject}/medias/pwtests/{formName}.spec.pw.js
+	 * and {solutionProject}/medias/pwtests/{formName}.spec.js
+	 */
 	public String generateSpec(String formName)
 	{
 		try
@@ -45,37 +56,38 @@ public class FormSpecGenerator
 				return "Error: Form file not found: forms/" + formName + ".frm";
 			}
 
-			IFile pwSpecFile = project.getFile("forms/" + formName + ".spec.pw.js");
-			IFile setupSpecFile = project.getFile("forms/" + formName + ".spec.js");
+			String solutionName = activeProject.getSolution().getName();
+			Path pwTestsDir = getPwTestsDir(solutionName);
+			Files.createDirectories(pwTestsDir);
 
-			if (pwSpecFile.exists() && setupSpecFile.exists())
+			Path pwSpecPath = pwTestsDir.resolve(formName + ".spec.pw.js");
+			Path setupSpecPath = pwTestsDir.resolve(formName + ".spec.js");
+
+			if (Files.exists(pwSpecPath) && Files.exists(setupSpecPath))
 			{
-				return "Spec files already exist: forms/" + formName + ".spec.pw.js and forms/" + formName + ".spec.js";
+				return "Spec files already exist: medias/pwtests/" + formName + ".spec.pw.js and .spec.js";
 			}
 
 			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
-
 			FormMetadata metadata = parseFrmFile(frmContent, formName);
 
 			StringBuilder result = new StringBuilder();
 
-			if (!pwSpecFile.exists())
+			if (!Files.exists(pwSpecPath))
 			{
 				String pwContent = generateSpecContent(metadata);
-				Path pwPath = frmFile.getLocation().toFile().toPath().getParent().resolve(formName + ".spec.pw.js");
-				Files.writeString(pwPath, pwContent, StandardCharsets.UTF_8);
-				result.append("Created: forms/").append(formName).append(".spec.pw.js (").append(metadata.namedElements.size()).append(" element assertions)\n");
+				Files.writeString(pwSpecPath, pwContent, StandardCharsets.UTF_8);
+				result.append("Created: medias/pwtests/").append(formName)
+					.append(".spec.pw.js (").append(metadata.namedElements.size()).append(" element assertions)\n");
 			}
 
-			if (!setupSpecFile.exists())
+			if (!Files.exists(setupSpecPath))
 			{
 				String setupContent = generateSetupContent(metadata);
-				Path setupPath = frmFile.getLocation().toFile().toPath().getParent().resolve(formName + ".spec.js");
-				Files.writeString(setupPath, setupContent, StandardCharsets.UTF_8);
-				result.append("Created: forms/").append(formName).append(".spec.js (setUp/tearDown for data setup)");
+				Files.writeString(setupSpecPath, setupContent, StandardCharsets.UTF_8);
+				result.append("Created: medias/pwtests/").append(formName)
+					.append(".spec.js (setUp/tearDown for data setup)");
 			}
-
-			project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
 
 			return result.toString().trim();
 		}
@@ -85,19 +97,56 @@ public class FormSpecGenerator
 		}
 	}
 
+	/**
+	 * Checks if a .spec.pw.js file already exists for the given form.
+	 */
 	public boolean specExists(String formName)
 	{
 		try
 		{
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 			if (activeProject == null) return false;
-			IFile specFile = activeProject.getProject().getFile("forms/" + formName + ".spec.pw.js");
-			return specFile.exists();
+			String solutionName = activeProject.getSolution().getName();
+			Path pwSpecPath = getPwTestsDir(solutionName).resolve(formName + ".spec.pw.js");
+			return Files.exists(pwSpecPath);
 		}
 		catch (Exception e)
 		{
 			return false;
 		}
+	}
+
+	/**
+	 * Returns the path to the spec file for a given form.
+	 */
+	public Path getSpecFilePath(String formName)
+	{
+		try
+		{
+			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			if (activeProject == null) return null;
+			String solutionName = activeProject.getSolution().getName();
+			return getPwTestsDir(solutionName).resolve(formName + ".spec.pw.js");
+		}
+		catch (Exception e)
+		{
+			return null;
+		}
+	}
+
+	/**
+	 * Returns the pwtests directory for the given solution: {projectLocation}/medias/pwtests/
+	 */
+	public Path getPwTestsDir(String solutionName)
+	{
+		ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+		if (project != null)
+		{
+			return project.getProject().getLocation().toFile().toPath().resolve(PWTESTS_DIR);
+		}
+		// Fallback: workspace root
+		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+		return workspaceRoot.resolve(solutionName).resolve(PWTESTS_DIR);
 	}
 
 	private FormMetadata parseFrmFile(String content, String formName)
@@ -138,98 +187,98 @@ public class FormSpecGenerator
 		return metadata;
 	}
 
+	/**
+	 * Generates the Playwright spec content. No @properties annotation (not a Servoy file).
+	 * Includes a navigateToForm helper with retry logic (Servoy session cleanup delay).
+	 * Uses two describe blocks with minimal navigations:
+	 * - "static checks" (combined into one test)
+	 * - "interactions" (button clicks in a single test)
+	 */
 	private String generateSpecContent(FormMetadata metadata)
 	{
 		StringBuilder sb = new StringBuilder();
 
-		sb.append("/**\n");
-		sb.append(" * @properties={typeid:24,uuid:\"").append(UUID.randomUUID()).append("\"}\n");
-		sb.append(" */\n");
 		sb.append("const { test, expect } = require('@playwright/test');\n\n");
 
 		String baseUrl = getFormUrl(metadata.formName);
 
-		sb.append("test.describe('").append(metadata.formName).append("', () => {\n\n");
+		// --- navigateToForm helper with retry (handles Servoy session cleanup delay) ---
+		sb.append("const formUrl = '").append(baseUrl).append("';\n\n");
+		sb.append("async function navigateToForm(page) {\n");
+		sb.append("  for (let attempt = 0; attempt < 3; attempt++) {\n");
+		sb.append("    try {\n");
+		sb.append("      await page.goto(formUrl, { timeout: 30000 });\n");
+		sb.append("      await page.waitForLoadState('domcontentloaded');\n");
+		sb.append("      await page.locator('[data-cy^=\"").append(metadata.formName).append(".\"]').first().waitFor({ state: 'visible', timeout: 15000 });\n");
+		sb.append("      return;\n");
+		sb.append("    } catch (e) {\n");
+		sb.append("      if (attempt === 2) throw e;\n");
+		sb.append("      await page.waitForTimeout(3000);\n");
+		sb.append("    }\n");
+		sb.append("  }\n");
+		sb.append("}\n\n");
 
-		sb.append("  test.beforeEach(async ({ page }) => {\n");
-		sb.append("    await page.goto('").append(baseUrl).append("');\n");
-		sb.append("    await page.waitForLoadState('networkidle');\n");
-		sb.append("    await page.waitForTimeout(2000);\n");
-		sb.append("  });\n\n");
+		// --- Static checks (combined into one test to minimize navigations) ---
+		sb.append("test.describe('").append(metadata.formName).append(" - static checks', () => {\n\n");
 
-		sb.append("  test('loads without errors', async ({ page }) => {\n");
+		sb.append("  test('loads without errors and all elements are visible', async ({ page }) => {\n");
+		sb.append("    await navigateToForm(page);\n");
 		sb.append("    await expect(page.locator('.svy-error, .error-overlay')).not.toBeVisible();\n");
-		sb.append("  });\n\n");
 
-		if (metadata.dataSource != null)
-		{
-			sb.append("  test('has data loaded from ").append(metadata.dataSource).append("', async ({ page }) => {\n");
-			sb.append("    // Form dataSource: ").append(metadata.dataSource).append("\n");
-			sb.append("    // Verify at least one data-bound element has content\n");
-
-			ElementInfo firstDataField = metadata.namedElements.stream()
-				.filter(e -> e.dataProviderID != null && e.isWebComponent)
-				.findFirst().orElse(null);
-
-			if (firstDataField != null)
-			{
-				sb.append("    const field = page.locator('[data-cy=\"").append(metadata.formName).append(".").append(firstDataField.name).append("\"]');\n");
-				sb.append("    await expect(field).toBeVisible();\n");
-			}
-			else
-			{
-				sb.append("    // No data-bound fields found - verify form rendered\n");
-				sb.append("    await expect(page.locator('[data-cy^=\"").append(metadata.formName).append(".\"]').first()).toBeVisible();\n");
-			}
-			sb.append("  });\n\n");
-		}
-
-		List<ElementInfo> fields = metadata.namedElements.stream()
-			.filter(e -> e.isWebComponent && e.dataProviderID != null)
-			.limit(5)
+		List<ElementInfo> visibleElements = metadata.namedElements.stream()
+			.filter(e -> e.isWebComponent || e.isButton || e.isLabel)
+			.limit(8)
 			.toList();
 
-		for (ElementInfo field : fields)
+		for (ElementInfo elem : visibleElements)
 		{
-			sb.append("  test('").append(field.name).append(" is visible', async ({ page }) => {\n");
-			sb.append("    await expect(page.locator('[data-cy=\"").append(metadata.formName).append(".").append(field.name).append("\"]')).toBeVisible();\n");
-			sb.append("  });\n\n");
+			sb.append("    await expect(page.locator('[data-cy=\"").append(metadata.formName).append(".").append(elem.name).append("\"]')).toBeVisible();\n");
 		}
+		sb.append("  });\n\n");
 
+		sb.append("});\n\n");
+
+		// --- Interaction tests (single page load per test, with retry) ---
 		List<ElementInfo> buttons = metadata.namedElements.stream()
 			.filter(e -> e.isButton || (e.typeName != null && e.typeName.contains("button")))
 			.limit(3)
 			.toList();
 
-		for (ElementInfo button : buttons)
+		if (!buttons.isEmpty())
 		{
-			sb.append("  test('").append(button.name).append(" button is clickable', async ({ page }) => {\n");
-			sb.append("    const btn = page.locator('[data-cy=\"").append(metadata.formName).append(".").append(button.name).append("\"]');\n");
-			sb.append("    await expect(btn).toBeVisible();\n");
-			sb.append("    await expect(btn).toBeEnabled();\n");
-			sb.append("  });\n\n");
-		}
+			sb.append("test.describe('").append(metadata.formName).append(" - interactions', () => {\n\n");
 
-		sb.append("});\n");
+			sb.append("  test('buttons are clickable', async ({ page }) => {\n");
+			sb.append("    await navigateToForm(page);\n");
+
+			for (ElementInfo button : buttons)
+			{
+				sb.append("    const ").append(button.name).append(" = page.locator('[data-cy=\"").append(metadata.formName).append(".").append(button.name).append("\"]');\n");
+				sb.append("    await expect(").append(button.name).append(").toBeVisible();\n");
+				sb.append("    await expect(").append(button.name).append(").toBeEnabled();\n");
+			}
+			sb.append("  });\n\n");
+
+			sb.append("});\n");
+		}
 
 		return sb.toString();
 	}
 
+
+	/**
+	 * Returns a relative URL path for the form preview.
+	 * The baseURL (host + port + solution path) is provided by playwright.config.js.
+	 */
 	private String getFormUrl(String formName)
 	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			String solutionName = activeProject.getSolution().getName();
-			int port = ApplicationServerRegistry.get().getWebServerPort();
-			return "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName + "&svy_testmode=true";
-		}
-		catch (Exception e)
-		{
-			return "http://localhost:8080/solution/unknown/index.html?formpreview=" + formName + "&svy_testmode=true";
-		}
+		return "?formpreview=" + formName + "&svy_testmode=true";
 	}
 
+	/**
+	 * Generates the Servoy setUp/tearDown script (.spec.js).
+	 * This file DOES have @properties annotations since it's a Servoy scope file.
+	 */
 	private String generateSetupContent(FormMetadata metadata)
 	{
 		StringBuilder sb = new StringBuilder();
