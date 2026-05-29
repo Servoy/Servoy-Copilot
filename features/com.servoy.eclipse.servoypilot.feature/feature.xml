@@ -312,50 +312,6 @@ version(s), and exceptions or additional permissions here}.&quot;
          version="0.0.0"/>
 
    <plugin
-         id="com.servoy.eclipse.servoypilot.knowledgebase"
-         version="0.0.0"/>
-
-   <!-- ONNX disabled
-   <plugin
-         id="onnx-models-bge-small-en"
-         version="0.0.0"/>
-
-   <plugin
-         id="onnxruntime-extensions.linux.x86_64"
-         os="linux"
-         arch="x86_64"
-         version="0.0.0"/>
-
-   <plugin
-         id="onnxruntime-extensions.macosx.aarch64"
-         os="macosx"
-         arch="aarch64"
-         version="0.0.0"/>
-
-   <plugin
-         id="onnxruntime-extensions.macosx.x86_64"
-         os="macosx"
-         arch="x86_64"
-         version="0.0.0"/>
-
-   <plugin
-         id="onnxruntime-extensions.win32.aarch64"
-         os="win32"
-         arch="aarch64"
-         version="0.0.0"/>
-
-   <plugin
-         id="onnxruntime-extensions.win32.x86_64"
-         os="win32"
-         arch="x86_64"
-         version="0.0.0"/>
-
-   <plugin
-         id="wrapped.com.microsoft.onnxruntime.onnxruntime"
-         version="0.0.0"/>
-   -->
-
-   <plugin
          id="com.servoy.eclipse.developer.mcp"
          version="0.0.0"/>
 

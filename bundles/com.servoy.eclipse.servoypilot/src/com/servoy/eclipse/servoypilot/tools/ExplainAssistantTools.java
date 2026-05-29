@@ -31,7 +31,6 @@ import com.servoy.eclipse.servoypilot.tools.workspace.IReadFileTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IReadFunctionTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
 import com.servoy.eclipse.servoypilot.util.ToolComposer;
-import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
 import com.servoy.eclipse.tools.retrieval.IWebFetchTool;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -63,8 +62,6 @@ public class ExplainAssistantTools
 			ISearchAndReplaceTool.class,
 			IGetProblemsTool.class,
 			// Knowledge and web
-			IKnowledgeTool.class,
-			IWebFetchTool.class
-		);
+			IWebFetchTool.class);
 	}
 }

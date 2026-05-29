@@ -40,7 +40,6 @@ import com.servoy.eclipse.servoypilot.tools.workspace.IReadFunctionTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IShowFormInBrowserTool;
 import com.servoy.eclipse.servoypilot.util.ToolComposer;
-import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;
@@ -81,9 +80,6 @@ public class UnitTestAssistantTools
 			IGenerateTestCasesTool.class,
 			IRunJsUnitTestsTool.class,
 			// Form UI preview
-			IShowFormInBrowserTool.class,
-			// Knowledge
-			IKnowledgeTool.class
-		);
+			IShowFormInBrowserTool.class);
 	}
 }

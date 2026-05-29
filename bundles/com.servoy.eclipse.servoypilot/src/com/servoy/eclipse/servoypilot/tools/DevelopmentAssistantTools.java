@@ -43,7 +43,6 @@ import com.servoy.eclipse.servoypilot.tools.workspace.IFindFilesTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IGetProblemsTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.ISearchAndReplaceTool;
 import com.servoy.eclipse.servoypilot.util.ToolComposer;
-import com.servoy.eclipse.tools.retrieval.IKnowledgeTool;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.service.tool.ToolExecutor;
@@ -90,7 +89,6 @@ public class DevelopmentAssistantTools
 			ILabelComponentTool.class,
 			// Utility
 			IDatabaseTool.class,
-			ITargetTool.class,
-			IKnowledgeTool.class);
+			ITargetTool.class);
 	}
 }
