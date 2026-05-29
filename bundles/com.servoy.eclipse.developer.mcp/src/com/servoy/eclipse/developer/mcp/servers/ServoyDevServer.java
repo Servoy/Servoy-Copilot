@@ -63,6 +63,7 @@ import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
 import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
 import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
+import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -122,6 +123,7 @@ public class ServoyDevServer
 	private final CodeContextService codeContextService = new CodeContextService();
 	private final DocumentationValidatorService docValidator = new DocumentationValidatorService();
 	private final JsCodeValidatorService jsCodeValidator = new JsCodeValidatorService();
+	private final ServoySolutionService solutionService = new ServoySolutionService();
 
 
 	public ServoyDevServer()
@@ -1552,5 +1554,85 @@ public class ServoyDevServer
 			ServoyLog.logError("Error validating code", e);
 			return "Error: " + e.getMessage();
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Servoy Solution tools (Faza 3 + 5)
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "getForms",
+		description = "Lists forms in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
+		type = "object")
+	public String getForms(
+		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
+	{
+		return solutionService.listForms(scope != null ? scope : "all");
+	}
+
+	@Tool(name = "getRelations",
+		description = "Lists relations in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
+		type = "object")
+	public String getRelations(
+		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
+	{
+		return solutionService.listRelations(scope != null ? scope : "all");
+	}
+
+	@Tool(name = "getValueLists",
+		description = "Lists valuelists in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
+		type = "object")
+	public String getValueLists(
+		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
+	{
+		return solutionService.listValueLists(scope != null ? scope : "all");
+	}
+
+	@Tool(name = "getStyles",
+		description = "Lists CSS/LESS style files in the active solution and its modules. "
+			+ "Shows which solutions have .less theme files.",
+		type = "object")
+	public String getStyles(
+		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
+	{
+		return solutionService.listStyles(scope != null ? scope : "all");
+	}
+
+	@Tool(name = "deleteForms",
+		description = "Deletes one or more forms from the active solution. "
+			+ "Provide a comma-separated list of form names.",
+		type = "object")
+	public String deleteForms(
+		@ToolParam(name = "names", description = "Comma-separated form names to delete (e.g. 'testForm,oldForm')", required = true) String names)
+	{
+		if (names == null || names.isBlank()) return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+		return solutionService.deleteForms(nameList);
+	}
+
+	@Tool(name = "deleteRelations",
+		description = "Deletes one or more relations from the active solution. "
+			+ "Provide a comma-separated list of relation names.",
+		type = "object")
+	public String deleteRelations(
+		@ToolParam(name = "names", description = "Comma-separated relation names to delete (e.g. 'customers_to_orders,old_relation')", required = true) String names)
+	{
+		if (names == null || names.isBlank()) return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+		return solutionService.deleteRelations(nameList);
+	}
+
+	@Tool(name = "deleteValueLists",
+		description = "Deletes one or more valuelists from the active solution. "
+			+ "Provide a comma-separated list of valuelist names.",
+		type = "object")
+	public String deleteValueLists(
+		@ToolParam(name = "names", description = "Comma-separated valuelist names to delete (e.g. 'status_list,old_vl')", required = true) String names)
+	{
+		if (names == null || names.isBlank()) return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+		return solutionService.deleteValueLists(nameList);
 	}
 }
