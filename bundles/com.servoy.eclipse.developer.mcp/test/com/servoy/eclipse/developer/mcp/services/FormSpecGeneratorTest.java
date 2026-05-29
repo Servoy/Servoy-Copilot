@@ -265,4 +265,165 @@ public class FormSpecGeneratorTest
 		assertTrue("Generated setup without dataSource must have appropriate comment",
 			setup.contains("No dataSource"));
 	}
+
+	// --- New tests for spec content generation ---
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_noPropertiesAnnotation() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[{\"name\":\"btn1\",\"typeid\":7,\"onActionMethodID\":\"x\"}],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must NOT contain @properties annotation",
+			!spec.contains("@properties"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_containsPlaywrightImport() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must import @playwright/test",
+			spec.contains("require('@playwright/test')"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_containsNavigateToFormRetry() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must contain navigateToForm retry helper",
+			spec.contains("async function navigateToForm(page)"));
+		assertTrue("Generated spec must have retry logic with 3 attempts",
+			spec.contains("attempt < 3"));
+		assertTrue("Generated spec must have 3s delay between retries",
+			spec.contains("waitForTimeout(3000)"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_usesDomContentLoaded() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must use domcontentloaded (not networkidle)",
+			spec.contains("domcontentloaded"));
+		assertTrue("Generated spec must NOT use networkidle",
+			!spec.contains("networkidle"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_usesRelativeUrl() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must use relative URL with formpreview param",
+			spec.contains("?formpreview=myForm&svy_testmode=true"));
+		assertTrue("Generated spec must NOT contain hardcoded localhost URL",
+			!spec.contains("http://localhost"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_containsDataCySelectors() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[" +
+			"{\"name\":\"btn_save\",\"onActionMethodID\":\"abc\",\"typeid\":7}," +
+			"{\"name\":\"name_field\",\"typeName\":\"bootstrapcomponents-textbox\",\"typeid\":47}" +
+			"],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must use data-cy selectors with form prefix",
+			spec.contains("[data-cy=\"myForm.btn_save\"]"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_buttonsAreClickable() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[" +
+			"{\"name\":\"btn_save\",\"onActionMethodID\":\"abc\",\"typeid\":7}" +
+			"],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must have interactions describe block",
+			spec.contains("myForm - interactions"));
+		assertTrue("Generated spec must check button is enabled",
+			spec.contains("toBeEnabled()"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_generateSpecContent_staticChecksBlock() throws Exception
+	{
+		Method parseFrmFile = FormSpecGenerator.class.getDeclaredMethod("parseFrmFile", String.class, String.class);
+		parseFrmFile.setAccessible(true);
+		Method generateSpecContent = FormSpecGenerator.class.getDeclaredMethod("generateSpecContent", parseFrmFile.getReturnType());
+		generateSpecContent.setAccessible(true);
+
+		String frmContent = "{\n\"items\":[{\"name\":\"lbl1\",\"typeid\":7}],\n\"name\":\"myForm\",\n\"typeid\":3\n}";
+		Object metadata = parseFrmFile.invoke(new FormSpecGenerator(), frmContent, "myForm");
+		String spec = (String)generateSpecContent.invoke(new FormSpecGenerator(), metadata);
+
+		assertTrue("Generated spec must have static checks describe block",
+			spec.contains("myForm - static checks"));
+		assertTrue("Generated spec must check for error overlay",
+			spec.contains(".svy-error, .error-overlay"));
+	}
+
+	@Test
+	public void testFormSpecGenerator_hasGetPwTestsDirMethod() throws NoSuchMethodException
+	{
+		assertNotNull("FormSpecGenerator must have getPwTestsDir(String) method",
+			FormSpecGenerator.class.getMethod("getPwTestsDir", String.class));
+	}
+
+	@Test
+	public void testFormSpecGenerator_hasGetSpecFilePathMethod() throws NoSuchMethodException
+	{
+		assertNotNull("FormSpecGenerator must have getSpecFilePath(String) method",
+			FormSpecGenerator.class.getMethod("getSpecFilePath", String.class));
+	}
 }
