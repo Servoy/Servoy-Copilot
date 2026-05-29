@@ -37,6 +37,9 @@
                         </artifact>
                     </target>
                     <pomDependencies>consider</pomDependencies>
+                    <dependency-resolution>
+                        <optionalDependencies>ignore</optionalDependencies>
+                    </dependency-resolution>
                     <environments>
                         <environment>
                             <os>linux</os>
