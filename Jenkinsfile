@@ -73,16 +73,16 @@ pipeline {
                   wait: false
         }
         
-        failure {
-            office365ConnectorSend webhookUrl: "${TEAMS_WEBHOOK}", status: 'Failed'
+       failure {
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Failed'
         }
         
         unstable {
-            office365ConnectorSend webhookUrl: "${TEAMS_WEBHOOK}", status: 'Unstable'
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Unstable'
         }
         
         fixed {
-            office365ConnectorSend webhookUrl: "${TEAMS_WEBHOOK}", status: 'Back to Normal'
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Back to Normal'
         }
     }
 }
