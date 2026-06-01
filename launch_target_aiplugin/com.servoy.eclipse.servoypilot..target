@@ -9,6 +9,12 @@
         </location>
 	    <location includeDependencyDepth="none" includeDependencyScopes="compile" includeSource="true" missingManifest="generate" type="Maven">
 		    <dependencies>
+		        <dependency>
+                    <groupId>com.equo</groupId>
+                    <artifactId>com.equo.chromium</artifactId>
+                    <version>144.0.4</version>
+                    <type>jar</type>
+                </dependency>
 			    <dependency>
 				    <groupId>com.ethlo.time</groupId>
 				    <artifactId>itu</artifactId>
