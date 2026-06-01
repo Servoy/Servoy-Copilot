@@ -34,7 +34,7 @@ pipeline {
         
         stage('Build with Tycho 5') {
             steps {
-                xvfb(name: 'xvfb') {
+                wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
                     configFileProvider([
                         // Let op: gebruikt de specifieke ba7b9372... settings-file van dit project
                         configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
