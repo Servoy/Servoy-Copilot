@@ -30,7 +30,7 @@ Require-Bundle: org.eclipse.jface,
  org.eclipse.swt
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.servoypilot
-Import-Package: com.equo.chromium.swt;resolution:=optional,
+Import-Package: com.equo.chromium.swt,
  com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)",
