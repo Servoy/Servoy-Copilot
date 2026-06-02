@@ -32,6 +32,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 /**
  * Unit tests for the package-private {@link McpConfigWriter} utility class.
  * <p>
@@ -421,6 +424,37 @@ public class McpConfigWriterTest {
 		String content = Files.readString(configFile, StandardCharsets.UTF_8);
 		assertTrue("$schema must be added to file that lacked it", content.contains(McpConfigWriter.SCHEMA_URL));
 	}
+
+	@Test
+	public void mergeConfig_existingEntryWithRandomNameButSameUrl_preservedAndNewOnesAdded() throws IOException {
+		Path configFile = tmp.getRoot().toPath().resolve("opencode.json");
+		// Existing file has a server with a random name, but its URL matches one of the contributed URLs
+		String existing = "{\n" +
+				"  \"$schema\": \"" + McpConfigWriter.SCHEMA_URL + "\",\n" +
+				"  \"mcp\": {\n" +
+				"    \"my-random-name\": {\n" +
+				"      \"type\": \"remote\",\n" +
+				"      \"url\": \"http://localhost:{env:" + McpConfigWriter.ENV_PORT + "}/mcp/eclipse-ide\"\n" +
+				"    }\n" +
+				"  }\n" +
+				"}\n";
+		Files.writeString(configFile, existing, StandardCharsets.UTF_8);
+
+		// Contributed: eclipse-ide (URL already present under "my-random-name") + eclipse-coder (new)
+		IMcpEndpointProvider p = provider(
+				List.of("http://localhost:8085/mcp/eclipse-ide", "http://localhost:8085/mcp/eclipse-coder"), null);
+		McpConfigWriter.mergeConfig(List.of(p), configFile);
+
+		ObjectMapper mapper = new ObjectMapper();
+		ObjectNode mcp = (ObjectNode)((ObjectNode)mapper.readTree(configFile.toFile())).get("mcp");
+
+		assertEquals("mcp section must have exactly 2 entries", 2, mcp.size());
+		assertTrue("Existing random server name must be preserved", mcp.has("my-random-name"));
+		assertTrue("New server 'eclipse-coder' must be added", mcp.has("eclipse-coder"));
+		assertFalse("'eclipse-ide' key must not appear — its URL was already present under a different name",
+				mcp.has("eclipse-ide"));
+	}
+
 	// -----------------------------------------------------------------------
 	// collectProviders ??? test-seam (OSGi extension point bypass)
 	// -----------------------------------------------------------------------

@@ -26,14 +26,20 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IExtensionRegistry;
 import org.eclipse.core.runtime.Platform;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
@@ -119,7 +125,7 @@ class McpConfigWriter {
 
 	/**
 	 * Derives the MCP server name from a URL by taking the last non-empty
-	 * path segment. {@code ".../mcp/eclipse-ide"} â?? {@code "eclipse-ide"}.
+	 * path segment. {@code ".../mcp/eclipse-ide"} â†’ {@code "eclipse-ide"}.
 	 */
 	static String serverNameFromUrl(String url) {
 		try {
@@ -146,7 +152,7 @@ class McpConfigWriter {
 	/**
 	 * Builds the template URL by replacing the port with {@code {env:MCP_PORT}}.
 	 * {@code "http://localhost:8085/mcp/eclipse-ide"}
-	 * â?? {@code "http://localhost:{env:MCP_PORT}/mcp/eclipse-ide"}
+	 * â†’ {@code "http://localhost:{env:MCP_PORT}/mcp/eclipse-ide"}
 	 */
 	static String templateUrl(String url) {
 		int port = extractPort(url);
@@ -246,354 +252,58 @@ class McpConfigWriter {
 			}
 		}
 
-		String existingJson = null;
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.enable(SerializationFeature.INDENT_OUTPUT);
+
+		ObjectNode root;
 		if (Files.exists(configFile)) {
 			try {
-				existingJson = Files.readString(configFile, StandardCharsets.UTF_8);
+				root = (ObjectNode)mapper.readTree(configFile.toFile());
 			} catch (IOException e) {
 				ServoyLog.logError("McpConfigWriter: cannot read existing opencode.json, will regenerate", e); //$NON-NLS-1$
-				existingJson = null;
+				root = mapper.createObjectNode();
 			}
-		}
-
-		String newJson;
-		if (existingJson == null) {
-			// Generate fresh
-			newJson = buildFreshJson(contributed, desiredAuthHeader);
 		} else {
-			// Merge into existing
-			newJson = mergeIntoExisting(existingJson, contributed, desiredAuthHeader);
+			root = mapper.createObjectNode();
 		}
 
-		// Write out
+		if (!root.has("$schema")) root.put("$schema", SCHEMA_URL); //$NON-NLS-1$
+		if (!root.has("mcp")) root.putObject("mcp"); //$NON-NLS-1$
+		ObjectNode mcp = (ObjectNode)root.get("mcp"); //$NON-NLS-1$
+
+		// Collect all URL values already present in the mcp section
+		Set<String> existingUrls = new HashSet<>();
+		mcp.fields().forEachRemaining(e -> {
+			JsonNode urlNode = e.getValue().get("url"); //$NON-NLS-1$
+			if (urlNode != null) existingUrls.add(urlNode.asText());
+		});
+
+		for (Map.Entry<String, String[]> entry : contributed.entrySet()) {
+			String serverName = entry.getKey();
+			String tmplUrl = entry.getValue()[0];
+			String authToken = entry.getValue()[1];
+
+			if (existingUrls.contains(tmplUrl)) {
+				continue; // URL already present under some name, nothing to do
+			}
+
+			ObjectNode server = mapper.createObjectNode();
+			server.put("type", "remote"); //$NON-NLS-1$ //$NON-NLS-2$
+			server.put("url", tmplUrl); //$NON-NLS-1$
+			if (authToken != null && desiredAuthHeader != null) {
+				server.putObject("headers").put("Authorization", desiredAuthHeader); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			mcp.set(serverName, server);
+		}
+
 		Path parent = configFile.getParent();
 		if (parent != null && !Files.exists(parent)) {
 			Files.createDirectories(parent);
 		}
-		Files.writeString(configFile, newJson, StandardCharsets.UTF_8);
+		Files.writeString(configFile, mapper.writeValueAsString(root), StandardCharsets.UTF_8);
 	}
 
-	/**
-	 * Generates a fresh opencode.json from the contributed entries.
-	 *
-	 * @param contributed       map of serverName â?? [templateUrl, authToken]
-	 * @param desiredAuthHeader the full auth header value or null
-	 * @return JSON string
-	 */
-	private static String buildFreshJson(Map<String, String[]> contributed, String desiredAuthHeader) {
-		StringBuilder sb = new StringBuilder();
-		sb.append("{\n"); //$NON-NLS-1$
-		sb.append("  \"$schema\": \"").append(SCHEMA_URL).append("\",\n"); //$NON-NLS-1$ //$NON-NLS-2$
-		sb.append("  \"mcp\": {\n"); //$NON-NLS-1$
-
-		int i = 0;
-		for (Map.Entry<String, String[]> entry : contributed.entrySet()) {
-			String serverName = entry.getKey();
-			String tmplUrl = entry.getValue()[0];
-			String authToken = entry.getValue()[1];
-			sb.append("    \"").append(jsonEscape(serverName)).append("\": {\n"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("      \"type\": \"remote\",\n"); //$NON-NLS-1$
-			sb.append("      \"url\": \"").append(jsonEscape(tmplUrl)).append("\""); //$NON-NLS-1$ //$NON-NLS-2$
-			if (authToken != null && desiredAuthHeader != null) {
-				sb.append(",\n"); //$NON-NLS-1$
-				sb.append("      \"headers\": {\n"); //$NON-NLS-1$
-				sb.append("        \"Authorization\": \"").append(jsonEscape(desiredAuthHeader)).append("\"\n"); //$NON-NLS-1$ //$NON-NLS-2$
-				sb.append("      }\n"); //$NON-NLS-1$
-			} else {
-				sb.append("\n"); //$NON-NLS-1$
-			}
-			sb.append("    }"); //$NON-NLS-1$
-			if (i < contributed.size() - 1) {
-				sb.append(","); //$NON-NLS-1$
-			}
-			sb.append("\n"); //$NON-NLS-1$
-			i++;
-		}
-
-		sb.append("  }\n"); //$NON-NLS-1$
-		sb.append("}\n"); //$NON-NLS-1$
-		return sb.toString();
-	}
-
-	/**
-	 * Merges contributed entries into the existing JSON string.
-	 * Uses string-based parsing to find and update/insert mcp entries.
-	 *
-	 * @param existingJson      the current file content
-	 * @param contributed       map of serverName â?? [templateUrl, authToken]
-	 * @param desiredAuthHeader the full auth header value or null
-	 * @return updated JSON string
-	 */
-	private static String mergeIntoExisting(String existingJson, Map<String, String[]> contributed,
-			String desiredAuthHeader) {
-		// For each contributed entry, check if it's already present and correct.
-		// We use simple string searching: look for the server name key in the mcp
-		// block.
-
-		// First, ensure $schema is present
-		String result = existingJson;
-		if (!result.contains("\"$schema\"")) //$NON-NLS-1$
-		{
-			// Insert $schema after opening brace
-			int firstBrace = result.indexOf('{');
-			if (firstBrace >= 0) {
-				result = result.substring(0, firstBrace + 1) +
-						"\n  \"$schema\": \"" + SCHEMA_URL + "\"," + //$NON-NLS-1$ //$NON-NLS-2$
-						result.substring(firstBrace + 1);
-			}
-		}
-
-		// Ensure mcp block exists
-		if (!result.contains("\"mcp\"")) //$NON-NLS-1$
-		{
-			// Add mcp block before closing brace of root object
-			int lastBrace = result.lastIndexOf('}');
-			if (lastBrace >= 0) {
-				// Find if we need a comma (i.e., there's content before us)
-				String before = result.substring(0, lastBrace).trim();
-				String comma = before.endsWith(",") || before.endsWith("{") ? "" : ","; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-				result = result.substring(0, lastBrace) +
-						comma + "\n  \"mcp\": {}\n" + //$NON-NLS-1$
-						result.substring(lastBrace);
-			}
-		}
-
-		// For each contributed entry, check if it's up-to-date in the mcp block
-		for (Map.Entry<String, String[]> entry : contributed.entrySet()) {
-			String serverName = entry.getKey();
-			String tmplUrl = entry.getValue()[0];
-			String authToken = entry.getValue()[1];
-
-			result = upsertMcpEntry(result, serverName, tmplUrl, authToken, desiredAuthHeader);
-		}
-
-		return result;
-	}
-
-	/**
-	 * Inserts or updates a single MCP server entry in the JSON string.
-	 * If the entry already has the correct URL template and auth header, it is left
-	 * unchanged.
-	 */
-	private static String upsertMcpEntry(String json, String serverName, String tmplUrl,
-			String authToken, String desiredAuthHeader) {
-		String serverKey = "\"" + serverName + "\""; //$NON-NLS-1$ //$NON-NLS-2$
-
-		// Check if the server name exists in the mcp block (simple search)
-		int mcpStart = findMcpBlockStart(json);
-		if (mcpStart < 0) {
-			return json; // can't find mcp block - shouldn't happen
-		}
-
-		// Look for the key after the mcp block start
-		int keyPos = json.indexOf(serverKey, mcpStart);
-		if (keyPos < 0) {
-			// Entry not present - insert it
-			return insertMcpEntry(json, serverName, tmplUrl, authToken, desiredAuthHeader);
-		}
-
-		// Entry is present - check if URL is correct
-		// Find the url value after keyPos
-		String urlMarker = "\"url\""; //$NON-NLS-1$
-		int urlPos = json.indexOf(urlMarker, keyPos);
-		if (urlPos < 0) {
-			// Malformed entry - replace the whole thing
-			return replaceMcpEntry(json, serverName, tmplUrl, authToken, desiredAuthHeader);
-		}
-
-		// Extract the url value
-		int urlValStart = json.indexOf('"', urlPos + urlMarker.length());
-		if (urlValStart < 0) {
-			return replaceMcpEntry(json, serverName, tmplUrl, authToken, desiredAuthHeader);
-		}
-		// Skip the opening quote to find the value
-		urlValStart++; // now points at first char of url value
-		int urlValEnd = json.indexOf('"', urlValStart);
-		if (urlValEnd < 0) {
-			return replaceMcpEntry(json, serverName, tmplUrl, authToken, desiredAuthHeader);
-		}
-		String existingUrl = json.substring(urlValStart, urlValEnd);
-
-		// Check the auth header if token is provided
-		boolean urlOk = tmplUrl.equals(existingUrl);
-		boolean authOk;
-		if (desiredAuthHeader != null && authToken != null) {
-			String authMarker = "\"Authorization\""; //$NON-NLS-1$
-			int authPos = json.indexOf(authMarker, keyPos);
-			if (authPos < 0) {
-				authOk = false;
-			} else {
-				int authValStart = json.indexOf('"', authPos + authMarker.length());
-				if (authValStart < 0) {
-					authOk = false;
-				} else {
-					authValStart++;
-					int authValEnd = json.indexOf('"', authValStart);
-					if (authValEnd < 0) {
-						authOk = false;
-					} else {
-						String existingAuth = json.substring(authValStart, authValEnd);
-						authOk = desiredAuthHeader.equals(existingAuth);
-					}
-				}
-			}
-		} else {
-			// No auth token desired
-			authOk = true;
-		}
-
-		if (urlOk && authOk) {
-			// Already correct - leave unchanged
-			return json;
-		}
-
-		// Entry exists but is outdated - replace it
-		return replaceMcpEntry(json, serverName, tmplUrl, authToken, desiredAuthHeader);
-	}
-
-	/**
-	 * Finds the position right after the opening brace of the "mcp" object in the
-	 * JSON string.
-	 */
-	private static int findMcpBlockStart(String json) {
-		int mcpKeyPos = json.indexOf("\"mcp\""); //$NON-NLS-1$
-		if (mcpKeyPos < 0)
-			return -1;
-		int colonPos = json.indexOf(':', mcpKeyPos);
-		if (colonPos < 0)
-			return -1;
-		int bracePos = json.indexOf('{', colonPos);
-		if (bracePos < 0)
-			return -1;
-		return bracePos + 1;
-	}
-
-	/**
-	 * Inserts a new MCP entry into the mcp object in the JSON string.
-	 */
-	private static String insertMcpEntry(String json, String serverName, String tmplUrl,
-			String authToken, String desiredAuthHeader) {
-		// Find the closing brace of the mcp block
-		int mcpStart = findMcpBlockStart(json);
-		if (mcpStart < 0)
-			return json;
-
-		// Find the matching closing brace of the mcp object
-		int braceDepth = 1;
-		int pos = mcpStart;
-		while (pos < json.length() && braceDepth > 0) {
-			char c = json.charAt(pos);
-			if (c == '{')
-				braceDepth++;
-			else if (c == '}')
-				braceDepth--;
-			if (braceDepth > 0)
-				pos++;
-		}
-		// pos now points at the closing brace of mcp block
-		if (braceDepth != 0)
-			return json;
-
-		String entryJson = buildEntryJson(serverName, tmplUrl, authToken, desiredAuthHeader, "    "); //$NON-NLS-1$
-
-		// Check if mcp block is empty (no existing entries)
-		String mcpContent = json.substring(mcpStart, pos).trim();
-		String comma = mcpContent.isEmpty() ? "" : ",\n"; //$NON-NLS-1$ //$NON-NLS-2$
-
-		return json.substring(0, pos) + comma + entryJson + "\n  " + json.substring(pos); //$NON-NLS-1$
-	}
-
-	/**
-	 * Replaces an existing MCP entry (identified by serverName) with updated
-	 * content.
-	 */
-	private static String replaceMcpEntry(String json, String serverName, String tmplUrl,
-			String authToken, String desiredAuthHeader) {
-		// Find the server name key and its enclosing object in the mcp block
-		int mcpStart = findMcpBlockStart(json);
-		if (mcpStart < 0)
-			return json;
-
-		String serverKey = "\"" + serverName + "\""; //$NON-NLS-1$ //$NON-NLS-2$
-		int keyPos = json.indexOf(serverKey, mcpStart);
-		if (keyPos < 0)
-			return json;
-
-		// Find the colon after the key
-		int colonPos = json.indexOf(':', keyPos + serverKey.length());
-		if (colonPos < 0)
-			return json;
-
-		// Find the opening brace of the entry object
-		int entryBraceStart = json.indexOf('{', colonPos);
-		if (entryBraceStart < 0)
-			return json;
-
-		// Find the matching closing brace
-		int braceDepth = 1;
-		int pos = entryBraceStart + 1;
-		while (pos < json.length() && braceDepth > 0) {
-			char c = json.charAt(pos);
-			if (c == '{')
-				braceDepth++;
-			else if (c == '}')
-				braceDepth--;
-			if (braceDepth > 0)
-				pos++;
-		}
-		int entryBraceEnd = pos; // points at closing brace
-
-		// Build the replacement entry (without the key, just the value object)
-		String entryValue = buildEntryValueJson(tmplUrl, authToken, desiredAuthHeader, "    "); //$NON-NLS-1$
-
-		return json.substring(0, entryBraceStart) + entryValue + json.substring(entryBraceEnd + 1);
-	}
-
-	/**
-	 * Builds the full entry JSON (key + value) for insertion.
-	 */
-	private static String buildEntryJson(String serverName, String tmplUrl, String authToken,
-			String desiredAuthHeader, String indent) {
-		return indent + "\"" + jsonEscape(serverName) + "\": " + //$NON-NLS-1$ //$NON-NLS-2$
-				buildEntryValueJson(tmplUrl, authToken, desiredAuthHeader, indent);
-	}
-
-	/**
-	 * Builds just the value object for an MCP entry.
-	 */
-	private static String buildEntryValueJson(String tmplUrl, String authToken, String desiredAuthHeader,
-			String indent) {
-		StringBuilder sb = new StringBuilder();
-		sb.append("{\n"); //$NON-NLS-1$
-		sb.append(indent).append("  \"type\": \"remote\",\n"); //$NON-NLS-1$
-		sb.append(indent).append("  \"url\": \"").append(jsonEscape(tmplUrl)).append("\""); //$NON-NLS-1$ //$NON-NLS-2$
-		if (authToken != null && desiredAuthHeader != null) {
-			sb.append(",\n"); //$NON-NLS-1$
-			sb.append(indent).append("  \"headers\": {\n"); //$NON-NLS-1$
-			sb.append(indent).append("    \"Authorization\": \"").append(jsonEscape(desiredAuthHeader)).append("\"\n"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append(indent).append("  }\n"); //$NON-NLS-1$
-		} else {
-			sb.append("\n"); //$NON-NLS-1$
-		}
-		sb.append(indent).append("}"); //$NON-NLS-1$
-		return sb.toString();
-	}
-
-	/**
-	 * Escapes special characters in a JSON string value.
-	 */
-	private static String jsonEscape(String value) {
-		if (value == null)
-			return ""; //$NON-NLS-1$
-		return value
-				.replace("\\", "\\\\") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\"", "\\\"") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\n", "\\n") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\r", "\\r") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\t", "\\t"); //$NON-NLS-1$ //$NON-NLS-2$
-	}
-
-	/** Private constructor â?? static utility class. */
+	/** Private constructor â€“ static utility class. */
 	private McpConfigWriter() {
 	}
 }
