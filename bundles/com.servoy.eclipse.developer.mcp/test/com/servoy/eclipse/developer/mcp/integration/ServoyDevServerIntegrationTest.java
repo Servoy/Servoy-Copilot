@@ -126,7 +126,7 @@ public class ServoyDevServerIntegrationTest
 	@Test
 	public void testServoyDevServer_createSolution_rejectsNullName()
 	{
-		String result = server.createSolution(null, null, null, null);
+		String result = server.createSolution(null, null, null, null, null);
 		assertTrue("createSolution must reject null name",
 			result.contains("Error") && result.contains("required"));
 	}
@@ -134,7 +134,7 @@ public class ServoyDevServerIntegrationTest
 	@Test
 	public void testServoyDevServer_createSolution_rejectsBlankName()
 	{
-		String result = server.createSolution("   ", null, null, null);
+		String result = server.createSolution("   ", null, null, null, null);
 		assertTrue("createSolution must reject blank name",
 			result.contains("Error") && result.contains("required"));
 	}

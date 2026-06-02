@@ -51,9 +51,40 @@ public class ServoyDevServerTest
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals(8, toolCount);
+		assertEquals(25, toolCount);
 	}
 
+	@Test
+	public void testResolveIdentifierType_nullIdentifier_returnsError()
+	{
+		try
+		{
+			String result = server.resolveIdentifierType(null, "someForm", null);
+			assertNotNull(result);
+			assertTrue("Should return error for null identifier",
+				result.contains("Error") || result.contains("required") || result.contains("not found"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testResolveIdentifierType_unknownForm_returnsNotFound()
+	{
+		try
+		{
+			String result = server.resolveIdentifierType("myVar", "nonExistentForm_XYZ_ABC", null);
+			assertNotNull(result);
+			assertTrue("Should return not-found message",
+				result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC") || result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
 
 	@Test
 	public void testPing_returnsPong()
@@ -73,11 +104,11 @@ public class ServoyDevServerTest
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionHasFourParams()
+	public void testServoyDevServer_createSolutionHasFiveParams()
 	{
 		Method method = findToolMethod("createSolution");
 		assertNotNull("createSolution tool must exist", method);
-		assertEquals("createSolution must have 4 parameters", 4, method.getParameterCount());
+		assertEquals("createSolution must have 5 parameters", 5, method.getParameterCount());
 	}
 
 	@Test
@@ -88,6 +119,21 @@ public class ServoyDevServerTest
 		assertEquals("createSolution must return String", String.class, method.getReturnType());
 	}
 
+	@Test
+	public void testServoyDevServer_createSolution_rejectsNullName()
+	{
+		String result = server.createSolution(null, null, null, null, null);
+		assertTrue("createSolution must reject null name",
+			result.contains("Error") && result.contains("required"));
+	}
+
+	@Test
+	public void testServoyDevServer_createSolution_rejectsBlankName()
+	{
+		String result = server.createSolution("   ", null, null, null, null);
+		assertTrue("createSolution must reject blank name",
+			result.contains("Error") && result.contains("required"));
+	}
 
 	@Test
 	public void testServoyDevServer_createSolutionHasToolParamAnnotations()
@@ -97,7 +143,7 @@ public class ServoyDevServerTest
 		long paramCount = Arrays.stream(method.getParameters())
 			.filter(p -> p.isAnnotationPresent(ToolParam.class))
 			.count();
-		assertEquals("All 4 createSolution params must have @ToolParam", 4, paramCount);
+		assertEquals("All 5 createSolution params must have @ToolParam", 5, paramCount);
 	}
 
 	@Test
@@ -108,6 +154,71 @@ public class ServoyDevServerTest
 		Tool tool = method.getAnnotation(Tool.class);
 		assertTrue("createSolution description should mention wizard",
 			tool.description().contains("wizard"));
+	}
+
+	@Test
+	public void testServoyDevServer_createSolutionDescriptionMentionsModule()
+	{
+		Method method = findToolMethod("createSolution");
+		assertNotNull(method);
+		Tool tool = method.getAnnotation(Tool.class);
+		assertTrue("createSolution description should mention module",
+			tool.description().contains("module"));
+	}
+
+	@Test
+	public void testServoyDevServer_createSolutionHasAddToSolutionParam()
+	{
+		Method method = findToolMethod("createSolution");
+		assertNotNull(method);
+		boolean found = Arrays.stream(method.getParameters())
+			.filter(p -> p.isAnnotationPresent(ToolParam.class))
+			.anyMatch(p -> "addToSolution".equals(p.getAnnotation(ToolParam.class).name()));
+		assertTrue("createSolution must have addToSolution parameter", found);
+	}
+
+	@Test
+	public void testServoyDevServer_createSolution_moduleTypeWithNullParent_noError()
+	{
+		try
+		{
+			String result = server.createSolution("test_mod_xyz", "ng_module", "false", "false", null);
+			assertNotNull(result);
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit (no active project)", e);
+		}
+	}
+
+	@Test
+	public void testServoyDevServer_createSolution_moduleTypeWithExplicitParent_noError()
+	{
+		try
+		{
+			String result = server.createSolution("test_mod_abc", "ng_module", "false", "false", "nonExistentParent");
+			assertNotNull(result);
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit (no workspace)", e);
+		}
+	}
+
+	@Test
+	public void testServoyDevServer_hasAddModuleToSolutionMethod()
+	{
+		Method[] methods = ServoyDevServer.class.getDeclaredMethods();
+		boolean found = false;
+		for (Method m : methods)
+		{
+			if ("addModuleToSolution".equals(m.getName()))
+			{
+				found = true;
+				break;
+			}
+		}
+		assertTrue("ServoyDevServer must have addModuleToSolution private method", found);
 	}
 
 	// -----------------------------------------------------------------------

@@ -986,16 +986,18 @@ public class ServoyDevServer
 	// -------------------------------------------------------------------------
 
 	@Tool(name = "createSolution",
-		description = "Creates a new Servoy solution in the workspace, similar to the New Solution wizard. "
+		description = "Creates a new Servoy solution or module in the workspace, similar to the New Solution wizard. "
 			+ "Creates the Eclipse project with Servoy natures, a resources project reference, "
 			+ "default theme (.less), web app manifest, and optionally activates the solution. "
+			+ "When creating a module, use addToSolution to attach it to a parent solution. "
 			+ "Unlike createTestSolution, this creates a clean empty solution without test forms or scopes.",
 		type = "object")
 	public String createSolution(
 		@ToolParam(name = "solutionName", description = "Name of the solution to create (e.g. 'my_app', 'customer_portal')", required = true) String solutionName,
 		@ToolParam(name = "solutionType", description = "Solution type: 'solution' (default), 'module', 'ng_module', 'ng_client_only'. Maps to SolutionMetaData constants.", required = false) String solutionType,
 		@ToolParam(name = "activate", description = "Whether to activate the solution after creation. Default: true.", required = false) String activate,
-		@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme)
+		@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme,
+		@ToolParam(name = "addToSolution", description = "Parent solution name to add this module to. Only applicable when solutionType is 'module' or 'ng_module'. The module will be added to the parent solution's modules list.", required = false) String addToSolution)
 	{
 		if (solutionName == null || solutionName.isBlank())
 		{
@@ -1019,24 +1021,92 @@ public class ServoyDevServer
 				return "Solution '" + solutionName + "' already exists.";
 			}
 
-			// Step 1: Create Eclipse project with natures and resources reference
 			createEclipseProjects(solutionName);
-
-			// Step 2: Create Servoy solution via persistence API
 			createSolutionArtifacts(solutionName, type, doAddTheme);
 
-			// Step 3: Activate if requested
+			StringBuilder result = new StringBuilder();
+
+			String parentSolution = addToSolution;
+			boolean isModule = (type == SolutionMetaData.MODULE || type == SolutionMetaData.NG_MODULE);
+			if (isModule && (parentSolution == null || parentSolution.isBlank()))
+			{
+				ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+				if (activeProject != null)
+				{
+					parentSolution = activeProject.getProject().getName();
+				}
+			}
+
+			if (parentSolution != null && !parentSolution.isBlank())
+			{
+				String addModuleResult = addModuleToSolution(solutionName, parentSolution);
+				result.append(addModuleResult).append("\n");
+			}
+
 			if (doActivate)
 			{
-				doActivateSolution(solutionName, true);
-				return "Created and activated solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ").";
+				doActivateSolution(parentSolution != null && !parentSolution.isBlank() ? parentSolution : solutionName, true);
+				result.insert(0, "Created and activated solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + "). ");
 			}
-			return "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ", not activated).";
+			else
+			{
+				result.insert(0, "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ", not activated). ");
+			}
+			return result.toString().trim();
 		}
 		catch (Exception e)
 		{
 			ServoyLog.logError("createSolution failed", e);
 			return "Error creating solution: " + e.getMessage();
+		}
+	}
+
+	private String addModuleToSolution(String moduleName, String parentSolutionName)
+	{
+		try
+		{
+			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			model.refreshServoyProjects();
+			ServoyProject parentProject = model.getServoyProject(parentSolutionName);
+			if (parentProject == null)
+			{
+				return "Warning: Parent solution '" + parentSolutionName + "' not found. Module created but not added.";
+			}
+
+			Solution parentSolution = parentProject.getEditingSolution();
+			if (parentSolution == null)
+			{
+				return "Warning: Cannot get editing solution for '" + parentSolutionName + "'. Module created but not added.";
+			}
+
+			String existingModules = parentSolution.getModulesNames();
+			if (existingModules != null && !existingModules.isBlank())
+			{
+				for (String existing : existingModules.split(","))
+				{
+					if (existing.trim().equals(moduleName))
+					{
+						return "Module '" + moduleName + "' already in '" + parentSolutionName + "' modules list.";
+					}
+				}
+				parentSolution.setModulesNames(existingModules + "," + moduleName);
+			}
+			else
+			{
+				parentSolution.setModulesNames(moduleName);
+			}
+
+			com.servoy.eclipse.model.repository.EclipseRepository repository =
+				(com.servoy.eclipse.model.repository.EclipseRepository)ApplicationServerRegistry.get().getDeveloperRepository();
+			parentProject.saveEditingSolutionNodes(new IPersist[] { parentSolution }, true);
+			repository.updateRootObject(parentSolution);
+
+			return "Added module '" + moduleName + "' to solution '" + parentSolutionName + "'.";
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("addModuleToSolution failed", e);
+			return "Warning: Failed to add module to solution: " + e.getMessage();
 		}
 	}
 
