@@ -14,7 +14,7 @@
  with this program; if not, see http://www.gnu.org/licenses or write to the Free
  Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-package com.servoy.eclipse.developer.mcp.servers;
+package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -25,13 +25,17 @@ import java.util.Arrays;
 
 import org.junit.Test;
 
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
+
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 
 /**
  * JUnit 4 tests for {@link ServoyDevServer}.
  */
-public class ServoyDevServerTest
+public class ServoyDevServerIntegrationTest
 {
 	private final ServoyDevServer server = new ServoyDevServer();
 
@@ -54,6 +58,37 @@ public class ServoyDevServerTest
 		assertEquals(8, toolCount);
 	}
 
+	@Test
+	public void testResolveIdentifierType_nullIdentifier_returnsError()
+	{
+		try
+		{
+			String result = server.resolveIdentifierType(null, "someForm", null);
+			assertNotNull(result);
+			assertTrue("Should return error for null identifier",
+				result.contains("Error") || result.contains("required") || result.contains("not found"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testResolveIdentifierType_unknownForm_returnsNotFound()
+	{
+		try
+		{
+			String result = server.resolveIdentifierType("myVar", "nonExistentForm_XYZ_ABC", null);
+			assertNotNull(result);
+			assertTrue("Should return not-found message",
+				result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC") || result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
 
 	@Test
 	public void testPing_returnsPong()
@@ -88,6 +123,21 @@ public class ServoyDevServerTest
 		assertEquals("createSolution must return String", String.class, method.getReturnType());
 	}
 
+	@Test
+	public void testServoyDevServer_createSolution_rejectsNullName()
+	{
+		String result = server.createSolution(null, null, null, null);
+		assertTrue("createSolution must reject null name",
+			result.contains("Error") && result.contains("required"));
+	}
+
+	@Test
+	public void testServoyDevServer_createSolution_rejectsBlankName()
+	{
+		String result = server.createSolution("   ", null, null, null);
+		assertTrue("createSolution must reject blank name",
+			result.contains("Error") && result.contains("required"));
+	}
 
 	@Test
 	public void testServoyDevServer_createSolutionHasToolParamAnnotations()

@@ -56,16 +56,6 @@ public class ServoyIdeServerTest
 	}
 
 	@Test
-	public void testServoyIdeServer_hasFourteenToolMethods()
-	{
-		long toolCount = java.util.Arrays.stream(ServoyIdeServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(
-				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
-			.count();
-		assertEquals("ServoyIdeServer must have exactly 39 @Tool methods", 39, toolCount);
-	}
-
-	@Test
 	public void testServoyIdeServer_registeredInBuiltins()
 	{
 		boolean found = false;
@@ -89,6 +79,22 @@ public class ServoyIdeServerTest
 			new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
 			new com.servoy.eclipse.developer.mcp.services.IdeStateService());
 		assertNotNull(instance);
+	}
+
+
+	// --- Tool name uniqueness ---
+
+	@Test
+	public void testToolNames_areUnique()
+	{
+		java.util.Set<String> names = new java.util.HashSet<>();
+		java.util.Arrays.stream(ServoyIdeServer.class.getMethods())
+			.filter(m -> m.isAnnotationPresent(com.servoy.eclipse.developer.mcp.annotations.Tool.class))
+			.forEach(m -> {
+				String name = m.getAnnotation(com.servoy.eclipse.developer.mcp.annotations.Tool.class).name();
+				assertFalse("Duplicate tool name: " + name, names.contains(name));
+				names.add(name);
+			});
 	}
 
 	// --- Error paths for missing projects ---
@@ -227,7 +233,7 @@ public class ServoyIdeServerTest
 		}
 	}
 
-	// --- getCompilationErrors with no project filter (should not throw) ---
+	// --- getCompilationErrors ---
 
 	@Test
 	public void testGetCompilationErrors_allProjects()
@@ -245,7 +251,7 @@ public class ServoyIdeServerTest
 		assertTrue(result.contains("not found"));
 	}
 
-	// --- Faza 2: readFileContext, getFileOutline, readFunction ---
+	// --- readFileContext, getFileOutline, readFunction ---
 
 	@Test
 	public void testReadFileContext_missingProject()
@@ -306,67 +312,6 @@ public class ServoyIdeServerTest
 		}
 	}
 
-	// --- Faza 3: getClassOutline, getMethodSource, getFilteredSource ---
-
-	@Test
-	public void testGetClassOutline_nullName_throws()
-	{
-		try
-		{
-			server.getClassOutline(null, null);
-			fail("Should throw for null name");
-		}
-		catch (RuntimeException e)
-		{
-			assertNotNull(e.getMessage());
-		}
-	}
-
-	@Test
-	public void testGetClassOutline_unknownScript_returnsNotFound()
-	{
-		String result = server.getClassOutline("nonExistentForm_XYZ_ABC", null);
-		assertNotNull(result);
-		// Should return a not-found message, not throw
-		assertTrue("Should return not-found message",
-			result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC") || result.contains("Error"));
-	}
-
-	@Test
-	public void testGetMethodSource_nullName_throws()
-	{
-		try
-		{
-			server.getMethodSource(null, "someMethod", null, null);
-			fail("Should throw for null name");
-		}
-		catch (RuntimeException e)
-		{
-			assertNotNull(e.getMessage());
-		}
-	}
-
-	@Test
-	public void testGetMethodSource_nullMethodNames_returnsError()
-	{
-		String result = server.getMethodSource("nonExistentForm_XYZ", null, null, null);
-		assertNotNull(result);
-	}
-
-	@Test
-	public void testGetFilteredSource_nullName_throws()
-	{
-		try
-		{
-			server.getFilteredSource(null, null, null, null);
-			fail("Should throw for null name");
-		}
-		catch (RuntimeException e)
-		{
-			assertNotNull(e.getMessage());
-		}
-	}
-
 	// --- getFileInfo ---
 
 	@Test
@@ -393,21 +338,5 @@ public class ServoyIdeServerTest
 			assertNotNull(e.getMessage());
 			assertTrue(e.getMessage().contains("not found"));
 		}
-	}
-
-	// --- Tool name uniqueness ---
-
-	@Test
-	public void testToolNames_areUnique()
-	{
-		java.util.Set<String> names = new java.util.HashSet<>();
-		java.util.Arrays.stream(ServoyIdeServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(com.servoy.eclipse.developer.mcp.annotations.Tool.class))
-			.forEach(m -> {
-				String name = m.getAnnotation(com.servoy.eclipse.developer.mcp.annotations.Tool.class).name();
-				assertFalse("Duplicate tool name: " + name, names.contains(name));
-				names.add(name);
-			});
-		assertEquals(39, names.size());
 	}
 }

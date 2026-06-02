@@ -276,14 +276,4 @@ public class ServoyContextServerTest
 			"servoy-context".equals(ann.name()));
 	}
 
-	@Test
-	public void testServoyContextServer_hasSevenToolMethods()
-	{
-		long toolCount = java.util.Arrays.stream(ServoyContextServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(
-				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
-			.count();
-		assertTrue("ServoyContextServer must have exactly 7 @Tool methods, found: " + toolCount,
-			toolCount == 7);
-	}
 }

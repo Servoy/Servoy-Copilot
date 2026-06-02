@@ -77,7 +77,7 @@ public class ServoyIdeServer
 	public ServoyIdeServer() { }
 
 	/** Testing constructor — initialises services directly without E4 DI. */
-	ServoyIdeServer(ProjectService projectService, WorkspaceService workspaceService,
+	public ServoyIdeServer(ProjectService projectService, WorkspaceService workspaceService,
 		MarkdownService markdownService, IdeStateService ideStateService)
 	{
 		this.projectService = projectService;

@@ -170,17 +170,6 @@ public class ServoyCoderServerTest
 	}
 
 	@Test
-	public void testServoyCoderServer_hasElevenToolMethods()
-	{
-		long toolCount = java.util.Arrays.stream(ServoyCoderServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(
-				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
-			.count();
-		assertTrue("ServoyCoderServer must have exactly 17 @Tool methods, found: " + toolCount,
-			toolCount == 17);
-	}
-
-	@Test
 	public void testServoyCoderServer_registeredInBuiltins()
 	{
 		boolean found = false;

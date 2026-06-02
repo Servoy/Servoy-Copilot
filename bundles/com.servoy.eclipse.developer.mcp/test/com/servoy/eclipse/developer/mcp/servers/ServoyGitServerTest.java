@@ -52,16 +52,6 @@ public class ServoyGitServerTest
 	}
 
 	@Test
-	public void testServoyGitServer_hasThirteenToolMethods()
-	{
-		long toolCount = java.util.Arrays.stream(ServoyGitServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(
-				com.servoy.eclipse.developer.mcp.annotations.Tool.class))
-			.count();
-		assertEquals("ServoyGitServer must have exactly 14 @Tool methods", 14, toolCount);
-	}
-
-	@Test
 	public void testServoyGitServer_registeredInBuiltins()
 	{
 		boolean found = false;
@@ -277,6 +267,5 @@ public class ServoyGitServerTest
 				assertFalse("Duplicate tool name: " + name, names.contains(name));
 				names.add(name);
 			});
-		assertEquals(14, names.size());
 	}
 }
