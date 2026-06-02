@@ -366,11 +366,13 @@ public class ServoyIdeServer
 	public String getConsoleOutput(
 		@ToolParam(name = "consoleName", description = "Name of the specific console to retrieve (optional, leave empty for most recent console)", required = false) String consoleName,
 		@ToolParam(name = "maxLines", description = "Maximum number of lines to retrieve (default: 100)", required = false) String maxLines,
-		@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", required = false) String includeAllConsoles)
+		@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", required = false) String includeAllConsoles,
+		@ToolParam(name = "clear", description = "Whether to clear the console(s) after reading (default: false)", required = false) String clear)
 	{
 		int lines = Optional.ofNullable(maxLines).map(Integer::parseInt).orElse(100);
 		boolean allConsoles = Optional.ofNullable(includeAllConsoles).map(Boolean::parseBoolean).orElse(false);
-		return ideStateService.getConsoleOutput(consoleName, lines, allConsoles);
+		boolean shouldClear = Optional.ofNullable(clear).map(Boolean::parseBoolean).orElse(false);
+		return ideStateService.getConsoleOutput(consoleName, lines, allConsoles, shouldClear);
 	}
 
 	@Tool(name = "getCompilationErrors",

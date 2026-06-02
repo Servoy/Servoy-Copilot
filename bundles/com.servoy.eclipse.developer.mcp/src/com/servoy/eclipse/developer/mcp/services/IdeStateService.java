@@ -55,7 +55,7 @@ public class IdeStateService
 {
 	// --- Console ---
 
-	public String getConsoleOutput(String consoleName, int maxLines, boolean includeAllConsoles)
+	public String getConsoleOutput(String consoleName, int maxLines, boolean includeAllConsoles, boolean clear)
 	{
 		if (maxLines < 1) maxLines = 100;
 
@@ -103,6 +103,10 @@ public class IdeStateService
 					for (int i = start; i < lines.length; i++)
 						result.append(lines[i]).append("\n");
 					result.append("```\n\n");
+					if (clear)
+					{
+						textConsole.clearConsole();
+					}
 				}
 				else
 				{
