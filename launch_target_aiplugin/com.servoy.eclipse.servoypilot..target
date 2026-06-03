@@ -3,9 +3,9 @@
 <target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="60">
     <locations>
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
-            <repository location="https://build.servoy.com/latest/servoy_release/update_site/"/>
+            <repository location="https://build.servoy.com/latest/servoy_2026.03/update_site/"/>
             <unit id="com.servoy.eclipse.feature.feature.group" version="0.0.0"/>
-	        <unit id="org.eclipse.platform.feature.group" version="4.38.0.v20251201-0920"/>
+	        <unit id="org.eclipse.platform.feature.group" version="0.0.0"/>
         </location>
 	    <location includeDependencyDepth="none" includeDependencyScopes="compile" includeSource="true" missingManifest="generate" type="Maven">
 		    <dependencies>
