@@ -982,7 +982,28 @@ public class ServoyDevServer
 	}
 
 	// -------------------------------------------------------------------------
-	// createSolution MCP tool - creates a new Servoy solution like the wizard
+	// renamePersist MCP tool
+	// -------------------------------------------------------------------------
+
+	private final com.servoy.eclipse.developer.mcp.services.PersistRenameService persistRenameService =
+		new com.servoy.eclipse.developer.mcp.services.PersistRenameService();
+
+	@Tool(name = "renamePersist",
+		description = "Renames a Servoy persist (form, relation, valuelist, scope, media, menu, or solution). "
+			+ "Validates the new name, checks for duplicates, and updates all references. "
+			+ "For solutions, also moves the Eclipse project and updates module references in other solutions.",
+		type = "object")
+	public String renamePersist(
+		@ToolParam(name = "persistType", description = "Type of persist to rename: 'form', 'relation', 'valuelist', 'scope', 'media', 'menu', 'solution'.", required = true) String persistType,
+		@ToolParam(name = "oldName", description = "Current name of the persist to rename.", required = true) String oldName,
+		@ToolParam(name = "newName", description = "Desired new name for the persist.", required = true) String newName,
+		@ToolParam(name = "solutionName", description = "Solution to search in. If omitted, uses the active solution. Not used for 'solution' type.", required = false) String solutionName)
+	{
+		return persistRenameService.renamePersist(persistType, oldName, newName, solutionName);
+	}
+
+	// -------------------------------------------------------------------------
+	// SVY-21083: createSolution MCP tool - creates a new Servoy solution like the wizard
 	// -------------------------------------------------------------------------
 
 	@Tool(name = "createSolution",
