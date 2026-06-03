@@ -994,7 +994,7 @@ public class ServoyDevServer
 		type = "object")
 	public String createSolution(
 		@ToolParam(name = "solutionName", description = "Name of the solution to create (e.g. 'my_app', 'customer_portal')", required = true) String solutionName,
-		@ToolParam(name = "solutionType", description = "Solution type: 'solution' (default), 'module', 'ng_module', 'ng_client_only'. Maps to SolutionMetaData constants.", required = false) String solutionType,
+		@ToolParam(name = "solutionType", description = "Solution type: 'ng_client' (default), 'ng_module', 'service', 'pre_import_hook', 'post_import_hook', 'module'. Maps to SolutionMetaData constants.", required = false) String solutionType,
 		@ToolParam(name = "activate", description = "Whether to activate the solution after creation. Default: true.", required = false) String activate,
 		@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme,
 		@ToolParam(name = "addToSolution", description = "Parent solution name to add this module to. Only applicable when solutionType is 'module' or 'ng_module'. The module will be added to the parent solution's modules list.", required = false) String addToSolution)
@@ -1172,14 +1172,21 @@ public class ServoyDevServer
 		if (solutionType == null || solutionType.isBlank()) return SolutionMetaData.NG_CLIENT_ONLY;
 		switch (solutionType.toLowerCase().trim())
 		{
-			case "module":
-				return SolutionMetaData.MODULE;
-			case "ng_module":
-				return SolutionMetaData.NG_MODULE;
+			case "ng_client":
 			case "ng_client_only":
 				return SolutionMetaData.NG_CLIENT_ONLY;
-			case "solution":
-				return SolutionMetaData.SOLUTION;
+			case "ng_module":
+				return SolutionMetaData.NG_MODULE;
+			case "service":
+				return SolutionMetaData.SERVICE;
+			case "pre_import_hook":
+			case "pre-import hook module":
+				return SolutionMetaData.PRE_IMPORT_HOOK;
+			case "post_import_hook":
+			case "post-import hook module":
+				return SolutionMetaData.POST_IMPORT_HOOK;
+			case "module":
+				return SolutionMetaData.MODULE;
 			default:
 				return SolutionMetaData.NG_CLIENT_ONLY;
 		}
@@ -1194,9 +1201,15 @@ public class ServoyDevServer
 			case SolutionMetaData.NG_MODULE:
 				return "ng_module";
 			case SolutionMetaData.NG_CLIENT_ONLY:
-				return "ng_client_only";
+				return "ng_client";
+			case SolutionMetaData.SERVICE:
+				return "service";
+			case SolutionMetaData.PRE_IMPORT_HOOK:
+				return "pre_import_hook";
+			case SolutionMetaData.POST_IMPORT_HOOK:
+				return "post_import_hook";
 			default:
-				return "solution";
+				return "ng_client";
 		}
 	}
 
