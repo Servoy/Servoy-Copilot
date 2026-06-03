@@ -1,6 +1,6 @@
 # Agent Guidelines for Servoy Copilot Codebase
 
-Welcome, AI Agent! This repository contains the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. The **active focus** of this repository is the `com.servoy.eclipse.developer.mcp` bundle — the Eclipse IDE MCP server that exposes IDE tools to AI agents. Several other bundles exist in the repository but are no longer actively developed; they are kept for reference only. To ensure safety, consistency, and proper integration with the Eclipse workspace environment, you must adhere strictly to the following developer and automation workflows.
+Welcome, AI Agent! This repository contains the **Servoy AI Copilot** plugin for the Servoy Developer IDE. It is an Eclipse PDE (Plugin Development Environment) project built with Tycho/Maven. There are two **actively developed** bundles: `com.servoy.eclipse.developer.mcp` (the Eclipse IDE MCP server) and `com.servoy.eclipse.opencode` (the opencode AI wrapper and lifecycle manager). Several other bundles exist in the repository but are no longer actively developed; they are kept for reference only. To ensure safety, consistency, and proper integration with the Eclipse workspace environment, you must adhere strictly to the following developer and automation workflows.
 
 ---
 
@@ -8,48 +8,72 @@ Welcome, AI Agent! This repository contains the **Servoy AI Copilot** plugin for
 
 This Git repository contains the following core projects/plugins:
 
-### 1. `com.servoy.eclipse.developer.mcp` ⬅ ACTIVE FOCUS
+### 1. `com.servoy.eclipse.developer.mcp` ⬅ ACTIVE
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** Eclipse IDE MCP server (AssistAI) — exposes IDE tools to AI agents.
 - **Key Focus:** Implements the MCP server that runs inside the Eclipse JVM and exposes Eclipse IDE operations (file read/write, search, compilation, git, PDE tests) as MCP tools callable by external AI agents.
 - **Crucial Detail:** Two-JVM architecture — this bundle runs inside Eclipse; the MCP client runs in the agent's JVM. Changes here affect what tools are available to all AI agents working in this workspace.
 
+### 2. `com.servoy.eclipse.opencode` ⬅ ACTIVE
+- **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
+- **Main Role:** Opencode AI wrapper — installs, configures, and manages the lifecycle of the [opencode](https://opencode.ai) CLI tool embedded in the Servoy Developer IDE.
+- **Key Focus:** Downloads and keeps the `opencode-ai` npm package up to date (`~1.15.x`), starts the opencode HTTP server on a free port, hosts it in an embedded browser view, and merges MCP endpoint contributions from other bundles into `opencode.json`.
+- **Crucial Detail:** Requires two system properties to activate: `GENAI_API_KEY` and `SERVOY_SKILLS_ZIP`. Without them the setup job skips entirely and the view shows a "not configured" page.
+- **Key classes:**
+
+  | Class | Role |
+  |---|---|
+  | `Activator` | Plugin lifecycle — schedules setup, tracks server-ready state, shuts down process tree on stop |
+  | `OpencodeFolderCreatorJob` | One-shot Job: installs/updates opencode via npm, extracts skills zip, merges MCP config, starts server |
+  | `RunOpencodeCommand` | Long-running Job: finds free port (from 4096), launches `npm exec -- opencode serve`, watchdog-polls HTTP until ready |
+  | `OpencodeServerState` | Latch + port holder used to signal and wait for server readiness |
+  | `OpenCodeView` | Eclipse ViewPart hosting the embedded browser; state machine handles login / config / project activation |
+  | `OpencodePerspective` | Perspective factory for the "Servoy AI" layout |
+  | `McpConfigWriter` | Collects `IMcpEndpointProvider` contributions via extension point and merges them into `opencode.json` using Jackson; matches on URL (not server name) to avoid duplicates |
+  | `IMcpEndpointProvider` | Extension point interface — implementors return MCP endpoint URLs and optional auth token |
+  | `ProviderConfigWriter` | Writes `GENAI_API_KEY` env var and ensures `$schema` in `opencode.json` |
+  | `SkillsZipExtractor` | Extracts `SERVOY_SKILLS_ZIP` into `~/.servoy/opencode/`; updates `AGENTS.MD` in project root with runtime Servoy/Postgres versions and database names |
+  | `OpenCodeUtil` | Static helpers: resolves active project path, walks up to git root |
+
+- **State directory:** `{eclipse-state}/opencode/` — contains `package.json`, `node_modules/`, `package_copy.json` (version sentinel), `.fullygenerated` (install marker).
+- **Config directory:** `~/.servoy/opencode/` — contains `opencode.json` (MCP + provider config) and extracted skills zip content.
+- **Update strategy:** On every startup, if the bundle's `package.json` changed → full clean `npm install`; otherwise → `npm update opencode-ai` to pick up the latest `1.15.x` patch. Both steps are non-fatal.
+- **Test bundle:** `com.servoy.eclipse.opencode.tests` — fragment of the opencode bundle, plain JUnit (no OSGi runtime required), tests `McpConfigWriter` and `OpencodeFolderCreatorJob` helpers.
+
 > The following bundles are **no longer actively developed**. They are kept in the repository for reference only. Do not make changes to them unless explicitly instructed.
 
-### 2. `com.servoy.eclipse.servoypilot` _(reference only — not active)_
+### 3. `com.servoy.eclipse.servoypilot` _(reference only — not active)_
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** Main plugin — AI assistant UI, tools, chat, and completion.
 - **Key Focus:** Entry point for all AI-assisted developer features. Integrates the chat UI, code completion hooks, and orchestrates calls to the LLM and knowledge base bundles.
-- **Crucial Detail:** Depends on `com.servoy.eclipse.servoypilot.langchain4j` and `com.servoy.eclipse.servoypilot.knowledgebase`. All user-facing AI features live here.
 
-### 3. `com.servoy.eclipse.servoypilot.langchain4j` _(reference only — not active)_
+### 4. `com.servoy.eclipse.servoypilot.langchain4j` _(reference only — not active)_
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** LangChain4j wrapper bundle — AI/LLM integration library.
 - **Key Focus:** Wraps the LangChain4j library for use inside OSGi. Provides the LLM client abstraction used by the main plugin.
 - **Crucial Detail:** Acts as a library bundle. Do not add UI or Eclipse-specific logic here.
 
-### 4. `com.servoy.eclipse.servoypilot.knowledgebase` _(reference only — not active)_
+### 5. `com.servoy.eclipse.servoypilot.knowledgebase` _(reference only — not active)_
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** Knowledge base indexing, ONNX embeddings, and RAG (Retrieval-Augmented Generation).
 - **Key Focus:** Indexes Servoy project sources and documentation into a vector store using ONNX-based embeddings. Provides retrieval APIs consumed by the main plugin.
 - **Crucial Detail:** Heavy dependency on ONNX runtime and PDFBox/Tika for document parsing.
 
-### 5. `com.servoy.eclipse.servoypilot.assistenttests` _(reference only — not active)_
+### 6. `com.servoy.eclipse.servoypilot.assistenttests` _(reference only — not active)_
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** Servoy Developer tools for AI-assisted test generation and execution.
-- **Key Focus:** Provides tooling to generate and run tests with AI assistance inside the Servoy Developer environment.
 
 > The following are **active** build and distribution artifacts.
 
-### 6. `com.servoy.eclipse.servoypilot.feature`
+### 7. `com.servoy.eclipse.servoypilot.feature`
 - **Type:** Eclipse Feature (`eclipse-feature`)
 - **Main Role:** Feature packaging — bundles all plugins and platform-specific fragments for distribution.
 
-### 7. `repository.site_aiplugin`
+### 8. `repository.site_aiplugin`
 - **Type:** Eclipse Repository (`eclipse-repository`)
 - **Main Role:** P2 update site for distribution of the Servoy Copilot feature.
 
-### 8. `launch_target_aiplugin`
+### 9. `launch_target_aiplugin`
 - **Type:** Target Definition
 - **Main Role:** Target platform definition for building and running the plugin.
 - **Crucial Detail:** Resolves against `https://build.servoy.com/latest/servoy_release/update_site/` plus Maven Central and the Servoy Maven repo. Dependencies already provided by the Servoy target must NOT be duplicated here.
@@ -95,6 +119,5 @@ Spotbugs is used to find bugs in Java code. You must pay special attention to Sp
 - **Proactive Fixing:** Always try to fix these Spotbugs errors in any new or modified code to keep the codebase robust and clean.
 
 ---
-
 
 *Thank you for keeping the Servoy Copilot codebase healthy, compilation-error free, and highly consistent!*
