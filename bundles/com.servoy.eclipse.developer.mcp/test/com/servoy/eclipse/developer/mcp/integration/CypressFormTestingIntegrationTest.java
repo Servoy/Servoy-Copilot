@@ -281,6 +281,130 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	// -----------------------------------------------------------------------
+	// generateFormSpec tests (independent of showFormInBrowser)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testGenerateFormSpec_createsSpecCyFile() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		String result = specGenerator.generateSpec(TEST_FORM);
+
+		assertNotNull(result);
+		assertTrue("Should report creation", result.contains("Created"));
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
+		assertNotNull(cySpec);
+		assertTrue("Cypress spec file should be created", Files.exists(cySpec));
+	}
+
+	@Test
+	public void testGenerateFormSpec_createsSetupJsFile() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path setupPath = activeProject.getProject().getLocation().toFile().toPath()
+			.resolve("forms").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup .spec.js should be created in forms/", Files.exists(setupPath));
+	}
+
+	@Test
+	public void testGenerateFormSpec_specCyUsesDataCySelectors() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
+		String content = Files.readString(cySpec);
+
+		assertTrue("Cypress spec must use data-cy selectors", content.contains("data-cy"));
+		assertTrue("Cypress spec must reference form name in selectors", content.contains(TEST_FORM + "."));
+	}
+
+	@Test
+	public void testGenerateFormSpec_specCyUsesBeforeEach() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
+		String content = Files.readString(cySpec);
+
+		assertTrue("Cypress spec must use beforeEach", content.contains("beforeEach("));
+		assertTrue("Cypress spec must use cy.visit", content.contains("cy.visit("));
+	}
+
+	@Test
+	public void testGenerateFormSpec_specCyUsesSvyTestMode() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
+		String content = Files.readString(cySpec);
+
+		assertTrue("Cypress spec must include svy_testmode=true in URL",
+			content.contains("svy_testmode=true"));
+	}
+
+	@Test
+	public void testGenerateFormSpec_setupJsHasProperties() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path setupPath = activeProject.getProject().getLocation().toFile().toPath()
+			.resolve("forms").resolve(TEST_FORM + ".spec.js");
+		String content = Files.readString(setupPath);
+
+		assertTrue("Setup must have @properties annotation", content.contains("@properties"));
+		assertTrue("Setup must have spec_setUp", content.contains("function spec_setUp()"));
+		assertTrue("Setup must have spec_tearDown", content.contains("function spec_tearDown()"));
+	}
+
+	@Test
+	public void testGenerateFormSpec_specInMediasTests() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
+		assertNotNull(cySpec);
+		assertTrue("Cypress spec should be in medias/tests/ directory",
+			cySpec.toString().contains("medias") && cySpec.toString().contains("tests"));
+	}
+
+	@Test
+	public void testGenerateFormSpec_runCypressDirectly() throws Exception
+	{
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		specGenerator.generateSpec(TEST_FORM);
+
+		String result = specRunner.runSpec(TEST_FORM, true);
+
+		assertNotNull("runSpec result should not be null", result);
+		assertTrue("runSpec should return pass/fail or error",
+			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+	}
+
+	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 

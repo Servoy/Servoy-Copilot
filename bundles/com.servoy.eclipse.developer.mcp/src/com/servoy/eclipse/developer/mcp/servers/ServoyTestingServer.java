@@ -183,10 +183,11 @@ public class ServoyTestingServer
 	}
 
 	@Tool(name = "generateFormSpec",
-		description = "Generates a Cypress test spec file (.spec.cy.js) for a Servoy form. " +
-			"Reads the form's .frm file to extract element names, dataSource, and structure, " +
-			"then creates a skeleton spec with basic assertions (form loads, fields visible, buttons clickable). " +
-			"The spec file is saved alongside the .frm file in the forms/ directory.",
+		description = "Generates Cypress test spec files for a Servoy form. " +
+			"Creates two files: a .spec.cy.js in medias/tests/ (Cypress UI assertions with data-cy selectors) " +
+			"and a .spec.js in forms/ (Servoy setUp/tearDown scope with DLTK code completion). " +
+			"Reads the form's .frm file to extract element names, dataSource, and structure. " +
+			"Requires servoy.ngclient.testingMode=true in servoy.properties for data-cy attributes.",
 		type = "object")
 	public String generateFormSpec(
 		@ToolParam(description = "The name of the form to generate a spec for (e.g. 'mainForm', 'orderDetails')") String formName)
