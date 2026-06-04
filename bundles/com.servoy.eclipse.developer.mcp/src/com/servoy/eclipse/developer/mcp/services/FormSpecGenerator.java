@@ -11,23 +11,27 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
- * Generates Playwright test spec files (.spec.pw.js) and Servoy setUp/tearDown scripts (.spec.js)
- * for Servoy forms. Files are written to {solutionProject}/medias/pwtests/ which is
- * excluded from the DLTK buildpath (no StackOverflow on modern JS syntax) and accessible
- * via readProjectResource.
+ * Generates Cypress test spec files (.spec.cy.js) and Servoy setUp/tearDown scripts (.spec.js)
+ * for Servoy forms. Files are written next to the .frm file in the forms/ directory.
+ * The .spec.js is a Servoy scope file (processed by DLTK for code completion).
+ * The .spec.cy.js is excluded from DLTK via .buildpath pattern to avoid StackOverflow.
  */
 @Creatable
 @SuppressWarnings("restriction")
 public class FormSpecGenerator
 {
-	private static final String PWTESTS_DIR = "medias/pwtests";
+	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
+	private static final String SPEC_JS_EXTENSION = ".spec.js";
+	private static final String CYPRESS_TESTS_DIR = "medias/tests";
+	private static final String BUILDPATH_EXCLUSION_PATTERN = "**/*.spec.cy.js";
 
 	private static final Pattern DATA_SOURCE_PATTERN = Pattern.compile("\"dataSource\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern ELEMENT_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
@@ -36,8 +40,8 @@ public class FormSpecGenerator
 
 	/**
 	 * Generates spec files for the given form.
-	 * Files are written to {solutionProject}/medias/pwtests/{formName}.spec.pw.js
-	 * and {solutionProject}/medias/pwtests/{formName}.spec.js
+	 * Cypress spec: {solutionProject}/medias/tests/{formName}.spec.cy.js
+	 * Servoy setUp/tearDown: {solutionProject}/forms/{formName}.spec.js
 	 */
 	public String generateSpec(String formName)
 	{
@@ -56,16 +60,16 @@ public class FormSpecGenerator
 				return "Error: Form file not found: forms/" + formName + ".frm";
 			}
 
-			String solutionName = activeProject.getSolution().getName();
-			Path pwTestsDir = getPwTestsDir(solutionName);
-			Files.createDirectories(pwTestsDir);
+			Path formsDir = frmFile.getLocation().toFile().toPath().getParent();
+			Path testsDir = project.getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+			Files.createDirectories(testsDir);
 
-			Path pwSpecPath = pwTestsDir.resolve(formName + ".spec.pw.js");
-			Path setupSpecPath = pwTestsDir.resolve(formName + ".spec.js");
+			Path cySpecPath = testsDir.resolve(formName + SPEC_CY_EXTENSION);
+			Path setupSpecPath = formsDir.resolve(formName + SPEC_JS_EXTENSION);
 
-			if (Files.exists(pwSpecPath) && Files.exists(setupSpecPath))
+			if (Files.exists(cySpecPath) && Files.exists(setupSpecPath))
 			{
-				return "Spec files already exist: medias/pwtests/" + formName + ".spec.pw.js and .spec.js";
+				return "Spec files already exist: medias/tests/" + formName + SPEC_CY_EXTENSION + " and forms/" + formName + SPEC_JS_EXTENSION;
 			}
 
 			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
@@ -73,21 +77,23 @@ public class FormSpecGenerator
 
 			StringBuilder result = new StringBuilder();
 
-			if (!Files.exists(pwSpecPath))
+			if (!Files.exists(cySpecPath))
 			{
-				String pwContent = generateSpecContent(metadata);
-				Files.writeString(pwSpecPath, pwContent, StandardCharsets.UTF_8);
-				result.append("Created: medias/pwtests/").append(formName)
-					.append(".spec.pw.js (").append(metadata.namedElements.size()).append(" element assertions)\n");
+				String cyContent = generateCypressSpecContent(metadata);
+				Files.writeString(cySpecPath, cyContent, StandardCharsets.UTF_8);
+				result.append("Created: medias/tests/").append(formName)
+					.append(SPEC_CY_EXTENSION).append(" (").append(metadata.namedElements.size()).append(" element assertions)\n");
 			}
 
 			if (!Files.exists(setupSpecPath))
 			{
 				String setupContent = generateSetupContent(metadata);
 				Files.writeString(setupSpecPath, setupContent, StandardCharsets.UTF_8);
-				result.append("Created: medias/pwtests/").append(formName)
-					.append(".spec.js (setUp/tearDown for data setup)");
+				result.append("Created: forms/").append(formName)
+					.append(SPEC_JS_EXTENSION).append(" (setUp/tearDown for data setup)");
 			}
+
+			project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
 
 			return result.toString().trim();
 		}
@@ -98,7 +104,7 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Checks if a .spec.pw.js file already exists for the given form.
+	 * Checks if both spec files already exist for the given form.
 	 */
 	public boolean specExists(String formName)
 	{
@@ -106,9 +112,10 @@ public class FormSpecGenerator
 		{
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 			if (activeProject == null) return false;
-			String solutionName = activeProject.getSolution().getName();
-			Path pwSpecPath = getPwTestsDir(solutionName).resolve(formName + ".spec.pw.js");
-			return Files.exists(pwSpecPath);
+			Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+			Path formsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("forms");
+			return Files.exists(testsDir.resolve(formName + SPEC_CY_EXTENSION))
+				&& Files.exists(formsDir.resolve(formName + SPEC_JS_EXTENSION));
 		}
 		catch (Exception e)
 		{
@@ -117,7 +124,7 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Returns the path to the spec file for a given form.
+	 * Returns the path to the Cypress spec file for a given form.
 	 */
 	public Path getSpecFilePath(String formName)
 	{
@@ -125,8 +132,8 @@ public class FormSpecGenerator
 		{
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 			if (activeProject == null) return null;
-			String solutionName = activeProject.getSolution().getName();
-			return getPwTestsDir(solutionName).resolve(formName + ".spec.pw.js");
+			Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+			return testsDir.resolve(formName + SPEC_CY_EXTENSION);
 		}
 		catch (Exception e)
 		{
@@ -135,18 +142,56 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Returns the pwtests directory for the given solution: {projectLocation}/medias/pwtests/
+	 * Returns the Cypress tests directory for the active solution: {project}/medias/tests/
 	 */
-	public Path getPwTestsDir(String solutionName)
+	public Path getFormsDir()
 	{
-		ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
-		if (project != null)
+		try
 		{
-			return project.getProject().getLocation().toFile().toPath().resolve(PWTESTS_DIR);
+			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			if (activeProject == null) return null;
+			return activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
 		}
-		// Fallback: workspace root
-		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
-		return workspaceRoot.resolve(solutionName).resolve(PWTESTS_DIR);
+		catch (Exception e)
+		{
+			return null;
+		}
+	}
+
+	/**
+	 * Ensures the .buildpath file has an exclusion for *.spec.cy.js so DLTK doesn't parse them.
+	 */
+	private void ensureBuildpathExclusion(IProject project)
+	{
+		try
+		{
+			IFile buildpathFile = project.getFile(".buildpath");
+			if (!buildpathFile.exists()) return;
+
+			String content = new String(Files.readAllBytes(buildpathFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
+
+			if (content.contains(BUILDPATH_EXCLUSION_PATTERN)) return;
+
+			String updatedContent = content.replace(
+				"excluding=\".stp/|medias/\"",
+				"excluding=\".stp/|medias/|" + BUILDPATH_EXCLUSION_PATTERN + "\"");
+
+			if (updatedContent.equals(content))
+			{
+				updatedContent = content.replace(
+					"excluding=\"",
+					"excluding=\"" + BUILDPATH_EXCLUSION_PATTERN + "|");
+			}
+
+			if (!updatedContent.equals(content))
+			{
+				Files.writeString(buildpathFile.getLocation().toFile().toPath(), updatedContent, StandardCharsets.UTF_8);
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logWarning("ensureBuildpathExclusion failed: " + e.getMessage(), e);
+		}
 	}
 
 	private FormMetadata parseFrmFile(String content, String formName)
@@ -188,42 +233,26 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Generates the Playwright spec content. No @properties annotation (not a Servoy file).
-	 * Includes a navigateToForm helper with retry logic (Servoy session cleanup delay).
-	 * Uses two describe blocks with minimal navigations:
-	 * - "static checks" (combined into one test)
-	 * - "interactions" (button clicks in a single test)
+	 * Generates Cypress spec content (.spec.cy.js).
+	 * Uses beforeEach() with cy.wait() for Servoy form rendering time.
+	 * Uses cy.visit() with relative URL, cy.get() with [data-cy] selectors.
+	 * Format: data-cy="formName.elementName" (rendered when servoy.ngclient.testingMode=true).
 	 */
-	private String generateSpecContent(FormMetadata metadata)
+	private String generateCypressSpecContent(FormMetadata metadata)
 	{
 		StringBuilder sb = new StringBuilder();
 
-		sb.append("const { test, expect } = require('@playwright/test');\n\n");
+		String formUrl = "?formpreview=" + metadata.formName + "&svy_testmode=true";
 
-		String baseUrl = getFormUrl(metadata.formName);
+		sb.append("describe('").append(metadata.formName).append("', () => {\n\n");
 
-		// --- navigateToForm helper with retry (handles Servoy session cleanup delay) ---
-		sb.append("const formUrl = '").append(baseUrl).append("';\n\n");
-		sb.append("async function navigateToForm(page) {\n");
-		sb.append("  for (let attempt = 0; attempt < 3; attempt++) {\n");
-		sb.append("    try {\n");
-		sb.append("      await page.goto(formUrl, { timeout: 30000 });\n");
-		sb.append("      await page.waitForLoadState('domcontentloaded');\n");
-		sb.append("      await page.locator('[data-cy^=\"").append(metadata.formName).append(".\"]').first().waitFor({ state: 'visible', timeout: 15000 });\n");
-		sb.append("      return;\n");
-		sb.append("    } catch (e) {\n");
-		sb.append("      if (attempt === 2) throw e;\n");
-		sb.append("      await page.waitForTimeout(3000);\n");
-		sb.append("    }\n");
-		sb.append("  }\n");
-		sb.append("}\n\n");
+		sb.append("  beforeEach(() => {\n");
+		sb.append("    cy.visit('").append(formUrl).append("');\n");
+		sb.append("    cy.get('[data-cy^=\"").append(metadata.formName).append(".\"]', { timeout: 30000 }).should('exist');\n");
+		sb.append("  });\n\n");
 
-		// --- Static checks (combined into one test to minimize navigations) ---
-		sb.append("test.describe('").append(metadata.formName).append(" - static checks', () => {\n\n");
-
-		sb.append("  test('loads without errors and all elements are visible', async ({ page }) => {\n");
-		sb.append("    await navigateToForm(page);\n");
-		sb.append("    await expect(page.locator('.svy-error, .error-overlay')).not.toBeVisible();\n");
+		sb.append("  it('loads without errors and all elements are visible', () => {\n");
+		sb.append("    cy.get('.svy-error, .error-overlay').should('not.exist');\n");
 
 		List<ElementInfo> visibleElements = metadata.namedElements.stream()
 			.filter(e -> e.isWebComponent || e.isButton || e.isLabel)
@@ -232,13 +261,10 @@ public class FormSpecGenerator
 
 		for (ElementInfo elem : visibleElements)
 		{
-			sb.append("    await expect(page.locator('[data-cy=\"").append(metadata.formName).append(".").append(elem.name).append("\"]')).toBeVisible();\n");
+			sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(elem.name).append("\"]').should('be.visible');\n");
 		}
 		sb.append("  });\n\n");
 
-		sb.append("});\n\n");
-
-		// --- Interaction tests (single page load per test, with retry) ---
 		List<ElementInfo> buttons = metadata.namedElements.stream()
 			.filter(e -> e.isButton || (e.typeName != null && e.typeName.contains("button")))
 			.limit(3)
@@ -246,29 +272,22 @@ public class FormSpecGenerator
 
 		if (!buttons.isEmpty())
 		{
-			sb.append("test.describe('").append(metadata.formName).append(" - interactions', () => {\n\n");
-
-			sb.append("  test('buttons are clickable', async ({ page }) => {\n");
-			sb.append("    await navigateToForm(page);\n");
-
+			sb.append("  it('buttons are clickable', () => {\n");
 			for (ElementInfo button : buttons)
 			{
-				sb.append("    const ").append(button.name).append(" = page.locator('[data-cy=\"").append(metadata.formName).append(".").append(button.name).append("\"]');\n");
-				sb.append("    await expect(").append(button.name).append(").toBeVisible();\n");
-				sb.append("    await expect(").append(button.name).append(").toBeEnabled();\n");
+				sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(button.name).append("\"]').should('be.visible').and('be.enabled');\n");
 			}
 			sb.append("  });\n\n");
-
-			sb.append("});\n");
 		}
+
+		sb.append("});\n");
 
 		return sb.toString();
 	}
 
-
 	/**
 	 * Returns a relative URL path for the form preview.
-	 * The baseURL (host + port + solution path) is provided by playwright.config.js.
+	 * The baseUrl is provided by cypress.config.js.
 	 */
 	private String getFormUrl(String formName)
 	{
@@ -277,7 +296,7 @@ public class FormSpecGenerator
 
 	/**
 	 * Generates the Servoy setUp/tearDown script (.spec.js).
-	 * This file DOES have @properties annotations since it's a Servoy scope file.
+	 * This file HAS @properties annotations — it's a Servoy scope file with full DLTK support.
 	 */
 	private String generateSetupContent(FormMetadata metadata)
 	{
@@ -290,7 +309,7 @@ public class FormSpecGenerator
 			sb.append(" * DataSource: ").append(metadata.dataSource).append("\n");
 		}
 		sb.append(" *\n");
-		sb.append(" * This file runs inside the Servoy runtime BEFORE the Playwright assertions.\n");
+		sb.append(" * This file runs inside the Servoy runtime BEFORE the Cypress assertions.\n");
 		sb.append(" * Use spec_setUp() to prepare test data (load records, set variables, etc.)\n");
 		sb.append(" * Use spec_tearDown() to clean up after tests.\n");
 		sb.append(" */\n\n");

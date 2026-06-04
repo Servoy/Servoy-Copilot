@@ -81,7 +81,46 @@ public class PersistRenameService
 		Form form = solution.getForm(oldName);
 		if (form == null) return "Error: Form '" + oldName + "' not found in solution '" + project.getProject().getName() + "'.";
 
-		return doUpdateName(form, newName, project, "Form");
+		String result = doUpdateName(form, newName, project, "Form");
+
+		if (!result.startsWith("Error"))
+		{
+			renameFormSpecFiles(oldName, newName, project);
+		}
+
+		return result;
+	}
+
+	private void renameFormSpecFiles(String oldFormName, String newFormName, ServoyProject project)
+	{
+		try
+		{
+			IProject eclipseProject = project.getProject();
+
+			IFile oldSpecJs = eclipseProject.getFile("forms/" + oldFormName + ".spec.js");
+			if (oldSpecJs.exists())
+			{
+				IFile newSpecJs = eclipseProject.getFile("forms/" + newFormName + ".spec.js");
+				if (!newSpecJs.exists())
+				{
+					oldSpecJs.move(newSpecJs.getFullPath(), true, new NullProgressMonitor());
+				}
+			}
+
+			IFile oldSpecCy = eclipseProject.getFile("medias/tests/" + oldFormName + ".spec.cy.js");
+			if (oldSpecCy.exists())
+			{
+				IFile newSpecCy = eclipseProject.getFile("medias/tests/" + newFormName + ".spec.cy.js");
+				if (!newSpecCy.exists())
+				{
+					oldSpecCy.move(newSpecCy.getFullPath(), true, new NullProgressMonitor());
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logWarning("renameFormSpecFiles: " + e.getMessage(), e);
+		}
 	}
 
 	public String renameRelation(String oldName, String newName, ServoyProject project) throws RepositoryException

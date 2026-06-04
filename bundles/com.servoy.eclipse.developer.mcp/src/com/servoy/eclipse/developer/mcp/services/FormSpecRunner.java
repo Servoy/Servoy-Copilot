@@ -19,25 +19,25 @@ import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
- * Runs Playwright test specs (.spec.pw.js) against Servoy forms using the real
- * Playwright Test runner (npx playwright test). Spec files live in
- * workspace/pwtests/{solutionName}/ to avoid DLTK parser issues.
+ * Runs Cypress test specs (.spec.cy.js) against Servoy forms using npx cypress run.
+ * Cypress is installed locally in .metadata/.plugins/com.servoy.eclipse.copilot/cypress/.
+ * Spec files live next to the .frm file in forms/ directory.
  */
 @Creatable
 @SuppressWarnings("restriction")
 public class FormSpecRunner
 {
-	private static final String COPILOT_PLUGIN_DIR = "com.servoy.eclipse.copilot";
-	private static final String PLAYWRIGHT_DIR = "playwright";
+	private static final String MCP_PLUGIN_DIR = "com.servoy.eclipse.developer.mcp";
+	private static final String CYPRESS_DIR = "cypress";
 	private static final int DEFAULT_TIMEOUT_SECONDS = 60;
 
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
 
 	/**
-	 * Runs the Playwright spec for the given form using 'npx playwright test'.
+	 * Runs the Cypress spec for the given form using 'npx cypress run'.
 	 *
-	 * @param formName the form whose .spec.pw.js to run
-	 * @param headless true for headless (CI), false for headed (debugging)
+	 * @param formName the form whose .spec.cy.js to run
+	 * @param headless true for headless (default), false for headed (debugging)
 	 * @return test results output
 	 */
 	public String runSpec(String formName, boolean headless)
@@ -50,28 +50,25 @@ public class FormSpecRunner
 				return "Error: No active Servoy project.";
 			}
 
-			String solutionName = activeProject.getSolution().getName();
-			Path pwTestsDir = specGenerator.getPwTestsDir(solutionName);
-			Path specFilePath = pwTestsDir.resolve(formName + ".spec.pw.js");
-
-			if (!Files.exists(specFilePath))
+			Path specFilePath = specGenerator.getSpecFilePath(formName);
+			if (specFilePath == null || !Files.exists(specFilePath))
 			{
-				return "Error: Spec file not found: medias/pwtests/" + formName + ".spec.pw.js. Use showFormInBrowser first to auto-generate it.";
+				return "Error: Spec file not found: forms/" + formName + ".spec.cy.js. Use showFormInBrowser first to auto-generate it.";
 			}
 
-			Path playwrightDir = getPlaywrightDir();
-			String setupError = ensurePlaywrightInstalled(playwrightDir);
+			Path cypressDir = getCypressDir();
+			String setupError = ensureCypressInstalled(cypressDir);
 			if (setupError != null)
 			{
 				return setupError;
 			}
 
-			// Write playwright.config.js in medias/pwtests/ (same dir as spec files)
+			String solutionName = activeProject.getSolution().getName();
 			int port = ApplicationServerRegistry.get().getWebServerPort();
 			String baseUrl = "http://localhost:" + port + "/solution/" + solutionName + "/index.html";
-			ensurePlaywrightConfig(pwTestsDir, baseUrl, pwTestsDir, headless);
 
-			// Run: npx playwright test {formName}.spec.pw.js --config=... --reporter=list
+			ensureCypressConfig(cypressDir, baseUrl);
+
 			File nodePath = getNodePath();
 			if (nodePath == null)
 			{
@@ -86,11 +83,12 @@ public class FormSpecRunner
 
 			List<String> command = new ArrayList<>();
 			command.add(npxPath);
-			command.add("playwright");
-			command.add("test");
-			command.add(formName + ".spec.pw.js");
-			command.add("--config=" + pwTestsDir.resolve("playwright.config.js").toString());
-			command.add("--reporter=list");
+			command.add("cypress");
+			command.add("run");
+			command.add("--spec");
+			command.add(specFilePath.toString());
+			command.add("--config-file");
+			command.add(cypressDir.resolve("cypress.config.js").toString());
 			if (!headless)
 			{
 				command.add("--headed");
@@ -99,10 +97,7 @@ public class FormSpecRunner
 			ProcessBuilder pb = new ProcessBuilder(command);
 			pb.directory(activeProject.getProject().getLocation().toFile());
 			pb.redirectErrorStream(true);
-			// NODE_PATH: so spec files can require('@playwright/test')
-			pb.environment().put("NODE_PATH", playwrightDir.resolve("node_modules").toString());
-			// PLAYWRIGHT_BROWSERS_PATH: so it finds the installed chromium
-			pb.environment().put("PLAYWRIGHT_BROWSERS_PATH", playwrightDir.resolve("browsers").toString());
+			pb.environment().put("NODE_PATH", cypressDir.resolve("node_modules").toString());
 			Process process = pb.start();
 
 			StringBuilder output = new StringBuilder();
@@ -119,7 +114,7 @@ public class FormSpecRunner
 			if (!finished)
 			{
 				process.destroyForcibly();
-				return "Error: Playwright test timed out after " + DEFAULT_TIMEOUT_SECONDS + " seconds.";
+				return "Error: Cypress test timed out after " + DEFAULT_TIMEOUT_SECONDS + " seconds.";
 			}
 
 			String rawOutput = output.toString();
@@ -140,46 +135,39 @@ public class FormSpecRunner
 	}
 
 	/**
-	 * Writes a playwright.config.js in the medias/pwtests/ directory.
-	 * Configures baseURL, testDir, testMatch, headless mode, and timeouts.
+	 * Writes cypress.config.js with baseUrl for the running Servoy solution.
 	 */
-	private void ensurePlaywrightConfig(Path pwTestsDir, String baseUrl, Path testDir, boolean headless)
+	private void ensureCypressConfig(Path cypressDir, String baseUrl)
 	{
 		try
 		{
-			Files.createDirectories(pwTestsDir);
-			String testDirEscaped = testDir.toString().replace("\\", "/");
-			Path configFile = pwTestsDir.resolve("playwright.config.js");
+			Path configFile = cypressDir.resolve("cypress.config.js");
 			String config = "// Auto-generated by Servoy MCP - do not edit manually\n" +
-				"const { defineConfig } = require('@playwright/test');\n\n" +
+				"const { defineConfig } = require('cypress');\n\n" +
 				"module.exports = defineConfig({\n" +
-				"  testDir: '" + testDirEscaped + "',\n" +
-				"  testMatch: '*.spec.pw.js',\n" +
-				"  timeout: 60000,\n" +
-				"  retries: 0,\n" +
-				"  workers: 1,\n" +
-				"  use: {\n" +
-				"    baseURL: '" + baseUrl + "',\n" +
-				"    headless: " + headless + ",\n" +
-				"    viewport: { width: 1280, height: 720 },\n" +
-				"    actionTimeout: 10000,\n" +
-				"    navigationTimeout: 30000,\n" +
+				"  e2e: {\n" +
+				"    baseUrl: '" + baseUrl + "',\n" +
+				"    supportFile: false,\n" +
+				"    specPattern: '**/*.spec.cy.js',\n" +
+				"    defaultCommandTimeout: 10000,\n" +
+				"    pageLoadTimeout: 30000,\n" +
+				"    video: false,\n" +
+				"    screenshotOnRunFailure: false,\n" +
 				"  },\n" +
-				"  reporter: [['list']],\n" +
 				"});\n";
 			Files.writeString(configFile, config, StandardCharsets.UTF_8);
 		}
 		catch (Exception e)
 		{
-			// Non-fatal - playwright will use defaults
+			// Non-fatal
 		}
 	}
 
-	private Path getPlaywrightDir()
+	private Path getCypressDir()
 	{
 		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
 		Path metadataPlugins = workspaceRoot.getParent().resolve(".metadata").resolve(".plugins");
-		return metadataPlugins.resolve(COPILOT_PLUGIN_DIR).resolve(PLAYWRIGHT_DIR);
+		return metadataPlugins.resolve(MCP_PLUGIN_DIR).resolve(CYPRESS_DIR);
 	}
 
 	private File getNodePath()
@@ -201,27 +189,26 @@ public class FormSpecRunner
 	}
 
 	/**
-	 * Ensures @playwright/test is installed (not just 'playwright' library).
-	 * Also installs Chromium browser if not present.
+	 * Ensures Cypress is installed locally in the .metadata plugins directory.
 	 */
-	private String ensurePlaywrightInstalled(Path playwrightDir)
+	private String ensureCypressInstalled(Path cypressDir)
 	{
 		try
 		{
-			boolean needsInstall = !Files.exists(playwrightDir.resolve("node_modules/@playwright/test"));
+			boolean needsInstall = !Files.exists(cypressDir.resolve("node_modules/cypress"));
 
 			if (needsInstall)
 			{
-				Files.createDirectories(playwrightDir);
+				Files.createDirectories(cypressDir);
 				String packageJson = "{\n" +
-					"  \"name\": \"servoy-playwright\",\n" +
+					"  \"name\": \"servoy-cypress\",\n" +
 					"  \"version\": \"1.0.0\",\n" +
 					"  \"private\": true,\n" +
 					"  \"dependencies\": {\n" +
-					"    \"@playwright/test\": \"^1.52.0\"\n" +
+					"    \"cypress\": \"^13.0.0\"\n" +
 					"  }\n" +
 					"}\n";
-				Files.writeString(playwrightDir.resolve("package.json"), packageJson, StandardCharsets.UTF_8);
+				Files.writeString(cypressDir.resolve("package.json"), packageJson, StandardCharsets.UTF_8);
 
 				File nodePath = getNodePath();
 				if (nodePath == null) return "Error: Node.js not available.";
@@ -233,35 +220,22 @@ public class FormSpecRunner
 				}
 
 				ProcessBuilder pb = new ProcessBuilder(npmPath, "install");
-				pb.directory(playwrightDir.toFile());
+				pb.directory(cypressDir.toFile());
 				pb.redirectErrorStream(true);
 				Process p = pb.start();
 				try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)))
 				{
 					while (reader.readLine() != null) { /* drain */ }
 				}
-				p.waitFor(120, TimeUnit.SECONDS);
+				p.waitFor(180, TimeUnit.SECONDS);
 
-				if (p.exitValue() != 0) return "Error: npm install failed in playwright directory.";
-
-				// Install Chromium browser
-				ProcessBuilder pbBrowser = new ProcessBuilder(
-					nodePath.getAbsolutePath(), "node_modules/@playwright/test/cli.js", "install", "chromium");
-				pbBrowser.directory(playwrightDir.toFile());
-				pbBrowser.redirectErrorStream(true);
-				pbBrowser.environment().put("PLAYWRIGHT_BROWSERS_PATH", playwrightDir.resolve("browsers").toString());
-				Process pBrowser = pbBrowser.start();
-				try (BufferedReader reader = new BufferedReader(new InputStreamReader(pBrowser.getInputStream(), StandardCharsets.UTF_8)))
-				{
-					while (reader.readLine() != null) { /* drain */ }
-				}
-				pBrowser.waitFor(180, TimeUnit.SECONDS);
+				if (p.exitValue() != 0) return "Error: npm install failed in cypress directory.";
 			}
 			return null;
 		}
 		catch (Exception e)
 		{
-			return "Error setting up Playwright: " + e.getMessage();
+			return "Error setting up Cypress: " + e.getMessage();
 		}
 	}
 }
