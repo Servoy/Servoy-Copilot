@@ -27,6 +27,7 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.AbstractRepository;
 
 /**
  * Layer 3 integration tests for {@link JSUnitRunnerService}.
@@ -432,7 +433,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 
 			// Write required Servoy metadata (idempotent - skipped if file exists)
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"test_pilot_suite\",\n" +
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"test_pilot_suite\",\n" +
 				"solutionType:1,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"\n",
 				monitor);
 			writeProjectFile(sol, "solution_settings.obj",

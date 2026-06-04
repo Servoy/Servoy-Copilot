@@ -30,6 +30,7 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.AbstractRepository;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService} -- MODULES and FORMS grouped modes.
@@ -382,7 +383,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			if (!mod.isOpen()) mod.open(monitor);
 
 			writeProjectFile(mod, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_MODULE + "\",\n" +
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_MODULE + "\",\n" +
 				"solutionType:2,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000002\"\n",
 				monitor);
 			writeProjectFile(mod, "solution_settings.obj",
@@ -415,7 +416,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			if (!sol.isOpen()) sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_SOLUTION + "\",\n" +
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_SOLUTION + "\",\n" +
 				"solutionType:1,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000001\"\n",
 				monitor);
 			// solution_settings.obj declares the module via modulesNames.

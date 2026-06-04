@@ -25,12 +25,9 @@ import java.util.Arrays;
 
 import org.junit.Test;
 
-import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
-
-import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
-import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 
 /**
  * JUnit 4 tests for {@link ServoyDevServer}.
@@ -55,7 +52,7 @@ public class ServoyDevServerIntegrationTest
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals(8, toolCount);
+		assertEquals(26, toolCount);
 	}
 
 	@Test
@@ -108,11 +105,11 @@ public class ServoyDevServerIntegrationTest
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionHasFourParams()
+	public void testServoyDevServer_createSolutionHasFiveParams()
 	{
 		Method method = findToolMethod("createSolution");
 		assertNotNull("createSolution tool must exist", method);
-		assertEquals("createSolution must have 4 parameters", 4, method.getParameterCount());
+		assertEquals("createSolution must have 5 parameters", 5, method.getParameterCount());
 	}
 
 	@Test
@@ -147,7 +144,7 @@ public class ServoyDevServerIntegrationTest
 		long paramCount = Arrays.stream(method.getParameters())
 			.filter(p -> p.isAnnotationPresent(ToolParam.class))
 			.count();
-		assertEquals("All 4 createSolution params must have @ToolParam", 4, paramCount);
+		assertEquals("All 5 createSolution params must have @ToolParam", 5, paramCount);
 	}
 
 	@Test

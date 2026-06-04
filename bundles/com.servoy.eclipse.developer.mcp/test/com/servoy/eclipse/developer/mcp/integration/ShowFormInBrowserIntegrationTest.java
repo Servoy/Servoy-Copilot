@@ -31,6 +31,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
+import com.servoy.j2db.persistence.AbstractRepository;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.GraphicalComponent;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
@@ -295,7 +296,7 @@ public class ShowFormInBrowserIntegrationTest
 			if (!sol.isOpen()) sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
 				"solutionType:1,\ntypeid:43,\nuuid:\"d4e5f6a7-b8c9-0123-def0-456789abcdef\"\n",
 				monitor);
 			writeProjectFile(sol, "solution_settings.obj",

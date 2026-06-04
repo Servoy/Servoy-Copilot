@@ -29,6 +29,7 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.AbstractRepository;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService}.
@@ -417,7 +418,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 			if (!sol.isOpen()) sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"test_layer4_suite\",\n" +
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"test_layer4_suite\",\n" +
 				"solutionType:1,\ntypeid:43,\nuuid:\"11111111-2222-3333-4444-000000000004\"\n",
 				monitor);
 			writeProjectFile(sol, "solution_settings.obj",
