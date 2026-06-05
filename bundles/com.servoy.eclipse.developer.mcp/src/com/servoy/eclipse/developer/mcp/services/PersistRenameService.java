@@ -17,6 +17,7 @@ import com.servoy.j2db.persistence.ISupportUpdateableName;
 import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Media;
 import com.servoy.j2db.persistence.Menu;
+import com.servoy.j2db.persistence.MenuItem;
 import com.servoy.j2db.persistence.Relation;
 import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.Solution;
@@ -56,6 +57,8 @@ public class PersistRenameService
 					return renameValueList(oldName, newName, project);
 				case "menu":
 					return renameMenu(oldName, newName, project);
+				case "menuitem":
+					return renameMenuItem(oldName, newName, project);
 				case "media":
 					return renameMedia(oldName, newName, project);
 				case "scope":
@@ -63,7 +66,7 @@ public class PersistRenameService
 				case "solution":
 					return renameSolution(oldName, newName);
 				default:
-					return "Error: Unsupported persistType '" + persistType + "'. Supported: form, relation, valuelist, menu, media, scope, solution.";
+					return "Error: Unsupported persistType '" + persistType + "'. Supported: form, relation, valuelist, menu, menuitem, media, scope, solution.";
 			}
 		}
 		catch (Exception e)
@@ -164,6 +167,39 @@ public class PersistRenameService
 		if (menu == null) return "Error: Menu '" + oldName + "' not found in solution '" + project.getProject().getName() + "'.";
 
 		return doUpdateName(menu, newName, project, "Menu");
+	}
+
+	public String renameMenuItem(String oldName, String newName, ServoyProject project) throws RepositoryException
+	{
+		Solution solution = project.getEditingSolution();
+		if (solution == null) return "Error: Cannot get editing solution.";
+
+		MenuItem menuItem = null;
+		java.util.Iterator<Menu> menuIter = solution.getMenus(false);
+		while (menuIter.hasNext() && menuItem == null)
+		{
+			menuItem = findMenuItemRecursive(menuIter.next(), oldName);
+		}
+		if (menuItem == null) return "Error: MenuItem '" + oldName + "' not found in solution '" + project.getProject().getName() + "'.";
+
+		return doUpdateName(menuItem, newName, project, "MenuItem");
+	}
+
+	private MenuItem findMenuItemRecursive(com.servoy.j2db.persistence.ISupportChilds parent, String name)
+	{
+		java.util.Iterator<IPersist> iter = parent.getAllObjects();
+		while (iter.hasNext())
+		{
+			IPersist child = iter.next();
+			if (child instanceof MenuItem)
+			{
+				MenuItem item = (MenuItem)child;
+				if (name.equals(item.getName())) return item;
+				MenuItem found = findMenuItemRecursive(item, name);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 
 	public String renameMedia(String oldName, String newName, ServoyProject project)

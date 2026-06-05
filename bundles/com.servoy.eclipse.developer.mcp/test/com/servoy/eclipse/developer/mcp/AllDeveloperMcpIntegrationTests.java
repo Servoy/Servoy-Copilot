@@ -26,6 +26,7 @@ import com.servoy.eclipse.developer.mcp.integration.CypressFormTestingIntegratio
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerLayer4Test;
+import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
@@ -48,6 +49,7 @@ import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegration
 	JSUnitRunnerIntegrationTest.class,
 	JSUnitRunnerGroupedTest.class,
 	JSUnitRunnerLayer4Test.class,
+	RenamePersistIntegrationTest.class,
 	ServoyDevServerIntegrationTest.class,
 	ServoyIdeServerIntegrationTest.class,
 	ShowFormInBrowserIntegrationTest.class,

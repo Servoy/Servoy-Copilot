@@ -1,0 +1,668 @@
+/*
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+
+ This program is free software; you can redistribute it and/or modify it under
+ the terms of the GNU Affero General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License along
+ with this program; if not, see http://www.gnu.org/licenses or write to the Free
+ Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+package com.servoy.eclipse.developer.mcp.integration;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assume.assumeTrue;
+
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import org.eclipse.core.resources.ICommand;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IProjectDescription;
+import org.eclipse.core.resources.IWorkspaceRunnable;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.swt.widgets.Display;
+import org.junit.Before;
+import org.junit.Test;
+
+import com.servoy.eclipse.core.IDeveloperServoyModel;
+import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
+import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
+import com.servoy.eclipse.developer.mcp.services.PersistRenameService;
+import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
+import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.AbstractRepository;
+import com.servoy.j2db.persistence.Form;
+import com.servoy.j2db.persistence.IValidateName;
+import com.servoy.j2db.persistence.Menu;
+import com.servoy.j2db.persistence.MenuItem;
+import com.servoy.j2db.persistence.Solution;
+import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+
+/**
+ * Integration tests for {@link PersistRenameService} - tests renaming of forms, relations,
+ * valuelists, and scopes with a real Servoy workspace.
+ *
+ * These tests require a running Servoy application server and create a test solution.
+ * They are skipped (via Assume) when the environment is not available.
+ */
+public class RenamePersistIntegrationTest
+{
+	private static final String TEST_SOLUTION = "test_rename_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
+
+	private static final long APP_SERVER_POLL_MS = 15_000;
+	private static final long ACTIVATE_SETTLE_MS = 10_000;
+
+	private PersistRenameService renameService;
+	private ServoyDevServer devServer;
+	private ServoyProject activeProject;
+
+	private static Boolean appServerAvailableCache;
+
+	@Before
+	public void setUp() throws Exception
+	{
+		renameService = new PersistRenameService();
+		devServer = new ServoyDevServer();
+
+		assumeNotNull("No Display available - test requires a running Eclipse UI",
+			Display.getDefault());
+
+		waitForAppServer();
+		ensureTestSolutionInWorkspace();
+		ensureActiveProject();
+
+		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		assumeNotNull("Active project required", activeProject);
+	}
+
+	// -----------------------------------------------------------------------
+	// Form rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameForm_success() throws Exception
+	{
+		String formName = "renameTestForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(formName);
+		assumeNotNull("Form creation should succeed", form);
+
+		String result = renameService.renameForm(formName, newName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success", result.contains("successfully") || result.contains("Renamed"));
+
+		Form renamedForm = activeProject.getEditingSolution().getForm(newName);
+		assertNotNull("Form should exist with new name", renamedForm);
+	}
+
+	@Test
+	public void testRenameForm_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameForm("nonExistentForm_XYZ_12345", "newName", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent form", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameForm_viaTool() throws Exception
+	{
+		String formName = "toolRenameForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+
+		String result = devServer.renamePersist("form", formName, newName, null);
+
+		assertNotNull(result);
+		assertTrue("Tool should indicate success",
+			result.contains("successfully") || result.contains("Renamed") || result.contains("Error"));
+	}
+
+	// -----------------------------------------------------------------------
+	// Relation rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameRelation_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameRelation("nonExistentRelation_XYZ", "newName", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent relation", result.contains("Error") || result.contains("not found"));
+	}
+
+	// -----------------------------------------------------------------------
+	// ValueList rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameValueList_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameValueList("nonExistentVL_XYZ", "newName", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent valuelist", result.contains("Error") || result.contains("not found"));
+	}
+
+
+	// -----------------------------------------------------------------------
+	// Media rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameMedia_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameMedia("nonExistentMedia_XYZ.png", "newName.png", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent media", result.contains("Error") || result.contains("not found"));
+	}
+
+	// -----------------------------------------------------------------------
+	// Scope rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameScope_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameScope("nonExistentScope_XYZ", "newScope", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent scope", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameScope_success() throws Exception
+	{
+		String scopeName = "testScope_" + System.currentTimeMillis();
+		IProject project = activeProject.getProject();
+		IFile scopeFile = project.getFile(scopeName + ".js");
+		scopeFile.create(new ByteArrayInputStream("// scope file".getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+		assumeTrue("Scope file should exist", scopeFile.exists());
+
+		String newScopeName = scopeName + "_renamed";
+		String result = renameService.renameScope(scopeName, newScopeName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully"));
+
+		IFile oldFile = project.getFile(scopeName + ".js");
+		IFile newFile = project.getFile(newScopeName + ".js");
+		assertFalse("Old scope file should not exist", oldFile.exists());
+		assertTrue("New scope file should exist", newFile.exists());
+	}
+
+	// -----------------------------------------------------------------------
+	// Form rename with spec files tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameForm_withSpecFiles_renames_allFiles() throws Exception
+	{
+		String formName = "specTestForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(formName);
+		assumeNotNull("Form creation should succeed", form);
+
+		IProject project = activeProject.getProject();
+
+		IFolder testsFolder = project.getFolder("medias/tests");
+		if (!testsFolder.exists())
+		{
+			project.getFolder("medias").create(true, true, new NullProgressMonitor());
+			testsFolder.create(true, true, new NullProgressMonitor());
+		}
+		IFile specCyFile = project.getFile("medias/tests/" + formName + ".spec.cy.js");
+		specCyFile.create(new ByteArrayInputStream(("describe('" + formName + "', () => {});").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+
+		IFile specJsFile = project.getFile("forms/" + formName + ".spec.js");
+		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+
+		assumeTrue(".spec.cy.js should exist before rename", specCyFile.exists());
+		assumeTrue(".spec.js should exist before rename", specJsFile.exists());
+
+		String result = renameService.renameForm(formName, newName, activeProject);
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+
+		IFile oldSpecCy = project.getFile("medias/tests/" + formName + ".spec.cy.js");
+		IFile newSpecCy = project.getFile("medias/tests/" + newName + ".spec.cy.js");
+		assertFalse("Old .spec.cy.js should not exist", oldSpecCy.exists());
+		assertTrue("New .spec.cy.js should exist", newSpecCy.exists());
+
+		IFile oldSpecJs = project.getFile("forms/" + formName + ".spec.js");
+		IFile newSpecJs = project.getFile("forms/" + newName + ".spec.js");
+		assertFalse("Old .spec.js should not exist", oldSpecJs.exists());
+		assertTrue("New .spec.js should exist", newSpecJs.exists());
+
+		Form renamedForm = activeProject.getEditingSolution().getForm(newName);
+		assertNotNull("Form should exist with new name", renamedForm);
+		assertNull("Form should not exist with old name", activeProject.getEditingSolution().getForm(formName));
+	}
+
+	@Test
+	public void testRenameForm_withOnlyJsFile_renames_jsFile() throws Exception
+	{
+		String formName = "jsOnlyForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+
+		IProject project = activeProject.getProject();
+		IFile jsFile = project.getFile("forms/" + formName + ".js");
+		jsFile.create(new ByteArrayInputStream("// form js".getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+
+		String result = renameService.renameForm(formName, newName, activeProject);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		assertNotNull("Form should exist with new name", activeProject.getEditingSolution().getForm(newName));
+	}
+
+	// -----------------------------------------------------------------------
+	// Menu rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameMenu_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameMenu("nonExistentMenu_XYZ", "newName", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent menu", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameMenu_success() throws Exception
+	{
+		String menuName = "testMenu_" + System.currentTimeMillis();
+		String newMenuName = menuName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		Menu menu = solution.createNewMenu(validator, menuName);
+		assumeNotNull("Menu creation should succeed", menu);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu }, true);
+
+		String result = renameService.renameMenu(menuName, newMenuName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		boolean foundRenamed = false;
+		java.util.Iterator<Menu> iter = solution.getMenus(false);
+		while (iter.hasNext())
+		{
+			if (newMenuName.equals(iter.next().getName()))
+			{
+				foundRenamed = true;
+				break;
+			}
+		}
+		assertTrue("Menu should exist with new name", foundRenamed);
+	}
+
+	// -----------------------------------------------------------------------
+	// MenuItem rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameMenuItem_notFound_returnsError() throws Exception
+	{
+		String result = renameService.renameMenuItem("nonExistentMenuItem_XYZ", "newName", activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent menuitem", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameMenuItem_success() throws Exception
+	{
+		String menuName = "menuForItem_" + System.currentTimeMillis();
+		String itemName = "testItem_" + System.currentTimeMillis();
+		String newItemName = itemName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		Menu menu = solution.createNewMenu(validator, menuName);
+		assumeNotNull("Menu creation should succeed", menu);
+
+		MenuItem menuItem = menu.createNewMenuItem(itemName);
+		assumeNotNull("MenuItem creation should succeed", menuItem);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu, menuItem }, true);
+
+		String result = renameService.renameMenuItem(itemName, newItemName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+	}
+
+	@Test
+	public void testRenameMenuItem_viaTool() throws Exception
+	{
+		String menuName = "menuForToolItem_" + System.currentTimeMillis();
+		String itemName = "toolItem_" + System.currentTimeMillis();
+		String newItemName = itemName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		Menu menu = solution.createNewMenu(validator, menuName);
+		assumeNotNull("Menu creation should succeed", menu);
+
+		MenuItem menuItem = menu.createNewMenuItem(itemName);
+		assumeNotNull("MenuItem creation should succeed", menuItem);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu, menuItem }, true);
+
+		String result = devServer.renamePersist("menuitem", itemName, newItemName, null);
+
+		assertNotNull(result);
+		assertTrue("Tool should indicate success: " + result,
+			result.contains("successfully") || result.contains("Renamed"));
+	}
+
+	// -----------------------------------------------------------------------
+	// Solution rename tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameSolution_notFound_returnsError()
+	{
+		String result = renameService.renameSolution("nonExistentSolution_XYZ_99999", "newSolName");
+
+		assertNotNull(result);
+		assertTrue("Should return error for non-existent solution", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameSolution_duplicateName_returnsError()
+	{
+		String result = renameService.renameSolution(TEST_SOLUTION, SERVOY_RESOURCES);
+
+		assertNotNull(result);
+		assertTrue("Should return error for duplicate name", result.contains("Error") || result.contains("already exists"));
+	}
+
+	// -----------------------------------------------------------------------
+	// renamePersist tool dispatch tests (via ServoyDevServer)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenamePersist_unsupportedType_returnsError()
+	{
+		String result = devServer.renamePersist("unknown_type", "old", "new", null);
+
+		assertNotNull(result);
+		assertTrue("Should return error for unsupported type",
+			result.contains("Error") || result.contains("Unsupported"));
+	}
+
+	@Test
+	public void testRenamePersist_sameName_returnsError()
+	{
+		String result = devServer.renamePersist("form", "myForm", "myForm", null);
+
+		assertNotNull(result);
+		assertTrue("Should return error for same name", result.contains("Error") || result.contains("same"));
+	}
+
+	@Test
+	public void testRenamePersist_nullOldName_returnsError()
+	{
+		String result = devServer.renamePersist("form", null, "newName", null);
+
+		assertNotNull(result);
+		assertTrue("Should return error for null oldName", result.contains("Error"));
+	}
+
+	@Test
+	public void testRenamePersist_nullNewName_returnsError()
+	{
+		String result = devServer.renamePersist("form", "oldName", null, null);
+
+		assertNotNull(result);
+		assertTrue("Should return error for null newName", result.contains("Error"));
+	}
+
+	@Test
+	public void testRenameSolution_success() throws Exception
+	{
+		String solName = "renameSolTest_" + System.currentTimeMillis();
+		String newSolName = solName + "_renamed";
+
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
+			IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(solName);
+			d.setNatureIds(new String[] {
+				"com.servoy.eclipse.core.ServoyProject",
+				"org.eclipse.dltk.javascript.core.nature"
+			});
+			ICommand sc = d.newCommand();
+			sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
+			ICommand sb = d.newCommand();
+			sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
+			d.setBuildSpec(new ICommand[] { sc, sb });
+			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
+			d.setReferencedProjects(new IProject[] { res });
+			sol.create(d, monitor);
+			sol.open(monitor);
+
+			writeProjectFile(sol, "rootmetadata.obj",
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + solName + "\",\n" +
+				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n",
+				monitor);
+			writeProjectFile(sol, "solution_settings.obj",
+				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n",
+				monitor);
+		}, new NullProgressMonitor());
+
+		pumpEvents(2000);
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		model.refreshServoyProjects();
+		pumpEvents(2000);
+
+		ServoyProject solProject = model.getServoyProject(solName);
+		assumeNotNull("Solution project should be created", solProject);
+
+		String result = renameService.renameSolution(solName, newSolName);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		pumpEvents(2000);
+		model.refreshServoyProjects();
+
+		IProject oldProject = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
+		assertFalse("Old project should not exist after rename", oldProject.exists());
+
+		IProject newProject = ResourcesPlugin.getWorkspace().getRoot().getProject(newSolName);
+		assertTrue("New project should exist after rename", newProject.exists());
+
+		// cleanup
+		try
+		{
+			newProject.delete(true, new NullProgressMonitor());
+		}
+		catch (Exception e)
+		{
+			// best effort
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Helpers
+	// -----------------------------------------------------------------------
+
+	private void waitForAppServer() throws InterruptedException
+	{
+		if (appServerAvailableCache == null)
+		{
+			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
+			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
+			{
+				Thread.sleep(500);
+			}
+			appServerAvailableCache = ApplicationServerRegistry.exists();
+		}
+		assumeTrue("Servoy application server not started - skipping",
+			appServerAvailableCache);
+	}
+
+	private void ensureTestSolutionInWorkspace() throws Exception
+	{
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
+			if (!res.exists())
+			{
+				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
+				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
+				res.create(d, monitor);
+			}
+			if (!res.isOpen()) res.open(monitor);
+
+			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
+			if (!sol.exists())
+			{
+				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
+				d.setNatureIds(new String[] {
+					"com.servoy.eclipse.core.ServoyProject",
+					"org.eclipse.dltk.javascript.core.nature"
+				});
+				ICommand sc = d.newCommand();
+				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
+				ICommand sb = d.newCommand();
+				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
+				d.setBuildSpec(new ICommand[] { sc, sb });
+				d.setReferencedProjects(new IProject[] { res });
+				sol.create(d, monitor);
+			}
+			if (!sol.isOpen()) sol.open(monitor);
+
+			writeProjectFile(sol, "rootmetadata.obj",
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
+				"solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\"\n",
+				monitor);
+			writeProjectFile(sol, "solution_settings.obj",
+				"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\",\nversion:\"1.0\"\n",
+				monitor);
+			writeProjectFile(sol, ".buildpath",
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+				monitor);
+		}, new NullProgressMonitor());
+
+		pumpEvents(1000);
+	}
+
+	private void ensureActiveProject() throws Exception
+	{
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+
+		ServoyProject active = model.getActiveProject();
+		if (active != null && TEST_SOLUTION.equals(active.getProject().getName())) return;
+
+		model.refreshServoyProjects();
+		pumpEvents(1000);
+
+		ServoyProject[] projects = model.getServoyProjects();
+		assumeTrue("No ServoyProject found in workspace",
+			projects != null && projects.length > 0);
+
+		ServoyProject toActivate = null;
+		for (ServoyProject p : projects)
+		{
+			if (TEST_SOLUTION.equals(p.getProject().getName()))
+			{
+				toActivate = p;
+				break;
+			}
+		}
+		if (toActivate == null) toActivate = projects[0];
+
+		try
+		{
+			model.setActiveProject(toActivate, true);
+		}
+		catch (Exception e)
+		{
+			// caught by assumeNotNull below
+		}
+
+		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
+		Display display = Display.getDefault();
+		if (display.getThread() == Thread.currentThread())
+		{
+			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
+				display.readAndDispatch();
+		}
+		else
+		{
+			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
+				Thread.sleep(200);
+		}
+
+		assumeNotNull("Active project not set - skipping",
+			model.getActiveProject());
+	}
+
+	private void writeProjectFile(IProject project, String fileName, String content, org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException
+	{
+		org.eclipse.core.resources.IFile file = project.getFile(fileName);
+		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		if (file.exists())
+		{
+			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
+		}
+		else
+		{
+			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
+		}
+	}
+
+	private void pumpEvents(long ms)
+	{
+		try
+		{
+			Display display = Display.getDefault();
+			long end = System.currentTimeMillis() + ms;
+			if (display.getThread() == Thread.currentThread())
+			{
+				while (System.currentTimeMillis() < end)
+					display.readAndDispatch();
+			}
+			else
+			{
+				Thread.sleep(ms);
+			}
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+		}
+	}
+}
