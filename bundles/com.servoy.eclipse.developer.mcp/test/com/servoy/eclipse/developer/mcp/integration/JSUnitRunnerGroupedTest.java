@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -111,7 +111,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 	/**
 	 * Cached result of {@code runTests("MODULES")} -- computed once per JVM session.
-	 * Avoids launching the SmartClient for each of the many @Test methods.
+	 * Avoids launching the headless client for each of the many @Test methods.
 	 */
 	private static String cachedModulesResult;
 

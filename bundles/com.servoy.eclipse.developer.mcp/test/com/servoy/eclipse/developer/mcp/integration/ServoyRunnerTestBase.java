@@ -37,7 +37,7 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  */
 public abstract class ServoyRunnerTestBase
 {
-	/** Timeout in seconds for each JSUnit SmartClient run. */
+	/** Timeout in seconds for each JSUnit headless client run. */
 	protected static final int TIMEOUT_SECONDS = 20;
 
 	/**

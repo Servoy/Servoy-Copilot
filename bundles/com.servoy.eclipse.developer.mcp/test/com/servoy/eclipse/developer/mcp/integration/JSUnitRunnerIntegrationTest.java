@@ -43,7 +43,7 @@ import com.servoy.j2db.persistence.AbstractRepository;
  * <ul>
  *   <li>All 6 skip if no Servoy app server is running.</li>
  *   <li>All 6 skip if no ServoyProject is found in the workspace.</li>
- *   <li>Tests 1-3 skip (not fail) if the SmartClient cannot complete the run
+ *   <li>Tests 1-3 skip (not fail) if the headless client cannot complete the run
  *       (e.g. no test_ methods in the active solution, or port conflict).</li>
  *   <li>Tests 4-5 always pass once a project is active (return "No X found" messages).</li>
  *   <li>Test 6 always passes once a project is active (accepts both success and error output).</li>
@@ -80,8 +80,8 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 	}
 
 	// -----------------------------------------------------------------------
-	// "ALL" keyword tests - launch SmartClient and check output format.
-	// Skip (not fail) if SmartClient returns an error (no test_ methods,
+	// "ALL" keyword tests - launch headless client and check output format.
+	// Skip (not fail) if headless client returns an error (no test_ methods,
 	// port conflict, or timeout) - these are environment-dependent.
 	// -----------------------------------------------------------------------
 
@@ -100,10 +100,10 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		// Skip the format assertion when SmartClient could not complete the run
+		// Skip the format assertion when headless client could not complete the run
 		// (timeout, port conflict, or solution has no test_ methods).
 		assumeTrue(
-			"SmartClient run returned an error (" + result.substring(0, Math.min(result.length(), 80)) +
+			"headless client run returned an error (" + result.substring(0, Math.min(result.length(), 80)) +
 				") - skipping markdown format assertion",
 			!result.startsWith("Error"));
 
@@ -119,9 +119,9 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		// Skip the numeric assertion when SmartClient could not complete the run.
+		// Skip the numeric assertion when headless client could not complete the run.
 		assumeTrue(
-			"SmartClient run returned an error - skipping pass-count assertion",
+			"headless client run returned an error - skipping pass-count assertion",
 			!result.startsWith("Error"));
 
 		int passed = extractPassedCount(result);
@@ -131,7 +131,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 
 	// -----------------------------------------------------------------------
 	// Keyword-variant tests - MODULES and FORMS short-circuit before launching
-	// the SmartClient when the solution has no modules/test-forms, so these
+	// the headless client when the solution has no modules/test-forms, so these
 	// tests are fast and always pass once a project is active.
 	// -----------------------------------------------------------------------
 
@@ -178,7 +178,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		assumeTrue(
-			"SmartClient run returned an error - skipping fail-count assertion",
+			"headless client run returned an error - skipping fail-count assertion",
 			!result.startsWith("Error"));
 
 		int failed = extractFailedCount(result);
@@ -193,7 +193,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		assumeTrue(
-			"SmartClient run returned an error - skipping error-count assertion",
+			"headless client run returned an error - skipping error-count assertion",
 			!result.startsWith("Error"));
 
 		int errors = extractErrorCount(result);
@@ -210,7 +210,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		assumeTrue(
-			"SmartClient run returned an error - skipping total-count assertion",
+			"headless client run returned an error - skipping total-count assertion",
 			!result.startsWith("Error"));
 
 		int total = extractPassedCount(result) + extractFailedCount(result) + extractErrorCount(result);
@@ -228,7 +228,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		assumeTrue(
-			"SmartClient run returned an error - skipping branch-coverage assertion",
+			"headless client run returned an error - skipping branch-coverage assertion",
 			!result.startsWith("Error"));
 
 		assertTrue(
@@ -248,7 +248,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		assumeTrue(
-			"SmartClient run returned an error - skipping all-passed assertion",
+			"headless client run returned an error - skipping all-passed assertion",
 			!result.startsWith("Error"));
 
 		int errors = extractErrorCount(result);

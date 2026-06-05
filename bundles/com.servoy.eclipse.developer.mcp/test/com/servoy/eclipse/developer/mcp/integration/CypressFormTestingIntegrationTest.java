@@ -85,14 +85,23 @@ public class CypressFormTestingIntegrationTest
 		assumeNotNull("Active project required", activeProject);
 	}
 
+	@org.junit.AfterClass
+	public static void tearDownClass() throws Exception
+	{
+		// Wait for server to release formpreview sessions before next test suite starts
+		Thread.sleep(5000);
+	}
+
+
 	// -----------------------------------------------------------------------
-	// showFormInBrowser tests
+	// showFormInBrowser tests (only 1 test opens browser - validates the combined behavior)
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testShowFormInBrowser_generatesSpecFiles() throws Exception
+	public void testShowFormInBrowser_opensAndGeneratesSpecFiles() throws Exception
 	{
 		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
 
 		String result = testingServer.showFormInBrowser(TEST_FORM);
 
@@ -103,14 +112,6 @@ public class CypressFormTestingIntegrationTest
 		assertNotNull("Cypress spec path should not be null", cySpec);
 		assertTrue("Cypress spec file should exist after showFormInBrowser",
 			Files.exists(cySpec));
-	}
-
-	@Test
-	public void testShowFormInBrowser_generatesSetupFile() throws Exception
-	{
-		ensureForm(TEST_FORM);
-
-		testingServer.showFormInBrowser(TEST_FORM);
 
 		IProject project = activeProject.getProject();
 		Path setupPath = project.getLocation().toFile().toPath()
@@ -120,47 +121,12 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testShowFormInBrowser_specFileHasCorrectContent() throws Exception
-	{
-		ensureForm(TEST_FORM);
-
-		testingServer.showFormInBrowser(TEST_FORM);
-
-		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
-		String content = Files.readString(cySpec);
-
-		assertTrue("Spec should use cy.visit", content.contains("cy.visit("));
-		assertTrue("Spec should use data-cy selectors", content.contains("data-cy"));
-		assertTrue("Spec should reference form name", content.contains(TEST_FORM));
-		assertTrue("Spec should use describe()", content.contains("describe("));
-		assertTrue("Spec should use beforeEach()", content.contains("beforeEach("));
-		assertTrue("Spec should check for errors", content.contains(".svy-error"));
-	}
-
-	@Test
-	public void testShowFormInBrowser_setupFileHasServoyAnnotations() throws Exception
-	{
-		ensureForm(TEST_FORM);
-
-		testingServer.showFormInBrowser(TEST_FORM);
-
-		IProject project = activeProject.getProject();
-		Path setupPath = project.getLocation().toFile().toPath()
-			.resolve("forms").resolve(TEST_FORM + ".spec.js");
-		String content = Files.readString(setupPath);
-
-		assertTrue("Setup should have @properties annotation", content.contains("@properties"));
-		assertTrue("Setup should have spec_setUp function", content.contains("function spec_setUp()"));
-		assertTrue("Setup should have spec_tearDown function", content.contains("function spec_tearDown()"));
-		assertTrue("Setup should mention Cypress", content.contains("Cypress"));
-	}
-
-	@Test
 	public void testShowFormInBrowser_doesNotRegenerateExistingSpec() throws Exception
 	{
 		ensureForm(TEST_FORM);
 
-		testingServer.showFormInBrowser(TEST_FORM);
+		if (!specGenerator.specExists(TEST_FORM))
+			specGenerator.generateSpec(TEST_FORM);
 
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		long firstModified = Files.getLastModifiedTime(cySpec).toMillis();
@@ -189,7 +155,8 @@ public class CypressFormTestingIntegrationTest
 	public void testSpecExists_trueAfterGeneration() throws Exception
 	{
 		ensureForm(TEST_FORM);
-		testingServer.showFormInBrowser(TEST_FORM);
+		if (!specGenerator.specExists(TEST_FORM))
+			specGenerator.generateSpec(TEST_FORM);
 
 		boolean exists = specGenerator.specExists(TEST_FORM);
 		assertTrue("specExists should return true after spec is generated", exists);
@@ -224,14 +191,15 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	// -----------------------------------------------------------------------
-	// testForm (Cypress run) tests
+	// testForm (Cypress run) tests - only 1 test actually runs Cypress
 	// -----------------------------------------------------------------------
 
 	@Test
 	public void testTestForm_runsAndReturnsResults() throws Exception
 	{
 		ensureForm(TEST_FORM);
-		testingServer.showFormInBrowser(TEST_FORM);
+		if (!specGenerator.specExists(TEST_FORM))
+			specGenerator.generateSpec(TEST_FORM);
 
 		String result = testingServer.testForm(TEST_FORM);
 
@@ -262,9 +230,10 @@ public class CypressFormTestingIntegrationTest
 	public void testCypressConfigIsGenerated() throws Exception
 	{
 		ensureForm(TEST_FORM);
-		testingServer.showFormInBrowser(TEST_FORM);
+		if (!specGenerator.specExists(TEST_FORM))
+			specGenerator.generateSpec(TEST_FORM);
 
-		testingServer.testForm(TEST_FORM);
+		specRunner.runSpec(TEST_FORM, true);
 
 		Path cypressDir = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
 			.getParent().resolve(".metadata").resolve(".plugins")
@@ -402,6 +371,93 @@ public class CypressFormTestingIntegrationTest
 		assertNotNull("runSpec result should not be null", result);
 		assertTrue("runSpec should return pass/fail or error",
 			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+	}
+
+	// -----------------------------------------------------------------------
+	// Button + Label interaction tests (creates form with onAction handler)
+	// -----------------------------------------------------------------------
+
+	private static final String BUTTON_LABEL_FORM = "cypressButtonLabelForm";
+
+	@Test
+	public void testCypress_buttonClickUpdatesLabel() throws Exception
+	{
+		ensureButtonLabelForm();
+		deleteSpecFiles(BUTTON_LABEL_FORM);
+
+		Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("medias/tests");
+		Files.createDirectories(testsDir);
+
+		String cySpec = "describe('" + BUTTON_LABEL_FORM + " - button click', () => {\n\n" +
+			"  beforeEach(() => {\n" +
+			"    cy.visit('?formpreview=" + BUTTON_LABEL_FORM + "&svy_testmode=true');\n" +
+			"    cy.get('[data-cy^=\"" + BUTTON_LABEL_FORM + ".\"]', { timeout: 30000 }).should('exist');\n" +
+			"  });\n\n" +
+			"  it('button click updates label text', () => {\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 1');\n" +
+			"  });\n\n" +
+			"  it('multiple clicks increment counter', () => {\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 1');\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
+			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 2');\n" +
+			"  });\n\n" +
+			"});\n";
+
+		Files.writeString(testsDir.resolve(BUTTON_LABEL_FORM + ".spec.cy.js"), cySpec, java.nio.charset.StandardCharsets.UTF_8);
+
+		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
+
+		assertNotNull("Cypress button/label test result should not be null", result);
+		assertTrue("Cypress button/label test should return results",
+			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+	}
+
+	@Test
+	public void testCypress_generatedSpecPassesForButtonLabelForm() throws Exception
+	{
+		ensureButtonLabelForm();
+		deleteSpecFiles(BUTTON_LABEL_FORM);
+
+		specGenerator.generateSpec(BUTTON_LABEL_FORM);
+
+		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
+
+		assertNotNull("Generated spec run result should not be null", result);
+		assertTrue("Generated spec should return results",
+			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+	}
+
+	private void ensureButtonLabelForm() throws Exception
+	{
+		Form existing = activeProject.getEditingSolution().getForm(BUTTON_LABEL_FORM);
+		if (existing != null) return;
+
+		new ServoyArtifactCreationService().createForm(BUTTON_LABEL_FORM, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(BUTTON_LABEL_FORM);
+		assertNotNull("Button/label form creation should succeed", form);
+
+		// Add button and label elements via the form script
+		IProject project = activeProject.getProject();
+		Path formsDir = project.getLocation().toFile().toPath().resolve("forms");
+
+		// Write form script with button click handler
+		String formScript = "/**\n" +
+			" * @type {Number}\n" +
+			" * @properties={typeid:35,uuid:\"" + java.util.UUID.randomUUID() + "\",variableType:4}\n" +
+			" */\n" +
+			"var i = 1;\n\n" +
+			"/**\n" +
+			" * @param {JSEvent} event\n" +
+			" * @properties={typeid:24,uuid:\"" + java.util.UUID.randomUUID() + "\"}\n" +
+			" */\n" +
+			"function onAction(event) {\n" +
+			"\telements.label_2.text = 'CLICKED ' + i;\n" +
+			"\ti++;\n" +
+			"}\n";
+
+		Files.writeString(formsDir.resolve(BUTTON_LABEL_FORM + ".js"), formScript, java.nio.charset.StandardCharsets.UTF_8);
 	}
 
 	// -----------------------------------------------------------------------

@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -34,7 +34,7 @@ import com.servoy.j2db.persistence.AbstractRepository;
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService}.
  * <p>
- * Unlike the Layer 3 tests (which use a no-op solution and skip on SmartClient failure),
+ * Unlike the Layer 3 tests (which use a no-op solution and skip on headless client failure),
  * Layer 4 uses a solution with <em>real JSUnit assertions</em> and <b>hard-asserts</b>
  * on all outcomes once the Servoy application server is confirmed running.
  * <p>
@@ -87,7 +87,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		// ---- test_mathFailure: 5 != 2+2  -> intentional ERROR ----
 		"/**\n * @properties={typeid:24,uuid:\"11111111-2222-3333-4444-555555555554\"}\n */\n" +
 		"function test_mathFailure() {\n" +
-		"\t// Intentional: 5 != 4 -> throws Error -> reported as 💥 ERROR\n" +
+		"\t// Intentional: 5 != 4 -> throws Error -> reported as ?? ERROR\n" +
 		"\t_l4_assertEqual(5, 2 + 2);\n" +
 		"}\n";
 
@@ -95,7 +95,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 
 	/**
 	 * Cached result of {@code runTests("ALL")} - computed once for the whole class,
-	 * not once per test method. Avoids launching the SmartClient 10 times.
+	 * not once per test method. Avoids launching the headless client 10 times.
 	 */
 	private static String cachedAllResult;
 
@@ -117,7 +117,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		// 2. Skip if no Servoy app server - same guard as Layer 3.
 		waitForAppServer();
 
-		// 3. One-time setup: create solution, activate it, run the SmartClient once.
+		// 3. One-time setup: create solution, activate it, run the headless client once.
 		if (!classSetUpDone)
 		{
 			classSetUpDone = true; // Set first - prevents re-running if later steps throw
@@ -328,7 +328,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	@Test
 	public void testLayer4_allPassedMessageAbsent()
 	{
-		// "✅ All X test(s) passed!" is only emitted when failed == 0 && errors == 0.
+		// "? All X test(s) passed!" is only emitted when failed == 0 && errors == 0.
 		// With 1 error this branch must be skipped entirely.
 		assertFalse(
 			"The 'all passed' success line must NOT appear when errors > 0; result:\n" + allResult,
