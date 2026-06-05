@@ -16,6 +16,7 @@
 */
 package com.servoy.eclipse.developer.mcp.services;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,10 +25,13 @@ import java.util.List;
 
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
 
 /**
  * Provides project layout, properties, and listing for MCP tools.
@@ -99,6 +103,57 @@ public class ProjectService
 		}
 
 		return result.toString();
+	}
+
+	public String openProject(String directoryPath)
+	{
+		try
+		{
+			File directory = new File(directoryPath);
+			if (!directory.exists())
+				return "Error: Directory does not exist: " + directoryPath;
+			if (!directory.isDirectory())
+				return "Error: Path is not a directory: " + directoryPath;
+
+			IProgressMonitor monitor = new NullProgressMonitor();
+			File projectFile = new File(directory, ".project");
+
+			IProjectDescription description;
+			if (projectFile.exists())
+			{
+				org.eclipse.core.runtime.IPath projectFilePath = org.eclipse.core.runtime.Path.fromOSString(projectFile.getAbsolutePath());
+				description = ResourcesPlugin.getWorkspace().loadProjectDescription(projectFilePath);
+			}
+			else
+			{
+				String projectName = directory.getName();
+				description = ResourcesPlugin.getWorkspace().newProjectDescription(projectName);
+				org.eclipse.core.runtime.IPath locationPath = org.eclipse.core.runtime.Path.fromOSString(directory.getAbsolutePath());
+				description.setLocation(locationPath);
+			}
+
+			String projectName = description.getName();
+			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+
+			if (project.exists())
+			{
+				if (!project.isOpen())
+				{
+					project.open(monitor);
+					return "Project '" + projectName + "' was already in workspace but closed. Opened successfully.";
+				}
+				return "Project '" + projectName + "' is already open in the workspace.";
+			}
+
+			project.create(description, monitor);
+			project.open(monitor);
+
+			return "Project '" + projectName + "' imported and opened successfully from: " + directoryPath;
+		}
+		catch (CoreException e)
+		{
+			return "Error opening project: " + e.getMessage();
+		}
 	}
 
 	public String getProjectLayout(String projectName, String scopePath, int maxDepth)

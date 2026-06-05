@@ -96,6 +96,15 @@ public class ServoyIdeServer
 		return projectService.listProjects();
 	}
 
+	@Tool(name = "openProject",
+		description = "Opens/imports a project into the Eclipse workspace from a directory path. If the directory contains a .project file, it imports the project as-is. If not, a basic .project is created and the directory is imported as a generic project.",
+		type = "object")
+	public String openProject(
+		@ToolParam(name = "directoryPath", description = "The absolute filesystem path to the directory to open as a project", required = true) String directoryPath)
+	{
+		return projectService.openProject(directoryPath);
+	}
+
 	@Tool(name = "getProjectLayout",
 		description = "Get the file and folder structure of a specified project in a hierarchical format. "
 			+ "For large projects, use scopePath to limit to a subdirectory and/or maxDepth to limit tree depth.",
