@@ -12,8 +12,7 @@ Bundle-ActivationPolicy: lazy
 Export-Package: com.servoy.eclipse.developer.mcp.services
 Bundle-ClassPath: .,
  lib/mcp-json-jackson2-1.1.2.jar
-Require-Bundle: org.junit;bundle-version="4.13.0";resolution:=optional,
- org.eclipse.core.runtime,
+Require-Bundle: org.eclipse.core.runtime,
  com.servoy.eclipse.opencode,
  org.eclipse.ui,
  org.eclipse.jface,

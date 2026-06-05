@@ -8,7 +8,6 @@
 		</accessrules>
 	</classpathentry>
 	<classpathentry kind="lib" path="lib/mcp-json-jackson2-1.1.2.jar"/>
-	<classpathentry kind="src" path="test"/>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

@@ -128,5 +128,6 @@
         <module>repository.site_aiplugin</module>
         <module>tests/com.servoy.eclipse.servoypilot.assistenttests</module>
         <module>tests/com.servoy.eclipse.opencode.tests</module>
+        <module>tests/com.servoy.eclipse.developer.mcp.tests</module>
     </modules>
 </project>

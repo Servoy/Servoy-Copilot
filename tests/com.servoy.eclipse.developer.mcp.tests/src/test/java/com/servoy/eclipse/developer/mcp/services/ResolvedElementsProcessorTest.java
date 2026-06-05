@@ -551,7 +551,33 @@ public class ResolvedElementsProcessorTest
 
 		Class< ? > clazz = Class.forName("org.eclipse.dltk.internal.javascript.validation.RMethodFunctionWrapper");
 		java.lang.reflect.Constructor< ? > ctor = clazz.getDeclaredConstructors()[0];
-		IRMethod wrapper = (IRMethod)ctor.newInstance(functionType, reference);
+		ctor.setAccessible(true);
+		Class< ? >[] paramTypes = ctor.getParameterTypes();
+		IRMethod wrapper;
+		if (paramTypes.length == 2 && paramTypes[0].getName().contains("IValueReference"))
+			wrapper = (IRMethod)ctor.newInstance(reference, functionType);
+		else
+			wrapper = (IRMethod)ctor.newInstance(functionType, reference);
+		// Ensure the functionType field is set (field may not be assigned by constructor in all DLTK versions)
+		try
+		{
+			java.lang.reflect.Field ftField = clazz.getDeclaredField("functionType");
+			ftField.setAccessible(true);
+			if (ftField.get(wrapper) == null) ftField.set(wrapper, functionType);
+		}
+		catch (NoSuchFieldException e)
+		{
+			// field might be in superclass
+			for (java.lang.reflect.Field f : clazz.getSuperclass().getDeclaredFields())
+			{
+				if (f.getName().equals("functionType"))
+				{
+					f.setAccessible(true);
+					if (f.get(wrapper) == null) f.set(wrapper, functionType);
+					break;
+				}
+			}
+		}
 
 		SelectionResult result = new SelectionResult();
 		result.foreignElements.add(wrapper);

@@ -1,0 +1,13 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Tests for com.servoy.eclipse.developer.mcp
+Bundle-SymbolicName: com.servoy.eclipse.developer.mcp.tests
+Bundle-Version: 2026.3.0.qualifier
+Bundle-Vendor: Servoy
+Fragment-Host: com.servoy.eclipse.developer.mcp
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Import-Package: org.junit;version="4.0.0",
+ org.junit.rules;version="4.0.0",
+ org.junit.runner;version="4.0.0",
+ org.junit.runners;version="4.0.0"
+Automatic-Module-Name: com.servoy.eclipse.developer.mcp.tests

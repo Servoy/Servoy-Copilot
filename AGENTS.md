@@ -80,6 +80,51 @@ This Git repository contains the following core projects/plugins:
 
 ---
 
+## 1b. Test Projects & How to Run Tests
+
+### `com.servoy.eclipse.opencode.tests`
+- **Type:** OSGi Fragment of `com.servoy.eclipse.opencode`
+- **Runner:** Plain JUnit (`eclipse-ide_runClassTests`)
+- All tests are pure unit tests — no OSGi runtime required.
+
+### `com.servoy.eclipse.developer.mcp.tests`
+- **Type:** OSGi Fragment of `com.servoy.eclipse.developer.mcp`
+- **Source:** `src/test/java/`
+- Contains both plain unit tests and integration tests that need a running Eclipse workbench.
+
+#### Plain JUnit tests (run with `eclipse-ide_runClassTests`)
+
+These tests use no live Eclipse workspace or OSGi container — pure Java, reflection, and mocking:
+
+| Package | Classes |
+|---|---|
+| `c.s.e.d.mcp` | `McpServerBuiltinsTest`, `McpServerFactoryTest`, `ToolExecutorTest` |
+| `c.s.e.d.mcp.auth` | `BearerTokenAuthenticationFilterTest` |
+| `c.s.e.d.mcp.cache` | `ServoyResourceCacheTest` |
+| `c.s.e.d.mcp.guard` | `ServoyFileGuardTest` |
+| `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `GenerateTestCasesToolTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyDevServerTest`, `ServoyGitServerTest`, `ServoyIdeServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest` |
+| `c.s.e.d.mcp.services` | `FormSpecGeneratorTest`, `FormSpecRunnerTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `TestFileServiceReflectionTest` |
+| `c.s.e.d.mcp.integration` | `ServoyDevServerIntegrationTest` (despite package name, this is a pure unit test) |
+
+Total: **22 plain JUnit tests**
+
+#### Plugin tests (run with `eclipse-pde_runJUnitPluginTestClass`)
+
+These tests require a running Eclipse workbench + Servoy App Server. They use `ResourcesPlugin`, `Display`, `ServoyModelManager`, etc.
+
+| Package | Classes |
+|---|---|
+| `c.s.e.d.mcp.integration` | `AddTestMethodIntegrationTest`, `CreateTestFileIntegrationTest`, `CypressFormTestingIntegrationTest`, `JSUnitRunnerGroupedTest`, `JSUnitRunnerIntegrationTest`, `JSUnitRunnerLayer4Test`, `RenamePersistIntegrationTest`, `ServoyIdeServerIntegrationTest`, `ShowFormInBrowserIntegrationTest` |
+| `c.s.e.d.mcp` | `AllDeveloperMcpTests` (suite), `AllDeveloperMcpIntegrationTests` (suite) |
+
+Total: **9 integration tests + 2 suites** (require PDE test launcher)
+
+#### Suite classes
+- `AllDeveloperMcpTests` — bundles the plain-junit-capable server/cache/guard/services tests but is annotated to run as plugin test
+- `AllDeveloperMcpIntegrationTests` — bundles all integration tests (requires Eclipse workbench + Servoy)
+
+---
+
 ## 2. Prioritize Eclipse MCP Tools Over Standard Tools
 
 Since this workspace is a complex, multi-project Eclipse environment, **always prioritize Eclipse-specific MCP/PDE tools** over standard, general-purpose command-line or filesystem tools. This ensures that the Eclipse index, builder, and classpath are kept in sync.
