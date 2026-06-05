@@ -27,6 +27,9 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
+import com.servoy.eclipse.developer.mcp.servers.AnalyzeCodeToolTest;
+import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
+import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 
@@ -45,6 +48,9 @@ import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 	ServoyTestingServerTest.class,
 	FormSpecGeneratorTest.class,
 	FormSpecRunnerTest.class,
+	AnalyzeCodeToolTest.class,
+	GenerateTestCasesToolTest.class,
+	ShowFormInBrowserToolTest.class,
 })
 public class AllDeveloperMcpTests
 {
