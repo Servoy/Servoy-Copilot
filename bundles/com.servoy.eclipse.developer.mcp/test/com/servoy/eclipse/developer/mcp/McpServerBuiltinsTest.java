@@ -32,6 +32,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServer;
 import com.servoy.eclipse.developer.mcp.servers.TimeServer;
 
 /**
@@ -56,6 +57,7 @@ public class McpServerBuiltinsTest
 			ServoyIdeServer.class,
 			ServoyGitServer.class,
 			ServoyDevServer.class,
+			ServoyWpmServer.class,
 		};
 		for (Class<?> cls : expected)
 		{
