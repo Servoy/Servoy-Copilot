@@ -1182,7 +1182,7 @@ public class ServoyDevServer
 
 					editingSolution.setStyleSheetID(solutionLess.getUUID().toString());
 					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingSolution }, true);
-					repository.updateRootObject(editingSolution);
+					repository.updateRootObject(editingSolution); 
 				}
 			}
 		}

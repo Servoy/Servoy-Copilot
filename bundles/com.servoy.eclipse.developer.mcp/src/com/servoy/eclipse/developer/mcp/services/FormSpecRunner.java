@@ -6,6 +6,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +19,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.Activator;
+import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
@@ -185,6 +189,86 @@ public class FormSpecRunner
 		catch (Exception e)
 		{
 			return null;
+		}
+	}
+
+	public String executeTestSetup(String serverName, String tableName, java.util.Map<String, Object> columnValues)
+	{
+		if (serverName == null || tableName == null || columnValues == null || columnValues.isEmpty())
+			return "Error: serverName, tableName, and columnValues are required.";
+
+		try
+		{
+			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
+			if (server == null) return "Error: Database server '" + serverName + "' not found.";
+
+			StringBuilder cols = new StringBuilder();
+			StringBuilder placeholders = new StringBuilder();
+			List<Object> values = new ArrayList<>();
+
+			for (java.util.Map.Entry<String, Object> entry : columnValues.entrySet())
+			{
+				if (cols.length() > 0)
+				{
+					cols.append(", ");
+					placeholders.append(", ");
+				}
+				cols.append(entry.getKey());
+				placeholders.append("?");
+				values.add(entry.getValue());
+			}
+
+			String sql = "INSERT INTO " + tableName + " (" + cols + ") VALUES (" + placeholders + ")";
+
+			try (Connection conn = server.getRawConnection())
+			{
+				try (PreparedStatement ps = conn.prepareStatement(sql))
+				{
+					for (int i = 0; i < values.size(); i++)
+					{
+						ps.setObject(i + 1, values.get(i));
+					}
+					ps.executeUpdate();
+				}
+				conn.commit();
+			}
+
+			return "Test setup: inserted 1 row into " + serverName + "." + tableName;
+		}
+		catch (Exception e)
+		{
+			return "Error in test setup: " + e.getMessage();
+		}
+	}
+
+	public String executeTestTeardown(String serverName, String tableName, String whereColumn, Object whereValue)
+	{
+		if (serverName == null || tableName == null || whereColumn == null || whereValue == null)
+			return "Error: serverName, tableName, whereColumn, and whereValue are required.";
+
+		try
+		{
+			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
+			if (server == null) return "Error: Database server '" + serverName + "' not found.";
+
+			String sql = "DELETE FROM " + tableName + " WHERE " + whereColumn + " = ?";
+			int deleted = 0;
+
+			try (Connection conn = server.getRawConnection())
+			{
+				try (PreparedStatement ps = conn.prepareStatement(sql))
+				{
+					ps.setObject(1, whereValue);
+					deleted = ps.executeUpdate();
+				}
+				conn.commit();
+			}
+
+			return "Test teardown: deleted " + deleted + " row(s) from " + serverName + "." + tableName + " where " + whereColumn + " = '" + whereValue + "'";
+		}
+		catch (Exception e)
+		{
+			return "Error in test teardown: " + e.getMessage();
 		}
 	}
 
