@@ -33,6 +33,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
 /**
@@ -105,7 +106,7 @@ public class RunOpencodeCommand extends Job {
 
 		// Use npm exec - ngclient.ui resolves node/npm paths and waits for
 		// extraction internally.
-		RunNPMCommand serverCommand = ngActivator.createNPMCommand(opencodeDir,
+		IRunNPMCommand serverCommand = ngActivator.createNPMCommand(opencodeDir,
 				List.of("exec", "--", "opencode", "serve",
 						"--port", String.valueOf(port),
 						"--hostname", "127.0.0.1"));

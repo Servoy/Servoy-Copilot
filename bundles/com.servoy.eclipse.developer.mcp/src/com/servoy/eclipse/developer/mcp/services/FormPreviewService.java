@@ -33,6 +33,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ngclient.ui.Activator;
+import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
@@ -252,7 +253,7 @@ public class FormPreviewService
 				return "Error: com.servoy.eclipse.ngclient.ui not available.";
 			}
 
-			RunNPMCommand npmCommand = ngActivator.createNPMCommand(playwrightDir.toFile(), List.of("install"));
+			IRunNPMCommand npmCommand = ngActivator.createNPMCommand(playwrightDir.toFile(), List.of("install"));
 			npmCommand.setUser(false);
 			npmCommand.schedule();
 			npmCommand.join();

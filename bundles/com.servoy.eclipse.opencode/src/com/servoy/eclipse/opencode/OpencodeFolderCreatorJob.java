@@ -37,6 +37,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
 /**
@@ -138,7 +139,7 @@ public class OpencodeFolderCreatorJob extends Job {
 		if (needsInstall || !markerFile.exists()) {
 			// createNPMCommand internally waits for Node.js extraction (via
 			// waitForNodeExtraction)
-			RunNPMCommand install = ngActivator.createNPMCommand(opencodeDir, List.of("install"));
+			IRunNPMCommand install = ngActivator.createNPMCommand(opencodeDir, List.of("install"));
 			try {
 				install.runCommand(monitor);
 			} catch (IOException | InterruptedException e) {
@@ -160,7 +161,7 @@ public class OpencodeFolderCreatorJob extends Job {
 			}
 		} else {
 			// Already installed — check for a newer patch release within the ~1.15.x range
-			RunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "opencode-ai")); //$NON-NLS-1$
+			IRunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "opencode-ai")); //$NON-NLS-1$
 			try {
 				update.runCommand(monitor);
 				if (update.getExitCode() == 0) {

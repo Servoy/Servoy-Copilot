@@ -24,6 +24,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.osgi.framework.BundleContext;
 
+import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
 /**
@@ -51,7 +52,7 @@ public class Activator extends Plugin
 	private volatile Job serverJob;
 
 	/** The inner RunNPMCommand that wraps the OS process (used to kill the process tree on shutdown). */
-	private volatile RunNPMCommand serverCommand;
+	private volatile IRunNPMCommand serverCommand;
 
 	/** Holds the CountDownLatch and port - extracted for testability. */
 	private final OpencodeServerState serverState = new OpencodeServerState(RunOpencodeCommand.DEFAULT_PORT);
@@ -136,7 +137,7 @@ public class Activator extends Plugin
 		this.serverJob = job;
 	}
 
-	void setServerCommand(RunNPMCommand cmd)
+	void setServerCommand(IRunNPMCommand cmd)
 	{
 		this.serverCommand = cmd;
 	}
@@ -166,7 +167,7 @@ public class Activator extends Plugin
 			serverJob = null;
 		}
 
-		RunNPMCommand cmd = serverCommand;
+		IRunNPMCommand cmd = serverCommand;
 		if (cmd != null)
 		{
 			cmd.cancel();
@@ -182,7 +183,7 @@ public class Activator extends Plugin
 	 * {@code readLine()} loop in {@code RunNPMCommand.runCommand()} unblocks promptly on all platforms.
 	 * </p>
 	 */
-	private void killProcessTree(RunNPMCommand cmd)
+	private void killProcessTree(IRunNPMCommand cmd)
 	{
 		Process process = cmd.getProcess();
 		if (process == null) return;
