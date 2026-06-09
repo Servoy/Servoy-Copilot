@@ -26,6 +26,7 @@ import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.j2db.util.Settings;
 
 /**
  * MCP server for all testing-related tools: JSUnit test running, form preview, and screenshots.
@@ -41,6 +42,11 @@ public class ServoyTestingServer
 
 	public ServoyTestingServer()
 	{
+	}
+
+	private void ensureTestingMode()
+	{
+		Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 	}
 
 	@Tool(name = "runJsUnitTests",
@@ -75,6 +81,7 @@ public class ServoyTestingServer
 	{
 		try
 		{
+			ensureTestingMode();
 			String result = formPreview.showFormInBrowser(formName);
 			if (!result.startsWith("Error") && !specGenerator.specExists(formName))
 			{
@@ -142,6 +149,7 @@ public class ServoyTestingServer
 	{
 		try
 		{
+			ensureTestingMode();
 			if (!specGenerator.specExists(formName))
 			{
 				String genResult = specGenerator.generateSpec(formName);
@@ -168,6 +176,7 @@ public class ServoyTestingServer
 	{
 		try
 		{
+			ensureTestingMode();
 			if (!specGenerator.specExists(formName))
 			{
 				String genResult = specGenerator.generateSpec(formName);
@@ -201,6 +210,36 @@ public class ServoyTestingServer
 			ServoyLog.logError("Error in generateFormSpec tool", e);
 			return "Error: " + e.getMessage();
 		}
+	}
+
+	@Tool(name = "executeTestSetup",
+		description = "Inserts a test record into a database table via JDBC. " +
+			"Use this BEFORE running Cypress tests to ensure the form has data to display. " +
+			"The record is inserted directly into the database, bypassing Servoy's foundset layer. " +
+			"Call executeTestTeardown after testing to clean up. " +
+			"Returns success message with row count or error details.",
+		type = "object")
+	public String executeTestSetup(
+		@ToolParam(description = "Database server name (e.g. 'example_data')") String serverName,
+		@ToolParam(description = "Table name (e.g. 'orders')") String tableName,
+		@ToolParam(description = "Column values as JSON object (e.g. {\"customerid\":\"CYPRS\",\"shipcity\":\"TestCity\"})") java.util.Map<String, Object> columnValues)
+	{
+		return specRunner.executeTestSetup(serverName, tableName, columnValues);
+	}
+
+	@Tool(name = "executeTestTeardown",
+		description = "Deletes test records from a database table via JDBC. " +
+			"Use this AFTER running Cypress tests to clean up test data created by executeTestSetup. " +
+			"Deletes all rows matching the given where clause. " +
+			"Returns success message with deleted row count or error details.",
+		type = "object")
+	public String executeTestTeardown(
+		@ToolParam(description = "Database server name (e.g. 'example_data')") String serverName,
+		@ToolParam(description = "Table name (e.g. 'orders')") String tableName,
+		@ToolParam(description = "Column name for the WHERE clause (e.g. 'shipcity')") String whereColumn,
+		@ToolParam(description = "Value to match in the WHERE clause (e.g. 'CYPRESS_TEST_CITY')") String whereValue)
+	{
+		return specRunner.executeTestTeardown(serverName, tableName, whereColumn, whereValue);
 	}
 
 	@Tool(name = "createTestFile",

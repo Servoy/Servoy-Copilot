@@ -336,4 +336,297 @@ public class ServoyTestingServerTest
 			.filter(m -> toolName.equals(m.getAnnotation(Tool.class).name()))
 			.findFirst().orElse(null);
 	}
+
+
+	// -----------------------------------------------------------------------
+	// Structure tests for tools that require Servoy runtime (no method calls)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testScreenshotForm_hasCorrectParams()
+	{
+		Method m = findToolMethod("screenshotForm");
+		assertNotNull(m);
+		assertEquals(2, m.getParameterCount());
+		assertTrue(m.getParameters()[0].isAnnotationPresent(ToolParam.class));
+		assertTrue(m.getParameters()[1].isAnnotationPresent(ToolParam.class));
+	}
+
+	@Test
+	public void testShowAndTest_descriptionMentionsCypress()
+	{
+		Method m = findToolMethod("showAndTest");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("Cypress"));
+	}
+
+	@Test
+	public void testTestForm_descriptionMentionsCypress()
+	{
+		Method m = findToolMethod("testForm");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("Cypress"));
+	}
+
+	@Test
+	public void testGenerateFormSpec_descriptionMentionsSpecCy()
+	{
+		Method m = findToolMethod("generateFormSpec");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains(".spec.cy.js"));
+	}
+
+	@Test
+	public void testShowFormInBrowser_descriptionMentionsBrowser()
+	{
+		Method m = findToolMethod("showFormInBrowser");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("browser"));
+	}
+
+	@Test
+	public void testCreateTestFile_descriptionMentionsJSUnit()
+	{
+		Method m = findToolMethod("createTestFile");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("JSUnit"));
+	}
+
+	@Test
+	public void testAddTestMethod_descriptionMentionsReplace()
+	{
+		Method m = findToolMethod("addTestMethod");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("replace"));
+	}
+
+	@Test
+	public void testGenerateTestCases_nullCode_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases(null, "funcName");
+		assertNotNull(result);
+		assertTrue("generateTestCases should return error for null code: " + result,
+			result.contains("Error") || result.contains("no clear function"));
+	}
+
+	@Test
+	public void testGenerateTestCases_emptyCode_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases("", "funcName");
+		assertNotNull(result);
+		assertTrue("generateTestCases should return error for empty code: " + result,
+			result.contains("Error") || result.contains("no clear function"));
+	}
+
+	@Test
+	public void testGenerateTestCases_nullFunctionName_returnsResult()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases("function doWork(x) { return x * 2; }", null);
+		assertNotNull(result);
+		assertTrue("generateTestCases should return suggestions: " + result,
+			result.contains("Suggested Test Cases") || result.contains("test_"));
+	}
+
+	@Test
+	public void testGenerateTestCases_multipleParams()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateTestCases("function process(a, b, c) { return a + b + c; }", "process");
+		assertNotNull(result);
+		assertTrue("Should list all params", result.contains("a") && result.contains("b") && result.contains("c"));
+	}
+
+	@Test
+	public void testCheckNGClientStatus_hasNoParams()
+	{
+		Method method = findToolMethod("checkNGClientStatus");
+		assertNotNull(method);
+		assertEquals(0, method.getParameterCount());
+	}
+
+	@Test
+	public void testRunJsUnitTests_hasCorrectSignature()
+	{
+		Method method = findToolMethod("runJsUnitTests");
+		assertNotNull(method);
+		assertEquals(2, method.getParameterCount());
+	}
+
+	@Test
+	public void testExecuteTestSetup_descriptionMentionsJDBC()
+	{
+		Method m = findToolMethod("executeTestSetup");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("JDBC"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_descriptionMentionsJDBC()
+	{
+		Method m = findToolMethod("executeTestTeardown");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue(tool.description().contains("JDBC"));
+	}
+
+
+	// -----------------------------------------------------------------------
+	// executeTestSetup tool tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testServoyTestingServer_hasExecuteTestSetupTool()
+	{
+		assertTrue("ServoyTestingServer must have an 'executeTestSetup' tool", hasToolNamed("executeTestSetup"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_hasCorrectParams()
+	{
+		Method m = findToolMethod("executeTestSetup");
+		assertNotNull("executeTestSetup method must exist", m);
+		assertEquals("executeTestSetup must have 3 parameters", 3, m.getParameterCount());
+
+		java.lang.reflect.Parameter[] params = m.getParameters();
+		assertTrue("first param must have @ToolParam", params[0].isAnnotationPresent(ToolParam.class));
+		assertTrue("second param must have @ToolParam", params[1].isAnnotationPresent(ToolParam.class));
+		assertTrue("third param must have @ToolParam", params[2].isAnnotationPresent(ToolParam.class));
+
+		assertEquals("first param type should be String", String.class, params[0].getType());
+		assertEquals("second param type should be String", String.class, params[1].getType());
+		assertEquals("third param type should be Map", java.util.Map.class, params[2].getType());
+	}
+
+	@Test
+	public void testExecuteTestSetup_nullServerName_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestSetup(null, "table", new java.util.LinkedHashMap<>());
+		assertNotNull(result);
+		assertTrue("Should return error for null serverName: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_nullTableName_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+		data.put("col", "val");
+		String result = server.executeTestSetup("server", null, data);
+		assertNotNull(result);
+		assertTrue("Should return error for null tableName: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_nullColumnValues_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestSetup("server", "table", null);
+		assertNotNull(result);
+		assertTrue("Should return error for null columnValues: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_emptyColumnValues_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestSetup("server", "table", new java.util.LinkedHashMap<>());
+		assertNotNull(result);
+		assertTrue("Should return error for empty columnValues: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_invalidServer_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+		data.put("col", "val");
+		String result = server.executeTestSetup("nonexistent_xyz_999", "table", data);
+		assertNotNull(result);
+		assertTrue("Should return error for invalid server: " + result, result.contains("Error"));
+	}
+
+	// -----------------------------------------------------------------------
+	// executeTestTeardown tool tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testServoyTestingServer_hasExecuteTestTeardownTool()
+	{
+		assertTrue("ServoyTestingServer must have an 'executeTestTeardown' tool", hasToolNamed("executeTestTeardown"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_hasCorrectParams()
+	{
+		Method m = findToolMethod("executeTestTeardown");
+		assertNotNull("executeTestTeardown method must exist", m);
+		assertEquals("executeTestTeardown must have 4 parameters", 4, m.getParameterCount());
+
+		java.lang.reflect.Parameter[] params = m.getParameters();
+		assertTrue("first param must have @ToolParam", params[0].isAnnotationPresent(ToolParam.class));
+		assertTrue("second param must have @ToolParam", params[1].isAnnotationPresent(ToolParam.class));
+		assertTrue("third param must have @ToolParam", params[2].isAnnotationPresent(ToolParam.class));
+		assertTrue("fourth param must have @ToolParam", params[3].isAnnotationPresent(ToolParam.class));
+
+		for (java.lang.reflect.Parameter p : params)
+		{
+			assertEquals("all params should be String", String.class, p.getType());
+		}
+	}
+
+	@Test
+	public void testExecuteTestTeardown_nullServerName_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestTeardown(null, "table", "col", "val");
+		assertNotNull(result);
+		assertTrue("Should return error for null serverName: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_nullTableName_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestTeardown("server", null, "col", "val");
+		assertNotNull(result);
+		assertTrue("Should return error for null tableName: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_nullWhereColumn_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestTeardown("server", "table", null, "val");
+		assertNotNull(result);
+		assertTrue("Should return error for null whereColumn: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_nullWhereValue_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestTeardown("server", "table", "col", null);
+		assertNotNull(result);
+		assertTrue("Should return error for null whereValue: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestTeardown_invalidServer_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestTeardown("nonexistent_xyz_999", "table", "col", "val");
+		assertNotNull(result);
+		assertTrue("Should return error for invalid server: " + result, result.contains("Error"));
+	}
 }

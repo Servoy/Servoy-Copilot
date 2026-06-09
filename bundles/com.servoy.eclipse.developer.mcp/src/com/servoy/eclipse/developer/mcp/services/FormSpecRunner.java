@@ -199,6 +199,9 @@ public class FormSpecRunner
 
 		try
 		{
+			if (!com.servoy.j2db.server.shared.ApplicationServerRegistry.exists())
+				return "Error: Servoy application server is not running.";
+
 			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
 			if (server == null) return "Error: Database server '" + serverName + "' not found.";
 
@@ -248,6 +251,9 @@ public class FormSpecRunner
 
 		try
 		{
+			if (!com.servoy.j2db.server.shared.ApplicationServerRegistry.exists())
+				return "Error: Servoy application server is not running.";
+
 			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
 			if (server == null) return "Error: Database server '" + serverName + "' not found.";
 

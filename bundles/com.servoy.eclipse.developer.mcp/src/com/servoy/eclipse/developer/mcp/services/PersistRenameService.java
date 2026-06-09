@@ -409,53 +409,6 @@ public class PersistRenameService
 		return "Renamed " + typeName.toLowerCase() + " '" + oldName + "' to '" + newName + "' successfully.";
 	}
 
-	private void updateModuleReferences(String oldName, String newName, IDeveloperServoyModel model)
-	{
-		try
-		{
-			ServoyProject[] allProjects = model.getServoyProjects();
-			if (allProjects == null) return;
-
-			for (ServoyProject sp : allProjects)
-			{
-				Solution sol = sp.getEditingSolution();
-				if (sol == null) continue;
-
-				String modules = sol.getModulesNames();
-				if (modules == null || modules.isBlank()) continue;
-
-				String[] moduleList = modules.split(",");
-				boolean changed = false;
-				StringBuilder newModules = new StringBuilder();
-
-				for (int i = 0; i < moduleList.length; i++)
-				{
-					String mod = moduleList[i].trim();
-					if (mod.equals(oldName))
-					{
-						mod = newName;
-						changed = true;
-					}
-					if (i > 0) newModules.append(",");
-					newModules.append(mod);
-				}
-
-				if (changed)
-				{
-					sol.setModulesNames(newModules.toString());
-					sp.saveEditingSolutionNodes(new IPersist[] { sol }, true);
-					com.servoy.eclipse.model.repository.EclipseRepository repository =
-						(com.servoy.eclipse.model.repository.EclipseRepository)ApplicationServerRegistry.get().getDeveloperRepository();
-					repository.updateRootObject(sol);
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logWarning("updateModuleReferences: " + e.getMessage(), e);
-		}
-	}
-
 	private ServoyProject resolveProject(String solutionName)
 	{
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();

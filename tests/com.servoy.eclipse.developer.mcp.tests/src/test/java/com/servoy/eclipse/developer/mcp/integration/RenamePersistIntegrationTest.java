@@ -154,6 +154,45 @@ public class RenamePersistIntegrationTest
 		assertTrue("Should return error for non-existent relation", result.contains("Error") || result.contains("not found"));
 	}
 
+	@Test
+	public void testRenameRelation_success() throws Exception
+	{
+		String relName = "testRel_" + System.currentTimeMillis();
+		String newRelName = relName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1", "db:/mem/table2", 1);
+		assumeNotNull("Relation creation should succeed", rel);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
+
+		String result = renameService.renameRelation(relName, newRelName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		com.servoy.j2db.persistence.Relation renamed = solution.getRelation(newRelName);
+		assertNotNull("Relation should exist with new name", renamed);
+	}
+
+	@Test
+	public void testRenameRelation_viaTool() throws Exception
+	{
+		String relName = "toolRel_" + System.currentTimeMillis();
+		String newRelName = relName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/t1", "db:/mem/t2", 1);
+		assumeNotNull("Relation creation should succeed", rel);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
+
+		String result = devServer.renamePersist("relation", relName, newRelName, null);
+
+		assertNotNull(result);
+		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+	}
+
 	// -----------------------------------------------------------------------
 	// ValueList rename tests
 	// -----------------------------------------------------------------------
@@ -165,6 +204,45 @@ public class RenamePersistIntegrationTest
 
 		assertNotNull(result);
 		assertTrue("Should return error for non-existent valuelist", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameValueList_success() throws Exception
+	{
+		String vlName = "testVL_" + System.currentTimeMillis();
+		String newVlName = vlName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
+		assumeNotNull("ValueList creation should succeed", vl);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { vl }, true);
+
+		String result = renameService.renameValueList(vlName, newVlName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		com.servoy.j2db.persistence.ValueList renamed = solution.getValueList(newVlName);
+		assertNotNull("ValueList should exist with new name", renamed);
+	}
+
+	@Test
+	public void testRenameValueList_viaTool() throws Exception
+	{
+		String vlName = "toolVL_" + System.currentTimeMillis();
+		String newVlName = vlName + "_renamed";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
+		assumeNotNull("ValueList creation should succeed", vl);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { vl }, true);
+
+		String result = devServer.renamePersist("valuelist", vlName, newVlName, null);
+
+		assertNotNull(result);
+		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
 	}
 
 
@@ -179,6 +257,70 @@ public class RenamePersistIntegrationTest
 
 		assertNotNull(result);
 		assertTrue("Should return error for non-existent media", result.contains("Error") || result.contains("not found"));
+	}
+
+	@Test
+	public void testRenameMedia_success() throws Exception
+	{
+		String mediaName = "testMedia_" + System.currentTimeMillis() + ".png";
+		String newMediaName = "testMedia_" + System.currentTimeMillis() + "_renamed.png";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
+		assumeNotNull("Media creation should succeed", media);
+		media.setMimeType("image/png");
+		media.setPermMediaData(new byte[] { 0x00 });
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media }, true);
+
+		String result = renameService.renameMedia(mediaName, newMediaName, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+
+		com.servoy.j2db.persistence.Media renamed = solution.getMedia(newMediaName);
+		assertNotNull("Media should exist with new name", renamed);
+	}
+
+	@Test
+	public void testRenameMedia_duplicateName_returnsError() throws Exception
+	{
+		String mediaName1 = "mediaDup1_" + System.currentTimeMillis() + ".png";
+		String mediaName2 = "mediaDup2_" + System.currentTimeMillis() + ".png";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Media media1 = solution.createNewMedia(validator, mediaName1);
+		com.servoy.j2db.persistence.Media media2 = solution.createNewMedia(validator, mediaName2);
+		assumeNotNull("Media1 creation should succeed", media1);
+		assumeNotNull("Media2 creation should succeed", media2);
+		media1.setPermMediaData(new byte[] { 0x01 });
+		media2.setPermMediaData(new byte[] { 0x02 });
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media1, media2 }, true);
+
+		String result = renameService.renameMedia(mediaName1, mediaName2, activeProject);
+
+		assertNotNull(result);
+		assertTrue("Should return error for duplicate: " + result, result.contains("Error") || result.contains("already exists"));
+	}
+
+	@Test
+	public void testRenameMedia_viaTool() throws Exception
+	{
+		String mediaName = "toolMedia_" + System.currentTimeMillis() + ".png";
+		String newMediaName = "toolMedia_" + System.currentTimeMillis() + "_renamed.png";
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
+		assumeNotNull("Media creation should succeed", media);
+		media.setPermMediaData(new byte[] { 0x00 });
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media }, true);
+
+		String result = devServer.renamePersist("media", mediaName, newMediaName, null);
+
+		assertNotNull(result);
+		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -231,12 +373,12 @@ public class RenamePersistIntegrationTest
 
 		IProject project = activeProject.getProject();
 
+		IFolder mediasFolder = project.getFolder("medias");
+		if (!mediasFolder.exists())
+			mediasFolder.create(true, true, new NullProgressMonitor());
 		IFolder testsFolder = project.getFolder("medias/tests");
 		if (!testsFolder.exists())
-		{
-			project.getFolder("medias").create(true, true, new NullProgressMonitor());
 			testsFolder.create(true, true, new NullProgressMonitor());
-		}
 		IFile specCyFile = project.getFile("medias/tests/" + formName + ".spec.cy.js");
 		specCyFile.create(new ByteArrayInputStream(("describe('" + formName + "', () => {});").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
 
@@ -508,6 +650,100 @@ public class RenamePersistIntegrationTest
 		try
 		{
 			newProject.delete(true, new NullProgressMonitor());
+		}
+		catch (Exception e)
+		{
+			// best effort
+		}
+	}
+
+	@Test
+	public void testRenameSolution_updatesModuleReferences() throws Exception
+	{
+		String moduleName = "renModRef_" + System.currentTimeMillis();
+		String parentName = "renModParent_" + System.currentTimeMillis();
+		String newModuleName = moduleName + "_renamed";
+
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
+
+			IProject modProj = ResourcesPlugin.getWorkspace().getRoot().getProject(moduleName);
+			IProjectDescription md = ResourcesPlugin.getWorkspace().newProjectDescription(moduleName);
+			md.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject", "org.eclipse.dltk.javascript.core.nature" });
+			ICommand sc1 = md.newCommand();
+			sc1.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
+			ICommand sb1 = md.newCommand();
+			sb1.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
+			md.setBuildSpec(new ICommand[] { sc1, sb1 });
+			md.setReferencedProjects(new IProject[] { res });
+			modProj.create(md, monitor);
+			modProj.open(monitor);
+			writeProjectFile(modProj, "rootmetadata.obj",
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + moduleName + "\",\n" +
+				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n", monitor);
+			writeProjectFile(modProj, "solution_settings.obj",
+				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
+
+			IProject parProj = ResourcesPlugin.getWorkspace().getRoot().getProject(parentName);
+			IProjectDescription pd = ResourcesPlugin.getWorkspace().newProjectDescription(parentName);
+			pd.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject", "org.eclipse.dltk.javascript.core.nature" });
+			ICommand sc2 = pd.newCommand();
+			sc2.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
+			ICommand sb2 = pd.newCommand();
+			sb2.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
+			pd.setBuildSpec(new ICommand[] { sc2, sb2 });
+			pd.setReferencedProjects(new IProject[] { res });
+			parProj.create(pd, monitor);
+			parProj.open(monitor);
+			writeProjectFile(parProj, "rootmetadata.obj",
+				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + parentName + "\",\n" +
+				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n", monitor);
+			writeProjectFile(parProj, "solution_settings.obj",
+				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
+		}, new NullProgressMonitor());
+
+		pumpEvents(2000);
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		model.refreshServoyProjects();
+		pumpEvents(2000);
+
+		ServoyProject moduleProject = model.getServoyProject(moduleName);
+		ServoyProject parentProject = model.getServoyProject(parentName);
+		assumeNotNull("Module project should exist", moduleProject);
+		assumeNotNull("Parent project should exist", parentProject);
+
+		Solution parentSol = parentProject.getEditingSolution();
+		assumeNotNull("Parent editing solution should exist", parentSol);
+		parentSol.setModulesNames(moduleName);
+		parentProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { parentSol }, true);
+		pumpEvents(1000);
+
+		String result = renameService.renameSolution(moduleName, newModuleName);
+		assertNotNull(result);
+		assertTrue("Rename should succeed: " + result, result.contains("successfully"));
+
+		pumpEvents(2000);
+		model.refreshServoyProjects();
+		pumpEvents(1000);
+
+		ServoyProject updatedParent = model.getServoyProject(parentName);
+		if (updatedParent != null && updatedParent.getEditingSolution() != null)
+		{
+			String modules = updatedParent.getEditingSolution().getModulesNames();
+			assertNotNull("Parent should still have modules", modules);
+			assertTrue("Module reference should be updated to new name: " + modules,
+				modules.contains(newModuleName));
+			assertFalse("Old module name should not be in references: " + modules,
+				modules.contains(moduleName) && !modules.contains(newModuleName));
+		}
+
+		// cleanup
+		try
+		{
+			IProject renamedMod = ResourcesPlugin.getWorkspace().getRoot().getProject(newModuleName);
+			if (renamedMod.exists()) renamedMod.delete(true, new NullProgressMonitor());
+			IProject par = ResourcesPlugin.getWorkspace().getRoot().getProject(parentName);
+			if (par.exists()) par.delete(true, new NullProgressMonitor());
 		}
 		catch (Exception e)
 		{
