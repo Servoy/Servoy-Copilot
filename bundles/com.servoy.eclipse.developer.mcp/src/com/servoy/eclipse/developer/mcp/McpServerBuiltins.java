@@ -24,6 +24,7 @@ import org.eclipse.e4.core.contexts.ContextInjectionFactory;
 import org.eclipse.e4.core.contexts.IEclipseContext;
 
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServer;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
@@ -56,6 +57,7 @@ public class McpServerBuiltins
 		ServoyDevServer.class,
 		ServoyTestingServer.class,
 		ServoyWpmServer.class,
+		ServoyMediaServer.class,
 	};
 
 	/**
