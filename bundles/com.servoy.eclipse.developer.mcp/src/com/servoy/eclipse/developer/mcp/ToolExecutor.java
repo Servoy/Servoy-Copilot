@@ -74,10 +74,46 @@ public class ToolExecutor
 
 	public Object[] mapArguments(Method method, Map<String, Object> argMap)
 	{
-		return Arrays.stream(method.getParameters())
-			.map(ToolExecutor::toParamName)
-			.map(argMap::get)
-			.toArray();
+		Parameter[] params = method.getParameters();
+		Object[] result = new Object[params.length];
+		for (int i = 0; i < params.length; i++)
+		{
+			String name = toParamName(params[i]);
+			Object value = argMap.get(name);
+			result[i] = coerceArgument(value, params[i].getType());
+		}
+		return result;
+	}
+
+	private static Object coerceArgument(Object value, Class< ? > targetType)
+	{
+		if (value == null)
+		{
+			if (targetType == int.class) return 0;
+			if (targetType == long.class) return 0L;
+			if (targetType == double.class) return 0.0;
+			if (targetType == float.class) return 0.0f;
+			if (targetType == boolean.class) return false;
+			return null;
+		}
+		if (targetType.isInstance(value)) return value;
+		if (value instanceof Number number)
+		{
+			if (targetType == int.class || targetType == Integer.class) return number.intValue();
+			if (targetType == long.class || targetType == Long.class) return number.longValue();
+			if (targetType == double.class || targetType == Double.class) return number.doubleValue();
+			if (targetType == float.class || targetType == Float.class) return number.floatValue();
+		}
+		if (targetType == String.class) return value.toString();
+		if ((targetType == boolean.class || targetType == Boolean.class) && value instanceof String s)
+		{
+			return Boolean.parseBoolean(s);
+		}
+		if ((targetType == int.class || targetType == Integer.class) && value instanceof String s)
+		{
+			return Integer.parseInt(s);
+		}
+		return value;
 	}
 
 	public Optional<Method> getFunctionCallbackByName(String name)

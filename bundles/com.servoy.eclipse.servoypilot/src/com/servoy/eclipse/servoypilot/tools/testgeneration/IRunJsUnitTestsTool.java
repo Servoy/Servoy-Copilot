@@ -32,11 +32,12 @@ public interface IRunJsUnitTestsTool
 		"Returns a markdown summary with counts and detailed failure/error traces.")
 	default String runJsUnitTests(
 		@P("What to test: a scope/file name (e.g. 'test_utils' or 'test_utils.js'), a form name (e.g. 'tab1' or 'forms/tab1.js'), a module name (e.g. 'calculations_module'), 'MODULES' to run all tests across every module of the active solution, or 'ALL' to run every test in the solution (including all modules)") String scopeOrAll,
-		@P("Maximum seconds to wait for the test run to complete. Use 60 for a single scope or form, 120 for a full solution run.") int timeoutSeconds)
+		@P("Maximum seconds to wait for the test run to complete. Use 60 for a single scope or form, 120 for a full solution run.") Integer timeoutSeconds)
 	{
 		try
 		{
-			return new JSUnitRunnerService().runTests(scopeOrAll, timeoutSeconds);
+			int timeout = timeoutSeconds != null ? timeoutSeconds.intValue() : 120;
+			return new JSUnitRunnerService().runTests(scopeOrAll, timeout);
 		}
 		catch (Exception e)
 		{

@@ -25,6 +25,7 @@ import com.servoy.eclipse.servoypilot.tools.testgeneration.IAddTestMethodTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.IAnalyzeCodeForTestingTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.ICreateTestFileTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.IGenerateTestCasesTool;
+import com.servoy.eclipse.servoypilot.tools.testgeneration.IJSUnitCoverageTool;
 import com.servoy.eclipse.servoypilot.tools.testgeneration.IRunJsUnitTestsTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
@@ -79,6 +80,7 @@ public class UnitTestAssistantTools
 			IAddTestMethodTool.class,
 			IGenerateTestCasesTool.class,
 			IRunJsUnitTestsTool.class,
+			IJSUnitCoverageTool.class,
 			// Form UI preview
 			IShowFormInBrowserTool.class);
 	}

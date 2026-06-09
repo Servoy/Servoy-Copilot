@@ -22,6 +22,7 @@ import com.servoy.eclipse.servoypilot.tools.core.IOpenRelationTool;
 import com.servoy.eclipse.servoypilot.tools.core.IOpenStyleTool;
 import com.servoy.eclipse.servoypilot.tools.core.IOpenValueListTool;
 import com.servoy.eclipse.servoypilot.tools.core.ITargetTool;
+import com.servoy.eclipse.servoypilot.tools.testgeneration.IJSUnitCoverageTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchRegExpTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFileSearchTool;
 import com.servoy.eclipse.servoypilot.tools.workspace.IFindFilesTool;
@@ -85,6 +86,9 @@ public class AllToolsForMCP
 			// core Utility
 			IDatabaseTool.class,
 			ITargetTool.class,
+
+			// JSUnit coverage
+			IJSUnitCoverageTool.class,
 
 			// tools retrieval package
 			IWebFetchTool.class);
