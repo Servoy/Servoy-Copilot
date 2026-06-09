@@ -42,10 +42,9 @@ import com.servoy.j2db.util.ITransactionConnection;
  * the {@code AGENTS.MD} file in the active project root.
  * <p>
  * The zip source is read from the system property
- * {@value #SKILLS_ZIP_PROPERTY}.
- * The value may be an HTTP/HTTPS URL or a local file path.
- * When the property is absent or the file does not exist the feature is
- * silently skipped.
+ * {@value #SKILLS_ZIP_PROPERTY}. The value may be an HTTP/HTTPS URL or a local
+ * file path. When the property is absent or the file does not exist the feature
+ * is silently skipped.
  * </p>
  * <p>
  * All methods are package-private static so they can be exercised from
@@ -62,6 +61,12 @@ class SkillsZipExtractor {
 	 */
 	static final String SKILLS_ZIP_PROPERTY = "SERVOY_SKILLS_ZIP"; //$NON-NLS-1$
 
+	/**
+	 * System property to control whether skills are overwritten on startup. When
+	 * set to "false" (case-insensitive), skills extraction is skipped.
+	 */
+	static final String SKILL_OVERWRITE_PROPERTY = "SERVOY_SKILL_OVERWRITE"; //$NON-NLS-1$
+
 	/** Hardcoded PostgreSQL version embedded in the AGENTS.MD YAML block. */
 	static final String POSTGRES_VERSION = "17.6"; //$NON-NLS-1$
 
@@ -70,12 +75,22 @@ class SkillsZipExtractor {
 	private static final String OPENCODE_DIR_PREFIX = ".opencode/"; //$NON-NLS-1$
 
 	/**
+	 * Returns {@code true} if skills extraction should be skipped based on the
+	 * {@value #SKILL_OVERWRITE_PROPERTY} system property. Extraction is skipped
+	 * only when the property is explicitly set to {@code "false"}
+	 * (case-insensitive).
+	 */
+	static boolean shouldSkipExtraction() {
+		return "false".equalsIgnoreCase(System.getProperty(SKILL_OVERWRITE_PROPERTY));
+	}
+
+	/**
 	 * Returns the skills zip source (HTTP URL or file path) from the system
 	 * property, or {@code null} if the property is absent or the file does not
 	 * exist.
 	 * <p>
-	 * For HTTP/HTTPS URLs the value is returned as-is. For file paths, existence
-	 * is verified before returning.
+	 * For HTTP/HTTPS URLs the value is returned as-is. For file paths, existence is
+	 * verified before returning.
 	 * </p>
 	 */
 	static String getSkillsZipSource() {
@@ -168,9 +183,8 @@ class SkillsZipExtractor {
 	 * Writes {@code AGENTS.MD} to {@code projectRoot}:
 	 * <ul>
 	 * <li>If absent: create from zip content as-is.</li>
-	 * <li>If present: update only the YAML block fields
-	 * ({@code servoy_version}, {@code postgres_version},
-	 * {@code databases.active}).</li>
+	 * <li>If present: update only the YAML block fields ({@code servoy_version},
+	 * {@code postgres_version}, {@code databases.active}).</li>
 	 * </ul>
 	 * <p>
 	 * Takes ownership of {@code zipStream} and closes it.
@@ -243,8 +257,8 @@ class SkillsZipExtractor {
 	}
 
 	/**
-	 * Reads a named entry from the zip stream, or returns {@code null} if the
-	 * entry is absent.
+	 * Reads a named entry from the zip stream, or returns {@code null} if the entry
+	 * is absent.
 	 * <p>
 	 * Takes ownership of {@code zipStream} and closes it.
 	 * </p>
@@ -271,23 +285,22 @@ class SkillsZipExtractor {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Queries the first enabled PostgreSQL server in the Servoy server registry
-	 * and returns its version as {@code "major.minor"} (e.g. {@code "17.6"}).
-	 * Falls back to {@link #POSTGRES_VERSION} when no PostgreSQL server is
-	 * available or reachable.
+	 * Queries the first enabled PostgreSQL server in the Servoy server registry and
+	 * returns its version as {@code "major.minor"} (e.g. {@code "17.6"}). Falls
+	 * back to {@link #POSTGRES_VERSION} when no PostgreSQL server is available or
+	 * reachable.
 	 */
 	static String getPostgresVersion() {
 		try {
 			if (!ApplicationServerRegistry.exists())
 				return POSTGRES_VERSION;
-			String[] names = ApplicationServerRegistry.get().getServerManager()
-					.getServerNames(true, false, false, false);
+			String[] names = ApplicationServerRegistry.get().getServerManager().getServerNames(true, false, false,
+					false);
 			if (names == null)
 				return POSTGRES_VERSION;
 			for (String name : names) {
 				try {
-					IServer server = ApplicationServerRegistry.get().getServerManager()
-							.getServer(name, true, false);
+					IServer server = ApplicationServerRegistry.get().getServerManager().getServer(name, true, false);
 					if (server == null)
 						continue;
 					String productName = server.getDatabaseProductName();
@@ -316,8 +329,8 @@ class SkillsZipExtractor {
 		try {
 			if (!ApplicationServerRegistry.exists())
 				return Collections.emptyList();
-			String[] names = ApplicationServerRegistry.get().getServerManager()
-					.getServerNames(true, false, false, false);
+			String[] names = ApplicationServerRegistry.get().getServerManager().getServerNames(true, false, false,
+					false);
 			if (names == null)
 				return Collections.emptyList();
 			return Arrays.asList(names);

@@ -72,9 +72,9 @@ public class OpencodeFolderCreatorJob extends Job {
 		// Servoy AI requires both GENAI_API_KEY and SERVOY_SKILLS_ZIP to be configured.
 		// If either is absent the view will show a "not enabled" page; skip setup
 		// entirely.
-		if (System.getProperty(ProviderConfigWriter.ENV_API_KEY) == null ||
-				System.getProperty(ProviderConfigWriter.ENV_API_KEY).isBlank() ||
-				SkillsZipExtractor.getSkillsZipSource() == null) {
+		if (System.getProperty(ProviderConfigWriter.ENV_API_KEY) == null
+				|| System.getProperty(ProviderConfigWriter.ENV_API_KEY).isBlank()
+				|| SkillsZipExtractor.getSkillsZipSource() == null) {
 			ServoyLog
 					.logInfo("Servoy AI: not configured (GENAI_API_KEY or SERVOY_SKILLS_ZIP missing), skipping setup."); //$NON-NLS-1$
 			return Status.OK_STATUS;
@@ -167,8 +167,8 @@ public class OpencodeFolderCreatorJob extends Job {
 				if (update.getExitCode() == 0) {
 					ServoyLog.logInfo("Servoy AI: opencode-ai update check complete."); //$NON-NLS-1$
 				} else {
-					ServoyLog.logInfo(
-							"Servoy AI: npm update opencode-ai exited with code " + update.getExitCode() + " (non-fatal)."); //$NON-NLS-1$ //$NON-NLS-2$
+					ServoyLog.logInfo("Servoy AI: npm update opencode-ai exited with code " + update.getExitCode() //$NON-NLS-1$
+							+ " (non-fatal)."); //$NON-NLS-1$
 				}
 			} catch (IOException | InterruptedException e) {
 				ServoyLog.logInfo("Servoy AI: npm update opencode-ai failed (non-fatal): " + e.getMessage()); //$NON-NLS-1$
@@ -180,8 +180,11 @@ public class OpencodeFolderCreatorJob extends Job {
 
 		// 1. Extract skills zip (if available)
 		boolean providerFromZip = false;
+		boolean skipExtraction = SkillsZipExtractor.shouldSkipExtraction();
 		String skillsZipSource = SkillsZipExtractor.getSkillsZipSource();
-		if (skillsZipSource != null) {
+		if (skipExtraction) {
+			ServoyLog.logInfo("Servoy AI: SERVOY_SKILL_OVERWRITE=false, skipping skills extraction."); //$NON-NLS-1$
+		} else if (skillsZipSource != null) {
 			byte[] zipBytes;
 			try (InputStream is = SkillsZipExtractor.openZipStream(skillsZipSource)) {
 				zipBytes = is.readAllBytes();
@@ -191,8 +194,8 @@ public class OpencodeFolderCreatorJob extends Job {
 			}
 			if (zipBytes != null) {
 				try {
-					providerFromZip = SkillsZipExtractor.extractToConfigDir(
-							new ByteArrayInputStream(zipBytes), servoyOpencodeCfgDir);
+					providerFromZip = SkillsZipExtractor.extractToConfigDir(new ByteArrayInputStream(zipBytes),
+							servoyOpencodeCfgDir);
 				} catch (IOException e) {
 					ServoyLog.logError("OpencodeFolderCreatorJob: failed to extract skills zip", e); //$NON-NLS-1$
 				}
@@ -200,8 +203,8 @@ public class OpencodeFolderCreatorJob extends Job {
 				String projectRoot = OpenCodeUtil.getActiveProjectPath();
 				if (projectRoot != null) {
 					try {
-						SkillsZipExtractor.writeOrUpdateAgentsMd(
-								new ByteArrayInputStream(zipBytes), Path.of(projectRoot));
+						SkillsZipExtractor.writeOrUpdateAgentsMd(new ByteArrayInputStream(zipBytes),
+								Path.of(projectRoot));
 					} catch (IOException e) {
 						ServoyLog.logError("OpencodeFolderCreatorJob: failed to write AGENTS.MD", e); //$NON-NLS-1$
 					}
@@ -248,8 +251,8 @@ public class OpencodeFolderCreatorJob extends Job {
 	 * <ul>
 	 * <li>the {@code .fullygenerated} marker is absent,</li>
 	 * <li>the {@code package_copy.json} sentinel is absent, or</li>
-	 * <li>the sentinel content differs from {@code bundleContent}
-	 * (meaning the shipped version changed).</li>
+	 * <li>the sentinel content differs from {@code bundleContent} (meaning the
+	 * shipped version changed).</li>
 	 * </ul>
 	 * </p>
 	 *

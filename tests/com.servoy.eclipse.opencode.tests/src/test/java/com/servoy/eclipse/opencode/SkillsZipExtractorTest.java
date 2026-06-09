@@ -60,8 +60,8 @@ public class SkillsZipExtractorTest {
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Creates a zip at a temp path with alternating (name, content) varargs.
-	 * Names ending with "/" are written as directory entries.
+	 * Creates a zip at a temp path with alternating (name, content) varargs. Names
+	 * ending with "/" are written as directory entries.
 	 */
 	private Path createZip(String... nameContentPairs) throws IOException {
 		Path zipPath = tmp.newFile("test.zip").toPath();
@@ -87,18 +87,10 @@ public class SkillsZipExtractorTest {
 		return new ByteArrayInputStream(Files.readAllBytes(zipPath));
 	}
 
-	private static final String SAMPLE_AGENTS_MD = "# Agent Instructions\n" +
-			"\n" +
-			"```yaml\n" +
-			"servoy_version: \"<servoy_version>\"\n" +
-			"postgres_version: \"<postgres_version>\"\n" +
-			"databases:\n" +
-			"  active: [\"<database>\"]\n" +
-			"  ignore: []\n" +
-			"```\n" +
-			"\n" +
-			"## Project-specific rules\n" +
-			"Do not break things.\n";
+	private static final String SAMPLE_AGENTS_MD = "# Agent Instructions\n" + "\n" + "```yaml\n"
+			+ "servoy_version: \"<servoy_version>\"\n" + "postgres_version: \"<postgres_version>\"\n" + "databases:\n"
+			+ "  active: [\"<database>\"]\n" + "  ignore: []\n" + "```\n" + "\n" + "## Project-specific rules\n"
+			+ "Do not break things.\n";
 
 	// -----------------------------------------------------------------------
 	// getSkillsZipSource
@@ -135,8 +127,7 @@ public class SkillsZipExtractorTest {
 		}
 	}
 
-
-	/** HTTP URL is returned as-is â?? no file-existence check is performed. */
+	/** HTTP URL is returned as-is ï¿½?? no file-existence check is performed. */
 	@Test
 	public void getSkillsZipSource_httpUrl_returnsUrlWithoutFileCheck() {
 		String url = "http://example.com/skills.zip?loginToken=abc123";
@@ -148,7 +139,7 @@ public class SkillsZipExtractorTest {
 		}
 	}
 
-	/** HTTPS URL is returned as-is â?? no file-existence check is performed. */
+	/** HTTPS URL is returned as-is ï¿½?? no file-existence check is performed. */
 	@Test
 	public void getSkillsZipSource_httpsUrl_returnsUrlWithoutFileCheck() {
 		String url = "https://cloud.servoy.com/skills.zip?loginToken=abc123";
@@ -216,12 +207,9 @@ public class SkillsZipExtractorTest {
 
 		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
 
-		assertTrue(".opencode/rules.md must exist",
-				Files.exists(configDir.resolve(".opencode/rules.md")));
-		assertEquals("agent rules",
-				Files.readString(configDir.resolve(".opencode/rules.md"), StandardCharsets.UTF_8));
-		assertTrue(".opencode/sub/other.txt must exist",
-				Files.exists(configDir.resolve(".opencode/sub/other.txt")));
+		assertTrue(".opencode/rules.md must exist", Files.exists(configDir.resolve(".opencode/rules.md")));
+		assertEquals("agent rules", Files.readString(configDir.resolve(".opencode/rules.md"), StandardCharsets.UTF_8));
+		assertTrue(".opencode/sub/other.txt must exist", Files.exists(configDir.resolve(".opencode/sub/other.txt")));
 	}
 
 	/** AC: existing .opencode/ directory is fully deleted before re-extraction. */
@@ -262,8 +250,10 @@ public class SkillsZipExtractorTest {
 		assertNull(SkillsZipExtractor.readZipEntry(zipStream(zip), "AGENTS.MD"));
 	}
 
-
-	/** Entry name matching is case-insensitive: zip has "AGENTS.md", we ask for "AGENTS.MD". */
+	/**
+	 * Entry name matching is case-insensitive: zip has "AGENTS.md", we ask for
+	 * "AGENTS.MD".
+	 */
 	@Test
 	public void readZipEntry_caseInsensitive_findsEntry() throws IOException {
 		Path zip = createZip("AGENTS.md", "# Hello");
@@ -273,7 +263,9 @@ public class SkillsZipExtractorTest {
 		assertEquals("Entry with different case must still be found", "# Hello", result);
 	}
 
-	/** extractToConfigDir recognises opencode.json regardless of case in the zip. */
+	/**
+	 * extractToConfigDir recognises opencode.json regardless of case in the zip.
+	 */
 	@Test
 	public void extractToConfigDir_opencodeJsonMixedCase_extracted() throws IOException {
 		Path zip = createZip("Opencode.Json", "{\"model\":\"test\"}");
@@ -285,7 +277,9 @@ public class SkillsZipExtractorTest {
 		assertTrue("opencode.json must be created", Files.exists(configDir.resolve("opencode.json")));
 	}
 
-	/** writeOrUpdateAgentsMd finds AGENTS.MD with lower-case extension in the zip. */
+	/**
+	 * writeOrUpdateAgentsMd finds AGENTS.MD with lower-case extension in the zip.
+	 */
 	@Test
 	public void writeOrUpdateAgentsMd_agentsMdLowerCase_createsFile() throws IOException {
 		Path zip = createZip("AGENTS.md", SAMPLE_AGENTS_MD);
@@ -304,54 +298,46 @@ public class SkillsZipExtractorTest {
 	/** servoy_version field is replaced with the supplied value. */
 	@Test
 	public void updateAgentsYaml_replacesServoyVersion() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", Collections.emptyList());
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6",
+				Collections.emptyList());
 
-		assertTrue("servoy_version must be updated",
-				result.contains("servoy_version: \"2026.06\""));
-		assertFalse("placeholder must be removed",
-				result.contains("<servoy_version>"));
+		assertTrue("servoy_version must be updated", result.contains("servoy_version: \"2026.06\""));
+		assertFalse("placeholder must be removed", result.contains("<servoy_version>"));
 	}
 
 	/** postgres_version field is replaced with the supplied value. */
 	@Test
 	public void updateAgentsYaml_replacesPostgresVersion() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", Collections.emptyList());
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6",
+				Collections.emptyList());
 
-		assertTrue("postgres_version must be updated",
-				result.contains("postgres_version: \"17.6\""));
-		assertFalse("placeholder must be removed",
-				result.contains("<postgres_version>"));
+		assertTrue("postgres_version must be updated", result.contains("postgres_version: \"17.6\""));
+		assertFalse("placeholder must be removed", result.contains("<postgres_version>"));
 	}
 
 	/** databases.active array is replaced with the supplied list. */
 	@Test
 	public void updateAgentsYaml_replacesDatabasesActive_singleDatabase() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", List.of("example_db"));
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6", List.of("example_db"));
 
-		assertTrue("active list must contain example_db",
-				result.contains("active: [\"example_db\"]"));
-		assertFalse("placeholder must be removed",
-				result.contains("<database>"));
+		assertTrue("active list must contain example_db", result.contains("active: [\"example_db\"]"));
+		assertFalse("placeholder must be removed", result.contains("<database>"));
 	}
 
 	/** Multiple databases produce a proper YAML inline list. */
 	@Test
 	public void updateAgentsYaml_replacesDatabasesActive_multipleDatabases() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", Arrays.asList("db1", "db2", "db3"));
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6",
+				Arrays.asList("db1", "db2", "db3"));
 
-		assertTrue("all databases must appear",
-				result.contains("active: [\"db1\", \"db2\", \"db3\"]"));
+		assertTrue("all databases must appear", result.contains("active: [\"db1\", \"db2\", \"db3\"]"));
 	}
 
 	/** Empty database list produces empty YAML inline list. */
 	@Test
 	public void updateAgentsYaml_emptyDatabaseList_producesEmptyArray() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", Collections.emptyList());
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6",
+				Collections.emptyList());
 
 		assertTrue("empty list must produce []", result.contains("active: []"));
 	}
@@ -359,8 +345,7 @@ public class SkillsZipExtractorTest {
 	/** All other content (headings, rules, ignore list) is preserved unchanged. */
 	@Test
 	public void updateAgentsYaml_preservesOtherContent() {
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				SAMPLE_AGENTS_MD, "2026.06", "17.6", List.of("mydb"));
+		String result = SkillsZipExtractor.updateAgentsYaml(SAMPLE_AGENTS_MD, "2026.06", "17.6", List.of("mydb"));
 
 		assertTrue("heading preserved", result.contains("# Agent Instructions"));
 		assertTrue("user rule preserved", result.contains("Do not break things."));
@@ -372,34 +357,24 @@ public class SkillsZipExtractorTest {
 	public void updateAgentsYaml_missingField_notInserted() {
 		String noPostgres = SAMPLE_AGENTS_MD.replace("postgres_version: \"<postgres_version>\"\n", "");
 
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				noPostgres, "2026.06", "17.6", Collections.emptyList());
+		String result = SkillsZipExtractor.updateAgentsYaml(noPostgres, "2026.06", "17.6", Collections.emptyList());
 
 		assertFalse("absent field must not be inserted", result.contains("postgres_version"));
 	}
 
 	/**
-	 * Real-values round-trip: AGENTS.MD already has concrete values from a
-	 * previous startup; updateAgentsYaml replaces them with the new values
-	 * while preserving all custom user content.
+	 * Real-values round-trip: AGENTS.MD already has concrete values from a previous
+	 * startup; updateAgentsYaml replaces them with the new values while preserving
+	 * all custom user content.
 	 */
 	@Test
 	public void updateAgentsYaml_existingRealValues_replacedWithNewValues() {
-		String existing = "# Agent Instructions\n" +
-				"\n" +
-				"```yaml\n" +
-				"servoy_version: \"2025.03\"\n" +
-				"postgres_version: \"16.1\"\n" +
-				"databases:\n" +
-				"  active: [\"old_db\"]\n" +
-				"  ignore: []\n" +
-				"```\n" +
-				"\n" +
-				"## My Custom Rules\n" +
-				"Keep data safe.\n";
+		String existing = "# Agent Instructions\n" + "\n" + "```yaml\n" + "servoy_version: \"2025.03\"\n"
+				+ "postgres_version: \"16.1\"\n" + "databases:\n" + "  active: [\"old_db\"]\n" + "  ignore: []\n"
+				+ "```\n" + "\n" + "## My Custom Rules\n" + "Keep data safe.\n";
 
-		String result = SkillsZipExtractor.updateAgentsYaml(
-				existing, "2026.06", "17.6", Arrays.asList("new_db1", "new_db2"));
+		String result = SkillsZipExtractor.updateAgentsYaml(existing, "2026.06", "17.6",
+				Arrays.asList("new_db1", "new_db2"));
 
 		// Old values gone
 		assertFalse("old servoy version must be replaced", result.contains("2025.03"));
@@ -462,8 +437,7 @@ public class SkillsZipExtractorTest {
 
 		SkillsZipExtractor.writeOrUpdateAgentsMd(zipStream(zip), projectRoot);
 
-		assertFalse("AGENTS.MD must not be created when absent in zip",
-				Files.exists(projectRoot.resolve("AGENTS.MD")));
+		assertFalse("AGENTS.MD must not be created when absent in zip", Files.exists(projectRoot.resolve("AGENTS.MD")));
 	}
 
 	// -----------------------------------------------------------------------
@@ -504,22 +478,200 @@ public class SkillsZipExtractorTest {
 	public void getPostgresVersion_registryUnavailable_returnsFallbackConstant() {
 		// ApplicationServerRegistry.exists() returns false outside OSGi
 		String version = SkillsZipExtractor.getPostgresVersion();
-		assertEquals("must fall back to POSTGRES_VERSION when registry is absent",
-				SkillsZipExtractor.POSTGRES_VERSION, version);
+		assertEquals("must fall back to POSTGRES_VERSION when registry is absent", SkillsZipExtractor.POSTGRES_VERSION,
+				version);
 	}
 
-	/** AC: The POSTGRES_VERSION constant is present and non-blank (spec section 3.3). */
+	/**
+	 * AC: The POSTGRES_VERSION constant is present and non-blank (spec section
+	 * 3.3).
+	 */
 	@Test
 	public void getPostgresVersion_fallbackConstantNonBlank() {
 		assertNotNull("POSTGRES_VERSION must not be null", SkillsZipExtractor.POSTGRES_VERSION);
 		assertFalse("POSTGRES_VERSION must not be blank", SkillsZipExtractor.POSTGRES_VERSION.isBlank());
 	}
 
-	/** The fallback constant has the expected major.minor format (digit(s).digit(s)). */
+	/**
+	 * The fallback constant has the expected major.minor format
+	 * (digit(s).digit(s)).
+	 */
 	@Test
 	public void getPostgresVersion_fallbackConstantMatchesMajorMinorFormat() {
 		assertTrue("POSTGRES_VERSION must match major.minor format",
 				SkillsZipExtractor.POSTGRES_VERSION.matches("\\d+\\.\\d+"));
+	}
+
+	// -----------------------------------------------------------------------
+	// SKILL_OVERWRITE_PROPERTY constant and overwrite-skip logic
+	// -----------------------------------------------------------------------
+
+	/** AC: The SKILL_OVERWRITE_PROPERTY constant has the expected value. */
+	@Test
+	public void skillOverwriteProperty_hasExpectedValue() {
+		assertEquals("SERVOY_SKILL_OVERWRITE", SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyFalseLowerCase_returnsTrue() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "false");
+			assertTrue(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyFalseMixedCase_returnsTrue() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "False");
+			assertTrue(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyFalseUpperCase_returnsTrue() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "FALSE");
+			assertTrue(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyTrue_returnsFalse() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "true");
+			assertFalse(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyNotSet_returnsFalse() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			assertFalse(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyBlank_returnsFalse() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "");
+			assertFalse(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	@Test
+	public void shouldSkipExtraction_whenPropertyArbitraryValue_returnsFalse() {
+		String original = System.getProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+		try {
+			System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, "xyz");
+			assertFalse(SkillsZipExtractor.shouldSkipExtraction());
+		} finally {
+			if (original == null)
+				System.clearProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY);
+			else
+				System.setProperty(SkillsZipExtractor.SKILL_OVERWRITE_PROPERTY, original);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// getSkillsZipSource -- SERVOY_SKILLS_ZIP guard (preserving pre-set value)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * AC: When SERVOY_SKILLS_ZIP is blank (empty string), getSkillsZipSource
+	 * returns null.
+	 */
+	@Test
+	public void getSkillsZipSource_blankProperty_returnsNull() {
+		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, "");
+		try {
+			assertNull(SkillsZipExtractor.getSkillsZipSource());
+		} finally {
+			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
+		}
+	}
+
+	/**
+	 * AC: When SERVOY_SKILLS_ZIP is whitespace-only, getSkillsZipSource returns
+	 * null.
+	 */
+	@Test
+	public void getSkillsZipSource_whitespaceProperty_returnsNull() {
+		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, "   ");
+		try {
+			assertNull(SkillsZipExtractor.getSkillsZipSource());
+		} finally {
+			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
+		}
+	}
+
+	/**
+	 * AC: Pre-set SERVOY_SKILLS_ZIP pointing to an existing file is preserved by
+	 * getSkillsZipSource.
+	 */
+	@Test
+	public void getSkillsZipSource_preSetToExistingFile_preservesValue() throws IOException {
+		Path customZip = createZip(".opencode/skill.md", "custom skill");
+		String customPath = customZip.toString();
+		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, customPath);
+		try {
+			assertEquals("Pre-set value must be returned as-is", customPath, SkillsZipExtractor.getSkillsZipSource());
+		} finally {
+			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
+		}
+	}
+
+	/**
+	 * AC: Pre-set SERVOY_SKILLS_ZIP with an HTTPS URL is preserved by
+	 * getSkillsZipSource.
+	 */
+	@Test
+	public void getSkillsZipSource_preSetToHttpsUrl_preservesValue() {
+		String customUrl = "https://my-server.com/custom-skills.zip";
+		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, customUrl);
+		try {
+			assertEquals("Pre-set HTTPS URL must be returned as-is", customUrl,
+					SkillsZipExtractor.getSkillsZipSource());
+		} finally {
+			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
+		}
 	}
 
 }
