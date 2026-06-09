@@ -222,9 +222,21 @@ public class ServoyTestingServer
 	public String executeTestSetup(
 		@ToolParam(description = "Database server name (e.g. 'example_data')") String serverName,
 		@ToolParam(description = "Table name (e.g. 'orders')") String tableName,
-		@ToolParam(description = "Column values as JSON object (e.g. {\"customerid\":\"CYPRS\",\"shipcity\":\"TestCity\"})") java.util.Map<String, Object> columnValues)
+		@ToolParam(description = "Column values as JSON string (e.g. '{\"customerid\":\"CYPRS\",\"shipcity\":\"TestCity\"}')") String columnValuesJson)
 	{
-		return specRunner.executeTestSetup(serverName, tableName, columnValues);
+		if (columnValuesJson == null || columnValuesJson.isBlank())
+			return "Error: columnValues JSON is required.";
+		try
+		{
+			@SuppressWarnings("unchecked")
+			java.util.Map<String, Object> columnValues = new com.fasterxml.jackson.databind.ObjectMapper()
+				.readValue(columnValuesJson, java.util.LinkedHashMap.class);
+			return specRunner.executeTestSetup(serverName, tableName, columnValues);
+		}
+		catch (Exception e)
+		{
+			return "Error parsing columnValues JSON: " + e.getMessage();
+		}
 	}
 
 	@Tool(name = "executeTestTeardown",

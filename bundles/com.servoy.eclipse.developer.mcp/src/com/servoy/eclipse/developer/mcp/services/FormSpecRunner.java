@@ -153,6 +153,7 @@ public class FormSpecRunner
 				"    baseUrl: '" + baseUrl + "',\n" +
 				"    supportFile: false,\n" +
 				"    specPattern: '**/*.spec.cy.js',\n" +
+				"    testIsolation: false,\n" +
 				"    defaultCommandTimeout: 10000,\n" +
 				"    pageLoadTimeout: 30000,\n" +
 				"    video: false,\n" +
@@ -233,7 +234,7 @@ public class FormSpecRunner
 					}
 					ps.executeUpdate();
 				}
-				conn.commit();
+				if (!conn.getAutoCommit()) conn.commit();
 			}
 
 			return "Test setup: inserted 1 row into " + serverName + "." + tableName;
@@ -267,7 +268,7 @@ public class FormSpecRunner
 					ps.setObject(1, whereValue);
 					deleted = ps.executeUpdate();
 				}
-				conn.commit();
+				if (!conn.getAutoCommit()) conn.commit();
 			}
 
 			return "Test teardown: deleted " + deleted + " row(s) from " + serverName + "." + tableName + " where " + whereColumn + " = '" + whereValue + "'";

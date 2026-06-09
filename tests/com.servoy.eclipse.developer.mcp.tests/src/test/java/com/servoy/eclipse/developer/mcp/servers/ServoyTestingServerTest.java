@@ -511,7 +511,7 @@ public class ServoyTestingServerTest
 	public void testExecuteTestSetup_nullServerName_returnsError()
 	{
 		ServoyTestingServer server = new ServoyTestingServer();
-		String result = server.executeTestSetup(null, "table", new java.util.LinkedHashMap<>());
+		String result = server.executeTestSetup(null, "table", "{\"col\":\"val\"}");
 		assertNotNull(result);
 		assertTrue("Should return error for null serverName: " + result, result.contains("Error"));
 	}
@@ -520,9 +520,7 @@ public class ServoyTestingServerTest
 	public void testExecuteTestSetup_nullTableName_returnsError()
 	{
 		ServoyTestingServer server = new ServoyTestingServer();
-		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
-		data.put("col", "val");
-		String result = server.executeTestSetup("server", null, data);
+		String result = server.executeTestSetup("server", null, "{\"col\":\"val\"}");
 		assertNotNull(result);
 		assertTrue("Should return error for null tableName: " + result, result.contains("Error"));
 	}
@@ -540,18 +538,25 @@ public class ServoyTestingServerTest
 	public void testExecuteTestSetup_emptyColumnValues_returnsError()
 	{
 		ServoyTestingServer server = new ServoyTestingServer();
-		String result = server.executeTestSetup("server", "table", new java.util.LinkedHashMap<>());
+		String result = server.executeTestSetup("server", "table", "");
 		assertNotNull(result);
 		assertTrue("Should return error for empty columnValues: " + result, result.contains("Error"));
+	}
+
+	@Test
+	public void testExecuteTestSetup_invalidJson_returnsError()
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.executeTestSetup("server", "table", "not valid json");
+		assertNotNull(result);
+		assertTrue("Should return error for invalid JSON: " + result, result.contains("Error"));
 	}
 
 	@Test
 	public void testExecuteTestSetup_invalidServer_returnsError()
 	{
 		ServoyTestingServer server = new ServoyTestingServer();
-		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
-		data.put("col", "val");
-		String result = server.executeTestSetup("nonexistent_xyz_999", "table", data);
+		String result = server.executeTestSetup("nonexistent_xyz_999", "table", "{\"col\":\"val\"}");
 		assertNotNull(result);
 		assertTrue("Should return error for invalid server: " + result, result.contains("Error"));
 	}

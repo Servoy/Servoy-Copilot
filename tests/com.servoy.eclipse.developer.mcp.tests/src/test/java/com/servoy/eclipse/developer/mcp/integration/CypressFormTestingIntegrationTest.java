@@ -537,6 +537,8 @@ public class CypressFormTestingIntegrationTest
 		String setupResult = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, testData);
 		assertNotNull(setupResult);
 		assertTrue("Setup should succeed: " + setupResult, setupResult.contains("inserted"));
+		assertTrue("Setup should mention server and table: " + setupResult,
+			setupResult.contains(CYPRESS_TEST_SERVER) && setupResult.contains(CYPRESS_TEST_TABLE));
 
 		try
 		{
@@ -638,10 +640,28 @@ public class CypressFormTestingIntegrationTest
 		String r1 = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, row1);
 		String r2 = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, row2);
 		assertTrue("First insert should succeed: " + r1, r1.contains("inserted"));
+		assertTrue("First insert should have correct message format: " + r1,
+			r1.equals("Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE));
 		assertTrue("Second insert should succeed: " + r2, r2.contains("inserted"));
 
 		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_MULTI_TEST");
 		assertTrue("Teardown should delete 2 rows: " + teardown, teardown.contains("deleted 2"));
+	}
+
+	@Test
+	public void testSetup_returnMessageFormat() throws Exception
+	{
+		ensureCypressTestTable();
+
+		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+		data.put("customerid", "FMTTEST");
+		data.put("shipcity", "CYPRESS_FORMAT_TEST");
+
+		String result = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
+		assertEquals("Return message should match exact format",
+			"Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE, result);
+
+		specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_FORMAT_TEST");
 	}
 
 	@Test
