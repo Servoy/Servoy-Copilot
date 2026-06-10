@@ -104,18 +104,16 @@ import com.servoy.j2db.util.xmlxport.TableDef;
  */
 @Creatable
 @McpServer(name = "servoy-dev")
-public class ServoyDevServer
-{
+public class ServoyDevServer {
 	private static final String DEFAULT_SOLUTION_NAME = "mcp_test_solution";
 
-	private static final String[] NG_PACKAGES = {
-		"12grid", "bootstrapcomponents", "fontawesome", "servoyextra"
-	};
+	private static final String[] NG_PACKAGES = { "12grid", "bootstrapcomponents", "fontawesome", "servoyextra" };
 
 	private static final long ACTIVATE_SETTLE_MS = 5000;
 
-	private static final int DEFAULT_ENCAPSULATION = PersistEncapsulation.HIDE_DATAPROVIDERS |
-		PersistEncapsulation.HIDE_ELEMENTS | PersistEncapsulation.HIDE_CONTAINERS | PersistEncapsulation.HIDE_FOUNDSET;
+	private static final int DEFAULT_ENCAPSULATION = PersistEncapsulation.HIDE_DATAPROVIDERS
+			| PersistEncapsulation.HIDE_ELEMENTS | PersistEncapsulation.HIDE_CONTAINERS
+			| PersistEncapsulation.HIDE_FOUNDSET;
 
 	private final ScriptContextService scriptContextService = new ScriptContextService();
 	private final ServoyScriptResolver scriptResolver = new ServoyScriptResolver();
@@ -127,61 +125,46 @@ public class ServoyDevServer
 	private final ServoySolutionService solutionService = new ServoySolutionService();
 	private final ServoyArtifactCreationService artifactService = new ServoyArtifactCreationService();
 
-
-	public ServoyDevServer()
-	{
+	public ServoyDevServer() {
 	}
 
 	@Tool(name = "ping", description = "Returns a simple pong response to verify the servoy-dev endpoint is alive.", type = "object")
-	public String ping()
-	{
+	public String ping() {
 		return "pong";
 	}
 
-	@Tool(name = "createTestSolution",
-		description = "Creates a minimal Servoy NG Client solution in the workspace for MCP tool testing. "
+	@Tool(name = "createTestSolution", description = "Creates a minimal Servoy NG Client solution in the workspace for MCP tool testing. "
 			+ "The solution includes a CSS-position form (testForm), a responsive form (testResponsiveForm), "
 			+ "a scope (testScope), and default theme/manifest media files. "
 			+ "Uses the existing resources project in the workspace. "
-			+ "Optionally activates the solution in Servoy Developer.",
-		type = "object")
+			+ "Optionally activates the solution in Servoy Developer.", type = "object")
 	public String createTestSolution(
-		@ToolParam(name = "solutionName",
-			description = "Name of the test solution to create. Defaults to '" + DEFAULT_SOLUTION_NAME + "'.",
-			required = false) String solutionName,
-		@ToolParam(name = "activate",
-			description = "Whether to activate the solution in Servoy Developer after creation. Default: true.",
-			required = false) String activate)
-	{
+			@ToolParam(name = "solutionName", description = "Name of the test solution to create. Defaults to '"
+					+ DEFAULT_SOLUTION_NAME + "'.", required = false) String solutionName,
+			@ToolParam(name = "activate", description = "Whether to activate the solution in Servoy Developer after creation. Default: true.", required = false) String activate) {
 		String name = Optional.ofNullable(solutionName).filter(s -> !s.isBlank()).orElse(DEFAULT_SOLUTION_NAME);
 		boolean doActivate = Optional.ofNullable(activate).map(Boolean::parseBoolean).orElse(true);
 
-		try
-		{
-			 // Check if solution already exists
-		    IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
-		    if (sol.exists())
-		    {
-		        if (doActivate)
-		        {
-		            doActivateSolution(name, true);
-		            return "Solution '" + name + "' already exists. Activated.";
-		        }
-		        return "Solution '" + name + "' already exists.";
-		    }
-			
+		try {
+			// Check if solution already exists
+			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
+			if (sol.exists()) {
+				if (doActivate) {
+					doActivateSolution(name, true);
+					return "Solution '" + name + "' already exists. Activated.";
+				}
+				return "Solution '" + name + "' already exists.";
+			}
+
 			createEclipseProjects(name);
 			createServoyArtifacts(name);
 
-			if (doActivate)
-			{
+			if (doActivate) {
 				doActivateSolution(name, true);
 				return "Created and activated test solution '" + name + "' in workspace.";
 			}
 			return "Created test solution '" + name + "' in workspace (not activated).";
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("createTestSolution failed", e);
 			return "Error creating test solution: " + e.getMessage();
 		}
@@ -191,28 +174,26 @@ public class ServoyDevServer
 	// Step 1: Create Eclipse projects + non-Servoy files
 	// -------------------------------------------------------------------------
 
-	private void createEclipseProjects(String solutionName) throws Exception
-	{
+	private void createEclipseProjects(String solutionName) throws Exception {
 		// Resolve resources project - same logic as NewSolutionWizard:
 		// 1. Use active resources project if available
 		// 2. Find existing project named "resources"
-		// 3. Create a new one with name "resources" (or "resources1", "resources2", ...)
+		// 3. Create a new one with name "resources" (or "resources1", "resources2",
+		// ...)
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		IProject resourcesProject = resolveOrCreateResourcesProject(model);
 
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 
-			if (!resourcesProject.isOpen()) resourcesProject.open(monitor);
+			if (!resourcesProject.isOpen())
+				resourcesProject.open(monitor);
 
 			// Solution project - natures + builders only, no Servoy structural files
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
-			if (!sol.exists())
-			{
+			if (!sol.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(solutionName);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
+				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+						"org.eclipse.dltk.javascript.core.nature" });
 				ICommand sc = d.newCommand();
 				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 				ICommand sb = d.newCommand();
@@ -221,19 +202,20 @@ public class ServoyDevServer
 				d.setReferencedProjects(new IProject[] { resourcesProject });
 				sol.create(d, monitor);
 			}
-			if (!sol.isOpen()) sol.open(monitor);
+			if (!sol.isOpen())
+				sol.open(monitor);
 
 			// .buildpath - not a Servoy structural file, safe to write directly
 			writeTextFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-				"<buildpath>\n" +
-				"\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n" +
-				"</buildpath>\n",
-				monitor);
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "<buildpath>\n"
+							+ "\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n"
+							+ "</buildpath>\n",
+					monitor);
 
 			// ng_web_packages/
 			IFolder ngFolder = sol.getFolder("ng_web_packages");
-			if (!ngFolder.exists()) ngFolder.create(true, true, monitor);
+			if (!ngFolder.exists())
+				ngFolder.create(true, true, monitor);
 			copyNgPackages(ngFolder, monitor);
 
 		}, new NullProgressMonitor());
@@ -242,20 +224,19 @@ public class ServoyDevServer
 		pumpEvents(1000);
 	}
 
-	private IProject resolveOrCreateResourcesProject(IDeveloperServoyModel model) throws Exception
-	{
+	private IProject resolveOrCreateResourcesProject(IDeveloperServoyModel model) throws Exception {
 		// 1. Use active resources project
 		com.servoy.eclipse.model.nature.ServoyResourcesProject activeRes = model.getActiveResourcesProject();
-		if (activeRes != null) return activeRes.getProject();
+		if (activeRes != null)
+			return activeRes.getProject();
 
 		// 2. Find any existing resources project
 		com.servoy.eclipse.model.nature.ServoyResourcesProject[] allRes = model.getResourceProjects();
-		if (allRes != null && allRes.length > 0)
-		{
+		if (allRes != null && allRes.length > 0) {
 			// prefer one named "resources"
-			for (com.servoy.eclipse.model.nature.ServoyResourcesProject r : allRes)
-			{
-				if ("resources".equals(r.getProject().getName())) return r.getProject();
+			for (com.servoy.eclipse.model.nature.ServoyResourcesProject r : allRes) {
+				if ("resources".equals(r.getProject().getName()))
+					return r.getProject();
 			}
 			return allRes[0].getProject();
 		}
@@ -263,13 +244,12 @@ public class ServoyDevServer
 		// 3. Create a new resources project
 		String resName = "resources";
 		int counter = 1;
-		while (ResourcesPlugin.getWorkspace().getRoot().getProject(resName).exists())
-		{
+		while (ResourcesPlugin.getWorkspace().getRoot().getProject(resName).exists()) {
 			resName = "resources" + counter++;
 		}
 		final String finalResName = resName;
 		IProject[] created = new IProject[1];
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(finalResName);
 			IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(finalResName);
 			res.create(d, monitor);
@@ -286,26 +266,21 @@ public class ServoyDevServer
 	// Step 2: Activate solution (shared implementation)
 	// -------------------------------------------------------------------------
 
-	private String doActivateSolution(String solutionName, boolean refreshAndWait)
-		throws InterruptedException
-	{
+	private String doActivateSolution(String solutionName, boolean refreshAndWait) throws InterruptedException {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
-		if (refreshAndWait)
-		{
+		if (refreshAndWait) {
 			model.refreshServoyProjects();
 			pumpEvents(1000);
 		}
 
 		ServoyProject project = model.getServoyProject(solutionName);
-		if (project == null)
-		{
+		if (project == null) {
 			return "Error: Solution '" + solutionName + "' not found in the workspace.";
 		}
 
 		ServoyProject activeProject = model.getActiveProject();
-		if (activeProject != null && activeProject.getProject().getName().equals(solutionName))
-		{
+		if (activeProject != null && activeProject.getProject().getName().equals(solutionName)) {
 			return "Solution '" + solutionName + "' is already the active solution.";
 		}
 
@@ -313,23 +288,20 @@ public class ServoyDevServer
 
 		model.setActiveProject(project, true);
 
-		if (refreshAndWait)
-		{
+		if (refreshAndWait) {
 			long activateEnd = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
 			Display display = Display.getDefault();
-			if (display != null && display.getThread() == Thread.currentThread())
-			{
+			if (display != null && display.getThread() == Thread.currentThread()) {
 				while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
 					display.readAndDispatch();
-			}
-			else
-			{
+			} else {
 				while (System.currentTimeMillis() < activateEnd && model.getActiveProject() == null)
 					Thread.sleep(200);
 			}
 		}
 
-		return "Solution '" + solutionName + "' activated successfully. Previous active solution: " + previousName + ".";
+		return "Solution '" + solutionName + "' activated successfully. Previous active solution: " + previousName
+				+ ".";
 	}
 
 	// -------------------------------------------------------------------------
@@ -337,35 +309,34 @@ public class ServoyDevServer
 	// -------------------------------------------------------------------------
 
 	@SuppressWarnings("restriction")
-	private void createServoyArtifacts(String solutionName) throws RepositoryException
-	{
+	private void createServoyArtifacts(String solutionName) throws RepositoryException {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject servoyProject = model.getServoyProject(solutionName);
-		if (servoyProject == null)
-		{
+		if (servoyProject == null) {
 			throw new RepositoryException("ServoyProject not found: " + solutionName);
 		}
 
-		// Create the Solution root object via EclipseRepository - this writes rootmetadata.obj + solution_settings.obj
-		com.servoy.eclipse.model.repository.EclipseRepository repository =
-			(com.servoy.eclipse.model.repository.EclipseRepository)com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getDeveloperRepository();
+		// Create the Solution root object via EclipseRepository - this writes
+		// rootmetadata.obj + solution_settings.obj
+		com.servoy.eclipse.model.repository.EclipseRepository repository = (com.servoy.eclipse.model.repository.EclipseRepository) com.servoy.j2db.server.shared.ApplicationServerRegistry
+				.get().getDeveloperRepository();
 
-		Solution solution = (Solution)repository.createNewRootObject(solutionName, IRepository.SOLUTIONS, UUID.randomUUID());
+		Solution solution = (Solution) repository.createNewRootObject(solutionName, IRepository.SOLUTIONS,
+				UUID.randomUUID());
 		solution.setSolutionType(SolutionMetaData.NG_CLIENT_ONLY);
 		solution.setVersion("1.0");
-		// Note: updateRootObject will be called once at the end after all artifacts are created
+		// Note: updateRootObject will be called once at the end after all artifacts are
+		// created
 
 		// Reload editing solution from the newly created root object
 		model.refreshServoyProjects();
 		servoyProject = model.getServoyProject(solutionName);
-		if (servoyProject == null)
-		{
+		if (servoyProject == null) {
 			throw new RepositoryException("ServoyProject not found after refresh: " + solutionName);
 		}
 
 		solution = servoyProject.getEditingSolution();
-		if (solution == null)
-		{
+		if (solution == null) {
 			throw new RepositoryException("Editing solution not available for: " + solutionName);
 		}
 
@@ -376,7 +347,8 @@ public class ServoyDevServer
 		solutionLess.setMimeType("text/css");
 		solutionLess.setPermMediaData(ThemeResourceLoader.getDefaultSolutionLess());
 
-		Media solutionPropsLess = solution.createNewMedia(scriptValidator, ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
+		Media solutionPropsLess = solution.createNewMedia(scriptValidator,
+				ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
 		solutionPropsLess.setMimeType("text/css");
 		solutionPropsLess.setPermMediaData(ThemeResourceLoader.getCustomProperties());
 
@@ -388,14 +360,11 @@ public class ServoyDevServer
 		manifestJson.setMimeType("text/css");
 		manifestJson.setPermMediaData(CreateMediaWebAppManifest.createManifest(solutionName));
 
-		try
-		{
+		try {
 			Media webappIcon = solution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.ICON_NAME);
 			webappIcon.setMimeType("image/png");
 			webappIcon.setPermMediaData(CreateMediaWebAppManifest.getIcon());
-		}
-		catch (IOException e)
-		{
+		} catch (IOException e) {
 			ServoyLog.logWarning("createTestSolution: could not load webapp icon", e);
 		}
 
@@ -413,12 +382,12 @@ public class ServoyDevServer
 		cssForm.setEncapsulation(DEFAULT_ENCAPSULATION);
 
 		ScriptMethod cssOnLoad = cssForm.createNewScriptMethod(formValidator, "onLoad");
-		cssOnLoad.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration(
-			"onLoad", "// form loaded", null));
+		cssOnLoad
+				.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("onLoad", "// form loaded", null));
 
 		ScriptMethod testMethod = cssForm.createNewScriptMethod(formValidator, "testMethod");
-		testMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration(
-			"testMethod", "return 'processed: ' + input;", null));
+		testMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("testMethod",
+				"return 'processed: ' + input;", null));
 
 		// --- Responsive form ---
 		Form responsiveForm = solution.createNewForm(formValidator, null, "testResponsiveForm", null, true, null);
@@ -427,17 +396,18 @@ public class ServoyDevServer
 		responsiveForm.setEncapsulation(DEFAULT_ENCAPSULATION);
 
 		ScriptMethod responsiveOnLoad = responsiveForm.createNewScriptMethod(formValidator, "onLoad");
-		responsiveOnLoad.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration(
-			"onLoad", "// responsive form loaded", null));
+		responsiveOnLoad.setDeclaration(
+				MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("onLoad", "// responsive form loaded", null));
 
 		// --- Scope (testScope) ---
 		ScriptMethod helperMethod = solution.createNewGlobalScriptMethod(formValidator, "testScope", "helperMethod");
-		helperMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration(
-			"helperMethod", "return value ? value.trim() : '';", null));
+		helperMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("helperMethod",
+				"return value ? value.trim() : '';", null));
 
-		ScriptMethod testScopeMethod = solution.createNewGlobalScriptMethod(formValidator, "testScope", "testScopeMethod");
-		testScopeMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration(
-			"testScopeMethod", "return true;", null));
+		ScriptMethod testScopeMethod = solution.createNewGlobalScriptMethod(formValidator, "testScope",
+				"testScopeMethod");
+		testScopeMethod.setDeclaration(
+				MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("testScopeMethod", "return true;", null));
 
 		// Set firstFormID
 		solution.setFirstFormID(cssForm.getUUID().toString());
@@ -461,61 +431,48 @@ public class ServoyDevServer
 	// Helpers
 	// -------------------------------------------------------------------------
 
-	private void pumpEvents(long ms) throws InterruptedException
-	{
+	private void pumpEvents(long ms) throws InterruptedException {
 		Display display = Display.getDefault();
 		long end = System.currentTimeMillis() + ms;
-		if (display != null && display.getThread() == Thread.currentThread())
-		{
+		if (display != null && display.getThread() == Thread.currentThread()) {
 			while (System.currentTimeMillis() < end)
 				display.readAndDispatch();
-		}
-		else
-		{
+		} else {
 			Thread.sleep(ms);
 		}
 	}
 
 	private void copyNgPackages(IFolder ngFolder, org.eclipse.core.runtime.IProgressMonitor monitor)
-		throws CoreException
-	{
-		// Read directly from wizardpackages/ on disk - the source of truth populated at Servoy Developer startup.
-		File wizardPackagesDir = new File(
-			com.servoy.eclipse.ui.Activator.getDefault().getStateLocation().toFile(), "wizardpackages");
+			throws CoreException {
+		// Read directly from wizardpackages/ on disk - the source of truth populated at
+		// Servoy Developer startup.
+		File wizardPackagesDir = new File(com.servoy.eclipse.ui.Activator.getDefault().getStateLocation().toFile(),
+				"wizardpackages");
 
-		if (!wizardPackagesDir.exists())
-		{
+		if (!wizardPackagesDir.exists()) {
 			ServoyLog.logWarning("createTestSolution: wizardpackages folder not found at " + wizardPackagesDir, null);
 			return;
 		}
 
-		for (String name : NG_PACKAGES)
-		{
+		for (String name : NG_PACKAGES) {
 			File packageFile = null;
-			for (File f : wizardPackagesDir.listFiles())
-			{
-				if (f.isFile() && f.getName().startsWith(name + "_"))
-				{
+			for (File f : wizardPackagesDir.listFiles()) {
+				if (f.isFile() && f.getName().startsWith(name + "_")) {
 					packageFile = f;
 					break;
 				}
 			}
 
-			if (packageFile == null)
-			{
+			if (packageFile == null) {
 				ServoyLog.logWarning("createTestSolution: package not found in wizardpackages: " + name, null);
 				continue;
 			}
 
 			IFile destFile = ngFolder.getFile(name + ".zip");
-			if (!destFile.exists())
-			{
-				try (InputStream is = new FileInputStream(packageFile))
-				{
+			if (!destFile.exists()) {
+				try (InputStream is = new FileInputStream(packageFile)) {
 					destFile.create(is, true, monitor);
-				}
-				catch (IOException e)
-				{
+				} catch (IOException e) {
 					ServoyLog.logError("createTestSolution: failed to copy " + name + ".zip", e);
 				}
 			}
@@ -523,16 +480,12 @@ public class ServoyDevServer
 	}
 
 	private void writeTextFile(IProject project, String relativePath, String content,
-		org.eclipse.core.runtime.IProgressMonitor monitor) throws CoreException
-	{
+			org.eclipse.core.runtime.IProgressMonitor monitor) throws CoreException {
 		IFile file = project.getFile(relativePath);
 		byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-		if (file.exists())
-		{
+		if (file.exists()) {
 			file.setContents(new ByteArrayInputStream(bytes), true, false, monitor);
-		}
-		else
-		{
+		} else {
 			file.create(new ByteArrayInputStream(bytes), true, monitor);
 		}
 	}
@@ -541,28 +494,23 @@ public class ServoyDevServer
 	// syncDbiWithDatabase tool
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "syncDbiWithDatabase",
-		description = "Synchronizes the database schema with .dbi file definitions for a given server. Creates tables that exist in .dbi files but not in the DB, reports tables that exist in the DB but have no .dbi file, and for existing tables syncs columns (add/remove/update) to match the .dbi definitions. Call after git pulls or .dbi file changes to keep the database in sync.",
-		type = "object")
+	@Tool(name = "syncDbiWithDatabase", description = "Synchronizes the database schema with .dbi file definitions for a given server. Creates tables that exist in .dbi files but not in the DB, reports tables that exist in the DB but have no .dbi file, and for existing tables syncs columns (add/remove/update) to match the .dbi definitions. Call after git pulls or .dbi file changes to keep the database in sync.", type = "object")
 	public String syncDbiWithDatabase(
-		@ToolParam(name = "serverName", description = "Name of the database server to synchronize.", required = true) String serverName,
-		@ToolParam(name = "tableName", description = "Optional table name to sync only a specific table. If not specified, syncs all tables.", required = false) String tableName)
-	{
-		if (serverName == null || serverName.isBlank())
-		{
+			@ToolParam(name = "serverName", description = "Name of the database server to synchronize.", required = true) String serverName,
+			@ToolParam(name = "tableName", description = "Optional table name to sync only a specific table. If not specified, syncs all tables.", required = false) String tableName) {
+		if (serverName == null || serverName.isBlank()) {
 			return "{\"errors\":[\"serverName is required\"]}";
 		}
 		String filterTableName = (tableName != null && !tableName.isBlank()) ? tableName : null;
 
-		IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
-		if (server == null)
-		{
+		IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+				.getServer(serverName, false, false);
+		if (server == null) {
 			return "{\"errors\":[\"Server not found: " + escapeJson(serverName) + "\"]}";
 		}
 
 		DataModelManager dmm = ServoyModelManager.getServoyModelManager().getServoyModel().getDataModelManager();
-		if (dmm == null)
-		{
+		if (dmm == null) {
 			return "{\"errors\":[\"DataModelManager not available\"]}";
 		}
 
@@ -571,21 +519,16 @@ public class ServoyDevServer
 		List<Map<String, Object>> tablesModified = new ArrayList<>();
 		List<String> errors = new ArrayList<>();
 
-		try
-		{
+		try {
 			dmm.setWritesEnabled(false);
 
 			syncMissingTables(server, dmm, filterTableName, tablesCreated, errors);
 			findOrphanTables(server, dmm, filterTableName, orphanTables);
 			syncExistingTableColumns(server, dmm, filterTableName, tablesModified, errors);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			errors.add("Unexpected error: " + e.getMessage());
 			ServoyLog.logError("syncDbiWithDatabase failed", e);
-		}
-		finally
-		{
+		} finally {
 			dmm.setWritesEnabled(true);
 		}
 
@@ -599,137 +542,129 @@ public class ServoyDevServer
 	}
 
 	private void syncMissingTables(IServerInternal server, DataModelManager dmm, String filterTableName,
-		List<String> tablesCreated, List<String> errors)
-	{
-		try
-		{
+			List<String> tablesCreated, List<String> errors) {
+		try {
 			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
-			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+			if (serverInfoFolder == null || !serverInfoFolder.exists())
+				return;
 
 			Collection<String> existingTables = server.getTableAndViewNames(true);
 			List<String> newTableNames = new ArrayList<>();
 
-			serverInfoFolder.accept((IResourceVisitor)resource -> {
-				if (resource.getType() != IResource.FILE) return true;
+			serverInfoFolder.accept((IResourceVisitor) resource -> {
+				if (resource.getType() != IResource.FILE)
+					return true;
 				String fileName = resource.getName();
-				if (!fileName.endsWith(DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT)) return true;
+				if (!fileName.endsWith(DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT))
+					return true;
 
-				String tName = fileName.substring(0, fileName.length() - DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT.length());
+				String tName = fileName.substring(0,
+						fileName.length() - DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT.length());
 
-				if (filterTableName != null && !filterTableName.equals(tName)) return true;
-				if (tName.startsWith(DataModelManager.TEMP_UPPERCASE_PREFIX)) return true;
-				if (!tName.equals(tName.toLowerCase())) return true;
-				if (existingTables.contains(tName)) return true;
+				if (filterTableName != null && !filterTableName.equals(tName))
+					return true;
+				if (tName.startsWith(DataModelManager.TEMP_UPPERCASE_PREFIX))
+					return true;
+				if (!tName.equals(tName.toLowerCase()))
+					return true;
+				if (existingTables.contains(tName))
+					return true;
 
-				try
-				{
+				try {
 					IFile dbiFile = dmm.getDBIFile(server.getName(), tName);
-					if (dbiFile == null || !dbiFile.exists()) return true;
+					if (dbiFile == null || !dbiFile.exists())
+						return true;
 
 					String dbiContent;
-					try (InputStream is = dbiFile.getContents())
-					{
+					try (InputStream is = dbiFile.getContents()) {
 						dbiContent = Utils.getTXTFileContent(is, Charset.forName("UTF8"));
 					}
 
-					if (dbiContent != null && !dbiContent.isBlank())
-					{
-						EclipseDatabaseUtils.createNewTableFromColumnInfo(server, tName, dbiContent, EclipseDatabaseUtils.UPDATE_NOW, false);
+					if (dbiContent != null && !dbiContent.isBlank()) {
+						EclipseDatabaseUtils.createNewTableFromColumnInfo(server, tName, dbiContent,
+								EclipseDatabaseUtils.UPDATE_NOW, false);
 						newTableNames.add(tName);
 						tablesCreated.add(tName);
 					}
-				}
-				catch (Exception e)
-				{
+				} catch (Exception e) {
 					errors.add("Failed to create table '" + tName + "': " + e.getMessage());
 					ServoyLog.logWarning("syncDbiWithDatabase: failed to create table " + tName, e);
 				}
 				return true;
 			}, IResource.DEPTH_ONE, IResource.NONE);
 
-			if (!newTableNames.isEmpty())
-			{
+			if (!newTableNames.isEmpty()) {
 				TableChangeHandler.getInstance().fireTablesAdded(server, newTableNames.toArray(new String[0]));
 			}
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			errors.add("Phase 1 error: " + e.getMessage());
 			ServoyLog.logError("syncDbiWithDatabase phase 1 failed", e);
 		}
 	}
 
 	private void findOrphanTables(IServerInternal server, DataModelManager dmm, String filterTableName,
-		List<String> orphanTables)
-	{
-		try
-		{
+			List<String> orphanTables) {
+		try {
 			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
-			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+			if (serverInfoFolder == null || !serverInfoFolder.exists())
+				return;
 
 			Collection<String> existingTables = server.getTableAndViewNames(true);
-			for (String tName : existingTables)
-			{
-				if (filterTableName != null && !filterTableName.equals(tName)) continue;
+			for (String tName : existingTables) {
+				if (filterTableName != null && !filterTableName.equals(tName))
+					continue;
 				IFile dbiFile = serverInfoFolder.getFile(tName + DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT);
-				if (!dbiFile.exists())
-				{
+				if (!dbiFile.exists()) {
 					orphanTables.add(tName);
 				}
 			}
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logWarning("syncDbiWithDatabase: findOrphanTables failed", e);
 		}
 	}
 
 	private void syncExistingTableColumns(IServerInternal server, DataModelManager dmm, String filterTableName,
-		List<Map<String, Object>> tablesModified, List<String> errors)
-	{
-		try
-		{
+			List<Map<String, Object>> tablesModified, List<String> errors) {
+		try {
 			Collection<String> existingTables = server.getTableAndViewNames(true);
 			IFolder serverInfoFolder = dmm.getServerInformationFolder(server.getName());
-			if (serverInfoFolder == null || !serverInfoFolder.exists()) return;
+			if (serverInfoFolder == null || !serverInfoFolder.exists())
+				return;
 
-			for (String tName : existingTables)
-			{
-				if (filterTableName != null && !filterTableName.equals(tName)) continue;
+			for (String tName : existingTables) {
+				if (filterTableName != null && !filterTableName.equals(tName))
+					continue;
 
 				IFile dbiFile = serverInfoFolder.getFile(tName + DataModelManager.COLUMN_INFO_FILE_EXTENSION_WITH_DOT);
-				if (!dbiFile.exists()) continue;
+				if (!dbiFile.exists())
+					continue;
 
-				try
-				{
+				try {
 					String dbiContent;
-					try (InputStream is = dbiFile.getContents())
-					{
+					try (InputStream is = dbiFile.getContents()) {
 						dbiContent = Utils.getTXTFileContent(is, Charset.forName("UTF8"));
 					}
-					if (dbiContent == null || dbiContent.isBlank()) continue;
+					if (dbiContent == null || dbiContent.isBlank())
+						continue;
 
 					TableDef tableDef = DatabaseUtils.deserializeTableInfo(dbiContent);
-					if (tableDef == null) continue;
+					if (tableDef == null)
+						continue;
 
 					ITable table = server.getTable(tName);
-					if (table == null) continue;
+					if (table == null)
+						continue;
 
 					Map<String, Object> tableInfo = syncTableColumns(server, dmm, table, tableDef, errors);
-					if (tableInfo != null)
-					{
+					if (tableInfo != null) {
 						tablesModified.add(tableInfo);
 					}
-				}
-				catch (Exception e)
-				{
+				} catch (Exception e) {
 					errors.add("Failed to sync columns for '" + tName + "': " + e.getMessage());
 					ServoyLog.logWarning("syncDbiWithDatabase: failed to sync " + tName, e);
 				}
 			}
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			errors.add("Phase 3 error: " + e.getMessage());
 			ServoyLog.logError("syncDbiWithDatabase phase 3 failed", e);
 		}
@@ -737,65 +672,54 @@ public class ServoyDevServer
 
 	@SuppressWarnings("restriction")
 	private Map<String, Object> syncTableColumns(IServerInternal server, DataModelManager dmm, ITable table,
-		TableDef tableDef, List<String> errors)
-	{
+			TableDef tableDef, List<String> errors) {
 		List<String> columnsAdded = new ArrayList<>();
 		List<String> columnsRemoved = new ArrayList<>();
 		List<String> columnsUpdated = new ArrayList<>();
 		IValidateName validator = createLenientValidator();
 
-		try
-		{
+		try {
 			Map<String, Column> existingColumns = new HashMap<>();
-			for (Column col : table.getColumns())
-			{
+			for (Column col : table.getColumns()) {
 				existingColumns.put(col.getName(), col);
 			}
 
 			Map<String, ColumnInfoDef> dbiColumns = new HashMap<>();
-			if (tableDef.columnInfoDefSet != null)
-			{
-				for (ColumnInfoDef cid : tableDef.columnInfoDefSet)
-				{
+			if (tableDef.columnInfoDefSet != null) {
+				for (ColumnInfoDef cid : tableDef.columnInfoDefSet) {
 					dbiColumns.put(cid.name, cid);
 				}
 			}
 
-			for (Map.Entry<String, ColumnInfoDef> entry : dbiColumns.entrySet())
-			{
+			for (Map.Entry<String, ColumnInfoDef> entry : dbiColumns.entrySet()) {
 				String colName = entry.getKey();
 				ColumnInfoDef cid = entry.getValue();
 				Column existingCol = existingColumns.get(colName);
 
-				if (existingCol == null)
-				{
+				if (existingCol == null) {
 					Column newCol = table.createNewColumn(validator, cid.name, cid.columnType);
-					if (newCol != null)
-					{
-						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0) newCol.setDatabasePK(true);
+					if (newCol != null) {
+						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0)
+							newCol.setDatabasePK(true);
 						newCol.setFlags(cid.flags);
 						newCol.setAllowNull(cid.allowNull);
 						int seqType = cid.autoEnterSubType;
-						if (seqType > 0 && !server.supportsSequenceType(seqType, null))
-						{
+						if (seqType > 0 && !server.supportsSequenceType(seqType, null)) {
 							seqType = ColumnInfo.SERVOY_SEQUENCE;
 						}
 						newCol.setSequenceType(seqType);
 						columnsAdded.add(colName);
 					}
-				}
-				else if (!Column.isColumnInfoCompatible(existingCol.getColumnType(), cid.columnType, true))
-				{
+				} else if (!Column.isColumnInfoCompatible(existingCol.getColumnType(), cid.columnType, true)) {
 					table.removeColumn(existingCol);
 					Column newCol = table.createNewColumn(validator, cid.name, cid.columnType);
-					if (newCol != null)
-					{
-						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0) newCol.setDatabasePK(true);
+					if (newCol != null) {
+						if ((cid.flags & IBaseColumn.PK_COLUMN) != 0)
+							newCol.setDatabasePK(true);
 						newCol.setFlags(cid.flags);
 						newCol.setAllowNull(cid.allowNull);
 						int seqType = cid.autoEnterSubType;
-						if (seqType > 0 && !server.supportsSequenceType(seqType, null))
-						{
+						if (seqType > 0 && !server.supportsSequenceType(seqType, null)) {
 							seqType = ColumnInfo.SERVOY_SEQUENCE;
 						}
 						newCol.setSequenceType(seqType);
@@ -804,17 +728,14 @@ public class ServoyDevServer
 				}
 			}
 
-			for (Map.Entry<String, Column> entry : existingColumns.entrySet())
-			{
-				if (!dbiColumns.containsKey(entry.getKey()))
-				{
+			for (Map.Entry<String, Column> entry : existingColumns.entrySet()) {
+				if (!dbiColumns.containsKey(entry.getKey())) {
 					table.removeColumn(entry.getValue());
 					columnsRemoved.add(entry.getKey());
 				}
 			}
 
-			if (!columnsAdded.isEmpty() || !columnsRemoved.isEmpty() || !columnsUpdated.isEmpty())
-			{
+			if (!columnsAdded.isEmpty() || !columnsRemoved.isEmpty() || !columnsUpdated.isEmpty()) {
 				server.syncTableObjWithDB(table, false, true);
 				dmm.loadAllColumnInfo(table);
 
@@ -825,40 +746,34 @@ public class ServoyDevServer
 				result.put("columnsUpdated", columnsUpdated);
 				return result;
 			}
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			errors.add("Error syncing columns for '" + table.getName() + "': " + e.getMessage());
 			ServoyLog.logWarning("syncDbiWithDatabase: syncTableColumns failed for " + table.getName(), e);
 		}
 		return null;
 	}
 
-	private IValidateName createLenientValidator()
-	{
-		return new IValidateName()
-		{
+	private IValidateName createLenientValidator() {
+		return new IValidateName() {
 			@Override
-			public void checkName(String nameToCheck, UUID skip_element_uuid, ValidatorSearchContext searchContext, boolean sqlRelated) throws RepositoryException
-			{
-				try
-				{
+			public void checkName(String nameToCheck, UUID skip_element_uuid, ValidatorSearchContext searchContext,
+					boolean sqlRelated) throws RepositoryException {
+				try {
 					new ScriptNameValidator().checkName(nameToCheck, skip_element_uuid, searchContext, sqlRelated);
-				}
-				catch (RepositoryException e)
-				{
-					ServoyLog.logWarning("syncDbiWithDatabase: name validation warning for '" + nameToCheck + "': " + e.getMessage(), null);
+				} catch (RepositoryException e) {
+					ServoyLog.logWarning(
+							"syncDbiWithDatabase: name validation warning for '" + nameToCheck + "': " + e.getMessage(),
+							null);
 				}
 			}
 		};
 	}
 
-	private String toJsonArray(List<String> list)
-	{
+	private String toJsonArray(List<String> list) {
 		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < list.size(); i++)
-		{
-			if (i > 0) sb.append(",");
+		for (int i = 0; i < list.size(); i++) {
+			if (i > 0)
+				sb.append(",");
 			sb.append("\"").append(escapeJson(list.get(i))).append("\"");
 		}
 		sb.append("]");
@@ -866,56 +781,48 @@ public class ServoyDevServer
 	}
 
 	@SuppressWarnings("unchecked")
-	private String toJsonModifiedArray(List<Map<String, Object>> list)
-	{
+	private String toJsonModifiedArray(List<Map<String, Object>> list) {
 		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < list.size(); i++)
-		{
-			if (i > 0) sb.append(",");
+		for (int i = 0; i < list.size(); i++) {
+			if (i > 0)
+				sb.append(",");
 			Map<String, Object> entry = list.get(i);
-			sb.append("{\"name\":\"").append(escapeJson((String)entry.get("name"))).append("\"");
-			sb.append(",\"columnsAdded\":").append(toJsonArray((List<String>)entry.get("columnsAdded")));
-			sb.append(",\"columnsRemoved\":").append(toJsonArray((List<String>)entry.get("columnsRemoved")));
-			sb.append(",\"columnsUpdated\":").append(toJsonArray((List<String>)entry.get("columnsUpdated")));
+			sb.append("{\"name\":\"").append(escapeJson((String) entry.get("name"))).append("\"");
+			sb.append(",\"columnsAdded\":").append(toJsonArray((List<String>) entry.get("columnsAdded")));
+			sb.append(",\"columnsRemoved\":").append(toJsonArray((List<String>) entry.get("columnsRemoved")));
+			sb.append(",\"columnsUpdated\":").append(toJsonArray((List<String>) entry.get("columnsUpdated")));
 			sb.append("}");
 		}
 		sb.append("]");
 		return sb.toString();
 	}
 
-	private String escapeJson(String s)
-	{
-		if (s == null) return "";
-		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+	private String escapeJson(String s) {
+		if (s == null)
+			return "";
+		return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t",
+				"\\t");
 	}
-
 
 	// -------------------------------------------------------------------------
 	// getTarget / setTarget MCP tools
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "getTarget",
-		description = "Returns the currently active Servoy solution (target) in the Developer IDE. "
-			+ "Also lists all available solutions in the workspace.",
-		type = "object")
-	public String getTarget()
-	{
+	@Tool(name = "getTarget", description = "Returns the currently active Servoy solution (target) in the Developer IDE. "
+			+ "Also lists all available solutions in the workspace.", type = "object")
+	public String getTarget() {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject activeProject = model.getActiveProject();
 
 		StringBuilder sb = new StringBuilder();
-		if (activeProject != null)
-		{
+		if (activeProject != null) {
 			sb.append("Active solution: ").append(activeProject.getProject().getName()).append("\n");
-		}
-		else
-		{
+		} else {
 			sb.append("No active solution.\n");
 		}
 
 		ServoyProject[] allProjects = model.getServoyProjects();
-		if (allProjects != null && allProjects.length > 0)
-		{
+		if (allProjects != null && allProjects.length > 0) {
 			sb.append("\nAvailable solutions:\n");
 			for (ServoyProject p : allProjects)
 				sb.append("- ").append(p.getProject().getName()).append("\n");
@@ -924,13 +831,10 @@ public class ServoyDevServer
 		return sb.toString();
 	}
 
-	@Tool(name = "setTarget",
-		description = "Sets the active Servoy solution (target) in the Developer IDE. "
-			+ "Equivalent to activateSolution â loads the solution and its modules, and triggers a workspace build.",
-		type = "object")
+	@Tool(name = "setTarget", description = "Sets the active Servoy solution (target) in the Developer IDE. "
+			+ "Equivalent to activateSolution â loads the solution and its modules, and triggers a workspace build.", type = "object")
 	public String setTarget(
-		@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName)
-	{
+			@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName) {
 		return activateSolution(solutionName);
 	}
 
@@ -938,42 +842,32 @@ public class ServoyDevServer
 	// activateSolution MCP tool
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "activateSolution",
-		description = "Activates a Servoy solution as the active solution in the Developer IDE. "
-			+ "This loads the solution and its modules, and triggers a workspace build.",
-		type = "object")
+	@Tool(name = "activateSolution", description = "Activates a Servoy solution as the active solution in the Developer IDE. "
+			+ "This loads the solution and its modules, and triggers a workspace build.", type = "object")
 	public String activateSolution(
-		@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName)
-	{
-		try
-		{
+			@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName) {
+		try {
 			return doActivateSolution(solutionName, false);
-		}
-		catch (InterruptedException e)
-		{
+		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			return "Error: activation interrupted.";
 		}
 	}
 
-
 	// -------------------------------------------------------------------------
 	// resolveIdentifierType MCP tool
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "resolveIdentifierType",
-		description = "Resolves the type of an identifier in a Servoy JavaScript file. "
+	@Tool(name = "resolveIdentifierType", description = "Resolves the type of an identifier in a Servoy JavaScript file. "
 			+ "Uses DLTK type inference to determine the Servoy type: foundset, JSForm, application, databaseManager, "
 			+ "plugins.*, RuntimeWebComponent<name>, WebService<name>, or user-defined function. "
 			+ "Returns type name, source (local variable / Servoy API / method declaration), parameters for functions, "
 			+ "and JSDoc @type annotation if available. "
-			+ "Accepts a form name, scope name, or project-relative path.",
-		type = "object")
+			+ "Accepts a form name, scope name, or project-relative path.", type = "object")
 	public String resolveIdentifierType(
-		@ToolParam(name = "identifier", description = "Identifier name to resolve (e.g. 'foundset', 'databaseManager', 'myVar')", required = true) String identifier,
-		@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
-		@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName)
-	{
+			@ToolParam(name = "identifier", description = "Identifier name to resolve (e.g. 'foundset', 'databaseManager', 'myVar')", required = true) String identifier,
+			@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
+			@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName) {
 		IFile file = scriptResolver.resolveScript(name, moduleName);
 		if (file == null)
 			return scriptResolver.buildNotFoundMessage(name, moduleName);
@@ -985,43 +879,54 @@ public class ServoyDevServer
 	// renamePersist MCP tool
 	// -------------------------------------------------------------------------
 
-	private final com.servoy.eclipse.developer.mcp.services.PersistRenameService persistRenameService =
-		new com.servoy.eclipse.developer.mcp.services.PersistRenameService();
+	private final com.servoy.eclipse.developer.mcp.services.PersistRenameService persistRenameService = new com.servoy.eclipse.developer.mcp.services.PersistRenameService();
 
-	@Tool(name = "renamePersist",
-		description = "Renames a Servoy persist (form, relation, valuelist, scope, media, menu, or solution). "
+	@Tool(name = "renamePersist", description = "Renames a Servoy persist (form, relation, valuelist, scope, media, menu, or solution). "
 			+ "Validates the new name, checks for duplicates, and updates all references. "
-			+ "For solutions, also moves the Eclipse project and updates module references in other solutions.",
-		type = "object")
+			+ "For solutions, also moves the Eclipse project and updates module references in other solutions.", type = "object")
 	public String renamePersist(
-		@ToolParam(name = "persistType", description = "Type of persist to rename: 'form', 'relation', 'valuelist', 'scope', 'media', 'menu', 'solution'.", required = true) String persistType,
-		@ToolParam(name = "oldName", description = "Current name of the persist to rename.", required = true) String oldName,
-		@ToolParam(name = "newName", description = "Desired new name for the persist.", required = true) String newName,
-		@ToolParam(name = "solutionName", description = "Solution to search in. If omitted, uses the active solution. Not used for 'solution' type.", required = false) String solutionName)
-	{
+			@ToolParam(name = "persistType", description = "Type of persist to rename: 'form', 'relation', 'valuelist', 'scope', 'media', 'menu', 'solution'.", required = true) String persistType,
+			@ToolParam(name = "oldName", description = "Current name of the persist to rename.", required = true) String oldName,
+			@ToolParam(name = "newName", description = "Desired new name for the persist.", required = true) String newName,
+			@ToolParam(name = "solutionName", description = "Solution to search in. If omitted, uses the active solution. Not used for 'solution' type.", required = false) String solutionName) {
 		return persistRenameService.renamePersist(persistType, oldName, newName, solutionName);
 	}
 
 	// -------------------------------------------------------------------------
-	// SVY-21083: createSolution MCP tool - creates a new Servoy solution like the wizard
+	// SVY-21138: duplicatePersist MCP tool
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "createSolution",
-		description = "Creates a new Servoy solution or module in the workspace, similar to the New Solution wizard. "
+	private final com.servoy.eclipse.developer.mcp.services.PersistDuplicateService persistDuplicateService = new com.servoy.eclipse.developer.mcp.services.PersistDuplicateService();
+
+	@Tool(name = "duplicatePersist", description = "Duplicates a Servoy persist (form, relation, valuelist, or media) "
+			+ "creating a copy with a new name. Optionally places the copy in a different solution/module. "
+			+ "For forms, also copies associated .less and .sec files and relinks event handlers.", type = "object")
+	public String duplicatePersist(
+			@ToolParam(name = "persistType", description = "Type of persist to duplicate: 'form', 'relation', 'valuelist', 'media'.", required = true) String persistType,
+			@ToolParam(name = "name", description = "Name of the existing persist to duplicate.", required = true) String name,
+			@ToolParam(name = "newName", description = "Name for the duplicated persist. If omitted, defaults to '<name>_copy' (or '<name>_copy2', etc. if that exists).", required = false) String newName,
+			@ToolParam(name = "solutionName", description = "Solution containing the source persist. If omitted, uses the active solution.", required = false) String solutionName,
+			@ToolParam(name = "destinationSolution", description = "Target solution for the duplicate. If omitted, uses the same solution as the source.", required = false) String destinationSolution) {
+		return persistDuplicateService.duplicatePersist(persistType, name, newName, solutionName, destinationSolution);
+	}
+
+	// -------------------------------------------------------------------------
+	// SVY-21083: createSolution MCP tool - creates a new Servoy solution like the
+	// wizard
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "createSolution", description = "Creates a new Servoy solution or module in the workspace, similar to the New Solution wizard. "
 			+ "Creates the Eclipse project with Servoy natures, a resources project reference, "
 			+ "default theme (.less), web app manifest, and optionally activates the solution. "
 			+ "When creating a module, use addToSolution to attach it to a parent solution. "
-			+ "Unlike createTestSolution, this creates a clean empty solution without test forms or scopes.",
-		type = "object")
+			+ "Unlike createTestSolution, this creates a clean empty solution without test forms or scopes.", type = "object")
 	public String createSolution(
-		@ToolParam(name = "solutionName", description = "Name of the solution to create (e.g. 'my_app', 'customer_portal')", required = true) String solutionName,
-		@ToolParam(name = "solutionType", description = "Solution type: 'ng_client' (default), 'ng_module', 'service', 'pre_import_hook', 'post_import_hook', 'module'. Maps to SolutionMetaData constants.", required = false) String solutionType,
-		@ToolParam(name = "activate", description = "Whether to activate the solution after creation. Default: true.", required = false) String activate,
-		@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme,
-		@ToolParam(name = "addToSolution", description = "Parent solution name to add this module to. Only applicable when solutionType is 'module' or 'ng_module'. The module will be added to the parent solution's modules list.", required = false) String addToSolution)
-	{
-		if (solutionName == null || solutionName.isBlank())
-		{
+			@ToolParam(name = "solutionName", description = "Name of the solution to create (e.g. 'my_app', 'customer_portal')", required = true) String solutionName,
+			@ToolParam(name = "solutionType", description = "Solution type: 'ng_client' (default), 'ng_module', 'service', 'pre_import_hook', 'post_import_hook', 'module'. Maps to SolutionMetaData constants.", required = false) String solutionType,
+			@ToolParam(name = "activate", description = "Whether to activate the solution after creation. Default: true.", required = false) String activate,
+			@ToolParam(name = "addDefaultTheme", description = "Whether to add the default .less theme file. Default: true.", required = false) String addDefaultTheme,
+			@ToolParam(name = "addToSolution", description = "Parent solution name to add this module to. Only applicable when solutionType is 'module' or 'ng_module'. The module will be added to the parent solution's modules list.", required = false) String addToSolution) {
+		if (solutionName == null || solutionName.isBlank()) {
 			return "Error: solutionName is required.";
 		}
 
@@ -1029,13 +934,10 @@ public class ServoyDevServer
 		boolean doAddTheme = Optional.ofNullable(addDefaultTheme).map(Boolean::parseBoolean).orElse(true);
 		int type = parseSolutionType(solutionType);
 
-		try
-		{
+		try {
 			IProject existing = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
-			if (existing.exists())
-			{
-				if (doActivate)
-				{
+			if (existing.exists()) {
+				if (doActivate) {
 					doActivateSolution(solutionName, true);
 					return "Solution '" + solutionName + "' already exists. Activated.";
 				}
@@ -1049,188 +951,169 @@ public class ServoyDevServer
 
 			String parentSolution = addToSolution;
 			boolean isModule = (type == SolutionMetaData.MODULE || type == SolutionMetaData.NG_MODULE);
-			if (isModule && (parentSolution == null || parentSolution.isBlank()))
-			{
-				ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-				if (activeProject != null)
-				{
+			if (isModule && (parentSolution == null || parentSolution.isBlank())) {
+				ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
+						.getActiveProject();
+				if (activeProject != null) {
 					parentSolution = activeProject.getProject().getName();
 				}
 			}
 
-			if (parentSolution != null && !parentSolution.isBlank())
-			{
+			if (parentSolution != null && !parentSolution.isBlank()) {
 				String addModuleResult = addModuleToSolution(solutionName, parentSolution);
 				result.append(addModuleResult).append("\n");
 			}
 
-			if (doActivate)
-			{
-				doActivateSolution(parentSolution != null && !parentSolution.isBlank() ? parentSolution : solutionName, true);
-				result.insert(0, "Created and activated solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + "). ");
-			}
-			else
-			{
-				result.insert(0, "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type) + ", not activated). ");
+			if (doActivate) {
+				doActivateSolution(parentSolution != null && !parentSolution.isBlank() ? parentSolution : solutionName,
+						true);
+				result.insert(0, "Created and activated solution '" + solutionName + "' (type: "
+						+ getSolutionTypeName(type) + "). ");
+			} else {
+				result.insert(0, "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type)
+						+ ", not activated). ");
 			}
 			return result.toString().trim();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("createSolution failed", e);
 			return "Error creating solution: " + e.getMessage();
 		}
 	}
 
-	private String addModuleToSolution(String moduleName, String parentSolutionName)
-	{
-		try
-		{
+	private String addModuleToSolution(String moduleName, String parentSolutionName) {
+		try {
 			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 			model.refreshServoyProjects();
 			ServoyProject parentProject = model.getServoyProject(parentSolutionName);
-			if (parentProject == null)
-			{
+			if (parentProject == null) {
 				return "Warning: Parent solution '" + parentSolutionName + "' not found. Module created but not added.";
 			}
 
 			Solution parentSolution = parentProject.getEditingSolution();
-			if (parentSolution == null)
-			{
-				return "Warning: Cannot get editing solution for '" + parentSolutionName + "'. Module created but not added.";
+			if (parentSolution == null) {
+				return "Warning: Cannot get editing solution for '" + parentSolutionName
+						+ "'. Module created but not added.";
 			}
 
 			String existingModules = parentSolution.getModulesNames();
-			if (existingModules != null && !existingModules.isBlank())
-			{
-				for (String existing : existingModules.split(","))
-				{
-					if (existing.trim().equals(moduleName))
-					{
+			if (existingModules != null && !existingModules.isBlank()) {
+				for (String existing : existingModules.split(",")) {
+					if (existing.trim().equals(moduleName)) {
 						return "Module '" + moduleName + "' already in '" + parentSolutionName + "' modules list.";
 					}
 				}
 				parentSolution.setModulesNames(existingModules + "," + moduleName);
-			}
-			else
-			{
+			} else {
 				parentSolution.setModulesNames(moduleName);
 			}
 
-			com.servoy.eclipse.model.repository.EclipseRepository repository =
-				(com.servoy.eclipse.model.repository.EclipseRepository)ApplicationServerRegistry.get().getDeveloperRepository();
+			com.servoy.eclipse.model.repository.EclipseRepository repository = (com.servoy.eclipse.model.repository.EclipseRepository) ApplicationServerRegistry
+					.get().getDeveloperRepository();
 			parentProject.saveEditingSolutionNodes(new IPersist[] { parentSolution }, true);
 			repository.updateRootObject(parentSolution);
 
 			return "Added module '" + moduleName + "' to solution '" + parentSolutionName + "'.";
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("addModuleToSolution failed", e);
 			return "Warning: Failed to add module to solution: " + e.getMessage();
 		}
 	}
 
-	private void createSolutionArtifacts(String solutionName, int solutionType, boolean addDefaultTheme) throws RepositoryException
-	{
-		com.servoy.eclipse.model.repository.EclipseRepository repository =
-			(com.servoy.eclipse.model.repository.EclipseRepository)com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getDeveloperRepository();
+	private void createSolutionArtifacts(String solutionName, int solutionType, boolean addDefaultTheme)
+			throws RepositoryException {
+		com.servoy.eclipse.model.repository.EclipseRepository repository = (com.servoy.eclipse.model.repository.EclipseRepository) com.servoy.j2db.server.shared.ApplicationServerRegistry
+				.get().getDeveloperRepository();
 
-		Solution solution = (Solution)repository.createNewRootObject(solutionName, IRepository.SOLUTIONS);
+		Solution solution = (Solution) repository.createNewRootObject(solutionName, IRepository.SOLUTIONS);
 		solution.setSolutionType(solutionType);
 		solution.setVersion("1.0");
 		repository.updateRootObject(solution);
 
-		if (addDefaultTheme)
-		{
+		if (addDefaultTheme) {
 			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 			model.refreshServoyProjects();
 			ServoyProject servoyProject = model.getServoyProject(solutionName);
-			if (servoyProject != null)
-			{
+			if (servoyProject != null) {
 				Solution editingSolution = servoyProject.getEditingSolution();
-				if (editingSolution != null)
-				{
+				if (editingSolution != null) {
 					ScriptNameValidator scriptValidator = new ScriptNameValidator();
 
 					Media solutionLess = editingSolution.createNewMedia(scriptValidator, solutionName + ".less");
 					solutionLess.setMimeType("text/css");
 					solutionLess.setPermMediaData(ThemeResourceLoader.getDefaultSolutionLess());
 
-					Media solutionPropsLess = editingSolution.createNewMedia(scriptValidator, ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
+					Media solutionPropsLess = editingSolution.createNewMedia(scriptValidator,
+							ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
 					solutionPropsLess.setMimeType("text/css");
 					solutionPropsLess.setPermMediaData(ThemeResourceLoader.getCustomProperties());
 
-					Media variantsJson = editingSolution.createNewMedia(scriptValidator, ThemeResourceLoader.VARIANTS_JSON);
+					Media variantsJson = editingSolution.createNewMedia(scriptValidator,
+							ThemeResourceLoader.VARIANTS_JSON);
 					variantsJson.setMimeType("application/json");
 					variantsJson.setPermMediaData(ThemeResourceLoader.getVariantsFile());
 
-					try
-					{
-						Media manifestJson = editingSolution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.FILE_NAME);
+					try {
+						Media manifestJson = editingSolution.createNewMedia(scriptValidator,
+								CreateMediaWebAppManifest.FILE_NAME);
 						manifestJson.setMimeType("application/json");
 						manifestJson.setPermMediaData(CreateMediaWebAppManifest.createManifest(solutionName));
 
-						Media webappIcon = editingSolution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.ICON_NAME);
+						Media webappIcon = editingSolution.createNewMedia(scriptValidator,
+								CreateMediaWebAppManifest.ICON_NAME);
 						webappIcon.setMimeType("image/png");
 						webappIcon.setPermMediaData(CreateMediaWebAppManifest.getIcon());
-					}
-					catch (IOException e)
-					{
+					} catch (IOException e) {
 						ServoyLog.logWarning("createSolution: could not create manifest/icon", e);
 					}
 
 					editingSolution.setStyleSheetID(solutionLess.getUUID().toString());
 					servoyProject.saveEditingSolutionNodes(new IPersist[] { editingSolution }, true);
-					repository.updateRootObject(editingSolution); 
+					repository.updateRootObject(editingSolution);
 				}
 			}
 		}
 	}
 
-	private int parseSolutionType(String solutionType)
-	{
-		if (solutionType == null || solutionType.isBlank()) return SolutionMetaData.NG_CLIENT_ONLY;
-		switch (solutionType.toLowerCase().trim())
-		{
-			case "ng_client":
-			case "ng_client_only":
-				return SolutionMetaData.NG_CLIENT_ONLY;
-			case "ng_module":
-				return SolutionMetaData.NG_MODULE;
-			case "service":
-				return SolutionMetaData.SERVICE;
-			case "pre_import_hook":
-			case "pre-import hook module":
-				return SolutionMetaData.PRE_IMPORT_HOOK;
-			case "post_import_hook":
-			case "post-import hook module":
-				return SolutionMetaData.POST_IMPORT_HOOK;
-			case "module":
-				return SolutionMetaData.MODULE;
-			default:
-				return SolutionMetaData.NG_CLIENT_ONLY;
+	private int parseSolutionType(String solutionType) {
+		if (solutionType == null || solutionType.isBlank())
+			return SolutionMetaData.NG_CLIENT_ONLY;
+		switch (solutionType.toLowerCase().trim()) {
+		case "ng_client":
+		case "ng_client_only":
+			return SolutionMetaData.NG_CLIENT_ONLY;
+		case "ng_module":
+			return SolutionMetaData.NG_MODULE;
+		case "service":
+			return SolutionMetaData.SERVICE;
+		case "pre_import_hook":
+		case "pre-import hook module":
+			return SolutionMetaData.PRE_IMPORT_HOOK;
+		case "post_import_hook":
+		case "post-import hook module":
+			return SolutionMetaData.POST_IMPORT_HOOK;
+		case "module":
+			return SolutionMetaData.MODULE;
+		default:
+			return SolutionMetaData.NG_CLIENT_ONLY;
 		}
 	}
 
-	private String getSolutionTypeName(int type)
-	{
-		switch (type)
-		{
-			case SolutionMetaData.MODULE:
-				return "module";
-			case SolutionMetaData.NG_MODULE:
-				return "ng_module";
-			case SolutionMetaData.NG_CLIENT_ONLY:
-				return "ng_client";
-			case SolutionMetaData.SERVICE:
-				return "service";
-			case SolutionMetaData.PRE_IMPORT_HOOK:
-				return "pre_import_hook";
-			case SolutionMetaData.POST_IMPORT_HOOK:
-				return "post_import_hook";
-			default:
-				return "ng_client";
+	private String getSolutionTypeName(int type) {
+		switch (type) {
+		case SolutionMetaData.MODULE:
+			return "module";
+		case SolutionMetaData.NG_MODULE:
+			return "ng_module";
+		case SolutionMetaData.NG_CLIENT_ONLY:
+			return "ng_client";
+		case SolutionMetaData.SERVICE:
+			return "service";
+		case SolutionMetaData.PRE_IMPORT_HOOK:
+			return "pre_import_hook";
+		case SolutionMetaData.POST_IMPORT_HOOK:
+			return "post_import_hook";
+		default:
+			return "ng_client";
 		}
 	}
 
@@ -1240,29 +1123,24 @@ public class ServoyDevServer
 
 	private static final int MEMBERS_THRESHOLD = 50;
 
-	@Tool(name = "getDocumentationForTypeMember",
-		description = "Returns full documentation for one specific method or property of a Servoy API type — description, all parameters, return type, and overloads. "
-			+ "Works without any file or editor context.",
-		type = "object")
+	@Tool(name = "getDocumentationForTypeMember", description = "Returns full documentation for one specific method or property of a Servoy API type — description, all parameters, return type, and overloads. "
+			+ "Works without any file or editor context.", type = "object")
 	public String getDocumentationForTypeMember(
-		@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet')", required = true) String typeName,
-		@ToolParam(name = "memberName", description = "Member name to look up — case-insensitive (e.g. 'getFoundSet', 'loadAllRecords', 'showInfoDialog')", required = true) String memberName)
-	{
+			@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet')", required = true) String typeName,
+			@ToolParam(name = "memberName", description = "Member name to look up — case-insensitive (e.g. 'getFoundSet', 'loadAllRecords', 'showInfoDialog')", required = true) String memberName) {
 		if (typeName == null || typeName.trim().isEmpty())
 			return "Error: typeName parameter is required";
 		if (memberName == null || memberName.trim().isEmpty())
 			return "Error: memberName parameter is required";
 
-		try
-		{
-			com.servoy.eclipse.debug.script.TypeCreator typeCreator =
-				com.servoy.eclipse.debug.script.TypeProviderFactory.getTypeProvider().getTypeCreator();
+		try {
+			com.servoy.eclipse.debug.script.TypeCreator typeCreator = com.servoy.eclipse.debug.script.TypeProviderFactory
+					.getTypeProvider().getTypeCreator();
 			if (typeCreator == null)
 				return "Error: TypeCreator not available";
 
 			org.eclipse.dltk.javascript.typeinfo.model.Type type = typeCreator.findType(null, typeName);
-			if (type == null)
-			{
+			if (type == null) {
 				String scriptingName = docService.mapClassNameToScriptingName(typeName);
 				if (scriptingName != null && !scriptingName.equals(typeName))
 					type = typeCreator.findType(null, scriptingName);
@@ -1271,8 +1149,7 @@ public class ServoyDevServer
 				return "Error: Type '" + typeName + "' not found";
 
 			List<org.eclipse.dltk.javascript.typeinfo.model.Member> matchingMembers = new ArrayList<>();
-			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers())
-			{
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers()) {
 				if (member.getName().equalsIgnoreCase(memberName))
 					matchingMembers.add(member);
 			}
@@ -1281,68 +1158,62 @@ public class ServoyDevServer
 				return "Error: Member '" + memberName + "' not found in type '" + type.getName() + "'";
 
 			StringBuilder response = new StringBuilder();
-			response.append("=== DOCUMENTATION FOR: ").append(type.getName()).append(".").append(memberName).append(" ===\n\n");
+			response.append("=== DOCUMENTATION FOR: ").append(type.getName()).append(".").append(memberName)
+					.append(" ===\n\n");
 			if (matchingMembers.size() > 1)
 				response.append("[Note: ").append(matchingMembers.size()).append(" overloads found]\n\n");
 
 			int overloadNum = 1;
-			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : matchingMembers)
-			{
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : matchingMembers) {
 				if (matchingMembers.size() > 1)
-					response.append("--- OVERLOAD ").append(overloadNum).append(" of ").append(matchingMembers.size()).append(" ---\n");
+					response.append("--- OVERLOAD ").append(overloadNum).append(" of ").append(matchingMembers.size())
+							.append(" ---\n");
 				response.append(docService.formatMemberDocumentation(member, type.getName()));
 				response.append("\n");
 				overloadNum++;
 			}
 			return response.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error getting documentation for member: " + typeName + "." + memberName, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "getAvailableMembersForType",
-		description = "Returns lightweight method and property signatures for a Servoy API type. "
+	@Tool(name = "getAvailableMembersForType", description = "Returns lightweight method and property signatures for a Servoy API type. "
 			+ "Returns signatures like 'getFoundSet(query): JSFoundSet', 'loadAllRecords(): Boolean'. "
-			+ "Truncates at 50 members — use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.",
-		type = "object")
+			+ "Truncates at 50 members — use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.", type = "object")
 	public String getAvailableMembersForType(
-		@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet', 'controller')", required = true) String typeName,
-		@ToolParam(name = "memberFilter", description = "Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter)
-	{
+			@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet', 'controller')", required = true) String typeName,
+			@ToolParam(name = "memberFilter", description = "Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter) {
 		if (typeName == null || typeName.trim().isEmpty())
 			return "Error: typeName parameter is required";
 
-		try
-		{
-			com.servoy.eclipse.debug.script.TypeCreator typeCreator =
-				com.servoy.eclipse.debug.script.TypeProviderFactory.getTypeProvider().getTypeCreator();
+		try {
+			com.servoy.eclipse.debug.script.TypeCreator typeCreator = com.servoy.eclipse.debug.script.TypeProviderFactory
+					.getTypeProvider().getTypeCreator();
 			if (typeCreator == null)
 				return "Error: TypeCreator not available";
 
 			org.eclipse.dltk.javascript.typeinfo.model.Type type = typeCreator.findType(null, typeName);
-			if (type == null)
-			{
+			if (type == null) {
 				String scriptingName = docService.mapClassNameToScriptingName(typeName);
 				if (scriptingName != null && !scriptingName.equals(typeName))
 					type = typeCreator.findType(null, scriptingName);
 			}
 			if (type == null)
-				return "Error: Type '" + typeName + "' not found. Try using scriptingName like 'application' instead of 'JSApplication'.";
+				return "Error: Type '" + typeName
+						+ "' not found. Try using scriptingName like 'application' instead of 'JSApplication'.";
 
 			String filter = (memberFilter != null && !memberFilter.trim().isEmpty()) ? memberFilter.trim() : "*";
-			java.util.regex.Pattern pattern = filter.equals("*")
-				? null
-				: java.util.regex.Pattern.compile(filter, java.util.regex.Pattern.CASE_INSENSITIVE);
+			java.util.regex.Pattern pattern = filter.equals("*") ? null
+					: java.util.regex.Pattern.compile(filter, java.util.regex.Pattern.CASE_INSENSITIVE);
 
 			List<org.eclipse.dltk.javascript.typeinfo.model.Member> methods = new ArrayList<>();
 			List<org.eclipse.dltk.javascript.typeinfo.model.Member> properties = new ArrayList<>();
 
-			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers())
-			{
-				if (pattern != null && !pattern.matcher(member.getName()).matches()) continue;
+			for (org.eclipse.dltk.javascript.typeinfo.model.Member member : type.getMembers()) {
+				if (pattern != null && !pattern.matcher(member.getName()).matches())
+					continue;
 				if (member instanceof org.eclipse.dltk.javascript.typeinfo.model.Method)
 					methods.add(member);
 				else if (member instanceof org.eclipse.dltk.javascript.typeinfo.model.Property)
@@ -1358,67 +1229,57 @@ public class ServoyDevServer
 				response.append("Filter: ").append(filter).append("\n");
 			response.append("Total found: ").append(totalFiltered).append(" members\n\n");
 
-			if (!methods.isEmpty())
-			{
+			if (!methods.isEmpty()) {
 				response.append("METHODS (").append(methods.size()).append("):\n");
 				int count = 0;
-				for (org.eclipse.dltk.javascript.typeinfo.model.Member method : methods)
-				{
-					if (truncated && count >= MEMBERS_THRESHOLD) break;
+				for (org.eclipse.dltk.javascript.typeinfo.model.Member method : methods) {
+					if (truncated && count >= MEMBERS_THRESHOLD)
+						break;
 					response.append("  - ").append(docService.formatMemberSignature(method)).append("\n");
 					count++;
 				}
 				response.append("\n");
 			}
 
-			if (!properties.isEmpty())
-			{
+			if (!properties.isEmpty()) {
 				response.append("PROPERTIES (").append(properties.size()).append("):\n");
 				int count = methods.size();
-				for (org.eclipse.dltk.javascript.typeinfo.model.Member property : properties)
-				{
-					if (truncated && count >= MEMBERS_THRESHOLD) break;
+				for (org.eclipse.dltk.javascript.typeinfo.model.Member property : properties) {
+					if (truncated && count >= MEMBERS_THRESHOLD)
+						break;
 					response.append("  - ").append(docService.formatMemberSignature(property)).append("\n");
 					count++;
 				}
 				response.append("\n");
 			}
 
-			if (truncated)
-			{
-				response.append("[WARNING: ").append(totalFiltered).append(" members found, showing first ").append(MEMBERS_THRESHOLD);
+			if (truncated) {
+				response.append("[WARNING: ").append(totalFiltered).append(" members found, showing first ")
+						.append(MEMBERS_THRESHOLD);
 				response.append(". Use memberFilter with regex like 'get.*', 'show.*', or 'is.*' to narrow results]\n");
 			}
 			return response.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error getting available members for type: " + typeName, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "getDocumentationForIdentifiers",
-		description = "Returns Servoy API documentation for a list of identifiers. "
+	@Tool(name = "getDocumentationForIdentifiers", description = "Returns Servoy API documentation for a list of identifiers. "
 			+ "Accepts full method paths (e.g. 'databaseManager.getFoundSet', 'foundset.loadAllRecords') and Servoy types (e.g. JSEvent, JSRecord, QBSelect). "
 			+ "Returns descriptions, parameter types, and return types for each identifier. "
-			+ "Uses DLTK type inference on the file content to resolve identifiers in context.",
-		type = "object")
+			+ "Uses DLTK type inference on the file content to resolve identifiers in context.", type = "object")
 	public String getDocumentationForIdentifiers(
-		@ToolParam(name = "identifiers", description = "Comma-separated full identifier paths to look up (e.g., 'databaseManager.getFoundSet,JSRecord,plugins.dialogs.showInfoDialog')", required = true) String identifiers,
-		@ToolParam(name = "filePath", description = "File path (form name, scope name, or workspace path) — provides the context for type inference", required = true) String filePath)
-	{
+			@ToolParam(name = "identifiers", description = "Comma-separated full identifier paths to look up (e.g., 'databaseManager.getFoundSet,JSRecord,plugins.dialogs.showInfoDialog')", required = true) String identifiers,
+			@ToolParam(name = "filePath", description = "File path (form name, scope name, or workspace path) — provides the context for type inference", required = true) String filePath) {
 		if (identifiers == null || identifiers.trim().isEmpty())
 			return "Error: identifiers parameter is required";
 		if (filePath == null || filePath.trim().isEmpty())
 			return "Error: filePath parameter is required";
 
-		try
-		{
-			String[] identifierArray = java.util.Arrays.stream(identifiers.split(","))
-				.map(String::trim)
-				.filter(s -> !s.isEmpty())
-				.toArray(String[]::new);
+		try {
+			String[] identifierArray = java.util.Arrays.stream(identifiers.split(",")).map(String::trim)
+					.filter(s -> !s.isEmpty()).toArray(String[]::new);
 
 			if (identifierArray.length == 0)
 				return "Error: no valid identifiers in input";
@@ -1427,39 +1288,39 @@ public class ServoyDevServer
 			if (file == null || !file.exists())
 				return filePathResolver.buildNotFoundMessage(filePath);
 
-			com.servoy.eclipse.developer.mcp.dto.SelectionInfo selection = codeContextService.createSelectionInfoFromFile(file);
+			com.servoy.eclipse.developer.mcp.dto.SelectionInfo selection = codeContextService
+					.createSelectionInfoFromFile(file);
 			if (selection == null)
 				return "Error: Could not create selection info for: " + filePath;
 
-			com.servoy.eclipse.developer.mcp.dto.CodeContext context = codeContextService.getCodeContext(selection, identifierArray);
+			com.servoy.eclipse.developer.mcp.dto.CodeContext context = codeContextService.getCodeContext(selection,
+					identifierArray);
 
 			if (context.hasError())
 				return "Error extracting context: " + context.getErrorMessage();
 
 			StringBuilder response = new StringBuilder();
 			response.append("--- DOCUMENTATION FOR: ");
-			for (int i = 0; i < identifierArray.length; i++)
-			{
-				if (i > 0) response.append(", ");
+			for (int i = 0; i < identifierArray.length; i++) {
+				if (i > 0)
+					response.append(", ");
 				response.append(identifierArray[i]);
 			}
 			response.append(" ---\n\n");
 
 			int foundCount = 0;
-			for (String requestedId : identifierArray)
-			{
+			for (String requestedId : identifierArray) {
 				boolean found = false;
 				String baseRequestedId = requestedId;
 				int lastDotIndex = requestedId.lastIndexOf('.');
-				if (lastDotIndex > 0) baseRequestedId = requestedId.substring(0, lastDotIndex);
+				if (lastDotIndex > 0)
+					baseRequestedId = requestedId.substring(0, lastDotIndex);
 
-				for (IdentifierContext identifierContext : context.getIdentifiers())
-				{
-					if (identifierContext.getName().equals(requestedId) || identifierContext.getName().equals(baseRequestedId))
-					{
+				for (IdentifierContext identifierContext : context.getIdentifiers()) {
+					if (identifierContext.getName().equals(requestedId)
+							|| identifierContext.getName().equals(baseRequestedId)) {
 						String xml = identifierContext.toFormattedXML();
-						if (xml != null && !xml.trim().isEmpty())
-						{
+						if (xml != null && !xml.trim().isEmpty()) {
 							response.append(xml).append("\n");
 							found = true;
 							foundCount++;
@@ -1468,63 +1329,59 @@ public class ServoyDevServer
 					}
 				}
 
-				if (!found)
-				{
+				if (!found) {
 					response.append("<type>").append(requestedId).append(": NOT FOUND</type>\n");
 					response.append("<description>No documentation available for this identifier</description>\n\n");
 				}
 			}
 
 			response.append("--- END DOCUMENTATION ---\n\n");
-			response.append("Found documentation for ").append(foundCount).append(" out of ").append(identifierArray.length).append(" identifiers.");
+			response.append("Found documentation for ").append(foundCount).append(" out of ")
+					.append(identifierArray.length).append(" identifiers.");
 			return response.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error getting documentation for identifiers: " + identifiers, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "applyDocumentations",
-		description = "Writes JSDoc documentation items to a Servoy JavaScript file. "
+	@Tool(name = "applyDocumentations", description = "Writes JSDoc documentation items to a Servoy JavaScript file. "
 			+ "Supports INSERT (no existing JSDoc) and REPLACE (existing JSDoc). "
 			+ "Items must be provided as a JSON array string with fields: startLine, endLine, startSentence, endSentence, jsdoc. "
 			+ "Items are applied bottom-to-top automatically to preserve line numbers. "
-			+ "UUID values in @properties lines are automatically restored if accidentally changed.",
-		type = "object")
+			+ "UUID values in @properties lines are automatically restored if accidentally changed.", type = "object")
 	public String applyDocumentations(
-		@ToolParam(name = "filePath", description = "Workspace-relative file path or form/scope name (e.g. '/svyPilotTest/utils.js' or 'utils')", required = true) String filePath,
-		@ToolParam(name = "itemsJson", description = "JSON array of documentation items: [{startLine, endLine, startSentence, endSentence, jsdoc}]. INSERT: startLine==endLine and empty startSentence/endSentence. REPLACE: startLine/endLine cover the existing JSDoc block, startSentence='/**', endSentence='*/'", required = true) String itemsJson)
-	{
-		if (filePath == null || filePath.isBlank()) return "Error: filePath is required";
-		if (itemsJson == null || itemsJson.isBlank()) return "Error: itemsJson is required";
+			@ToolParam(name = "filePath", description = "Workspace-relative file path or form/scope name (e.g. '/svyPilotTest/utils.js' or 'utils')", required = true) String filePath,
+			@ToolParam(name = "itemsJson", description = "JSON array of documentation items: [{startLine, endLine, startSentence, endSentence, jsdoc}]. INSERT: startLine==endLine and empty startSentence/endSentence. REPLACE: startLine/endLine cover the existing JSDoc block, startSentence='/**', endSentence='*/'", required = true) String itemsJson) {
+		if (filePath == null || filePath.isBlank())
+			return "Error: filePath is required";
+		if (itemsJson == null || itemsJson.isBlank())
+			return "Error: itemsJson is required";
 
 		IFile file = filePathResolver.resolveFile(filePath);
-		if (file == null || !file.exists()) return filePathResolver.buildNotFoundMessage(filePath);
+		if (file == null || !file.exists())
+			return filePathResolver.buildNotFoundMessage(filePath);
 
-		try
-		{
+		try {
 			ServoyFileGuard.assertEditable(file.getProjectRelativePath().toString());
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
+		} catch (ServoyFileFormatProtectedException e) {
 			return "Error: " + e.getMessage();
 		}
 
-		try
-		{
+		try {
 			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 			List<DocumentationItem> items = mapper.readValue(itemsJson,
-				mapper.getTypeFactory().constructCollectionType(List.class, DocumentationItem.class));
+					mapper.getTypeFactory().constructCollectionType(List.class, DocumentationItem.class));
 
-			if (items == null || items.isEmpty()) return "Error: No documentation items provided";
+			if (items == null || items.isEmpty())
+				return "Error: No documentation items provided";
 
 			String resolvedPath = file.getFullPath().toString();
 			String originalContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
 
 			List<String> lineList = new ArrayList<>();
-			for (String line : originalContent.split("\r\n|\r|\n", -1)) lineList.add(line);
+			for (String line : originalContent.split("\r\n|\r|\n", -1))
+				lineList.add(line);
 
 			List<DocumentationItem> sortedItems = new ArrayList<>(items);
 			sortedItems.sort((a, b) -> Integer.compare(b.startLine(), a.startLine()));
@@ -1532,36 +1389,31 @@ public class ServoyDevServer
 			List<String> errors = new ArrayList<>();
 			int successCount = 0;
 
-			for (DocumentationItem item : sortedItems)
-			{
-				try
-				{
-					if (item.startLine() < 0 || item.endLine() >= lineList.size())
-					{
-						errors.add("Line range out of bounds: " + item.startLine() + "-" + item.endLine() +
-							" (file has " + lineList.size() + " lines)");
+			for (DocumentationItem item : sortedItems) {
+				try {
+					if (item.startLine() < 0 || item.endLine() >= lineList.size()) {
+						errors.add("Line range out of bounds: " + item.startLine() + "-" + item.endLine()
+								+ " (file has " + lineList.size() + " lines)");
 						continue;
 					}
 
-					if (item.isInsert())
-					{
+					if (item.isInsert()) {
 						String indentation = docValidator.extractIndentation(lineList.get(item.startLine()));
 						List<String> formattedLines = new ArrayList<>();
 						for (String jsdocLine : item.jsdoc().split("\n"))
 							formattedLines.add(indentation + jsdocLine);
 						lineList.addAll(item.startLine(), formattedLines);
 						successCount++;
-					}
-					else
-					{
+					} else {
 						String startLineContent = lineList.get(item.startLine()).trim();
 						String endLineContent = lineList.get(item.endLine()).trim();
 
-						if (!startLineContent.startsWith(item.startSentence()) || !endLineContent.endsWith(item.endSentence()))
-						{
-							errors.add("Validation failed at lines " + item.startLine() + "-" + item.endLine() +
-								": start='" + startLineContent.substring(0, Math.min(20, startLineContent.length())) +
-								"' end='" + endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'");
+						if (!startLineContent.startsWith(item.startSentence())
+								|| !endLineContent.endsWith(item.endSentence())) {
+							errors.add("Validation failed at lines " + item.startLine() + "-" + item.endLine()
+									+ ": start='"
+									+ startLineContent.substring(0, Math.min(20, startLineContent.length())) + "' end='"
+									+ endLineContent.substring(Math.max(0, endLineContent.length() - 20)) + "'");
 							continue;
 						}
 
@@ -1580,44 +1432,40 @@ public class ServoyDevServer
 							lineList.remove(i);
 						lineList.addAll(item.startLine(), formattedLines);
 
-						try
-						{
+						try {
 							docValidator.validateJSDocSyntax(fixedJSDoc);
 							successCount++;
-						}
-						catch (DocumentationValidatorService.ValidationException ve)
-						{
-							errors.add("JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine() + ": " + ve.getMessage());
+						} catch (DocumentationValidatorService.ValidationException ve) {
+							errors.add("JSDoc validation failed for lines " + item.startLine() + "-" + item.endLine()
+									+ ": " + ve.getMessage());
 						}
 					}
-				}
-				catch (Exception e)
-				{
-					errors.add("Failed to process lines " + item.startLine() + "-" + item.endLine() + ": " + e.getMessage());
+				} catch (Exception e) {
+					errors.add("Failed to process lines " + item.startLine() + "-" + item.endLine() + ": "
+							+ e.getMessage());
 				}
 			}
 
 			StringBuilder newContent = new StringBuilder();
-			for (int i = 0; i < lineList.size(); i++)
-			{
-				if (i > 0) newContent.append("\n");
+			for (int i = 0; i < lineList.size(); i++) {
+				if (i > 0)
+					newContent.append("\n");
 				newContent.append(lineList.get(i));
 			}
 
-			file.setContents(new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)),
-				true, false, null);
+			file.setContents(new ByteArrayInputStream(newContent.toString().getBytes(StandardCharsets.UTF_8)), true,
+					false, null);
 
 			if (errors.isEmpty())
 				return String.format("Success: Applied %d documentation items to %s", successCount, resolvedPath);
 
 			StringBuilder response = new StringBuilder();
 			response.append("Partial success: Applied ").append(successCount).append(" out of ").append(items.size())
-				.append(" documentation items.\n\nErrors encountered:\n");
-			for (String error : errors) response.append("  - ").append(error).append("\n");
+					.append(" documentation items.\n\nErrors encountered:\n");
+			for (String error : errors)
+				response.append("  - ").append(error).append("\n");
 			return response.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error applying documentations to " + filePath, e);
 			return "Error: " + e.getMessage();
 		}
@@ -1627,18 +1475,15 @@ public class ServoyDevServer
 	// validate MCP tool (Faza 2)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "validate",
-		description = "Validates a JavaScript code snippet by parsing it via DLTK's JavaScript parser. "
+	@Tool(name = "validate", description = "Validates a JavaScript code snippet by parsing it via DLTK's JavaScript parser. "
 			+ "Returns a success message if the code parses cleanly, or a list of syntax errors otherwise. "
-			+ "Use this to verify AI-generated code before applying it to a file.",
-		type = "object")
+			+ "Use this to verify AI-generated code before applying it to a file.", type = "object")
 	public String validate(
-		@ToolParam(name = "code", description = "JavaScript code snippet to validate (e.g. a function body, a statement, or a full file)", required = true) String code)
-	{
-		if (code == null || code.isBlank()) return "Error: code parameter is required";
+			@ToolParam(name = "code", description = "JavaScript code snippet to validate (e.g. a function body, a statement, or a full file)", required = true) String code) {
+		if (code == null || code.isBlank())
+			return "Error: code parameter is required";
 
-		try
-		{
+		try {
 			List<org.eclipse.dltk.compiler.problem.DefaultProblem> problems = jsCodeValidator.validate(code);
 			if (problems.isEmpty())
 				return "Valid: code parses successfully.";
@@ -1646,17 +1491,14 @@ public class ServoyDevServer
 			StringBuilder sb = new StringBuilder();
 			sb.append("Invalid: ").append(problems.size()).append(" problem(s) found.\n\n");
 			int n = 1;
-			for (org.eclipse.dltk.compiler.problem.DefaultProblem p : problems)
-			{
+			for (org.eclipse.dltk.compiler.problem.DefaultProblem p : problems) {
 				sb.append(n++).append(". ").append(p.getMessage());
 				if (p.getSourceLineNumber() > 0)
 					sb.append(" (line ").append(p.getSourceLineNumber()).append(")");
 				sb.append("\n");
 			}
 			return sb.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error validating code", e);
 			return "Error: " + e.getMessage();
 		}
@@ -1666,79 +1508,64 @@ public class ServoyDevServer
 	// Servoy Solution tools (Faza 3 + 5)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "getForms",
-		description = "Lists forms in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
-		type = "object")
+	@Tool(name = "getForms", description = "Lists forms in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
 	public String getForms(
-		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
-	{
+			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
 		return solutionService.listForms(scope != null ? scope : "all");
 	}
 
-	@Tool(name = "getRelations",
-		description = "Lists relations in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
-		type = "object")
+	@Tool(name = "getRelations", description = "Lists relations in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
 	public String getRelations(
-		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
-	{
+			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
 		return solutionService.listRelations(scope != null ? scope : "all");
 	}
 
-	@Tool(name = "getValueLists",
-		description = "Lists valuelists in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).",
-		type = "object")
+	@Tool(name = "getValueLists", description = "Lists valuelists in the active solution and its modules. "
+			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
 	public String getValueLists(
-		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
-	{
+			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
 		return solutionService.listValueLists(scope != null ? scope : "all");
 	}
 
-	@Tool(name = "getStyles",
-		description = "Lists CSS/LESS style files in the active solution and its modules. "
-			+ "Shows which solutions have .less theme files.",
-		type = "object")
+	@Tool(name = "getStyles", description = "Lists CSS/LESS style files in the active solution and its modules. "
+			+ "Shows which solutions have .less theme files.", type = "object")
 	public String getStyles(
-		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope)
-	{
+			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
 		return solutionService.listStyles(scope != null ? scope : "all");
 	}
 
-	@Tool(name = "deleteForms",
-		description = "Deletes one or more forms from the active solution. "
-			+ "Provide a comma-separated list of form names.",
-		type = "object")
+	@Tool(name = "deleteForms", description = "Deletes one or more forms from the active solution. "
+			+ "Provide a comma-separated list of form names.", type = "object")
 	public String deleteForms(
-		@ToolParam(name = "names", description = "Comma-separated form names to delete (e.g. 'testForm,oldForm')", required = true) String names)
-	{
-		if (names == null || names.isBlank()) return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+			@ToolParam(name = "names", description = "Comma-separated form names to delete (e.g. 'testForm,oldForm')", required = true) String names) {
+		if (names == null || names.isBlank())
+			return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
+				.toList();
 		return solutionService.deleteForms(nameList);
 	}
 
-	@Tool(name = "deleteRelations",
-		description = "Deletes one or more relations from the active solution. "
-			+ "Provide a comma-separated list of relation names.",
-		type = "object")
+	@Tool(name = "deleteRelations", description = "Deletes one or more relations from the active solution. "
+			+ "Provide a comma-separated list of relation names.", type = "object")
 	public String deleteRelations(
-		@ToolParam(name = "names", description = "Comma-separated relation names to delete (e.g. 'customers_to_orders,old_relation')", required = true) String names)
-	{
-		if (names == null || names.isBlank()) return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+			@ToolParam(name = "names", description = "Comma-separated relation names to delete (e.g. 'customers_to_orders,old_relation')", required = true) String names) {
+		if (names == null || names.isBlank())
+			return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
+				.toList();
 		return solutionService.deleteRelations(nameList);
 	}
 
-	@Tool(name = "deleteValueLists",
-		description = "Deletes one or more valuelists from the active solution. "
-			+ "Provide a comma-separated list of valuelist names.",
-		type = "object")
+	@Tool(name = "deleteValueLists", description = "Deletes one or more valuelists from the active solution. "
+			+ "Provide a comma-separated list of valuelist names.", type = "object")
 	public String deleteValueLists(
-		@ToolParam(name = "names", description = "Comma-separated valuelist names to delete (e.g. 'status_list,old_vl')", required = true) String names)
-	{
-		if (names == null || names.isBlank()) return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+			@ToolParam(name = "names", description = "Comma-separated valuelist names to delete (e.g. 'status_list,old_vl')", required = true) String names) {
+		if (names == null || names.isBlank())
+			return "Error: names parameter is required";
+		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
+				.toList();
 		return solutionService.deleteValueLists(nameList);
 	}
 
@@ -1746,87 +1573,71 @@ public class ServoyDevServer
 	// Servoy Artifact creation tools (Faza 4)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "openForm",
-		description = "Creates a new Servoy form in the active solution. "
+	@Tool(name = "openForm", description = "Creates a new Servoy form in the active solution. "
 			+ "Supports CSS-position and responsive layouts. "
 			+ "Optionally sets dataSource, parent form (inheritance), and event handlers. "
-			+ "Event handlers are auto-created as methods if they don't exist.",
-		type = "object")
+			+ "Event handlers are auto-created as methods if they don't exist.", type = "object")
 	public String openForm(
-		@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
-		@ToolParam(name = "style", description = "Form style: 'css' (default) or 'responsive'", required = false) String style,
-		@ToolParam(name = "width", description = "Form width in pixels (default: 640)", required = false) String width,
-		@ToolParam(name = "height", description = "Form height in pixels (default: 480)", required = false) String height,
-		@ToolParam(name = "dataSource", description = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
-		@ToolParam(name = "extendsForm", description = "Parent form name for inheritance", required = false) String extendsForm,
-		@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events)
-	{
-		try
-		{
+			@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
+			@ToolParam(name = "style", description = "Form style: 'css' (default) or 'responsive'", required = false) String style,
+			@ToolParam(name = "width", description = "Form width in pixels (default: 640)", required = false) String width,
+			@ToolParam(name = "height", description = "Form height in pixels (default: 480)", required = false) String height,
+			@ToolParam(name = "dataSource", description = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
+			@ToolParam(name = "extendsForm", description = "Parent form name for inheritance", required = false) String extendsForm,
+			@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events) {
+		try {
 			int w = width != null ? Integer.parseInt(width) : 640;
 			int h = height != null ? Integer.parseInt(height) : 480;
 			Map<String, String> eventMap = null;
-			if (events != null && !events.isBlank())
-			{
+			if (events != null && !events.isBlank()) {
 				eventMap = new java.util.HashMap<>();
-				for (String pair : events.split(","))
-				{
+				for (String pair : events.split(",")) {
 					String[] kv = pair.trim().split(":");
-					if (kv.length == 2) eventMap.put(kv[0].trim(), kv[1].trim());
+					if (kv.length == 2)
+						eventMap.put(kv[0].trim(), kv[1].trim());
 				}
 			}
-			return artifactService.createForm(name, style != null ? style : "css", w, h, dataSource, extendsForm, eventMap);
-		}
-		catch (Exception e)
-		{
+			return artifactService.createForm(name, style != null ? style : "css", w, h, dataSource, extendsForm,
+					eventMap);
+		} catch (Exception e) {
 			ServoyLog.logError("Error creating form: " + name, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "openRelation",
-		description = "Creates a new Servoy relation in the active solution. "
+	@Tool(name = "openRelation", description = "Creates a new Servoy relation in the active solution. "
 			+ "Requires primary and foreign dataSources. "
-			+ "Optionally maps columns and sets join type.",
-		type = "object")
+			+ "Optionally maps columns and sets join type.", type = "object")
 	public String openRelation(
-		@ToolParam(name = "name", description = "Relation name (e.g. 'customers_to_orders')", required = true) String name,
-		@ToolParam(name = "primaryDataSource", description = "Primary table datasource (format: 'db:/server_name/table_name')", required = true) String primaryDataSource,
-		@ToolParam(name = "foreignDataSource", description = "Foreign table datasource (format: 'db:/server_name/table_name')", required = true) String foreignDataSource,
-		@ToolParam(name = "primaryColumn", description = "Primary key column name for the join condition", required = false) String primaryColumn,
-		@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition", required = false) String foreignColumn,
-		@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType)
-	{
-		try
-		{
-			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, primaryColumn, foreignColumn, joinType);
-		}
-		catch (Exception e)
-		{
+			@ToolParam(name = "name", description = "Relation name (e.g. 'customers_to_orders')", required = true) String name,
+			@ToolParam(name = "primaryDataSource", description = "Primary table datasource (format: 'db:/server_name/table_name')", required = true) String primaryDataSource,
+			@ToolParam(name = "foreignDataSource", description = "Foreign table datasource (format: 'db:/server_name/table_name')", required = true) String foreignDataSource,
+			@ToolParam(name = "primaryColumn", description = "Primary key column name for the join condition", required = false) String primaryColumn,
+			@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition", required = false) String foreignColumn,
+			@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType) {
+		try {
+			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, primaryColumn,
+					foreignColumn, joinType);
+		} catch (Exception e) {
 			ServoyLog.logError("Error creating relation: " + name, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "openValueList",
-		description = "Creates a new Servoy valuelist in the active solution. "
-			+ "Supports types: 'custom' (fixed values), 'database' (table values), 'related' (via relation), 'global_method'.",
-		type = "object")
+	@Tool(name = "openValueList", description = "Creates a new Servoy valuelist in the active solution. "
+			+ "Supports types: 'custom' (fixed values), 'database' (table values), 'related' (via relation), 'global_method'.", type = "object")
 	public String openValueList(
-		@ToolParam(name = "name", description = "ValueList name (e.g. 'statusList', 'countries')", required = true) String name,
-		@ToolParam(name = "type", description = "ValueList type: 'custom' (default), 'database', 'related', 'global_method'", required = false) String type,
-		@ToolParam(name = "customValues", description = "For custom type: newline-separated values (e.g. 'Active\\nInactive\\nPending')", required = false) String customValues,
-		@ToolParam(name = "dataSource", description = "For database type: datasource (format: 'db:/server_name/table_name')", required = false) String dataSource,
-		@ToolParam(name = "relationName", description = "For related type: relation name", required = false) String relationName,
-		@ToolParam(name = "displayColumn", description = "Column to display", required = false) String displayColumn,
-		@ToolParam(name = "returnColumn", description = "Column to return as value", required = false) String returnColumn)
-	{
-		try
-		{
-			return artifactService.createValueList(name, type, customValues, dataSource, relationName, displayColumn, returnColumn);
-		}
-		catch (Exception e)
-		{
+			@ToolParam(name = "name", description = "ValueList name (e.g. 'statusList', 'countries')", required = true) String name,
+			@ToolParam(name = "type", description = "ValueList type: 'custom' (default), 'database', 'related', 'global_method'", required = false) String type,
+			@ToolParam(name = "customValues", description = "For custom type: newline-separated values (e.g. 'Active\\nInactive\\nPending')", required = false) String customValues,
+			@ToolParam(name = "dataSource", description = "For database type: datasource (format: 'db:/server_name/table_name')", required = false) String dataSource,
+			@ToolParam(name = "relationName", description = "For related type: relation name", required = false) String relationName,
+			@ToolParam(name = "displayColumn", description = "Column to display", required = false) String displayColumn,
+			@ToolParam(name = "returnColumn", description = "Column to return as value", required = false) String returnColumn) {
+		try {
+			return artifactService.createValueList(name, type, customValues, dataSource, relationName, displayColumn,
+					returnColumn);
+		} catch (Exception e) {
 			ServoyLog.logError("Error creating valuelist: " + name, e);
 			return "Error: " + e.getMessage();
 		}
@@ -1836,51 +1647,51 @@ public class ServoyDevServer
 	// Database schema tools
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "listTables",
-		description = "Lists all tables in a database server. Returns table names for the specified server.",
-		type = "object")
+	@Tool(name = "listTables", description = "Lists all tables in a database server. Returns table names for the specified server.", type = "object")
 	public String listTables(
-		@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName)
-	{
-		if (serverName == null || serverName.isBlank()) return "Error: serverName parameter is required";
+			@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName) {
+		if (serverName == null || serverName.isBlank())
+			return "Error: serverName parameter is required";
 
-		try
-		{
-			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
-			if (server == null) return "Error: Database server '" + serverName + "' not found";
+		try {
+			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					.getServer(serverName, false, false);
+			if (server == null)
+				return "Error: Database server '" + serverName + "' not found";
 
 			java.util.List<String> tables = server.getTableNames(false);
 			StringBuilder result = new StringBuilder();
 			result.append("Database Server: ").append(serverName).append("\n");
 			result.append("Tables (").append(tables.size()).append("):\n\n");
-			if (tables.isEmpty()) result.append("(No tables found)\n");
-			for (String tableName : tables) result.append("  - ").append(tableName).append("\n");
+			if (tables.isEmpty())
+				result.append("(No tables found)\n");
+			for (String tableName : tables)
+				result.append("  - ").append(tableName).append("\n");
 			return result.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error listing tables for server: " + serverName, e);
 			return "Error: " + e.getMessage();
 		}
 	}
 
-	@Tool(name = "getTableInfo",
-		description = "Retrieves comprehensive information about a database table including columns, primary keys, types, and metadata.",
-		type = "object")
+	@Tool(name = "getTableInfo", description = "Retrieves comprehensive information about a database table including columns, primary keys, types, and metadata.", type = "object")
 	public String getTableInfo(
-		@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName,
-		@ToolParam(name = "tableName", description = "Table name", required = true) String tableName)
-	{
-		if (serverName == null || serverName.isBlank()) return "Error: serverName parameter is required";
-		if (tableName == null || tableName.isBlank()) return "Error: tableName parameter is required";
+			@ToolParam(name = "serverName", description = "Database server name", required = true) String serverName,
+			@ToolParam(name = "tableName", description = "Table name", required = true) String tableName) {
+		if (serverName == null || serverName.isBlank())
+			return "Error: serverName parameter is required";
+		if (tableName == null || tableName.isBlank())
+			return "Error: tableName parameter is required";
 
-		try
-		{
-			IServerInternal server = (IServerInternal)ApplicationServerRegistry.get().getServerManager().getServer(serverName, false, false);
-			if (server == null) return "Error: Database server '" + serverName + "' not found";
+		try {
+			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					.getServer(serverName, false, false);
+			if (server == null)
+				return "Error: Database server '" + serverName + "' not found";
 
 			ITable table = server.getTable(tableName);
-			if (table == null) return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
+			if (table == null)
+				return "Error: Table '" + tableName + "' not found in server '" + serverName + "'";
 
 			StringBuilder result = new StringBuilder();
 			result.append("Table: ").append(table.getSQLName()).append("\n");
@@ -1888,8 +1699,7 @@ public class ServoyDevServer
 			result.append("Columns:\n\n");
 
 			java.util.Collection<Column> columns = table.getColumns();
-			if (columns == null || columns.isEmpty())
-			{
+			if (columns == null || columns.isEmpty()) {
 				result.append("(No columns found)\n");
 				return result.toString();
 			}
@@ -1897,20 +1707,18 @@ public class ServoyDevServer
 			java.util.Set<String> pkNames = new java.util.HashSet<>();
 			java.util.List<Column> pkColumns = table.getRowIdentColumns();
 			if (pkColumns != null)
-				for (Column col : pkColumns) pkNames.add(col.getName());
+				for (Column col : pkColumns)
+					pkNames.add(col.getName());
 
 			int colNum = 1;
-			for (Column col : columns)
-			{
+			for (Column col : columns) {
 				result.append(colNum++).append(". ").append(col.getName()).append("\n");
 				result.append("   Type: ").append(col.getColumnType()).append("\n");
 				result.append("   PK: ").append(pkNames.contains(col.getName())).append("\n");
 				result.append("   Nullable: ").append(col.getAllowNull()).append("\n\n");
 			}
 			return result.toString();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			ServoyLog.logError("Error getting table info: " + serverName + "." + tableName, e);
 			return "Error: " + e.getMessage();
 		}

@@ -9,6 +9,10 @@ Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ClassPath: .,
  testresources/drivers/hsqldb.jar
 Import-Package: org.junit;version="4.0.0",
+ org.junit.jupiter.api,
+ org.junit.jupiter.api.function,
+ org.junit.jupiter.params,
+ org.junit.jupiter.params.provider,
  org.junit.rules;version="4.0.0",
  org.junit.runner;version="4.0.0",
  org.junit.runners;version="4.0.0"
