@@ -9,7 +9,7 @@
 package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +69,7 @@ public abstract class ServoyRunnerTestBase
 	 * result immediately, so only one wait ever occurs regardless of how many test methods
 	 * call this guard.
 	 * <p>
-	 * Calls {@code assumeTrue} (skipping the calling test) if the server is not available.
+	 * Calls {@code assertTrue} (failing the test) if the server is not available.
 	 */
 	protected void waitForAppServer() throws InterruptedException
 	{
@@ -82,8 +82,8 @@ public abstract class ServoyRunnerTestBase
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assumeTrue(
-			"Servoy application server not started (ApplicationServerRegistry.exists() == false) - skipping",
+		assertTrue(
+			"Servoy application server not started (ApplicationServerRegistry.exists() == false)",
 			appServerAvailableCache);
 	}
 
@@ -124,15 +124,31 @@ public abstract class ServoyRunnerTestBase
 		}, "jsunit-test-runner");
 		t.start();
 
-		Display display = Display.getDefault();
 		long deadline = System.currentTimeMillis() + (TIMEOUT_SECONDS + 30) * 1000L;
-		while (t.isAlive() && System.currentTimeMillis() < deadline)
+
+		Display display = Display.getDefault();
+		boolean onUIThread = (display != null && !display.isDisposed() && Thread.currentThread() == display.getThread());
+
+		if (onUIThread)
 		{
-			if (display != null && !display.isDisposed() && display.readAndDispatch())
+			// We're on the SWT UI thread - pump events to avoid deadlock
+			while (t.isAlive() && System.currentTimeMillis() < deadline)
 			{
-				continue; // processed an event - re-check thread state immediately
+				if (display.readAndDispatch())
+				{
+					continue; // processed an event - re-check thread state immediately
+				}
+				Thread.sleep(10); // brief yield when no events are pending
 			}
-			Thread.sleep(10); // brief yield when no events are pending
+		}
+		else
+		{
+			// Not on UI thread (NonUIThreadTestApplication) - safe to just join
+			long remaining = deadline - System.currentTimeMillis();
+			if (remaining > 0)
+			{
+				t.join(remaining);
+			}
 		}
 
 		if (error[0] != null) throw error[0];

@@ -11,8 +11,8 @@ package com.servoy.eclipse.developer.mcp.integration;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.awt.Point;
 
@@ -67,7 +67,7 @@ public class ShowFormInBrowserIntegrationTest
 	{
 		tool = new ServoyTestingServer();
 
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		waitForAppServer();
@@ -75,7 +75,7 @@ public class ShowFormInBrowserIntegrationTest
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-		assumeNotNull("Active project required", activeProject);
+		assertNotNull("Active project required", activeProject);
 	}
 
 	// -----------------------------------------------------------------------
@@ -261,7 +261,7 @@ public class ShowFormInBrowserIntegrationTest
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assumeTrue("Servoy application server not started - skipping",
+		assertTrue("Servoy application server not started - skipping",
 			appServerAvailableCache);
 	}
 
@@ -321,7 +321,7 @@ public class ShowFormInBrowserIntegrationTest
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assumeTrue("No ServoyProject found in workspace",
+		assertTrue("No ServoyProject found in workspace",
 			projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
@@ -357,7 +357,7 @@ public class ShowFormInBrowserIntegrationTest
 				Thread.sleep(200);
 		}
 
-		assumeNotNull("Active project not set - skipping",
+		assertNotNull("Active project not set - skipping",
 			model.getActiveProject());
 	}
 

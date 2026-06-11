@@ -18,8 +18,7 @@ package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.assertNotNull;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -64,14 +63,14 @@ public class PersistDuplicateIntegrationTest {
 		duplicateService = new PersistDuplicateService();
 		devServer = new ServoyDevServer();
 
-		assumeNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
+		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
 		ensureTestSolutionInWorkspace();
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-		assumeNotNull("Active project required", activeProject);
+		assertNotNull("Active project required", activeProject);
 	}
 
 	// -----------------------------------------------------------------------
@@ -84,7 +83,7 @@ public class PersistDuplicateIntegrationTest {
 		String newName = formName + "_dup";
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = duplicateService.duplicatePersist("form", formName, newName, null, null);
 
@@ -101,7 +100,7 @@ public class PersistDuplicateIntegrationTest {
 		String newName = formName + "_dup";
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = devServer.duplicatePersist("form", formName, newName, null, null);
 
@@ -114,7 +113,7 @@ public class PersistDuplicateIntegrationTest {
 		String formName = "dupFormAuto_" + System.currentTimeMillis();
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = duplicateService.duplicatePersist("form", formName, null, null, null);
 
@@ -132,8 +131,8 @@ public class PersistDuplicateIntegrationTest {
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		new ServoyArtifactCreationService().createForm(formName + "_copy", "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
-		assumeNotNull("Copy form creation should succeed",
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Copy form creation should succeed",
 				activeProject.getEditingSolution().getForm(formName + "_copy"));
 
 		String result = duplicateService.duplicatePersist("form", formName, null, null, null);
@@ -157,7 +156,7 @@ public class PersistDuplicateIntegrationTest {
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1",
 				"db:/mem/table2", 1);
-		assumeNotNull("Relation creation should succeed", rel);
+		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new IPersist[] { rel }, true);
 
 		String result = duplicateService.duplicatePersist("relation", relName, newRelName, null, null);
@@ -179,7 +178,7 @@ public class PersistDuplicateIntegrationTest {
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1",
 				"db:/mem/table2", 1);
-		assumeNotNull("Relation creation should succeed", rel);
+		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new IPersist[] { rel }, true);
 
 		String result = devServer.duplicatePersist("relation", relName, newRelName, null, null);
@@ -200,7 +199,7 @@ public class PersistDuplicateIntegrationTest {
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
-		assumeNotNull("ValueList creation should succeed", vl);
+		assertNotNull("ValueList creation should succeed", vl);
 		activeProject.saveEditingSolutionNodes(new IPersist[] { vl }, true);
 
 		String result = duplicateService.duplicatePersist("valuelist", vlName, newVlName, null, null);
@@ -221,7 +220,7 @@ public class PersistDuplicateIntegrationTest {
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
-		assumeNotNull("ValueList creation should succeed", vl);
+		assertNotNull("ValueList creation should succeed", vl);
 		activeProject.saveEditingSolutionNodes(new IPersist[] { vl }, true);
 
 		String result = devServer.duplicatePersist("valuelist", vlName, newVlName, null, null);
@@ -242,7 +241,7 @@ public class PersistDuplicateIntegrationTest {
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
-		assumeNotNull("Media creation should succeed", media);
+		assertNotNull("Media creation should succeed", media);
 		media.setMimeType("image/png");
 		media.setPermMediaData(new byte[] { 0x00, 0x01, 0x02, 0x03 });
 		activeProject.saveEditingSolutionNodes(new IPersist[] { media }, true);
@@ -263,7 +262,7 @@ public class PersistDuplicateIntegrationTest {
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
-		assumeNotNull("Media creation should succeed", media);
+		assertNotNull("Media creation should succeed", media);
 		media.setMimeType("image/png");
 		media.setPermMediaData(new byte[] { 0x00 });
 		activeProject.saveEditingSolutionNodes(new IPersist[] { media }, true);
@@ -323,7 +322,7 @@ public class PersistDuplicateIntegrationTest {
 		String formName = "dupFormInvalid_" + System.currentTimeMillis();
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = duplicateService.duplicatePersist("form", formName, "invalid name with spaces", null, null);
 
@@ -339,8 +338,8 @@ public class PersistDuplicateIntegrationTest {
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		new ServoyArtifactCreationService().createForm(existingName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
-		assumeNotNull("Existing form creation should succeed",
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Existing form creation should succeed",
 				activeProject.getEditingSolution().getForm(existingName));
 
 		String result = duplicateService.duplicatePersist("form", formName, existingName, null, null);
@@ -392,7 +391,7 @@ public class PersistDuplicateIntegrationTest {
 		String formName = "dupFormDestErr_" + System.currentTimeMillis();
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = duplicateService.duplicatePersist("form", formName, "newName", null,
 				"nonExistentDestination_xyz");
@@ -414,7 +413,7 @@ public class PersistDuplicateIntegrationTest {
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assumeTrue("Servoy application server not started - skipping", appServerAvailableCache);
+		assertTrue("Servoy application server not started", appServerAvailableCache);
 	}
 
 	private void ensureTestSolutionInWorkspace() throws Exception {
@@ -470,7 +469,7 @@ public class PersistDuplicateIntegrationTest {
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assumeTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
+		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
 		for (ServoyProject p : projects) {
@@ -497,7 +496,7 @@ public class PersistDuplicateIntegrationTest {
 				Thread.sleep(200);
 		}
 
-		assumeNotNull("Active project not set - skipping", model.getActiveProject());
+		assertNotNull("Active project not set - skipping", model.getActiveProject());
 	}
 
 	private void writeProjectFile(IProject project, String fileName, String content,

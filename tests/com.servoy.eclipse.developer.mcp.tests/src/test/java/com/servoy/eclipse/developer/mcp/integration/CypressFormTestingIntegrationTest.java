@@ -20,8 +20,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -77,7 +77,7 @@ public class CypressFormTestingIntegrationTest
 		specGenerator = new FormSpecGenerator();
 		specRunner = new FormSpecRunner();
 
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		waitForAppServer();
@@ -85,7 +85,7 @@ public class CypressFormTestingIntegrationTest
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-		assumeNotNull("Active project required", activeProject);
+		assertNotNull("Active project required", activeProject);
 	}
 
 	@org.junit.AfterClass
@@ -573,7 +573,7 @@ public class CypressFormTestingIntegrationTest
 				null, null, true, true, false, false, 0, null, null, null, false, null, null);
 			server = (IServerInternal)serverManager.createServer(config);
 		}
-		assumeNotNull("cypress_test server must be available", server);
+		assertNotNull("cypress_test server must be available", server);
 
 		try (java.sql.Connection conn = server.getRawConnection())
 		{
@@ -674,7 +674,7 @@ public class CypressFormTestingIntegrationTest
 		com.servoy.j2db.persistence.IServerManagerInternal serverManager =
 			(com.servoy.j2db.persistence.IServerManagerInternal)ApplicationServerRegistry.get().getServerManager();
 		IServerInternal server = (IServerInternal)serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
-		assumeNotNull("Server must be available", server);
+		assertNotNull("Server must be available", server);
 
 		try (java.sql.Connection conn = server.getRawConnection())
 		{
@@ -999,7 +999,7 @@ public class CypressFormTestingIntegrationTest
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, dataSource, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
-		assumeNotNull("Form creation with dataSource should succeed: " + formName, form);
+		assertNotNull("Form creation with dataSource should succeed: " + formName, form);
 		return form;
 	}
 
@@ -1043,7 +1043,7 @@ public class CypressFormTestingIntegrationTest
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assumeTrue("Servoy application server not started - skipping",
+		assertTrue("Servoy application server not started - skipping",
 			appServerAvailableCache);
 	}
 
@@ -1103,7 +1103,7 @@ public class CypressFormTestingIntegrationTest
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assumeTrue("No ServoyProject found in workspace",
+		assertTrue("No ServoyProject found in workspace",
 			projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
@@ -1139,7 +1139,7 @@ public class CypressFormTestingIntegrationTest
 				Thread.sleep(200);
 		}
 
-		assumeNotNull("Active project not set - skipping",
+		assertNotNull("Active project not set - skipping",
 			model.getActiveProject());
 	}
 

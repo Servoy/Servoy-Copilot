@@ -11,7 +11,7 @@ package com.servoy.eclipse.developer.mcp.integration;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assert.assertNotNull;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -97,7 +97,7 @@ public class AddTestMethodIntegrationTest
 			e.printStackTrace(System.err);
 			servoyProject = null;
 		}
-		assumeNotNull("Failed to create test project in workspace - skipping Layer 2 tests",
+		assertNotNull("Failed to create test project in workspace - skipping Layer 2 tests",
 			servoyProject);
 
 		// Clean slate: OS-level delete then refresh, consistent with CreateTestFileIntegrationTest.

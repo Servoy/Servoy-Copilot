@@ -12,7 +12,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assert.assertNotNull;
 
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
@@ -111,7 +111,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available.
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Skip if no Servoy app server - same guard as Layer 3.

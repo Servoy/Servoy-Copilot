@@ -12,7 +12,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assert.assertNotNull;
 
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
@@ -133,7 +133,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available.
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Skip if no Servoy app server.
@@ -154,7 +154,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 		// Guard: if class setup failed (project activation timed out), both results are
 		// null. Skip gracefully rather than NPE in every test method.
-		assumeNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
+		assertNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
 	}
 
 	// -----------------------------------------------------------------------

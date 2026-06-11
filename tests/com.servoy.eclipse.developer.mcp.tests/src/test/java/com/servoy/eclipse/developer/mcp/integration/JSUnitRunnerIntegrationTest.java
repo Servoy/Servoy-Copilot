@@ -10,8 +10,7 @@ package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.fail;
 
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IProject;
@@ -68,7 +67,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available (Display.syncExec is used inside the runner).
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Wait for the Servoy ApplicationServer singleton.
@@ -102,9 +101,9 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 
 		// Skip the format assertion when headless client could not complete the run
 		// (timeout, port conflict, or solution has no test_ methods).
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error (" + result.substring(0, Math.min(result.length(), 80)) +
-				") - skipping markdown format assertion",
+				") - markdown format assertion failed",
 			!result.startsWith("Error"));
 
 		assertTrue("Output should contain markdown table header with Passed column",
@@ -120,8 +119,8 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		assertNotNull(result);
 
 		// Skip the numeric assertion when headless client could not complete the run.
-		assumeTrue(
-			"headless client run returned an error - skipping pass-count assertion",
+		assertTrue(
+			"headless client run returned an error - pass-count assertion failed",
 			!result.startsWith("Error"));
 
 		int passed = extractPassedCount(result);
@@ -177,7 +176,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error - skipping fail-count assertion",
 			!result.startsWith("Error"));
 
@@ -192,7 +191,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error - skipping error-count assertion",
 			!result.startsWith("Error"));
 
@@ -209,7 +208,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error - skipping total-count assertion",
 			!result.startsWith("Error"));
 
@@ -227,7 +226,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error - skipping branch-coverage assertion",
 			!result.startsWith("Error"));
 
@@ -247,12 +246,12 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 		String result = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		assertNotNull(result);
 
-		assumeTrue(
+		assertTrue(
 			"headless client run returned an error - skipping all-passed assertion",
 			!result.startsWith("Error"));
 
 		int errors = extractErrorCount(result);
-		assumeTrue(
+		assertTrue(
 			"Active solution has test errors - all-passed branch not reachable with this solution (skipping); result:\n" +
 				result.substring(0, Math.min(result.length(), 120)),
 			errors == 0);
@@ -332,7 +331,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 
 		// Find test_pilot_suite specifically; fall back to the first available project.
 		ServoyProject[] projects = model.getServoyProjects();
-		assumeTrue(
+		assertTrue(
 			"No ServoyProject found in the workspace after setup attempt - skipping Layer 3 tests",
 			projects != null && projects.length > 0);
 
@@ -372,9 +371,9 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase
 				Thread.sleep(200);
 		}
 
-		assumeNotNull(
+		assertNotNull(
 			"Active project not set after " + (ACTIVATE_SETTLE_MS / 1000) +
-				" seconds - skipping Layer 3 tests",
+				" seconds - Layer 3 tests cannot proceed",
 			model.getActiveProject());
 	}
 

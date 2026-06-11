@@ -20,8 +20,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -82,7 +82,7 @@ public class RenamePersistIntegrationTest
 		renameService = new PersistRenameService();
 		devServer = new ServoyDevServer();
 
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		waitForAppServer();
@@ -90,7 +90,7 @@ public class RenamePersistIntegrationTest
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-		assumeNotNull("Active project required", activeProject);
+		assertNotNull("Active project required", activeProject);
 	}
 
 	// -----------------------------------------------------------------------
@@ -105,7 +105,7 @@ public class RenamePersistIntegrationTest
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
-		assumeNotNull("Form creation should succeed", form);
+		assertNotNull("Form creation should succeed", form);
 
 		String result = renameService.renameForm(formName, newName, activeProject);
 
@@ -132,7 +132,7 @@ public class RenamePersistIntegrationTest
 		String newName = formName + "_renamed";
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		String result = devServer.renamePersist("form", formName, newName, null);
 
@@ -163,7 +163,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1", "db:/mem/table2", 1);
-		assumeNotNull("Relation creation should succeed", rel);
+		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
 
 		String result = renameService.renameRelation(relName, newRelName, activeProject);
@@ -184,7 +184,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/t1", "db:/mem/t2", 1);
-		assumeNotNull("Relation creation should succeed", rel);
+		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
 
 		String result = devServer.renamePersist("relation", relName, newRelName, null);
@@ -215,7 +215,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
-		assumeNotNull("ValueList creation should succeed", vl);
+		assertNotNull("ValueList creation should succeed", vl);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { vl }, true);
 
 		String result = renameService.renameValueList(vlName, newVlName, activeProject);
@@ -236,7 +236,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.ValueList vl = solution.createNewValueList(validator, vlName);
-		assumeNotNull("ValueList creation should succeed", vl);
+		assertNotNull("ValueList creation should succeed", vl);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { vl }, true);
 
 		String result = devServer.renamePersist("valuelist", vlName, newVlName, null);
@@ -268,7 +268,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
-		assumeNotNull("Media creation should succeed", media);
+		assertNotNull("Media creation should succeed", media);
 		media.setMimeType("image/png");
 		media.setPermMediaData(new byte[] { 0x00 });
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media }, true);
@@ -292,8 +292,8 @@ public class RenamePersistIntegrationTest
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Media media1 = solution.createNewMedia(validator, mediaName1);
 		com.servoy.j2db.persistence.Media media2 = solution.createNewMedia(validator, mediaName2);
-		assumeNotNull("Media1 creation should succeed", media1);
-		assumeNotNull("Media2 creation should succeed", media2);
+		assertNotNull("Media1 creation should succeed", media1);
+		assertNotNull("Media2 creation should succeed", media2);
 		media1.setPermMediaData(new byte[] { 0x01 });
 		media2.setPermMediaData(new byte[] { 0x02 });
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media1, media2 }, true);
@@ -313,7 +313,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		com.servoy.j2db.persistence.Media media = solution.createNewMedia(validator, mediaName);
-		assumeNotNull("Media creation should succeed", media);
+		assertNotNull("Media creation should succeed", media);
 		media.setPermMediaData(new byte[] { 0x00 });
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media }, true);
 
@@ -343,7 +343,7 @@ public class RenamePersistIntegrationTest
 		IProject project = activeProject.getProject();
 		IFile scopeFile = project.getFile(scopeName + ".js");
 		scopeFile.create(new ByteArrayInputStream("// scope file".getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
-		assumeTrue("Scope file should exist", scopeFile.exists());
+		assertTrue("Scope file should exist", scopeFile.exists());
 
 		String newScopeName = scopeName + "_renamed";
 		String result = renameService.renameScope(scopeName, newScopeName, activeProject);
@@ -369,7 +369,7 @@ public class RenamePersistIntegrationTest
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
-		assumeNotNull("Form creation should succeed", form);
+		assertNotNull("Form creation should succeed", form);
 
 		IProject project = activeProject.getProject();
 
@@ -385,8 +385,8 @@ public class RenamePersistIntegrationTest
 		IFile specJsFile = project.getFile("forms/" + formName + ".spec.js");
 		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
 
-		assumeTrue(".spec.cy.js should exist before rename", specCyFile.exists());
-		assumeTrue(".spec.js should exist before rename", specJsFile.exists());
+		assertTrue(".spec.cy.js should exist before rename", specCyFile.exists());
+		assertTrue(".spec.js should exist before rename", specJsFile.exists());
 
 		String result = renameService.renameForm(formName, newName, activeProject);
 		assertNotNull(result);
@@ -416,7 +416,7 @@ public class RenamePersistIntegrationTest
 		String newName = formName + "_renamed";
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
-		assumeNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
+		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
 		IProject project = activeProject.getProject();
 		IFile jsFile = project.getFile("forms/" + formName + ".js");
@@ -450,7 +450,7 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		Menu menu = solution.createNewMenu(validator, menuName);
-		assumeNotNull("Menu creation should succeed", menu);
+		assertNotNull("Menu creation should succeed", menu);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu }, true);
 
 		String result = renameService.renameMenu(menuName, newMenuName, activeProject);
@@ -494,10 +494,10 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		Menu menu = solution.createNewMenu(validator, menuName);
-		assumeNotNull("Menu creation should succeed", menu);
+		assertNotNull("Menu creation should succeed", menu);
 
 		MenuItem menuItem = menu.createNewMenuItem(itemName);
-		assumeNotNull("MenuItem creation should succeed", menuItem);
+		assertNotNull("MenuItem creation should succeed", menuItem);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu, menuItem }, true);
 
 		String result = renameService.renameMenuItem(itemName, newItemName, activeProject);
@@ -516,10 +516,10 @@ public class RenamePersistIntegrationTest
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
 		Menu menu = solution.createNewMenu(validator, menuName);
-		assumeNotNull("Menu creation should succeed", menu);
+		assertNotNull("Menu creation should succeed", menu);
 
 		MenuItem menuItem = menu.createNewMenuItem(itemName);
-		assumeNotNull("MenuItem creation should succeed", menuItem);
+		assertNotNull("MenuItem creation should succeed", menuItem);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu, menuItem }, true);
 
 		String result = devServer.renamePersist("menuitem", itemName, newItemName, null);
@@ -630,7 +630,7 @@ public class RenamePersistIntegrationTest
 		pumpEvents(2000);
 
 		ServoyProject solProject = model.getServoyProject(solName);
-		assumeNotNull("Solution project should be created", solProject);
+		assertNotNull("Solution project should be created", solProject);
 
 		String result = renameService.renameSolution(solName, newSolName);
 
@@ -709,11 +709,11 @@ public class RenamePersistIntegrationTest
 
 		ServoyProject moduleProject = model.getServoyProject(moduleName);
 		ServoyProject parentProject = model.getServoyProject(parentName);
-		assumeNotNull("Module project should exist", moduleProject);
-		assumeNotNull("Parent project should exist", parentProject);
+		assertNotNull("Module project should exist", moduleProject);
+		assertNotNull("Parent project should exist", parentProject);
 
 		Solution parentSol = parentProject.getEditingSolution();
-		assumeNotNull("Parent editing solution should exist", parentSol);
+		assertNotNull("Parent editing solution should exist", parentSol);
 		parentSol.setModulesNames(moduleName);
 		parentProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { parentSol }, true);
 		pumpEvents(1000);
@@ -766,7 +766,7 @@ public class RenamePersistIntegrationTest
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assumeTrue("Servoy application server not started - skipping",
+		assertTrue("Servoy application server not started - skipping",
 			appServerAvailableCache);
 	}
 
@@ -826,7 +826,7 @@ public class RenamePersistIntegrationTest
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assumeTrue("No ServoyProject found in workspace",
+		assertTrue("No ServoyProject found in workspace",
 			projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
@@ -862,7 +862,7 @@ public class RenamePersistIntegrationTest
 				Thread.sleep(200);
 		}
 
-		assumeNotNull("Active project not set - skipping",
+		assertNotNull("Active project not set - skipping",
 			model.getActiveProject());
 	}
 
