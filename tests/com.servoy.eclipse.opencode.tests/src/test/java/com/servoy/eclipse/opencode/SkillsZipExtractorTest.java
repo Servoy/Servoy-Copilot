@@ -674,4 +674,79 @@ public class SkillsZipExtractorTest {
 		}
 	}
 
+	// -----------------------------------------------------------------------
+	// extractToConfigDir -- flat zip structure (agents/, skills/, etc. at root)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void extractToConfigDir_flatStructure_agentsAndSkillsExtracted() throws IOException {
+		Path zip = createZip("agents/foo.md", "agent content", "skills/bar.md", "skill content", "commands/baz.md",
+				"command content", "plugins/qux.md", "plugin content");
+		Path configDir = tmp.newFolder("config").toPath();
+
+		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
+
+		assertTrue("agents/foo.md must exist", Files.exists(configDir.resolve("agents/foo.md")));
+		assertEquals("agent content", Files.readString(configDir.resolve("agents/foo.md"), StandardCharsets.UTF_8));
+		assertTrue("skills/bar.md must exist", Files.exists(configDir.resolve("skills/bar.md")));
+		assertEquals("skill content", Files.readString(configDir.resolve("skills/bar.md"), StandardCharsets.UTF_8));
+		assertTrue("commands/baz.md must exist", Files.exists(configDir.resolve("commands/baz.md")));
+		assertEquals("command content", Files.readString(configDir.resolve("commands/baz.md"), StandardCharsets.UTF_8));
+		assertTrue("plugins/qux.md must exist", Files.exists(configDir.resolve("plugins/qux.md")));
+		assertEquals("plugin content", Files.readString(configDir.resolve("plugins/qux.md"), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void extractToConfigDir_existingAgentsDir_cleanedBeforeExtraction() throws IOException {
+		Path configDir = tmp.newFolder("config").toPath();
+		Path oldFile = configDir.resolve("agents/old.md");
+		Files.createDirectories(oldFile.getParent());
+		Files.writeString(oldFile, "old agent", StandardCharsets.UTF_8);
+
+		Path zip = createZip("agents/new.md", "new agent");
+		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
+
+		assertFalse("old agents/old.md must be deleted", Files.exists(oldFile));
+		assertTrue("agents/new.md must exist", Files.exists(configDir.resolve("agents/new.md")));
+		assertEquals("new agent", Files.readString(configDir.resolve("agents/new.md"), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void extractToConfigDir_sessionsDir_notDeleted() throws IOException {
+		Path configDir = tmp.newFolder("config").toPath();
+		Path sessionsFile = configDir.resolve("sessions/state.json");
+		Files.createDirectories(sessionsFile.getParent());
+		Files.writeString(sessionsFile, "{\"active\":true}", StandardCharsets.UTF_8);
+
+		Path zip = createZip("agents/foo.md", "agent content", "skills/bar.md", "skill content");
+		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
+
+		assertTrue("sessions/state.json must be preserved", Files.exists(sessionsFile));
+		assertEquals("{\"active\":true}", Files.readString(sessionsFile, StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void extractToConfigDir_rootLevelFile_overwritten() throws IOException {
+		Path configDir = tmp.newFolder("config").toPath();
+		Path existingFile = configDir.resolve("config.yaml");
+		Files.writeString(existingFile, "old: value", StandardCharsets.UTF_8);
+
+		Path zip = createZip("config.yaml", "new: value");
+		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
+
+		assertTrue("config.yaml must exist", Files.exists(existingFile));
+		assertEquals("new: value", Files.readString(existingFile, StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void extractToConfigDir_agentsMdInZip_notExtractedToConfigDir() throws IOException {
+		Path zip = createZip("AGENTS.MD", "# should not appear", "agents/foo.md", "agent content");
+		Path configDir = tmp.newFolder("config").toPath();
+
+		SkillsZipExtractor.extractToConfigDir(zipStream(zip), configDir);
+
+		assertFalse("AGENTS.MD must NOT be extracted to configDir", Files.exists(configDir.resolve("AGENTS.MD")));
+		assertTrue("agents/foo.md must still be extracted", Files.exists(configDir.resolve("agents/foo.md")));
+	}
+
 }

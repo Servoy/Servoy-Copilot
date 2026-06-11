@@ -27,7 +27,9 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -72,7 +74,6 @@ class SkillsZipExtractor {
 
 	private static final String AGENTS_MD = "AGENTS.MD"; //$NON-NLS-1$
 	private static final String OPENCODE_JSON = "opencode.json"; //$NON-NLS-1$
-	private static final String OPENCODE_DIR_PREFIX = ".opencode/"; //$NON-NLS-1$
 
 	/**
 	 * Returns {@code true} if skills extraction should be skipped based on the
@@ -118,11 +119,15 @@ class SkillsZipExtractor {
 	}
 
 	/**
-	 * Extracts the zip into the opencode config directory:
+	 * Extracts the zip into the opencode config directory. All top-level
+	 * directories found in the zip are recursively deleted before their entries
+	 * are extracted, ensuring the zip is authoritative. Directories not present
+	 * in the zip (e.g. {@code sessions/}) are left untouched.
 	 * <ul>
-	 * <li>{@code .opencode/} subdirectory -- fully deleted then re-extracted into
-	 * {@code configDir}</li>
 	 * <li>{@code opencode.json} -- written into {@code configDir} as-is</li>
+	 * <li>{@code AGENTS.MD} -- skipped (handled by
+	 * {@link #writeOrUpdateAgentsMd})</li>
+	 * <li>All other entries -- extracted relative to {@code configDir}</li>
 	 * </ul>
 	 * <p>
 	 * Takes ownership of {@code zipStream} and closes it.
@@ -137,20 +142,7 @@ class SkillsZipExtractor {
 	static boolean extractToConfigDir(InputStream zipStream, Path configDir) throws IOException {
 		Files.createDirectories(configDir);
 
-		// Delete existing .opencode/ directory completely
-		Path opencodeSubDir = configDir.resolve(".opencode"); //$NON-NLS-1$
-		if (Files.exists(opencodeSubDir)) {
-			try (var stream = Files.walk(opencodeSubDir)) {
-				stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-					try {
-						Files.delete(p);
-					} catch (IOException e) {
-						// log inline -- non-fatal
-					}
-				});
-			}
-		}
-
+		Set<String> cleanedDirs = new HashSet<>();
 		boolean wroteOpencodeJson = false;
 
 		try (ZipInputStream zis = new ZipInputStream(zipStream)) {
@@ -161,14 +153,31 @@ class SkillsZipExtractor {
 				if (entry.isDirectory())
 					continue;
 
+				if (AGENTS_MD.equalsIgnoreCase(name))
+					continue;
+
 				if (OPENCODE_JSON.equalsIgnoreCase(name)) {
-					// Write opencode.json into configDir
 					Files.write(configDir.resolve(OPENCODE_JSON), zis.readAllBytes());
 					wroteOpencodeJson = true;
-
-				} else if (name.toLowerCase().startsWith(OPENCODE_DIR_PREFIX)) {
-					// Extract .opencode/ entries preserving relative structure
-					Path relative = Paths.get(name); // e.g. .opencode/foo/bar.txt
+				} else {
+					Path relative = Paths.get(name);
+					if (relative.getNameCount() > 1) {
+						String topDir = relative.getName(0).toString();
+						if (cleanedDirs.add(topDir)) {
+							Path dirToClean = configDir.resolve(topDir);
+							if (Files.exists(dirToClean)) {
+								try (var stream = Files.walk(dirToClean)) {
+									stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+										try {
+											Files.delete(p);
+										} catch (IOException e) {
+											// non-fatal
+										}
+									});
+								}
+							}
+						}
+					}
 					Path target = configDir.resolve(relative);
 					Files.createDirectories(target.getParent());
 					Files.write(target, zis.readAllBytes());
