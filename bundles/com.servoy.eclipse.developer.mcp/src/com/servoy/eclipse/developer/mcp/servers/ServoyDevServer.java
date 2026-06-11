@@ -1644,6 +1644,16 @@ public class ServoyDevServer {
 	}
 
 	// -------------------------------------------------------------------------
+	// generateUUID MCP tool
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "generateUUID", description = "Generates a random UUID (Universal Unique Identifier) string. "
+			+ "Returns a standard 128-bit UUID in uppercase format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.", type = "object")
+	public String generateUUID() {
+		return UUID.randomUUID().toString();
+	}
+
+	// -------------------------------------------------------------------------
 	// Database schema tools
 	// -------------------------------------------------------------------------
 
