@@ -51,7 +51,7 @@ public class ServoyDevServerTest
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals(25, toolCount);
+		assertEquals(28, toolCount);
 	}
 
 	@Test
@@ -303,6 +303,319 @@ public class ServoyDevServerTest
 		}
 	}
 
+
+	// -----------------------------------------------------------------------
+	// executeSQL tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testExecuteSQL_toolAnnotationExists()
+	{
+		assertTrue("executeSQL tool must be registered", hasToolNamed("executeSQL"));
+	}
+
+	@Test
+	public void testExecuteSQL_hasCorrectParameters()
+	{
+		Method m = findToolMethod("executeSQL");
+		assertNotNull("executeSQL method must exist", m);
+		ToolParam[] params = Arrays.stream(m.getParameters())
+			.map(p -> p.getAnnotation(ToolParam.class))
+			.filter(a -> a != null)
+			.toArray(ToolParam[]::new);
+		assertEquals(2, params.length);
+		assertEquals("serverName", params[0].name());
+		assertEquals("sql", params[1].name());
+		assertTrue(params[0].required());
+		assertTrue(params[1].required());
+	}
+
+	@Test
+	public void testExecuteSQL_nullServerName_returnsError()
+	{
+		String result = server.executeSQL(null, "SELECT 1");
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("serverName is required"));
+	}
+
+	@Test
+	public void testExecuteSQL_blankServerName_returnsError()
+	{
+		String result = server.executeSQL("  ", "SELECT 1");
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("serverName is required"));
+	}
+
+	@Test
+	public void testExecuteSQL_nullSql_returnsError()
+	{
+		String result = server.executeSQL("myserver", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("sql is required"));
+	}
+
+	@Test
+	public void testExecuteSQL_blankSql_returnsError()
+	{
+		String result = server.executeSQL("myserver", "");
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("sql is required"));
+	}
+
+	@Test
+	public void testExecuteSQL_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.executeSQL("nonexistent_server", "SELECT 1");
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// addColumn tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testAddColumn_toolAnnotationExists()
+	{
+		assertTrue("addColumn tool must be registered", hasToolNamed("addColumn"));
+	}
+
+	@Test
+	public void testAddColumn_hasCorrectParameters()
+	{
+		Method m = findToolMethod("addColumn");
+		assertNotNull("addColumn method must exist", m);
+		ToolParam[] params = Arrays.stream(m.getParameters())
+			.map(p -> p.getAnnotation(ToolParam.class))
+			.filter(a -> a != null)
+			.toArray(ToolParam[]::new);
+		assertEquals(7, params.length);
+		assertEquals("serverName", params[0].name());
+		assertEquals("tableName", params[1].name());
+		assertEquals("columnName", params[2].name());
+		assertEquals("type", params[3].name());
+		assertEquals("length", params[4].name());
+		assertEquals("allowNull", params[5].name());
+		assertEquals("inMemory", params[6].name());
+		assertTrue(params[0].required());
+		assertTrue(params[1].required());
+		assertTrue(params[2].required());
+	}
+
+	@Test
+	public void testAddColumn_nullServerName_returnsError()
+	{
+		String result = server.addColumn(null, "mytable", "mycol", null, null, null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("serverName is required"));
+	}
+
+	@Test
+	public void testAddColumn_nullTableName_returnsError()
+	{
+		String result = server.addColumn("myserver", null, "mycol", null, null, null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("tableName is required"));
+	}
+
+	@Test
+	public void testAddColumn_nullColumnName_returnsError()
+	{
+		String result = server.addColumn("myserver", "mytable", null, null, null, null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("columnName is required"));
+	}
+
+	@Test
+	public void testAddColumn_invalidColumnName_returnsError()
+	{
+		String result = server.addColumn("myserver", "mytable", "123bad", null, null, null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("not a valid SQL identifier"));
+	}
+
+	@Test
+	public void testAddColumn_invalidType_returnsError()
+	{
+		String result = server.addColumn("myserver", "mytable", "valid_col", "BOGUS", null, null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("Invalid column type"));
+	}
+
+	@Test
+	public void testAddColumn_invalidLength_returnsError()
+	{
+		String result = server.addColumn("myserver", "mytable", "valid_col", "TEXT", "abc", null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("Invalid length value"));
+	}
+
+	@Test
+	public void testAddColumn_dbMode_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.addColumn("nonexistent_server", "mytable", "valid_col", "TEXT", null, null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testAddColumn_inMemoryMode_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.addColumn("ignored", "mytable", "valid_col", "INTEGER", null, null, "true");
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// createTable tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTable_toolAnnotationExists()
+	{
+		assertTrue("createTable tool must be registered", hasToolNamed("createTable"));
+	}
+
+	@Test
+	public void testCreateTable_hasCorrectParameters()
+	{
+		Method m = findToolMethod("createTable");
+		assertNotNull("createTable method must exist", m);
+		ToolParam[] params = Arrays.stream(m.getParameters())
+			.map(p -> p.getAnnotation(ToolParam.class))
+			.filter(a -> a != null)
+			.toArray(ToolParam[]::new);
+		assertEquals(3, params.length);
+		assertEquals("serverName", params[0].name());
+		assertEquals("tableName", params[1].name());
+		assertEquals("inMemory", params[2].name());
+		assertTrue(params[0].required());
+		assertTrue(params[1].required());
+	}
+
+	@Test
+	public void testCreateTable_nullTableName_returnsError()
+	{
+		String result = server.createTable("someServer", null, null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("tableName is required"));
+	}
+
+	@Test
+	public void testCreateTable_blankTableName_returnsError()
+	{
+		String result = server.createTable("someServer", "  ", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("tableName is required"));
+	}
+
+	@Test
+	public void testCreateTable_invalidSqlIdentifier_returnsError()
+	{
+		String result = server.createTable("someServer", "123invalid", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("not a valid SQL identifier"));
+	}
+
+	@Test
+	public void testCreateTable_tempPrefix_returnsError()
+	{
+		String result = server.createTable("someServer", "temp_mytable", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("temp_"));
+	}
+
+	@Test
+	public void testCreateTable_svyPrefix_returnsError()
+	{
+		String result = server.createTable("someServer", "svy_mytable", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("svy_"));
+	}
+
+	@Test
+	public void testCreateTable_nullServerName_dbMode_returnsError()
+	{
+		String result = server.createTable(null, "valid_table", null);
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("serverName is required"));
+	}
+
+	@Test
+	public void testCreateTable_blankServerName_dbMode_returnsError()
+	{
+		String result = server.createTable("", "valid_table", "false");
+		assertNotNull(result);
+		assertTrue(result.contains("Error"));
+		assertTrue(result.contains("serverName is required"));
+	}
+
+	@Test
+	public void testCreateTable_dbMode_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.createTable("nonexistent_server", "valid_table", null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testCreateTable_inMemoryMode_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.createTable("ignored", "valid_table", "true");
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
 
 	// -----------------------------------------------------------------------
 	// Helpers

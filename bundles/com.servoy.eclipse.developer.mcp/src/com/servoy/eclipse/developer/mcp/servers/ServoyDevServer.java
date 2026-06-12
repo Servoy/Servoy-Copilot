@@ -68,6 +68,7 @@ import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ui.preferences.PrimaryKeyType;
 import com.servoy.eclipse.ui.views.solutionexplorer.actions.CreateMediaWebAppManifest;
 import com.servoy.j2db.documentation.ClientSupport;
 import com.servoy.j2db.documentation.IObjectDocumentation;
@@ -1734,6 +1735,265 @@ public class ServoyDevServer {
 		}
 	}
 	
+	@Tool(name = "executeSQL", description = "Executes raw SQL statements against a database server. "
+			+ "Supports DDL (CREATE, ALTER, DROP) and DML (INSERT, UPDATE, DELETE) statements. "
+			+ "For SELECT queries, returns the result set as formatted text. "
+			+ "After execution, reloads all table metadata so Servoy sees the changes.", type = "object")
+	public String executeSQL(
+			@ToolParam(name = "serverName", description = "Database server name to execute SQL against.", required = true) String serverName,
+			@ToolParam(name = "sql", description = "The SQL statement to execute.", required = true) String sql) {
+		if (serverName == null || serverName.isBlank())
+			return "Error: serverName is required";
+		if (sql == null || sql.isBlank())
+			return "Error: sql is required";
+
+		IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+				.getServer(serverName, false, false);
+		if (server == null)
+			return "Error: Database server '" + serverName + "' not found";
+
+		com.servoy.j2db.util.ITransactionConnection connection = null;
+		try {
+			connection = server.getUnmanagedConnection();
+			String trimmedSql = sql.trim().toUpperCase();
+
+			if (trimmedSql.startsWith("SELECT") || trimmedSql.startsWith("WITH")) {
+				java.sql.PreparedStatement ps = connection.prepareStatement(sql);
+				java.sql.ResultSet rs = ps.executeQuery();
+				java.sql.ResultSetMetaData meta = rs.getMetaData();
+				int colCount = meta.getColumnCount();
+
+				StringBuilder result = new StringBuilder();
+				for (int i = 1; i <= colCount; i++) {
+					if (i > 1) result.append(" | ");
+					result.append(meta.getColumnLabel(i));
+				}
+				result.append("\n");
+				for (int i = 1; i <= colCount; i++) {
+					if (i > 1) result.append("-+-");
+					result.append("-".repeat(Math.max(meta.getColumnLabel(i).length(), 4)));
+				}
+				result.append("\n");
+
+				int rowCount = 0;
+				while (rs.next() && rowCount < 500) {
+					for (int i = 1; i <= colCount; i++) {
+						if (i > 1) result.append(" | ");
+						Object val = rs.getObject(i);
+						result.append(val == null ? "NULL" : val.toString());
+					}
+					result.append("\n");
+					rowCount++;
+				}
+				rs.close();
+				ps.close();
+
+				result.append("\n(").append(rowCount).append(" row(s))");
+				if (rowCount == 500) result.append(" [limited to 500 rows]");
+				return result.toString();
+			} else {
+				java.sql.PreparedStatement ps = connection.prepareStatement(sql);
+				int affected = ps.executeUpdate();
+				ps.close();
+
+				server.reloadTables();
+
+				return "SQL executed successfully. Rows affected: " + affected + ". Tables reloaded.";
+			}
+		} catch (Exception e) {
+			ServoyLog.logError("executeSQL failed", e);
+			return "Error: " + e.getMessage();
+		} finally {
+			Utils.closeConnection(connection);
+		}
+	}
+
+	@Tool(name = "addColumn", description = "Adds a new column to an existing database or in-memory table and saves the change immediately. "
+			+ "For database tables, executes ALTER TABLE ADD COLUMN. For in-memory tables, updates the column definition in the solution.", type = "object")
+	public String addColumn(
+			@ToolParam(name = "serverName", description = "Database server name containing the table.", required = true) String serverName,
+			@ToolParam(name = "tableName", description = "Name of the existing table to add the column to.", required = true) String tableName,
+			@ToolParam(name = "columnName", description = "Name of the new column. Must be a valid SQL identifier.", required = true) String columnName,
+			@ToolParam(name = "type", description = "Column type: TEXT, INTEGER, NUMBER, DATETIME, or MEDIA. Default: TEXT.", required = false) String type,
+			@ToolParam(name = "length", description = "Column length. Default: 50 for TEXT, 0 for others.", required = false) String length,
+			@ToolParam(name = "allowNull", description = "Whether the column allows null values. Default: true.", required = false) String allowNull,
+			@ToolParam(name = "inMemory", description = "If 'true', adds the column to an in-memory table in the active solution. Default: false.", required = false) String inMemory) {
+		if (serverName == null || serverName.isBlank())
+			return "Error: serverName is required";
+		if (tableName == null || tableName.isBlank())
+			return "Error: tableName is required";
+		if (columnName == null || columnName.isBlank())
+			return "Error: columnName is required";
+
+		if (!com.servoy.j2db.util.docvalidator.IdentDocumentValidator.isSQLIdentifier(columnName))
+			return "Error: '" + columnName + "' is not a valid SQL identifier";
+
+		String resolvedType = Optional.ofNullable(type).map(String::toUpperCase).orElse("TEXT");
+		int typeId;
+		switch (resolvedType) {
+			case "INTEGER": typeId = com.servoy.j2db.persistence.IColumnTypes.INTEGER; break;
+			case "NUMBER": typeId = com.servoy.j2db.persistence.IColumnTypes.NUMBER; break;
+			case "DATETIME": typeId = com.servoy.j2db.persistence.IColumnTypes.DATETIME; break;
+			case "MEDIA": typeId = com.servoy.j2db.persistence.IColumnTypes.MEDIA; break;
+			case "TEXT": typeId = com.servoy.j2db.persistence.IColumnTypes.TEXT; break;
+			default: return "Error: Invalid column type '" + type + "'. Must be TEXT, INTEGER, NUMBER, DATETIME, or MEDIA.";
+		}
+
+		int resolvedLength = resolvedType.equals("TEXT") ? 50 : 0;
+		if (length != null && !length.isBlank()) {
+			try {
+				resolvedLength = Integer.parseInt(length);
+			} catch (NumberFormatException e) {
+				return "Error: Invalid length value '" + length + "'";
+			}
+		}
+
+		boolean resolvedAllowNull = Optional.ofNullable(allowNull).map(Boolean::parseBoolean).orElse(true);
+		boolean isInMemory = Optional.ofNullable(inMemory).map(Boolean::parseBoolean).orElse(false);
+
+		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IValidateName validator = servoyModel.getNameValidator();
+
+		try {
+			if (isInMemory) {
+				ServoyProject project = servoyModel.getActiveProject();
+				if (project == null)
+					return "Error: No active Servoy project";
+
+				com.servoy.eclipse.model.inmemory.MemServer memServer = project.getMemServer();
+				ITable table = memServer.getTable(tableName);
+				if (table == null)
+					return "Error: In-memory table '" + tableName + "' not found";
+
+				if (table.getColumn(columnName) != null)
+					return "Error: Column '" + columnName + "' already exists in table '" + tableName + "'";
+
+				((com.servoy.j2db.persistence.AbstractTable) table).createNewColumn(validator, columnName,
+						ColumnType.getInstance(typeId, resolvedLength, 0), resolvedAllowNull);
+
+				memServer.syncTableObjWithDB(table, false, true);
+
+				Solution solution = project.getEditingSolution();
+				com.servoy.j2db.persistence.TableNode tableNode = solution.getOrCreateTableNode(table.getDataSource());
+				project.saveEditingSolutionNodes(new IPersist[] { tableNode }, true);
+
+				return "Column '" + columnName + "' (" + resolvedType + ") added to in-memory table '" + tableName + "'.";
+			} else {
+				IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+						.getServer(serverName, false, false);
+				if (server == null)
+					return "Error: Database server '" + serverName + "' not found";
+
+				ITable table = server.getTable(tableName);
+				if (table == null)
+					return "Error: Table '" + tableName + "' not found on server '" + serverName + "'";
+
+				if (table.getColumn(columnName) != null)
+					return "Error: Column '" + columnName + "' already exists in table '" + tableName + "'";
+
+				((com.servoy.j2db.persistence.AbstractTable) table).createNewColumn(validator, columnName,
+						ColumnType.getInstance(typeId, resolvedLength, 0), resolvedAllowNull);
+
+				server.syncTableObjWithDB(table, false, true);
+
+				DataModelManager dmm = servoyModel.getDataModelManager();
+				if (dmm != null) {
+					dmm.updateAllColumnInfo(table);
+				}
+
+				return "Column '" + columnName + "' (" + resolvedType + ", length=" + resolvedLength + ", nullable=" + resolvedAllowNull + ") added to table '" + tableName + "' on server '" + serverName + "'.";
+			}
+		} catch (Exception e) {
+			ServoyLog.logError("addColumn failed", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "createTable", description = "Creates a new empty database table with an auto-generated primary key column. "
+			+ "The PK column is named '<tableName>_id' with type INTEGER. "
+			+ "For database tables, uses database identity sequence. For in-memory tables, uses Servoy sequence.", type = "object")
+	public String createTable(
+			@ToolParam(name = "serverName", description = "Database server name where the table will be created. Required for database tables, ignored for in-memory tables.", required = true) String serverName,
+			@ToolParam(name = "tableName", description = "Name of the table to create. Must be a valid SQL identifier, cannot start with 'temp_' or 'svy_'.", required = true) String tableName,
+			@ToolParam(name = "inMemory", description = "If 'true', creates an in-memory datasource table in the active solution instead of a database table. Default: false.", required = false) String inMemory) {
+		if (tableName == null || tableName.isBlank())
+			return "Error: tableName is required";
+
+		if (!com.servoy.j2db.util.docvalidator.IdentDocumentValidator.isSQLIdentifier(tableName))
+			return "Error: '" + tableName + "' is not a valid SQL identifier";
+		if (tableName.toUpperCase().startsWith(DataModelManager.TEMP_UPPERCASE_PREFIX))
+			return "Error: table name cannot start with 'temp_'";
+		if (tableName.toUpperCase().startsWith(com.servoy.j2db.persistence.IServer.SERVOY_UPPERCASE_PREFIX))
+			return "Error: table name cannot start with 'svy_'";
+
+		boolean createInMemory = Optional.ofNullable(inMemory).map(Boolean::parseBoolean).orElse(false);
+
+		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IValidateName validator = servoyModel.getNameValidator();
+
+		try {
+			if (createInMemory) {
+				ServoyProject project = servoyModel.getActiveProject();
+				if (project == null)
+					return "Error: No active Servoy project";
+
+				com.servoy.eclipse.model.inmemory.MemServer memServer = project.getMemServer();
+				if (memServer.getTable(tableName) != null)
+					return "Error: In-memory table '" + tableName + "' already exists";
+
+				ITable table = memServer.createNewTable(validator, tableName);
+
+				String pkName = tableName + "_uuid";
+				Column pkColumn = ((com.servoy.j2db.persistence.AbstractTable) table).createNewColumn(validator, pkName,
+						ColumnType.getInstance(PrimaryKeyType.UUD_NATIVE.getColumnType(), PrimaryKeyType.UUD_NATIVE.getLength(), 0), false, true);
+				pkColumn.setSequenceType(ColumnInfo.UUID_GENERATOR);
+				pkColumn.setFlag(IBaseColumn.UUID_COLUMN, true);
+				pkColumn.setFlag(IBaseColumn.NATIVE_COLUMN, true);
+				pkColumn.setFlag(IBaseColumn.PK_COLUMN, true);
+
+				memServer.syncTableObjWithDB(table, false, true);
+
+				Solution solution = project.getEditingSolution();
+				com.servoy.j2db.persistence.TableNode tableNode = solution.getOrCreateTableNode(table.getDataSource());
+				project.saveEditingSolutionNodes(new IPersist[] { tableNode }, true);
+
+				return "In-memory table '" + tableName + "' created in project '" + project.getProject().getName() + "' with PK column '" + pkName + "'.";
+			} else {
+				if (serverName == null || serverName.isBlank())
+					return "Error: serverName is required for database tables";
+
+				IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+						.getServer(serverName, false, false);
+				if (server == null)
+					return "Error: Database server '" + serverName + "' not found";
+
+				if (server.getTable(tableName) != null)
+					return "Error: Table '" + tableName + "' already exists on server '" + serverName + "'";
+
+				ITable table = server.createNewTable(validator, tableName);
+
+				String pkName = tableName + "_id";
+				Column pkColumn = ((com.servoy.j2db.persistence.AbstractTable) table).createNewColumn(validator, pkName,
+						ColumnType.getInstance(com.servoy.j2db.persistence.IColumnTypes.INTEGER, 0, 0), false, true);
+				pkColumn.setSequenceType(ColumnInfo.DATABASE_IDENTITY);
+				pkColumn.setFlag(IBaseColumn.PK_COLUMN, true);
+
+				server.syncTableObjWithDB(table, false, true);
+				TableChangeHandler.getInstance().fireTablesAdded(server, new String[] { tableName });
+
+				DataModelManager dmm = servoyModel.getDataModelManager();
+				if (dmm != null) {
+					dmm.updateAllColumnInfo(table);
+				}
+
+				return "Table '" + tableName + "' created on server '" + serverName + "' with PK column '" + pkName + "'.";
+			}
+		} catch (Exception e) {
+			ServoyLog.logError("createTable failed", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
 	@Tool(name = "createServer", description = "Creates a new PostgreSQL database and registers it as a Servoy database server. "
 			+ "Automatically finds an existing PostgreSQL server in the workspace to use as connection prototype (host/port/credentials). "
 			+ "Creates the database with Unicode encoding, then registers a new server config pointing to it.", type = "object")
