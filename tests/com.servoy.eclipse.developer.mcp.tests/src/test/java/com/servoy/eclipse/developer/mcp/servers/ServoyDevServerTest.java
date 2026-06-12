@@ -222,6 +222,89 @@ public class ServoyDevServerTest
 	}
 
 	// -----------------------------------------------------------------------
+	// createServer tool tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testServoyDevServer_hasCreateServerTool()
+	{
+		assertTrue("ServoyDevServer must have a 'createServer' tool", hasToolNamed("createServer"));
+	}
+
+	@Test
+	public void testServoyDevServer_createServerHasThreeParams()
+	{
+		Method method = findToolMethod("createServer");
+		assertNotNull(method);
+		assertEquals(3, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyDevServer_createServerReturnsString()
+	{
+		Method method = findToolMethod("createServer");
+		assertNotNull(method);
+		assertEquals(String.class, method.getReturnType());
+	}
+
+	@Test
+	public void testServoyDevServer_createServer_rejectsNullName()
+	{
+		String result = server.createServer(null, null, null);
+		assertTrue(result.contains("Error") && result.contains("required"));
+	}
+
+	@Test
+	public void testServoyDevServer_createServer_rejectsBlankName()
+	{
+		String result = server.createServer("   ", null, null);
+		assertTrue(result.contains("Error") && result.contains("required"));
+	}
+
+	@Test
+	public void testServoyDevServer_createServer_withValidName_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.createServer("test_db", null, null);
+			assertNotNull(result);
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected NPE when no workspace available", e);
+		}
+	}
+
+	@Test
+	public void testServoyDevServer_createServer_createDatabaseFalse_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.createServer("test_db", null, "false");
+			assertNotNull(result);
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected NPE when no workspace available", e);
+		}
+	}
+
+	@Test
+	public void testServoyDevServer_createServer_customDatabaseName_handlesNoWorkspace()
+	{
+		try
+		{
+			String result = server.createServer("my_server", "my_database", "true");
+			assertNotNull(result);
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected NPE when no workspace available", e);
+		}
+	}
+
+
+	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 

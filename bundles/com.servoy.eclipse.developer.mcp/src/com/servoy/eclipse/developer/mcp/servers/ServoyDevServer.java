@@ -1733,4 +1733,84 @@ public class ServoyDevServer {
 			return "Error: " + e.getMessage();
 		}
 	}
+	
+	@Tool(name = "createServer", description = "Creates a new PostgreSQL database and registers it as a Servoy database server. "
+			+ "Automatically finds an existing PostgreSQL server in the workspace to use as connection prototype (host/port/credentials). "
+			+ "Creates the database with Unicode encoding, then registers a new server config pointing to it.", type = "object")
+	public String createServer(
+			@ToolParam(name = "serverName", description = "Server config name to register in Servoy.", required = true) String serverName,
+			@ToolParam(name = "databaseName", description = "Name of the PostgreSQL database to create or connect to. If omitted, uses serverName.", required = false) String databaseName,
+			@ToolParam(name = "createDatabase", description = "Whether to create the database. Default: true. If false, the database must already exist.", required = false) String createDatabase) {
+		if (serverName == null || serverName.isBlank())
+			return "Error: serverName is required";
+
+		String resolvedDbName = (databaseName != null && !databaseName.isBlank()) ? databaseName : serverName;
+
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = ApplicationServerRegistry.get().getServerManager();
+
+		IServerInternal serverPrototype = null;
+		com.servoy.j2db.persistence.ServerConfig origConfig = null;
+		String[] serverNames = serverManager.getServerNames(true, false, true, true);
+		for (String name : serverNames) {
+			IServerInternal candidate = (IServerInternal) serverManager.getServer(name, false, false);
+			if (candidate != null) {
+				com.servoy.j2db.persistence.ServerConfig sc = candidate.getConfig();
+				if (sc.isPostgresDriver() && sc.isEnabled()) {
+					serverPrototype = candidate;
+					origConfig = sc;
+					break;
+				}
+			}
+		}
+		if (serverPrototype == null)
+			return "Error: No enabled PostgreSQL server found in the workspace to use as prototype";
+
+		boolean doCreateDatabase = Optional.ofNullable(createDatabase).map(Boolean::parseBoolean).orElse(true);
+
+		if (doCreateDatabase) {
+			com.servoy.j2db.util.ITransactionConnection connection = null;
+			java.sql.PreparedStatement ps = null;
+			try {
+				connection = serverPrototype.getUnmanagedConnection();
+				ps = connection.prepareStatement("CREATE DATABASE \"" + resolvedDbName + "\" WITH ENCODING 'UNICODE';");
+				ps.execute();
+				ps.close();
+				ps = null;
+			} catch (Exception e) {
+				ServoyLog.logError("createServer: failed to create database", e);
+				return "Error: Could not create database: " + e.getMessage();
+			} finally {
+				Utils.closeConnection(connection);
+				Utils.closeStatement(ps);
+			}
+		}
+
+		String resolvedConfigName = serverName;
+		try {
+			for (int i = 1; serverManager.getServerConfig(resolvedConfigName) != null && i < 100; i++) {
+				resolvedConfigName = serverName + i;
+			}
+
+			String serverUrl = EclipseDatabaseUtils.getPostgresServerUrl(origConfig, resolvedDbName);
+			com.servoy.j2db.persistence.ServerConfig newConfig = origConfig.newBuilder()
+					.setServerName(resolvedConfigName)
+					.setServerUrl(serverUrl)
+					.setSchema(null)
+					.setDataModelCloneFrom(null)
+					.setEnabled(true)
+					.setSkipSysTables(false)
+					.setIdleTimeout(-1)
+					.build();
+
+			com.servoy.j2db.persistence.ServerSettings serverSettings = ((com.servoy.j2db.persistence.IServer) serverPrototype)
+					.getSettings().withDefaults(origConfig);
+			serverManager.saveServerConfig(null, newConfig);
+			serverManager.saveServerSettings(resolvedConfigName, serverSettings);
+
+			return "PostgreSQL database '" + databaseName + "' " + (doCreateDatabase ? "created and " : "") + "registered as server '" + resolvedConfigName + "'.";
+		} catch (Exception e) {
+			ServoyLog.logError("createPostgresDatabase: failed to register server config", e);
+			return "Error: Database created but failed to register server config: " + e.getMessage();
+		}
+	}
 }
