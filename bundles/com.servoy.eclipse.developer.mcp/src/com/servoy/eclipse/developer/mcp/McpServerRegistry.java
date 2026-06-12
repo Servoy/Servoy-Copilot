@@ -64,11 +64,10 @@ public class McpServerRegistry {
 	public static final String MCP_PATH_PREFIX = "/mcp";
 
 	/**
-	 * Named servlet wrapper classes â one per planned endpoint.
-	 * Tomcat uses getClass().getSimpleName() as the wrapper name, so each
-	 * registered ServletInstance must be an instance of a distinct class.
-	 * These named inner classes provide that uniqueness without touching
-	 * TomcatStartStop.
+	 * Named servlet wrapper classes â one per planned endpoint. Tomcat uses
+	 * getClass().getSimpleName() as the wrapper name, so each registered
+	 * ServletInstance must be an instance of a distinct class. These named inner
+	 * classes provide that uniqueness without touching TomcatStartStop.
 	 */
 	public static class ServoyIdeServlet extends BearerTokenAuthenticationFilter {
 		public ServoyIdeServlet(String token, HttpServlet delegate) {
@@ -136,6 +135,12 @@ public class McpServerRegistry {
 		}
 	}
 
+	public static class ServoyI18nServlet extends BearerTokenAuthenticationFilter {
+		public ServoyI18nServlet(String token, HttpServlet delegate) {
+			super(token, delegate);
+		}
+	}
+
 	/** Maps server name â named servlet class to use as the Tomcat wrapper. */
 	private static final Map<String, java.util.function.BiFunction<String, HttpServlet, BearerTokenAuthenticationFilter>> SERVLET_FACTORIES;
 	static {
@@ -151,6 +156,7 @@ public class McpServerRegistry {
 		SERVLET_FACTORIES.put("servoy-test", (t, d) -> new ServoyTestServlet(t, d));
 		SERVLET_FACTORIES.put("servoy-wpm", (t, d) -> new ServoyWpmServlet(t, d));
 		SERVLET_FACTORIES.put("servoy-media", (t, d) -> new ServoyMediaServlet(t, d));
+		SERVLET_FACTORIES.put("servoy-i18n", (t, d) -> new ServoyI18nServlet(t, d));
 	}
 
 	private static volatile McpServerRegistry instance;
@@ -165,8 +171,8 @@ public class McpServerRegistry {
 	}
 
 	/**
-	 * Returns the E4-managed singleton instance.
-	 * Available after {@link McpStartup} has bootstrapped the registry.
+	 * Returns the E4-managed singleton instance. Available after {@link McpStartup}
+	 * has bootstrapped the registry.
 	 */
 	public static McpServerRegistry getInstance() {
 		return instance;
@@ -210,18 +216,15 @@ public class McpServerRegistry {
 			String endpointPath = MCP_PATH_PREFIX + "/" + serverName;
 
 			HttpServletStreamableServerTransportProvider transport = HttpServletStreamableServerTransportProvider
-					.builder()
-					.jsonMapper(jsonMapperSupplier.get())
-					.mcpEndpoint(endpointPath)
-					.build();
+					.builder().jsonMapper(jsonMapperSupplier.get()).mcpEndpoint(endpointPath).build();
 
 			McpSyncServer syncServer = McpServerFactory.getInstance().createSyncServer(impl, transport);
 			syncServers.add(syncServer);
 
 			var factory = SERVLET_FACTORIES.get(serverName);
 			if (factory == null) {
-				ServoyLog.logWarning("Servoy Developer MCP: no named servlet class for server '" + serverName +
-						"' â skipping endpoint " + endpointPath, null);
+				ServoyLog.logWarning("Servoy Developer MCP: no named servlet class for server '" + serverName
+						+ "' â skipping endpoint " + endpointPath, null);
 				continue;
 			}
 
