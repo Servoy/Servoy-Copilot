@@ -30,6 +30,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServer;
@@ -38,61 +39,46 @@ import com.servoy.eclipse.developer.mcp.servers.TimeServer;
 /**
  * Registry of all built-in MCP server implementation classes.
  *
- * <p>To add a new server endpoint, create a class annotated with {@link McpServer}
- * and add it to {@link #BUILT_IN_SERVER_CLASSES}.</p>
+ * <p>
+ * To add a new server endpoint, create a class annotated with {@link McpServer}
+ * and add it to {@link #BUILT_IN_SERVER_CLASSES}.
+ * </p>
  */
-public class McpServerBuiltins
-{
+public class McpServerBuiltins {
 	/**
-	 * The canonical list of all built-in MCP server classes.
-	 * Add new server classes here as they are implemented.
+	 * The canonical list of all built-in MCP server classes. Add new server classes
+	 * here as they are implemented.
 	 */
-	public static final Class<?>[] BUILT_IN_SERVER_CLASSES = {
-		TimeServer.class,
-		MemoryServer.class,
-		ServoyContextServer.class,
-		ServoyCoderServer.class,
-		ServoyIdeServer.class,
-		ServoyGitServer.class,
-		ServoyDevServer.class,
-		ServoyTestingServer.class,
-		ServoyWpmServer.class,
-		ServoyMediaServer.class,
-	};
+	public static final Class<?>[] BUILT_IN_SERVER_CLASSES = { TimeServer.class, MemoryServer.class,
+			ServoyContextServer.class, ServoyCoderServer.class, ServoyIdeServer.class, ServoyGitServer.class,
+			ServoyDevServer.class, ServoyTestingServer.class, ServoyWpmServer.class, ServoyMediaServer.class,
+			ServoyI18nServer.class, };
 
 	/**
-	 * Instantiates one instance of each registered server class using E4 DI.
-	 * Falls back to plain reflection if no E4 context is available (e.g. in tests).
+	 * Instantiates one instance of each registered server class using E4 DI. Falls
+	 * back to plain reflection if no E4 context is available (e.g. in tests).
 	 */
-	public static List<Object> createServerInstances()
-	{
+	public static List<Object> createServerInstances() {
 		return createServerInstances(null);
 	}
 
 	/**
-	 * Instantiates one instance of each registered server class.
-	 * When {@code context} is non-null, uses {@link ContextInjectionFactory#make} so
-	 * {@code @Inject} fields on server and service classes are fulfilled.
-	 * Falls back to plain reflection when {@code context} is null (tests, headless).
+	 * Instantiates one instance of each registered server class. When
+	 * {@code context} is non-null, uses {@link ContextInjectionFactory#make} so
+	 * {@code @Inject} fields on server and service classes are fulfilled. Falls
+	 * back to plain reflection when {@code context} is null (tests, headless).
 	 */
-	public static List<Object> createServerInstances(IEclipseContext context)
-	{
-		if (BUILT_IN_SERVER_CLASSES.length == 0)
-		{
+	public static List<Object> createServerInstances(IEclipseContext context) {
+		if (BUILT_IN_SERVER_CLASSES.length == 0) {
 			return Collections.emptyList();
 		}
 		List<Object> instances = new ArrayList<>(BUILT_IN_SERVER_CLASSES.length);
-		for (Class<?> clazz : BUILT_IN_SERVER_CLASSES)
-		{
-			try
-			{
-				Object instance = (context != null)
-					? ContextInjectionFactory.make(clazz, context)
-					: clazz.getDeclaredConstructor().newInstance();
+		for (Class<?> clazz : BUILT_IN_SERVER_CLASSES) {
+			try {
+				Object instance = (context != null) ? ContextInjectionFactory.make(clazz, context)
+						: clazz.getDeclaredConstructor().newInstance();
 				instances.add(instance);
-			}
-			catch (Exception e)
-			{
+			} catch (Exception e) {
 				throw new RuntimeException("Failed to instantiate MCP server: " + clazz.getName(), e);
 			}
 		}
