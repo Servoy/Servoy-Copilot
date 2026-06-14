@@ -1392,11 +1392,12 @@ public class ServoyDevServer {
 	// Servoy Artifact creation tools (Faza 4)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "openForm", description = "Creates a new Servoy form in the active solution. "
+	@Tool(name = "createForm", description = "Creates a new Servoy form in the active solution. "
 			+ "Supports CSS-position and responsive layouts. "
 			+ "Optionally sets dataSource, parent form (inheritance), and event handlers. "
-			+ "Event handlers are auto-created as methods if they don't exist.", type = "object")
-	public String openForm(
+			+ "Event handlers are auto-created as methods if they don't exist. "
+			+ "Returns an error if a form with the same name already exists.", type = "object")
+	public String createForm(
 			@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
 			@ToolParam(name = "style", description = "Form style: 'css' (default) or 'responsive'", required = false) String style,
 			@ToolParam(name = "width", description = "Form width in pixels (default: 640)", required = false) String width,
@@ -1424,10 +1425,11 @@ public class ServoyDevServer {
 		}
 	}
 
-	@Tool(name = "openRelation", description = "Creates a new Servoy relation in the active solution. "
+	@Tool(name = "createRelation", description = "Creates a new Servoy relation in the active solution. "
 			+ "Requires primary and foreign dataSources. "
-			+ "Optionally maps columns and sets join type.", type = "object")
-	public String openRelation(
+			+ "Optionally maps columns and sets join type. "
+			+ "Returns an error if a relation with the same name already exists.", type = "object")
+	public String createRelation(
 			@ToolParam(name = "name", description = "Relation name (e.g. 'customers_to_orders')", required = true) String name,
 			@ToolParam(name = "primaryDataSource", description = "Primary table datasource (format: 'db:/server_name/table_name')", required = true) String primaryDataSource,
 			@ToolParam(name = "foreignDataSource", description = "Foreign table datasource (format: 'db:/server_name/table_name')", required = true) String foreignDataSource,
@@ -1435,6 +1437,12 @@ public class ServoyDevServer {
 			@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition", required = false) String foreignColumn,
 			@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType) {
 		try {
+			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			ServoyProject activeProject = model.getActiveProject();
+			if (activeProject != null && activeProject.getEditingSolution() != null
+					&& activeProject.getEditingSolution().getRelation(name) != null) {
+				return "Error: Relation '" + name + "' already exists in the active solution.";
+			}
 			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, primaryColumn,
 					foreignColumn, joinType);
 		} catch (Exception e) {
@@ -1443,9 +1451,10 @@ public class ServoyDevServer {
 		}
 	}
 
-	@Tool(name = "openValueList", description = "Creates a new Servoy valuelist in the active solution. "
-			+ "Supports types: 'custom' (fixed values), 'database' (table values), 'related' (via relation), 'global_method'.", type = "object")
-	public String openValueList(
+	@Tool(name = "createValueList", description = "Creates a new Servoy valuelist in the active solution. "
+			+ "Supports types: 'custom' (fixed values), 'database' (table values), 'related' (via relation), 'global_method'. "
+			+ "Returns an error if a valuelist with the same name already exists.", type = "object")
+	public String createValueList(
 			@ToolParam(name = "name", description = "ValueList name (e.g. 'statusList', 'countries')", required = true) String name,
 			@ToolParam(name = "type", description = "ValueList type: 'custom' (default), 'database', 'related', 'global_method'", required = false) String type,
 			@ToolParam(name = "customValues", description = "For custom type: newline-separated values (e.g. 'Active\\nInactive\\nPending')", required = false) String customValues,
@@ -1454,6 +1463,12 @@ public class ServoyDevServer {
 			@ToolParam(name = "displayColumn", description = "Column to display", required = false) String displayColumn,
 			@ToolParam(name = "returnColumn", description = "Column to return as value", required = false) String returnColumn) {
 		try {
+			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			ServoyProject activeProject = model.getActiveProject();
+			if (activeProject != null && activeProject.getEditingSolution() != null
+					&& activeProject.getEditingSolution().getValueList(name) != null) {
+				return "Error: ValueList '" + name + "' already exists in the active solution.";
+			}
 			return artifactService.createValueList(name, type, customValues, dataSource, relationName, displayColumn,
 					returnColumn);
 		} catch (Exception e) {
