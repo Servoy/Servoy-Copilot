@@ -1327,34 +1327,6 @@ public class ServoyDevServer {
 	// Servoy Solution tools (Faza 3 + 5)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "getForms", description = "Lists forms in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
-	public String getForms(
-			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
-		return solutionService.listForms(scope != null ? scope : "all");
-	}
-
-	@Tool(name = "getRelations", description = "Lists relations in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
-	public String getRelations(
-			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
-		return solutionService.listRelations(scope != null ? scope : "all");
-	}
-
-	@Tool(name = "getValueLists", description = "Lists valuelists in the active solution and its modules. "
-			+ "Optional scope parameter: 'current' for active solution only, 'all' for solution + modules (default).", type = "object")
-	public String getValueLists(
-			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
-		return solutionService.listValueLists(scope != null ? scope : "all");
-	}
-
-	@Tool(name = "getStyles", description = "Lists CSS/LESS style files in the active solution and its modules. "
-			+ "Shows which solutions have .less theme files.", type = "object")
-	public String getStyles(
-			@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' for solution + modules (default 'all')", required = false) String scope) {
-		return solutionService.listStyles(scope != null ? scope : "all");
-	}
-
 	@Tool(name = "deleteForms", description = "Deletes one or more forms from the active solution. "
 			+ "Provide a comma-separated list of form names.", type = "object")
 	public String deleteForms(
