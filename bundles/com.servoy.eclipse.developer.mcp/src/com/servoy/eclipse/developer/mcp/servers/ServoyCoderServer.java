@@ -25,23 +25,12 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileFormatProtectedException;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 
 /**
  * MCP server providing generic file-editing tools for the Servoy Developer MCP endpoint.
  * <p>
  * Endpoint: {@code /mcp/servoy-coder}
- * </p>
- * <p>
- * Destructive tools ({@code insertIntoFile}, {@code replaceString}, {@code replaceFileContent},
- * {@code deleteLinesInFile}, {@code applyPatch}) call {@link ServoyFileGuard#assertEditable(String)}
- * before performing any write. Servoy structural files ({@code .frm}, {@code .obj}, {@code .tbl},
- * {@code .val}, {@code .rel}, {@code .dbi}) are refused with a JSON-RPC error.
- * </p>
- * <p>
- * {@code undoEdit} is exempt from the guard â it is recovery, not authoring.
  * </p>
  * <p>
  * Excluded (Java/JDT-only): {@code formatFile}, {@code refactorRenameJavaType},
@@ -73,14 +62,7 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "content", description = "The content to write to the file", required = true) String content)
 	{
-		try
-		{
-			return codeEditingService.createFile(projectName, filePath, content);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		return codeEditingService.createFile(projectName, filePath, content);
 	}
 
 	@Tool(name = "insertIntoFile",
@@ -93,15 +75,8 @@ public class ServoyCoderServer
 		@ToolParam(name = "content", description = "The content to insert into the file", required = true) String content,
 		@ToolParam(name = "line", description = "The line number before which to insert the text (1-based index). Use line=1 to insert at the beginning.", required = false) String line)
 	{
-		try
-		{
-			int lineNum = Optional.ofNullable(line).map(Integer::parseInt).orElse(1);
-			return codeEditingService.insertIntoFile(projectName, filePath, content, lineNum);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		int lineNum = Optional.ofNullable(line).map(Integer::parseInt).orElse(1);
+		return codeEditingService.insertIntoFile(projectName, filePath, content, lineNum);
 	}
 
 	@Tool(name = "replaceString",
@@ -115,21 +90,13 @@ public class ServoyCoderServer
 		@ToolParam(name = "startLine", description = "Optional line number to start searching from (1-based index)", required = false) String startLine,
 		@ToolParam(name = "endLine", description = "Optional line number to end searching at (1-based index)", required = false) String endLine)
 	{
-		try
-		{
-			Integer startLineNum = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(null);
-			Integer endLineNum = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(null);
-			return codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		Integer startLineNum = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(null);
+		Integer endLineNum = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(null);
+		return codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum);
 	}
 
 	@Tool(name = "undoEdit",
-		description = "Undoes the last edit operation by restoring a file from its backup (Eclipse Local History). "
-			+ "This tool is exempt from the Servoy file-format guard â it is recovery, not authoring.",
+		description = "Undoes the last edit operation by restoring a file from its backup (Eclipse Local History).",
 		type = "object")
 	public String undoEdit(
 		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
@@ -188,14 +155,7 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "content", description = "The new content to write to the file", required = true) String content)
 	{
-		try
-		{
-			return codeEditingService.replaceFileContent(projectName, filePath, content);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		return codeEditingService.replaceFileContent(projectName, filePath, content);
 	}
 
 	@Tool(name = "deleteLinesInFile",
@@ -207,16 +167,9 @@ public class ServoyCoderServer
 		@ToolParam(name = "startLine", description = "The line number to start deletion from (1-based index)", required = true) String startLine,
 		@ToolParam(name = "endLine", description = "The line number to end deletion at (inclusive, 1-based index)", required = true) String endLine)
 	{
-		try
-		{
-			int startLineNum = Integer.parseInt(startLine);
-			int endLineNum = Integer.parseInt(endLine);
-			return codeEditingService.deleteLinesInFile(projectName, filePath, startLineNum, endLineNum);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		int startLineNum = Integer.parseInt(startLine);
+		int endLineNum = Integer.parseInt(endLine);
+		return codeEditingService.deleteLinesInFile(projectName, filePath, startLineNum, endLineNum);
 	}
 
 	@Tool(name = "applyPatch",
@@ -229,13 +182,6 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "patch", description = "The unified diff content to apply. Should contain @@ hunk headers and lines prefixed with ' ' (context), '-' (remove), or '+' (add). File headers (--- and +++) are optional.", required = true) String patch)
 	{
-		try
-		{
-			return codeEditingService.applyPatch(projectName, filePath, patch);
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			throw new RuntimeException(e.getMessage(), e);
-		}
+		return codeEditingService.applyPatch(projectName, filePath, patch);
 	}
 }

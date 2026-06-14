@@ -39,7 +39,6 @@ import org.eclipse.search.core.text.TextSearchRequestor;
 import org.eclipse.search.core.text.TextSearchScope;
 
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
 
 /**
  * Provides workspace file reading and search operations for MCP tools.
@@ -49,7 +48,6 @@ import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
  *   <li>No JDT dependency.</li>
  *   <li>No {@code AiIgnoreService}.</li>
  *   <li>{@code readProjectResource} populates {@link ServoyResourceCache} as a side-effect.</li>
- *   <li>{@code searchAndReplace} calls {@link ServoyFileGuard#assertEditable(String)} per matched file.</li>
  * </ul>
  * </p>
  */
@@ -310,19 +308,6 @@ public class WorkspaceService
 			engine.search(scope, requestor, matchPattern, null);
 
 			if (matchedFiles.isEmpty()) return List.of();
-
-			// Check guard BEFORE any writes â abort entire batch if any file is protected
-			for (IFile file : matchedFiles)
-			{
-				String filePath = file.getProjectRelativePath().toString();
-				if (ServoyFileGuard.isProtected(filePath))
-				{
-					throw new RuntimeException(
-						"Refusing to searchAndReplace: matched file '" + file.getFullPath()
-							+ "' is a Servoy structural file that cannot be edited as plain text. "
-							+ "No replacements were made. Remove this file from the search scope or use the Servoy editor.");
-				}
-			}
 
 			List<SearchAndReplaceResult> results = new ArrayList<>();
 			for (IFile file : matchedFiles)

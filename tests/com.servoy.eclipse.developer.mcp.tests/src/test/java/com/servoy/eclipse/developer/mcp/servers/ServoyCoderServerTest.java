@@ -23,108 +23,16 @@ import static org.junit.Assert.fail;
 
 import org.junit.Test;
 
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileFormatProtectedException;
-
 /**
  * JUnit 4 tests for {@link ServoyCoderServer}.
  * <p>
  * Tests that do not require a live Eclipse workspace:
- * file-format guard refusals, null-input errors, annotation/registration checks.
- * </p>
- * <p>
- * Happy-path tests (createFile, replaceString, etc. with real files) are covered
- * by the curl endpoint tests against Servoy Developer.
+ * null-input errors, annotation/registration checks.
  * </p>
  */
 public class ServoyCoderServerTest
 {
 	private final ServoyCoderServer server = new ServoyCoderServer(new com.servoy.eclipse.developer.mcp.services.CodeEditingService());
-
-	// --- File-format guard tests ---
-
-	@Test
-	public void testReplaceString_frm_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "forms/test.frm", "old", "new", null, null));
-	}
-
-	@Test
-	public void testInsertIntoFile_frm_throws()
-	{
-		assertGuardFires(() -> server.insertIntoFile("MyProject", "forms/test.frm", "content", "1"));
-	}
-
-	@Test
-	public void testReplaceFileContent_frm_throws()
-	{
-		assertGuardFires(() -> server.replaceFileContent("MyProject", "forms/test.frm", "content"));
-	}
-
-	@Test
-	public void testDeleteLinesInFile_frm_throws()
-	{
-		assertGuardFires(() -> server.deleteLinesInFile("MyProject", "forms/test.frm", "1", "2"));
-	}
-
-	@Test
-	public void testApplyPatch_frm_throws()
-	{
-		assertGuardFires(() -> server.applyPatch("MyProject", "forms/test.frm", "@@ -1,1 +1,1 @@\n-old\n+new"));
-	}
-
-	@Test
-	public void testReplaceString_obj_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "solution_settings.obj", "old", "new", null, null));
-	}
-
-	@Test
-	public void testReplaceString_tbl_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "datasources/db/server/table.tbl", "old", "new", null, null));
-	}
-
-	@Test
-	public void testReplaceString_val_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "valuelists/myList.val", "old", "new", null, null));
-	}
-
-	@Test
-	public void testReplaceString_rel_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "relations/myRel.rel", "old", "new", null, null));
-	}
-
-	@Test
-	public void testReplaceString_dbi_throws()
-	{
-		assertGuardFires(() -> server.replaceString("MyProject", "datasources/db/server/table.dbi", "old", "new", null, null));
-	}
-
-	// --- undoEdit is exempt from guard ---
-
-	@Test
-	public void testUndoEdit_frm_doesNotThrowGuard()
-	{
-		// undoEdit is exempt â it should throw a RuntimeException about missing project,
-		// NOT a ServoyFileFormatProtectedException
-		try
-		{
-			server.undoEdit("NonExistentProject", "forms/test.frm");
-			fail("Should throw RuntimeException about missing project");
-		}
-		catch (ServoyFileFormatProtectedException e)
-		{
-			fail("undoEdit must NOT trigger the file-format guard: " + e.getMessage());
-		}
-		catch (RuntimeException e)
-		{
-			// Expected â project not found, not a guard error
-			assertNotNull(e.getMessage());
-			assertFalse("Must not be a guard error", e.getMessage().contains("Refusing to edit"));
-		}
-	}
 
 	// --- Null-input error paths ---
 
@@ -182,22 +90,5 @@ public class ServoyCoderServerTest
 			}
 		}
 		assertTrue("ServoyCoderServer must be registered in McpServerBuiltins", found);
-	}
-
-	// --- Helper ---
-
-	private static void assertGuardFires(Runnable action)
-	{
-		try
-		{
-			action.run();
-			fail("Expected RuntimeException wrapping ServoyFileFormatProtectedException");
-		}
-		catch (RuntimeException e)
-		{
-			assertNotNull(e.getMessage());
-			assertTrue("Error message must contain 'Refusing to edit Servoy structural file'",
-				e.getMessage().contains("Refusing to edit Servoy structural file"));
-		}
 	}
 }

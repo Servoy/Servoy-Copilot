@@ -21,7 +21,6 @@ import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
 
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCacheTest;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuardTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
@@ -42,7 +41,6 @@ import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 @SuiteClasses({
 	ServoyResourceCacheTest.class,
 	ServoyContextServerTest.class,
-	ServoyFileGuardTest.class,
 	ServoyCoderServerTest.class,
 	ServoyIdeServerTest.class,
 	ServoyGitServerTest.class,

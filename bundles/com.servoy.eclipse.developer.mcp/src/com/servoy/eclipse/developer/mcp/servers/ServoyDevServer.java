@@ -54,8 +54,6 @@ import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.dto.DocumentationItem;
 import com.servoy.eclipse.developer.mcp.dto.IdentifierContext;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileFormatProtectedException;
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
 import com.servoy.eclipse.developer.mcp.services.CodeContextService;
 import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorService;
 import com.servoy.eclipse.developer.mcp.services.FilePathResolver;
@@ -1188,12 +1186,6 @@ public class ServoyDevServer {
 		IFile file = filePathResolver.resolveFile(filePath);
 		if (file == null || !file.exists())
 			return filePathResolver.buildNotFoundMessage(filePath);
-
-		try {
-			ServoyFileGuard.assertEditable(file.getProjectRelativePath().toString());
-		} catch (ServoyFileFormatProtectedException e) {
-			return "Error: " + e.getMessage();
-		}
 
 		try {
 			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();

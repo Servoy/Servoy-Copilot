@@ -42,17 +42,14 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 
-import com.servoy.eclipse.developer.mcp.guard.ServoyFileGuard;
-
 /**
  * Provides generic file-editing operations for MCP tools.
  * <p>
  * Ported from AssistAI's {@code CodeEditingService}. Differences:
  * <ul>
- *   <li>No JDT dependencies â no Java refactoring, no code formatter, no organize imports.</li>
- *   <li>No {@code AiIgnoreService} â access control is at the MCP Bearer token layer.</li>
- *   <li>No {@code UISynchronize} / editor refresh â the MCP server runs headless in Servoy Developer.</li>
- *   <li>Destructive methods call {@link ServoyFileGuard#assertEditable(String)} before writing.</li>
+ *   <li>No JDT dependencies â no Java refactoring, no code formatter, no organize imports.</li>
+ *   <li>No {@code AiIgnoreService} â access control is at the MCP Bearer token layer.</li>
+ *   <li>No {@code UISynchronize} / editor refresh â the MCP server runs headless in Servoy Developer.</li>
  * </ul>
  * </p>
  */
@@ -102,8 +99,6 @@ public class CodeEditingService
 		Objects.requireNonNull(filePath, "filePath is required");
 		if (content == null) content = "";
 
-		ServoyFileGuard.assertEditable(filePath);
-
 		try
 		{
 			IFile file = resolveFile(projectName, filePath);
@@ -140,8 +135,6 @@ public class CodeEditingService
 		Objects.requireNonNull(filePath, "filePath is required");
 		Objects.requireNonNull(oldString, "oldString is required");
 		if (newString == null) newString = "";
-
-		ServoyFileGuard.assertEditable(filePath);
 
 		try
 		{
@@ -201,7 +194,6 @@ public class CodeEditingService
 	{
 		Objects.requireNonNull(projectName, "projectName is required");
 		Objects.requireNonNull(filePath, "filePath is required");
-		// undoEdit is exempt from ServoyFileGuard â it is recovery, not authoring
 
 		try
 		{
@@ -348,7 +340,6 @@ public class CodeEditingService
 		Objects.requireNonNull(filePath, "filePath is required");
 		Objects.requireNonNull(content, "content is required");
 
-		ServoyFileGuard.assertEditable(filePath);
 
 		try
 		{
@@ -372,7 +363,6 @@ public class CodeEditingService
 		if (startLine < 1) throw new IllegalArgumentException("Start line must be at least 1.");
 		if (endLine < startLine) throw new IllegalArgumentException("End line must be >= start line.");
 
-		ServoyFileGuard.assertEditable(filePath);
 
 		try
 		{
@@ -420,7 +410,6 @@ public class CodeEditingService
 		Objects.requireNonNull(patch, "patch is required");
 		if (patch.isBlank()) throw new IllegalArgumentException("Patch content cannot be empty.");
 
-		ServoyFileGuard.assertEditable(filePath);
 
 		try
 		{
