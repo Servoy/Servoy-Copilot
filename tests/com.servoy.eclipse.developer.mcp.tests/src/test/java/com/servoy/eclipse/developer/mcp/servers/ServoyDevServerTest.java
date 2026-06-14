@@ -51,7 +51,7 @@ public class ServoyDevServerTest
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals(28, toolCount);
+		assertEquals(31, toolCount);
 	}
 
 	@Test
@@ -615,6 +615,100 @@ public class ServoyDevServerTest
 		{
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// generateUUID tool tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testGenerateUUID_noCount_returnsOneUUID()
+	{
+		String result = server.generateUUID(null);
+		assertNotNull(result);
+		assertTrue("UUID must match standard format",
+			result.matches("[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"));
+	}
+
+	@Test
+	public void testGenerateUUID_countOne_returnsOneUUID()
+	{
+		String result = server.generateUUID("1");
+		assertNotNull(result);
+		assertTrue("UUID must match standard format",
+			result.matches("[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"));
+	}
+
+	@Test
+	public void testGenerateUUID_countThree_returnsThreeUUIDs()
+	{
+		String result = server.generateUUID("3");
+		assertNotNull(result);
+		String[] lines = result.split("\n");
+		assertEquals("Should return exactly 3 UUIDs", 3, lines.length);
+		for (String line : lines)
+		{
+			assertTrue("Each line must be a valid UUID: " + line,
+				line.matches("[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"));
+		}
+	}
+
+	@Test
+	public void testGenerateUUID_countThree_allDistinct()
+	{
+		String result = server.generateUUID("3");
+		String[] lines = result.split("\n");
+		assertEquals(3, lines.length);
+		assertTrue("All generated UUIDs must be distinct",
+			lines[0] != null && !lines[0].equals(lines[1]) && !lines[0].equals(lines[2]) && !lines[1].equals(lines[2]));
+	}
+
+	@Test
+	public void testGenerateUUID_uppercase()
+	{
+		String result = server.generateUUID(null);
+		assertEquals("UUID must be uppercase", result, result.toUpperCase());
+	}
+
+	@Test
+	public void testGenerateUUID_invalidCount_returnsError()
+	{
+		String result = server.generateUUID("abc");
+		assertNotNull(result);
+		assertTrue("Should return error for invalid count", result.startsWith("Error:"));
+	}
+
+	@Test
+	public void testGenerateUUID_zeroCount_returnsError()
+	{
+		String result = server.generateUUID("0");
+		assertNotNull(result);
+		assertTrue("Should return error for count=0", result.startsWith("Error:"));
+	}
+
+	@Test
+	public void testGenerateUUID_overLimit_returnsError()
+	{
+		String result = server.generateUUID("101");
+		assertNotNull(result);
+		assertTrue("Should return error for count > 100", result.startsWith("Error:"));
+	}
+
+	@Test
+	public void testGenerateUUID_hasToolAnnotation()
+	{
+		assertTrue("ServoyDevServer must have a 'generateUUID' tool", hasToolNamed("generateUUID"));
+	}
+
+	@Test
+	public void testGenerateUUID_hasCountParam()
+	{
+		Method method = findToolMethod("generateUUID");
+		assertNotNull("generateUUID tool must exist", method);
+		assertEquals("generateUUID must have 1 parameter", 1, method.getParameterCount());
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull("Parameter must have @ToolParam annotation", param);
+		assertEquals("count", param.name());
 	}
 
 	// -----------------------------------------------------------------------

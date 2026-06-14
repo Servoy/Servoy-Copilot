@@ -70,23 +70,15 @@ import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ui.preferences.PrimaryKeyType;
 import com.servoy.eclipse.ui.views.solutionexplorer.actions.CreateMediaWebAppManifest;
-import com.servoy.j2db.documentation.ClientSupport;
-import com.servoy.j2db.documentation.IObjectDocumentation;
-import com.servoy.j2db.documentation.IFunctionDocumentation;
 import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.ColumnInfo;
-import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRepository;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.persistence.ITable;
 import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Media;
-import com.servoy.j2db.persistence.MethodTemplate;
-import com.servoy.j2db.persistence.Part;
-import com.servoy.j2db.persistence.PersistEncapsulation;
 import com.servoy.j2db.persistence.RepositoryException;
-import com.servoy.j2db.persistence.ScriptMethod;
 import com.servoy.j2db.persistence.ScriptNameValidator;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.SolutionMetaData;
@@ -106,15 +98,9 @@ import com.servoy.j2db.util.xmlxport.TableDef;
 @Creatable
 @McpServer(name = "servoy-dev")
 public class ServoyDevServer {
-	private static final String DEFAULT_SOLUTION_NAME = "mcp_test_solution";
-
 	private static final String[] NG_PACKAGES = { "12grid", "bootstrapcomponents", "fontawesome", "servoyextra" };
 
 	private static final long ACTIVATE_SETTLE_MS = 5000;
-
-	private static final int DEFAULT_ENCAPSULATION = PersistEncapsulation.HIDE_DATAPROVIDERS
-			| PersistEncapsulation.HIDE_ELEMENTS | PersistEncapsulation.HIDE_CONTAINERS
-			| PersistEncapsulation.HIDE_FOUNDSET;
 
 	private final ScriptContextService scriptContextService = new ScriptContextService();
 	private final ServoyScriptResolver scriptResolver = new ServoyScriptResolver();
@@ -132,43 +118,6 @@ public class ServoyDevServer {
 	@Tool(name = "ping", description = "Returns a simple pong response to verify the servoy-dev endpoint is alive.", type = "object")
 	public String ping() {
 		return "pong";
-	}
-
-	@Tool(name = "createTestSolution", description = "Creates a minimal Servoy NG Client solution in the workspace for MCP tool testing. "
-			+ "The solution includes a CSS-position form (testForm), a responsive form (testResponsiveForm), "
-			+ "a scope (testScope), and default theme/manifest media files. "
-			+ "Uses the existing resources project in the workspace. "
-			+ "Optionally activates the solution in Servoy Developer.", type = "object")
-	public String createTestSolution(
-			@ToolParam(name = "solutionName", description = "Name of the test solution to create. Defaults to '"
-					+ DEFAULT_SOLUTION_NAME + "'.", required = false) String solutionName,
-			@ToolParam(name = "activate", description = "Whether to activate the solution in Servoy Developer after creation. Default: true.", required = false) String activate) {
-		String name = Optional.ofNullable(solutionName).filter(s -> !s.isBlank()).orElse(DEFAULT_SOLUTION_NAME);
-		boolean doActivate = Optional.ofNullable(activate).map(Boolean::parseBoolean).orElse(true);
-
-		try {
-			// Check if solution already exists
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
-			if (sol.exists()) {
-				if (doActivate) {
-					doActivateSolution(name, true);
-					return "Solution '" + name + "' already exists. Activated.";
-				}
-				return "Solution '" + name + "' already exists.";
-			}
-
-			createEclipseProjects(name);
-			createServoyArtifacts(name);
-
-			if (doActivate) {
-				doActivateSolution(name, true);
-				return "Created and activated test solution '" + name + "' in workspace.";
-			}
-			return "Created test solution '" + name + "' in workspace (not activated).";
-		} catch (Exception e) {
-			ServoyLog.logError("createTestSolution failed", e);
-			return "Error creating test solution: " + e.getMessage();
-		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -306,129 +255,6 @@ public class ServoyDevServer {
 	}
 
 	// -------------------------------------------------------------------------
-	// Step 3: Create Servoy artifacts via persistence API
-	// -------------------------------------------------------------------------
-
-	@SuppressWarnings("restriction")
-	private void createServoyArtifacts(String solutionName) throws RepositoryException {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-		ServoyProject servoyProject = model.getServoyProject(solutionName);
-		if (servoyProject == null) {
-			throw new RepositoryException("ServoyProject not found: " + solutionName);
-		}
-
-		// Create the Solution root object via EclipseRepository - this writes
-		// rootmetadata.obj + solution_settings.obj
-		com.servoy.eclipse.model.repository.EclipseRepository repository = (com.servoy.eclipse.model.repository.EclipseRepository) com.servoy.j2db.server.shared.ApplicationServerRegistry
-				.get().getDeveloperRepository();
-
-		Solution solution = (Solution) repository.createNewRootObject(solutionName, IRepository.SOLUTIONS,
-				UUID.randomUUID());
-		solution.setSolutionType(SolutionMetaData.NG_CLIENT_ONLY);
-		solution.setVersion("1.0");
-		// Note: updateRootObject will be called once at the end after all artifacts are
-		// created
-
-		// Reload editing solution from the newly created root object
-		model.refreshServoyProjects();
-		servoyProject = model.getServoyProject(solutionName);
-		if (servoyProject == null) {
-			throw new RepositoryException("ServoyProject not found after refresh: " + solutionName);
-		}
-
-		solution = servoyProject.getEditingSolution();
-		if (solution == null) {
-			throw new RepositoryException("Editing solution not available for: " + solutionName);
-		}
-
-		ScriptNameValidator scriptValidator = new ScriptNameValidator();
-
-		// --- Media files (theme, manifest, icon) via persistence API ---
-		Media solutionLess = solution.createNewMedia(scriptValidator, solutionName + ".less");
-		solutionLess.setMimeType("text/css");
-		solutionLess.setPermMediaData(ThemeResourceLoader.getDefaultSolutionLess());
-
-		Media solutionPropsLess = solution.createNewMedia(scriptValidator,
-				ThemeResourceLoader.SOLUTION_PROPERTIES_LESS);
-		solutionPropsLess.setMimeType("text/css");
-		solutionPropsLess.setPermMediaData(ThemeResourceLoader.getCustomProperties());
-
-		Media variantsJson = solution.createNewMedia(scriptValidator, ThemeResourceLoader.VARIANTS_JSON);
-		variantsJson.setMimeType("text/css");
-		variantsJson.setPermMediaData(ThemeResourceLoader.getVariantsFile());
-
-		Media manifestJson = solution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.FILE_NAME);
-		manifestJson.setMimeType("text/css");
-		manifestJson.setPermMediaData(CreateMediaWebAppManifest.createManifest(solutionName));
-
-		try {
-			Media webappIcon = solution.createNewMedia(scriptValidator, CreateMediaWebAppManifest.ICON_NAME);
-			webappIcon.setMimeType("image/png");
-			webappIcon.setPermMediaData(CreateMediaWebAppManifest.getIcon());
-		} catch (IOException e) {
-			ServoyLog.logWarning("createTestSolution: could not load webapp icon", e);
-		}
-
-		// Set stylesheet on solution
-		solution.setStyleSheetID(solutionLess.getUUID().toString());
-		solution.setVersion("1.0");
-
-		// --- CSS-position form ---
-		ScriptNameValidator formValidator = new ScriptNameValidator(servoyProject.getEditingFlattenedSolution());
-
-		Form cssForm = solution.createNewForm(formValidator, null, "testForm", null, true, null);
-		cssForm.createNewPart(Part.BODY, 480);
-		cssForm.setUseCssPosition(Boolean.TRUE);
-		cssForm.setNavigatorID(Form.NAVIGATOR_NONE);
-		cssForm.setEncapsulation(DEFAULT_ENCAPSULATION);
-
-		ScriptMethod cssOnLoad = cssForm.createNewScriptMethod(formValidator, "onLoad");
-		cssOnLoad
-				.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("onLoad", "// form loaded", null));
-
-		ScriptMethod testMethod = cssForm.createNewScriptMethod(formValidator, "testMethod");
-		testMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("testMethod",
-				"return 'processed: ' + input;", null));
-
-		// --- Responsive form ---
-		Form responsiveForm = solution.createNewForm(formValidator, null, "testResponsiveForm", null, true, null);
-		responsiveForm.setResponsiveLayout(true);
-		responsiveForm.setNavigatorID(Form.NAVIGATOR_NONE);
-		responsiveForm.setEncapsulation(DEFAULT_ENCAPSULATION);
-
-		ScriptMethod responsiveOnLoad = responsiveForm.createNewScriptMethod(formValidator, "onLoad");
-		responsiveOnLoad.setDeclaration(
-				MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("onLoad", "// responsive form loaded", null));
-
-		// --- Scope (testScope) ---
-		ScriptMethod helperMethod = solution.createNewGlobalScriptMethod(formValidator, "testScope", "helperMethod");
-		helperMethod.setDeclaration(MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("helperMethod",
-				"return value ? value.trim() : '';", null));
-
-		ScriptMethod testScopeMethod = solution.createNewGlobalScriptMethod(formValidator, "testScope",
-				"testScopeMethod");
-		testScopeMethod.setDeclaration(
-				MethodTemplate.DEFAULT_TEMPLATE.getMethodDeclaration("testScopeMethod", "return true;", null));
-
-		// Set firstFormID
-		solution.setFirstFormID(cssForm.getUUID().toString());
-
-		// --- Save all to disk - single updateRootObject at the end ---
-		java.util.List<IPersist> toSave = new java.util.ArrayList<>();
-		toSave.add(solution);
-		toSave.add(solutionLess);
-		toSave.add(solutionPropsLess);
-		toSave.add(variantsJson);
-		toSave.add(manifestJson);
-		toSave.add(cssForm);
-		toSave.add(responsiveForm);
-		toSave.add(helperMethod);
-		toSave.add(testScopeMethod);
-		servoyProject.saveEditingSolutionNodes(toSave.toArray(new IPersist[0]), true);
-		repository.updateRootObject(solution);
-	}
-
-	// -------------------------------------------------------------------------
 	// Helpers
 	// -------------------------------------------------------------------------
 
@@ -451,7 +277,7 @@ public class ServoyDevServer {
 				"wizardpackages");
 
 		if (!wizardPackagesDir.exists()) {
-			ServoyLog.logWarning("createTestSolution: wizardpackages folder not found at " + wizardPackagesDir, null);
+			ServoyLog.logWarning("createEclipseProjects: wizardpackages folder not found at " + wizardPackagesDir, null);
 			return;
 		}
 
@@ -465,7 +291,7 @@ public class ServoyDevServer {
 			}
 
 			if (packageFile == null) {
-				ServoyLog.logWarning("createTestSolution: package not found in wizardpackages: " + name, null);
+				ServoyLog.logWarning("createEclipseProjects: package not found in wizardpackages: " + name, null);
 				continue;
 			}
 
@@ -474,7 +300,7 @@ public class ServoyDevServer {
 				try (InputStream is = new FileInputStream(packageFile)) {
 					destFile.create(is, true, monitor);
 				} catch (IOException e) {
-					ServoyLog.logError("createTestSolution: failed to copy " + name + ".zip", e);
+					ServoyLog.logError("createEclipseProjects: failed to copy " + name + ".zip", e);
 				}
 			}
 		}
@@ -1648,10 +1474,31 @@ public class ServoyDevServer {
 	// generateUUID MCP tool
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "generateUUID", description = "Generates a random UUID (Universal Unique Identifier) string. "
-			+ "Returns a standard 128-bit UUID in uppercase format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.", type = "object")
-	public String generateUUID() {
-		return UUID.randomUUID().toString();
+	@Tool(name = "generateUUID", description = "Generates one or more random UUIDv4 values in uppercase format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX. "
+			+ "Use count > 1 when creating artifacts that require multiple UUIDs in a single operation (e.g. components in a .frm). "
+			+ "Each UUID is returned on a separate line.", type = "object")
+	public String generateUUID(
+			@ToolParam(name = "count", description = "Number of UUIDs to generate. Default: 1.", required = false) String count) {
+		int n = 1;
+		if (count != null && !count.isBlank()) {
+			try {
+				n = Integer.parseInt(count.trim());
+			} catch (NumberFormatException e) {
+				return "Error: count must be a positive integer.";
+			}
+		}
+		if (n < 1 || n > 100) {
+			return "Error: count must be between 1 and 100.";
+		}
+		if (n == 1) {
+			return UUID.randomUUID().toString().toUpperCase();
+		}
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < n; i++) {
+			if (i > 0) sb.append("\n");
+			sb.append(UUID.randomUUID().toString().toUpperCase());
+		}
+		return sb.toString();
 	}
 
 	// -------------------------------------------------------------------------
