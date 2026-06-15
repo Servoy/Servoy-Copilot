@@ -5,9 +5,10 @@ Bundle-SymbolicName: com.servoy.eclipse.servoypilot;singleton:=true
 Bundle-Version: 2026.3.0.qualifier
 Export-Package: com.servoy.eclipse.servoypilot.mcp.server,
  com.servoy.eclipse.servoypilot.services,
+ com.servoy.eclipse.servoypilot.tools.codecontext,
+ com.servoy.eclipse.servoypilot.tools.security,
  com.servoy.eclipse.servoypilot.tools.testgeneration,
- com.servoy.eclipse.servoypilot.tools.workspace,
- com.servoy.eclipse.servoypilot.tools.codecontext
+ com.servoy.eclipse.servoypilot.tools.workspace
 Bundle-Activator: com.servoy.eclipse.servoypilot.Activator
 Bundle-Vendor: Servoy
 Require-Bundle: org.eclipse.jface,
@@ -50,6 +51,7 @@ Import-Package: com.equo.chromium.swt,
  com.servoy.eclipse.ui.tweaks,
  com.servoy.eclipse.ui.util,
  com.servoy.j2db,
+ com.servoy.j2db.dataprocessing;version="[2026.3.0,2027.0.0)",
  com.servoy.j2db.documentation,
  com.servoy.j2db.persistence,
  com.servoy.j2db.scripting,

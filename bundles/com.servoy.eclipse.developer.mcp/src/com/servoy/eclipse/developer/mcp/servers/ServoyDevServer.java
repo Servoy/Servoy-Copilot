@@ -70,6 +70,7 @@ import com.servoy.eclipse.ui.preferences.PrimaryKeyType;
 import com.servoy.eclipse.ui.views.solutionexplorer.actions.CreateMediaWebAppManifest;
 import com.servoy.j2db.persistence.Column;
 import com.servoy.j2db.persistence.ColumnInfo;
+import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRepository;
 import com.servoy.j2db.persistence.IServerInternal;
@@ -1898,5 +1899,347 @@ public class ServoyDevServer {
 			ServoyLog.logError("createPostgresDatabase: failed to register server config", e);
 			return "Error: Database created but failed to register server config: " + e.getMessage();
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Permission / Security tools
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "listUsers", description = "Lists all users defined in the workspace security configuration. Returns user names and their UIDs.", type = "object")
+	public String listUsers() {
+		try {
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			com.servoy.j2db.dataprocessing.IDataSet users = userManager.getUsers(getSecurityClientId());
+			if (users == null || users.getRowCount() == 0) return "No users defined.";
+
+			StringBuilder result = new StringBuilder();
+			result.append("Users (").append(users.getRowCount()).append("):\n\n");
+			result.append("| # | Name | UID |\n");
+			result.append("|---|------|-----|\n");
+			for (int i = 0; i < users.getRowCount(); i++) {
+				Object[] row = users.getRow(i);
+				result.append("| ").append(i + 1).append(" | ").append(row[1]).append(" | ").append(row[0]).append(" |\n");
+			}
+			return result.toString();
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "createUser", description = "Creates a new user. Password is plain text and will be hashed internally. If userUID is not provided, a UUID will be auto-generated.", type = "object")
+	public String createUser(
+			@ToolParam(name = "userName", description = "The user name") String userName,
+			@ToolParam(name = "password", description = "Plain text password (will be hashed internally)") String password,
+			@ToolParam(name = "userUID", description = "Optional user UUID. If not provided, one will be auto-generated.", required = false) String userUID) {
+		try {
+			if (userName == null || userName.trim().isEmpty()) return "Error: userName is required";
+			if (password == null || password.isEmpty()) return "Error: password is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			int result = userManager.createUser(getSecurityClientId(), userName, password, userUID, false);
+			if (result < 0) {
+				if (result == -2) return "Error: User '" + userName + "' already exists";
+				return "Error: Failed to create user (code: " + result + ")";
+			}
+
+			userManager.writeAllSecurityInformation(false);
+			String uid = userManager.getUserUID(getSecurityClientId(), userName);
+			return "User '" + userName + "' created successfully.\n  UID: " + uid;
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "changeUserName", description = "Renames an existing user.", type = "object")
+	public String changeUserName(
+			@ToolParam(name = "oldName", description = "Current user name") String oldName,
+			@ToolParam(name = "newName", description = "New user name") String newName) {
+		try {
+			if (oldName == null || oldName.trim().isEmpty()) return "Error: oldName is required";
+			if (newName == null || newName.trim().isEmpty()) return "Error: newName is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			String userUID = userManager.getUserUID(getSecurityClientId(), oldName);
+			if (userUID == null) return "Error: User '" + oldName + "' not found";
+
+			boolean success = userManager.changeUserName(getSecurityClientId(), userUID, newName);
+			if (!success) return "Error: Failed to rename user. Name '" + newName + "' may already be in use.";
+
+			userManager.writeAllSecurityInformation(false);
+			return "User renamed from '" + oldName + "' to '" + newName + "' successfully.";
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "setUserPassword", description = "Changes a user's password. Password is plain text and will be hashed internally.", type = "object")
+	public String setUserPassword(
+			@ToolParam(name = "userName", description = "The user name") String userName,
+			@ToolParam(name = "newPassword", description = "New plain text password") String newPassword) {
+		try {
+			if (userName == null || userName.trim().isEmpty()) return "Error: userName is required";
+			if (newPassword == null || newPassword.isEmpty()) return "Error: newPassword is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			String userUID = userManager.getUserUID(getSecurityClientId(), userName);
+			if (userUID == null) return "Error: User '" + userName + "' not found";
+
+			boolean success = userManager.setPassword(getSecurityClientId(), userUID, newPassword, true);
+			if (!success) return "Error: Failed to set password for user '" + userName + "'";
+
+			userManager.writeAllSecurityInformation(false);
+			return "Password updated for user '" + userName + "' successfully.";
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "createPermission", description = "Creates a new permission. Permissions control access rights to form elements.", type = "object")
+	public String createPermission(
+			@ToolParam(name = "permissionName", description = "Name of the new permission") String permissionName) {
+		try {
+			if (permissionName == null || permissionName.trim().isEmpty()) return "Error: permissionName is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			int result = userManager.createGroup(getSecurityClientId(), permissionName);
+			if (result == -1) return "Error: Permission '" + permissionName + "' already exists or could not be created";
+
+			userManager.writeAllSecurityInformation(false);
+			return "Permission '" + permissionName + "' created successfully.";
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "getFormSecurity", description = "Returns current form element access rights for a given permission. Shows VIEWABLE and ACCESSIBLE flags for each element.", type = "object")
+	public String getFormSecurity(
+			@ToolParam(name = "permissionName", description = "Permission name") String permissionName,
+			@ToolParam(name = "formName", description = "Form name") String formName,
+			@ToolParam(name = "solutionName", description = "Solution name (defaults to active solution)", required = false) String solutionName) {
+		try {
+			if (permissionName == null || permissionName.trim().isEmpty()) return "Error: permissionName is required";
+			if (formName == null || formName.trim().isEmpty()) return "Error: formName is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			Form form = resolveFormForSecurity(formName, solutionName);
+			if (form == null) return "Error: Form '" + formName + "' not found" + (solutionName != null ? " in solution '" + solutionName + "'" : "");
+
+			java.util.List<com.servoy.j2db.server.shared.SecurityInfo> infos = userManager.getSecurityInfos(permissionName, form);
+
+			StringBuilder result = new StringBuilder();
+			result.append("Form security for '").append(formName).append("' with permission '").append(permissionName).append("':\n\n");
+
+			if (infos == null || infos.isEmpty()) {
+				result.append("No explicit access rights set. Default access applies (VIEWABLE + ACCESSIBLE).");
+				return result.toString();
+			}
+
+			result.append("| Element | Viewable | Accessible | Access |\n");
+			result.append("|---------|----------|------------|--------|\n");
+
+			for (com.servoy.j2db.server.shared.SecurityInfo info : infos) {
+				String elementName = resolveElementNameForSecurity(form, info.element_uid);
+				boolean viewable = (info.access & IRepository.VIEWABLE) != 0;
+				boolean accessible = (info.access & IRepository.ACCESSIBLE) != 0;
+				result.append("| ").append(elementName).append(" | ").append(viewable).append(" | ").append(accessible).append(" | ").append(info.access).append(" |\n");
+			}
+			return result.toString();
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "setFormElementAccess", description = "Sets VIEWABLE and ACCESSIBLE flags for a form or a specific element. When elementName is omitted, sets access on the form itself.", type = "object")
+	public String setFormElementAccess(
+			@ToolParam(name = "permissionName", description = "Permission name") String permissionName,
+			@ToolParam(name = "formName", description = "Form name") String formName,
+			@ToolParam(name = "elementName", description = "Element name (omit to set access on the form itself)", required = false) String elementName,
+			@ToolParam(name = "viewable", description = "Whether the element should be viewable", type = "boolean") String viewable,
+			@ToolParam(name = "accessible", description = "Whether the element should be accessible", type = "boolean") String accessible,
+			@ToolParam(name = "solutionName", description = "Solution name (defaults to active solution)", required = false) String solutionName) {
+		try {
+			if (permissionName == null || permissionName.trim().isEmpty()) return "Error: permissionName is required";
+			if (formName == null || formName.trim().isEmpty()) return "Error: formName is required";
+
+			boolean isViewable = Boolean.parseBoolean(viewable);
+			boolean isAccessible = Boolean.parseBoolean(accessible);
+
+			if (!isViewable && isAccessible) return "Error: Invalid combination â accessible=true has no effect when viewable=false. Valid combinations: viewable+accessible, viewable only, or neither.";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			String resolvedSolution = resolveSecuritySolutionName(solutionName);
+			if (resolvedSolution == null) return "Error: No active solution found";
+
+			Form form = resolveFormForSecurity(formName, solutionName);
+			if (form == null) return "Error: Form '" + formName + "' not found" + (solutionName != null ? " in solution '" + solutionName + "'" : "");
+
+			int accessMask = (isViewable ? IRepository.VIEWABLE : 0) | (isAccessible ? IRepository.ACCESSIBLE : 0);
+
+			String elementUID;
+			if (elementName == null || elementName.trim().isEmpty()) {
+				elementUID = form.getUUID().toString();
+			} else {
+				elementUID = resolveElementUIDForSecurity(form, elementName);
+				if (elementUID == null) return "Error: Element '" + elementName + "' not found in form '" + formName + "'";
+			}
+
+			userManager.setFormSecurityAccess(getSecurityClientId(), permissionName, Integer.valueOf(accessMask), elementUID, resolvedSolution);
+			userManager.writeAllSecurityInformation(false);
+
+			String target = (elementName == null || elementName.trim().isEmpty()) ? "form '" + formName + "'" : "element '" + elementName + "' in form '" + formName + "'";
+			return "Access set on " + target + " for permission '" + permissionName + "': viewable=" + isViewable + ", accessible=" + isAccessible;
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "setFormSecurityBulk", description = "Sets access for multiple elements in one call. accessEntries is a JSON array of objects with fields: elementName (optional), viewable (boolean), accessible (boolean).", type = "object")
+	public String setFormSecurityBulk(
+			@ToolParam(name = "permissionName", description = "Permission name") String permissionName,
+			@ToolParam(name = "formName", description = "Form name") String formName,
+			@ToolParam(name = "accessEntries", description = "JSON array e.g. [{\"elementName\":\"btn1\",\"viewable\":true,\"accessible\":false}]") String accessEntries,
+			@ToolParam(name = "solutionName", description = "Solution name (defaults to active solution)", required = false) String solutionName) {
+		try {
+			if (permissionName == null || permissionName.trim().isEmpty()) return "Error: permissionName is required";
+			if (formName == null || formName.trim().isEmpty()) return "Error: formName is required";
+			if (accessEntries == null || accessEntries.trim().isEmpty()) return "Error: accessEntries is required";
+
+			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
+			if (userManager == null) return "Error: User manager not available";
+
+			String resolvedSolution = resolveSecuritySolutionName(solutionName);
+			if (resolvedSolution == null) return "Error: No active solution found";
+
+			Form form = resolveFormForSecurity(formName, solutionName);
+			if (form == null) return "Error: Form '" + formName + "' not found" + (solutionName != null ? " in solution '" + solutionName + "'" : "");
+
+			org.json.JSONArray entries = new org.json.JSONArray(accessEntries);
+			int successCount = 0;
+			StringBuilder errors = new StringBuilder();
+
+			for (int i = 0; i < entries.length(); i++) {
+				org.json.JSONObject entry = entries.getJSONObject(i);
+				String elName = entry.optString("elementName", null);
+				boolean elViewable = entry.getBoolean("viewable");
+				boolean elAccessible = entry.getBoolean("accessible");
+
+					if (!elViewable && elAccessible) {
+						errors.append("  - Invalid combination for '").append(elName != null ? elName : "(form)").append("': accessible=true has no effect when viewable=false\n");
+						continue;
+					}
+
+				int accessMask = (elViewable ? IRepository.VIEWABLE : 0) | (elAccessible ? IRepository.ACCESSIBLE : 0);
+
+				String elementUID;
+				if (elName == null || elName.trim().isEmpty()) {
+					elementUID = form.getUUID().toString();
+				} else {
+					elementUID = resolveElementUIDForSecurity(form, elName);
+					if (elementUID == null) {
+						errors.append("  - Element '").append(elName).append("' not found\n");
+						continue;
+					}
+				}
+
+				userManager.setFormSecurityAccess(getSecurityClientId(), permissionName, Integer.valueOf(accessMask), elementUID, resolvedSolution);
+				successCount++;
+			}
+
+			userManager.writeAllSecurityInformation(false);
+
+			StringBuilder result = new StringBuilder();
+			result.append("Bulk access update on form '").append(formName).append("' for permission '").append(permissionName).append("':\n");
+			result.append("  ").append(successCount).append("/").append(entries.length()).append(" entries applied successfully.");
+			if (errors.length() > 0) {
+				result.append("\n\nErrors:\n").append(errors);
+			}
+			return result.toString();
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	private com.servoy.eclipse.model.repository.WorkspaceUserManager getUserManager() {
+		return (com.servoy.eclipse.model.repository.WorkspaceUserManager) ServoyModelManager.getServoyModelManager().getServoyModel().getUserManager();
+	}
+
+	private String getSecurityClientId() {
+		return ApplicationServerRegistry.get().getClientId();
+	}
+
+	private String resolveSecuritySolutionName(String solutionName) {
+		if (solutionName != null && !solutionName.trim().isEmpty()) return solutionName;
+		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		if (activeProject != null && activeProject.getEditingSolution() != null) {
+			return activeProject.getEditingSolution().getName();
+		}
+		return null;
+	}
+
+	private Form resolveFormForSecurity(String formName, String solutionName) {
+		if (solutionName != null && !solutionName.trim().isEmpty()) {
+			ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			if (project != null && project.getEditingSolution() != null) {
+				return project.getEditingSolution().getForm(formName);
+			}
+			return null;
+		}
+		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		if (activeProject != null && activeProject.getEditingSolution() != null) {
+			Form form = activeProject.getEditingSolution().getForm(formName);
+			if (form != null) return form;
+			ServoyProject[] modules = ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
+			for (ServoyProject module : modules) {
+				if (module != null && module.getEditingSolution() != null) {
+					form = module.getEditingSolution().getForm(formName);
+					if (form != null) return form;
+				}
+			}
+		}
+		return null;
+	}
+
+	private String resolveElementUIDForSecurity(Form form, String elementName) {
+		java.util.Iterator<IPersist> children = form.getAllObjects();
+		while (children.hasNext()) {
+			IPersist child = children.next();
+			if (child instanceof com.servoy.j2db.persistence.ISupportName named) {
+				if (elementName.equals(named.getName())) {
+					return child.getUUID().toString();
+				}
+			}
+		}
+		return null;
+	}
+
+	private String resolveElementNameForSecurity(Form form, String elementUID) {
+		if (form.getUUID().toString().equals(elementUID)) {
+			return "(form: " + form.getName() + ")";
+		}
+		java.util.Iterator<IPersist> children = form.getAllObjects();
+		while (children.hasNext()) {
+			IPersist child = children.next();
+			if (child.getUUID().toString().equals(elementUID)) {
+				if (child instanceof com.servoy.j2db.persistence.ISupportName named && named.getName() != null) {
+					return named.getName();
+				}
+				return elementUID;
+			}
+		}
+		return elementUID;
 	}
 }
