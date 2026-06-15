@@ -296,7 +296,7 @@ public class FormSpecGenerator
 
 	/**
 	 * Generates the Servoy setUp/tearDown script (.spec.js).
-	 * This file HAS @properties annotations — it's a Servoy scope file with full DLTK support.
+	 * This file HAS @properties annotations - it's a Servoy scope file with full DLTK support.
 	 */
 	private String generateSetupContent(FormMetadata metadata)
 	{

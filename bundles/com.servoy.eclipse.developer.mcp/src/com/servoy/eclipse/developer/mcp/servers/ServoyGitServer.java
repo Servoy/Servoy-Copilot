@@ -43,10 +43,10 @@ public class ServoyGitServer
 	@Inject
 	private GitService gitService;
 
-	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyGitServer() { }
 
-	/** Testing constructor — initialises services directly without E4 DI. */
+	/** Testing constructor - initialises services directly without E4 DI. */
 	ServoyGitServer(GitService gitService)
 	{
 		this.gitService = gitService;

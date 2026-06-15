@@ -317,7 +317,7 @@ public class TestFileService
 
 			// Find the opening brace of the function body
 			int openBrace = result.indexOf('{', funcIndex + functionDecl.length());
-			if (openBrace == -1) break; // malformed — stop to avoid infinite loop
+			if (openBrace == -1) break; // malformed - stop to avoid infinite loop
 
 			// Walk braces to find the matching closing brace
 			int depth = 0;
@@ -336,7 +336,7 @@ public class TestFileService
 					}
 				}
 			}
-			if (closeIndex == -1) break; // malformed — stop
+			if (closeIndex == -1) break; // malformed - stop
 
 			// Consume one trailing newline after the closing brace
 			int blockEnd = closeIndex + 1;

@@ -948,11 +948,11 @@ public class ServoyDevServer {
 
 	private static final int MEMBERS_THRESHOLD = 50;
 
-	@Tool(name = "getDocumentationForTypeMember", description = "Returns full documentation for one specific method or property of a Servoy API type — description, all parameters, return type, and overloads. "
+	@Tool(name = "getDocumentationForTypeMember", description = "Returns full documentation for one specific method or property of a Servoy API type - description, all parameters, return type, and overloads. "
 			+ "Works without any file or editor context.", type = "object")
 	public String getDocumentationForTypeMember(
 			@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet')", required = true) String typeName,
-			@ToolParam(name = "memberName", description = "Member name to look up — case-insensitive (e.g. 'getFoundSet', 'loadAllRecords', 'showInfoDialog')", required = true) String memberName) {
+			@ToolParam(name = "memberName", description = "Member name to look up - case-insensitive (e.g. 'getFoundSet', 'loadAllRecords', 'showInfoDialog')", required = true) String memberName) {
 		if (typeName == null || typeName.trim().isEmpty())
 			return "Error: typeName parameter is required";
 		if (memberName == null || memberName.trim().isEmpty())
@@ -1006,7 +1006,7 @@ public class ServoyDevServer {
 
 	@Tool(name = "getAvailableMembersForType", description = "Returns lightweight method and property signatures for a Servoy API type. "
 			+ "Returns signatures like 'getFoundSet(query): JSFoundSet', 'loadAllRecords(): Boolean'. "
-			+ "Truncates at 50 members — use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.", type = "object")
+			+ "Truncates at 50 members - use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.", type = "object")
 	public String getAvailableMembersForType(
 			@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet', 'controller')", required = true) String typeName,
 			@ToolParam(name = "memberFilter", description = "Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter) {
@@ -1096,7 +1096,7 @@ public class ServoyDevServer {
 			+ "Uses DLTK type inference on the file content to resolve identifiers in context.", type = "object")
 	public String getDocumentationForIdentifiers(
 			@ToolParam(name = "identifiers", description = "Comma-separated full identifier paths to look up (e.g., 'databaseManager.getFoundSet,JSRecord,plugins.dialogs.showInfoDialog')", required = true) String identifiers,
-			@ToolParam(name = "filePath", description = "File path (form name, scope name, or workspace path) — provides the context for type inference", required = true) String filePath) {
+			@ToolParam(name = "filePath", description = "File path (form name, scope name, or workspace path) - provides the context for type inference", required = true) String filePath) {
 		if (identifiers == null || identifiers.trim().isEmpty())
 			return "Error: identifiers parameter is required";
 		if (filePath == null || filePath.trim().isEmpty())

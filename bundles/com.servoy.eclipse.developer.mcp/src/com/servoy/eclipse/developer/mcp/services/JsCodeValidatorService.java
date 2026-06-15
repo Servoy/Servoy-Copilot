@@ -42,7 +42,7 @@ public class JsCodeValidatorService
 		}
 		catch (Exception e)
 		{
-			// Parsing crashed — log only; problems list reflects parser-detected issues
+			// Parsing crashed - log only; problems list reflects parser-detected issues
 		}
 		return problems;
 	}

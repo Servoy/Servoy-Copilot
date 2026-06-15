@@ -42,7 +42,7 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 
 import com.servoy.eclipse.model.util.ServoyLog;
-// ResolvedElementsProcessor is in the same package — no import needed
+// ResolvedElementsProcessor is in the same package - no import needed
 
 /**
  * Resolves the type of an identifier in a Servoy JavaScript file using DLTK's

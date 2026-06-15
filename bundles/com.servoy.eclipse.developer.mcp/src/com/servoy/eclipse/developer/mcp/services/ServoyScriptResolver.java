@@ -108,7 +108,7 @@ public class ServoyScriptResolver
 			if (project != null)
 				sb.append(" in active solution '").append(project.getName()).append("'");
 			else
-				sb.append(" — no active Servoy solution found");
+				sb.append(" - no active Servoy solution found");
 		}
 		sb.append(".\nExpected locations: forms/<name>.js or scopes/<name>.js");
 		return sb.toString();

@@ -165,4 +165,14 @@ Spotbugs is used to find bugs in Java code. You must pay special attention to Sp
 
 ---
 
+## 6. Pre-Commit Checklist
+
+Before creating any Git commit, the following steps are **mandatory**:
+
+1. **Check compilation errors:** Call `eclipse-ide_getCompilationErrors()` and ensure there are ZERO errors. Do NOT commit with compilation errors.
+2. **Show the commit to the user:** Always present the proposed commit message and list of staged files to the user BEFORE committing. Wait for explicit user approval ("go", "yes", "commit") before executing the commit.
+3. **Never commit without user confirmation.** Even if the user said "commit" earlier in the conversation, always show what will be committed first.
+
+---
+
 *Thank you for keeping the Servoy Copilot codebase healthy, compilation-error free, and highly consistent!*

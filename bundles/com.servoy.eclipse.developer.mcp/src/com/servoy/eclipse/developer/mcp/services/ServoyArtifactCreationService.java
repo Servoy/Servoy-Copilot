@@ -39,7 +39,7 @@ import com.servoy.base.query.IQueryConstants;
  * Service for creating Servoy solution artifacts (forms, relations, valuelists).
  * <p>
  * Ported from servoypilot's {@code FormService}, {@code RelationService}, {@code ValueListService}.
- * No UI operations (no EditorUtil calls). No AiBridge dependency — event/extends logic inlined.
+ * No UI operations (no EditorUtil calls). No AiBridge dependency - event/extends logic inlined.
  * </p>
  */
 @Creatable
@@ -91,7 +91,7 @@ public class ServoyArtifactCreationService
 			}
 			else
 			{
-				ServoyLog.logWarning("Parent form '" + extendsForm + "' not found — skipping inheritance", null);
+				ServoyLog.logWarning("Parent form '" + extendsForm + "' not found - skipping inheritance", null);
 			}
 		}
 

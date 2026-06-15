@@ -27,7 +27,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
- * Generic file path resolver — handles workspace-relative paths, partial paths, and recursive search.
+ * Generic file path resolver - handles workspace-relative paths, partial paths, and recursive search.
  * <p>
  * Ported from {@code com.servoy.eclipse.servoypilot.services.FilePathResolver}.
  * </p>

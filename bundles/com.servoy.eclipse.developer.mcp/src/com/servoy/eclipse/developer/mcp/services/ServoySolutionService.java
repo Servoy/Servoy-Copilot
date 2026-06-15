@@ -31,7 +31,7 @@ import com.servoy.j2db.persistence.ValueList;
  * Service for listing and deleting Servoy solution artifacts (forms, relations, valuelists, styles).
  * <p>
  * Ported from {@code com.servoy.eclipse.servoypilot.tools.core.CoreToolsHelper}.
- * Simplified: no TargetService dependency — uses active solution + modules directly.
+ * Simplified: no TargetService dependency - uses active solution + modules directly.
  * No UI operations (no EditorUtil calls).
  * </p>
  */
@@ -222,7 +222,7 @@ public class ServoySolutionService
 	}
 
 	// -------------------------------------------------------------------------
-	// Styles (simplified — lists .less file existence per solution)
+	// Styles (simplified - lists .less file existence per solution)
 	// -------------------------------------------------------------------------
 
 	public String listStyles(String scope)

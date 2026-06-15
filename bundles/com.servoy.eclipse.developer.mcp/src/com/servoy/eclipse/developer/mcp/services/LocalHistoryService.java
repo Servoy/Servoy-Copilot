@@ -38,7 +38,7 @@ import org.eclipse.core.runtime.IPath;
  * <ul>
  *   <li>No {@code AiIgnoreService} â access control is not needed in Servoy Developer MCP</li>
  *   <li>No {@code UISynchronize} / editor refresh â the MCP server runs headless</li>
- *   <li>{@code restoreFileVersion} is intentionally not implemented (see {@code ServoyContextServer})</li>
+ *   <li>{@code restoreFileVersion} has been removed (no longer exposed as an MCP tool)</li>
  * </ul>
  * </p>
  */

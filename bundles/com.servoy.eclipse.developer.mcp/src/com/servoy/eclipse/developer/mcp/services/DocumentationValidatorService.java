@@ -23,7 +23,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
  * <p>
  * Validates:
  * <ul>
- *   <li>UUID preservation (CRITICAL — UUIDs must never change)</li>
+ *   <li>UUID preservation (CRITICAL - UUIDs must never change)</li>
  *   <li>JSDoc syntax correctness</li>
  * </ul>
  * </p>

@@ -45,10 +45,10 @@ public class ServoyCoderServer
 	@Inject
 	private CodeEditingService codeEditingService;
 
-	/** Default constructor — required by E4 DI (ContextInjectionFactory.make). */
+	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyCoderServer() { }
 
-	/** Testing constructor — initialises services directly without E4 DI. */
+	/** Testing constructor - initialises services directly without E4 DI. */
 	ServoyCoderServer(CodeEditingService codeEditingService)
 	{
 		this.codeEditingService = codeEditingService;

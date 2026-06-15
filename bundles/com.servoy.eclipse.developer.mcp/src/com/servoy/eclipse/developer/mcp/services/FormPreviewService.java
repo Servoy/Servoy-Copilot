@@ -76,7 +76,12 @@ public class FormPreviewService
 			Display.getDefault().asyncExec(() -> {
 				try
 				{
-					org.eclipse.ui.PlatformUI.getWorkbench().getBrowserSupport().getExternalBrowser()
+					org.eclipse.ui.PlatformUI.getWorkbench().getBrowserSupport()
+						.createBrowser(
+							org.eclipse.ui.browser.IWorkbenchBrowserSupport.LOCATION_BAR |
+								org.eclipse.ui.browser.IWorkbenchBrowserSupport.NAVIGATION_BAR |
+								org.eclipse.ui.browser.IWorkbenchBrowserSupport.AS_EXTERNAL,
+							"servoy.formpreview", null, null)
 						.openURL(new java.net.URL(url));
 				}
 				catch (Exception e)

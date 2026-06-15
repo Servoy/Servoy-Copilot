@@ -44,12 +44,12 @@ public class McpServiceProvider implements IServicesProvider
 			McpServerRegistry registry = McpServerRegistry.getInstance();
 			if (registry == null)
 			{
-				// Tomcat is starting before McpStartup has run — bootstrap now
+				// Tomcat is starting before McpStartup has run - bootstrap now
 				ServoyLog.logInfo("Servoy Developer MCP: bootstrapping registry from McpServiceProvider.");
 				Activator activator = Activator.getDefault();
 				if (activator == null)
 				{
-					ServoyLog.logWarning("Servoy Developer MCP: Activator not yet available — no servlets registered.", null);
+					ServoyLog.logWarning("Servoy Developer MCP: Activator not yet available - no servlets registered.", null);
 					return Collections.emptySet();
 				}
 				registry = activator.make(McpServerRegistry.class);
