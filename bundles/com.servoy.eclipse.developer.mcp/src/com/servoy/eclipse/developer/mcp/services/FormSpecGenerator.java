@@ -248,7 +248,14 @@ public class FormSpecGenerator
 
 		sb.append("  beforeEach(() => {\n");
 		sb.append("    cy.visit('").append(formUrl).append("');\n");
-		sb.append("    cy.get('[data-cy^=\"").append(metadata.formName).append(".\"]', { timeout: 30000 }).should('exist');\n");
+		if (metadata.namedElements.isEmpty())
+		{
+			sb.append("    cy.get('.svy-form', { timeout: 30000 }).should('exist');\n");
+		}
+		else
+		{
+			sb.append("    cy.get('[data-cy^=\"").append(metadata.formName).append(".\"]', { timeout: 30000 }).should('exist');\n");
+		}
 		sb.append("  });\n\n");
 
 		sb.append("  it('loads without errors and all elements are visible', () => {\n");

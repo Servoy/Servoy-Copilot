@@ -18,4 +18,156 @@
       </serviceprovider>
    </extension>
 
+   <!-- Cypress Form Test commands -->
+   <extension point="org.eclipse.ui.commands">
+      <command
+            categoryId="com.servoy.eclipse.ui"
+            description="Run Cypress form test for the selected form"
+            id="com.servoy.eclipse.developer.mcp.commands.runCypressFormTest"
+            name="Run Cypress Form Test">
+      </command>
+      <command
+            categoryId="com.servoy.eclipse.ui"
+            description="Run all Cypress form tests in the solution"
+            id="com.servoy.eclipse.developer.mcp.commands.runAllCypressFormTests"
+            name="Run All Cypress Form Tests">
+      </command>
+   </extension>
+
+   <!-- Cypress Form Test handlers -->
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            class="com.servoy.eclipse.developer.mcp.actions.RunCypressFormTestHandler"
+            commandId="com.servoy.eclipse.developer.mcp.commands.runCypressFormTest">
+      </handler>
+      <handler
+            class="com.servoy.eclipse.developer.mcp.actions.RunAllCypressFormTestsHandler"
+            commandId="com.servoy.eclipse.developer.mcp.commands.runAllCypressFormTests">
+      </handler>
+   </extension>
+
+   <!-- Cypress Form Test menu contributions -->
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution
+            locationURI="popup:org.eclipse.ui.popup.any?before=additions">
+         <command
+               commandId="com.servoy.eclipse.developer.mcp.commands.runCypressFormTest"
+               label="Run Cypress Form Test"
+               style="push">
+            <visibleWhen
+                  checkEnabled="false">
+               <reference
+                     definitionId="com.servoy.eclipse.developer.mcp.selectionIsCypressFormTestTarget">
+               </reference>
+            </visibleWhen>
+         </command>
+         <command
+               commandId="com.servoy.eclipse.developer.mcp.commands.runAllCypressFormTests"
+               label="Run All Cypress Form Tests"
+               style="push">
+            <visibleWhen
+                  checkEnabled="false">
+               <reference
+                     definitionId="com.servoy.eclipse.developer.mcp.selectionIsCypressSolutionTestTarget">
+               </reference>
+            </visibleWhen>
+         </command>
+      </menuContribution>
+      <menuContribution
+            allPopups="false"
+            locationURI="popup:com.servoy.eclipse.designer.rfb.popup?before=additions">
+         <command
+               commandId="com.servoy.eclipse.developer.mcp.commands.runCypressFormTest"
+               label="Run Cypress Form Test"
+               style="push">
+            <visibleWhen
+                  checkEnabled="false">
+               <with
+                     variable="activeEditorInput">
+                  <and>
+                     <instanceof
+                           value="com.servoy.eclipse.core.resource.PersistEditorInput">
+                     </instanceof>
+                     <test
+                           property="com.servoy.eclipse.developer.mcp.cypressTestExists"
+                           value="true">
+                     </test>
+                  </and>
+               </with>
+            </visibleWhen>
+         </command>
+      </menuContribution>
+   </extension>
+
+   <!-- Adapter factory for Cypress test targets -->
+   <extension point="org.eclipse.core.runtime.adapters">
+      <factory
+            adaptableType="com.servoy.eclipse.ui.node.SimpleUserNode"
+            class="com.servoy.eclipse.developer.mcp.actions.CypressTestAdapterFactory">
+         <adapter
+               type="com.servoy.eclipse.developer.mcp.actions.CypressFormTestTarget">
+         </adapter>
+      </factory>
+   </extension>
+
+   <!-- Core expressions for Cypress test visibility -->
+   <extension point="org.eclipse.core.expressions.definitions">
+      <definition
+            id="com.servoy.eclipse.developer.mcp.selectionIsCypressFormTestTarget">
+         <with
+               variable="selection">
+            <iterate
+                  ifEmpty="false">
+               <adapt
+                     type="com.servoy.eclipse.developer.mcp.actions.CypressFormTestTarget">
+                  <test
+                        property="com.servoy.eclipse.developer.mcp.isSingleFormTest"
+                        value="true">
+                  </test>
+               </adapt>
+            </iterate>
+            <count
+                  value="1">
+            </count>
+         </with>
+      </definition>
+      <definition
+            id="com.servoy.eclipse.developer.mcp.selectionIsCypressSolutionTestTarget">
+         <with
+               variable="selection">
+            <iterate
+                  ifEmpty="false">
+               <adapt
+                     type="com.servoy.eclipse.developer.mcp.actions.CypressFormTestTarget">
+                  <test
+                        property="com.servoy.eclipse.developer.mcp.isSolutionLevelTest"
+                        value="true">
+                  </test>
+               </adapt>
+            </iterate>
+            <count
+                  value="1">
+            </count>
+         </with>
+      </definition>
+   </extension>
+
+   <!-- Property tester for Cypress test target type -->
+   <extension point="org.eclipse.core.expressions.propertyTesters">
+      <propertyTester
+            class="com.servoy.eclipse.developer.mcp.actions.CypressTestPropertyTester"
+            id="com.servoy.eclipse.developer.mcp.cypressTestPropertyTester"
+            namespace="com.servoy.eclipse.developer.mcp"
+            properties="isSingleFormTest,isSolutionLevelTest"
+            type="com.servoy.eclipse.developer.mcp.actions.CypressFormTestTarget">
+      </propertyTester>
+      <propertyTester
+            class="com.servoy.eclipse.developer.mcp.actions.CypressEditorInputPropertyTester"
+            id="com.servoy.eclipse.developer.mcp.cypressEditorInputPropertyTester"
+            namespace="com.servoy.eclipse.developer.mcp"
+            properties="cypressTestExists"
+            type="com.servoy.eclipse.core.resource.PersistEditorInput">
+      </propertyTester>
+   </extension>
+
 </plugin>

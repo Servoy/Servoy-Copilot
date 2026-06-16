@@ -153,7 +153,7 @@ public class FormSpecRunner
 				"    baseUrl: '" + baseUrl + "',\n" +
 				"    supportFile: false,\n" +
 				"    specPattern: '**/*.spec.cy.js',\n" +
-				"    testIsolation: false,\n" +
+				"    testIsolation: true,\n" +
 				"    defaultCommandTimeout: 10000,\n" +
 				"    pageLoadTimeout: 30000,\n" +
 				"    video: false,\n" +
