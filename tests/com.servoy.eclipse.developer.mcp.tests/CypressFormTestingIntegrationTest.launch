@@ -15,15 +15,8 @@
         <setEntry value="12grid"/>
         <setEntry value="bootstrapcomponents"/>
         <setEntry value="bootstrapextracomponents"/>
-        <setEntry value="com.servoy.eclipse.designer"/>
-        <setEntry value="com.servoy.eclipse.designer.rfb"/>
-        <setEntry value="com.servoy.eclipse.designer.rib"/>
-        <setEntry value="com.servoy.eclipse.developer.mcp.tests"/>
         <setEntry value="com.servoy.eclipse.exporter.mobile"/>
-        <setEntry value="com.servoy.eclipse.exporter.ngdesktop"/>
-        <setEntry value="com.servoy.eclipse.exporter.solution"/>
         <setEntry value="com.servoy.eclipse.exporter.war"/>
-        <setEntry value="com.servoy.eclipse.extension.compatibility"/>
         <setEntry value="com.servoy.eclipse.firststeps"/>
         <setEntry value="com.servoy.eclipse.jre.linux.x86_64"/>
         <setEntry value="com.servoy.eclipse.jre.macosx.aarch64"/>
@@ -35,9 +28,7 @@
         <setEntry value="com.servoy.eclipse.nodejs.win32.win32.x86_64"/>
         <setEntry value="com.servoy.eclipse.opencode.tests"/>
         <setEntry value="com.servoy.eclipse.profiler"/>
-        <setEntry value="com.servoy.eclipse.servoypilot"/>
         <setEntry value="com.servoy.eclipse.servoypilot.knowledgebase"/>
-        <setEntry value="com.servoy.eclipse.servoypilot.langchain4j"/>
         <setEntry value="googlemaps"/>
         <setEntry value="j2db_documentation"/>
         <setEntry value="org.eclipse.dltk"/>
@@ -102,6 +93,8 @@
         <setEntry value="com.github.scribejava.core@default:default"/>
         <setEntry value="com.github.scribejava.java8@default:default"/>
         <setEntry value="com.github.ua-parser.uap-java@default:default"/>
+        <setEntry value="com.github.weisj.jsvg.logging.slf4j@default:default"/>
+        <setEntry value="com.github.weisj.jsvg@default:default"/>
         <setEntry value="com.google.gson@default:default"/>
         <setEntry value="com.google.guava.failureaccess@default:default"/>
         <setEntry value="com.google.guava@default:default"/>
@@ -133,6 +126,9 @@
         <setEntry value="javax.mail@default:default"/>
         <setEntry value="javax.persistence-api@default:default"/>
         <setEntry value="javax.transaction@default:default"/>
+        <setEntry value="junit-jupiter-api*6.1.0@default:default"/>
+        <setEntry value="junit-jupiter-engine*6.1.0@default:default"/>
+        <setEntry value="junit-jupiter-params*6.1.0@default:default"/>
         <setEntry value="junit-platform-commons*6.1.0@default:default"/>
         <setEntry value="junit-platform-engine*6.1.0@default:default"/>
         <setEntry value="junit-platform-launcher*6.1.0@default:default"/>
@@ -165,6 +161,7 @@
         <setEntry value="org.apache.commons.commons-logging*1.3.6@default:default"/>
         <setEntry value="org.apache.commons.commons-pool2@default:default"/>
         <setEntry value="org.apache.commons.lang3@default:default"/>
+        <setEntry value="org.apache.commons.logging@default:default"/>
         <setEntry value="org.apache.commons.text@default:default"/>
         <setEntry value="org.apache.felix.gogo.command@default:default"/>
         <setEntry value="org.apache.felix.gogo.runtime@default:default"/>
@@ -179,8 +176,11 @@
         <setEntry value="org.apache.lucene.analysis-common@default:default"/>
         <setEntry value="org.apache.lucene.analysis-smartcn@default:default"/>
         <setEntry value="org.apache.lucene.core@default:default"/>
+        <setEntry value="org.apache.pdfbox.fontbox@default:default"/>
+        <setEntry value="org.apache.pdfbox.io@default:default"/>
         <setEntry value="org.apache.sshd.osgi@default:default"/>
         <setEntry value="org.apache.sshd.sftp@default:default"/>
+        <setEntry value="org.apache.tika.core@default:default"/>
         <setEntry value="org.apache.xerces@default:default"/>
         <setEntry value="org.apache.xml.resolver@default:default"/>
         <setEntry value="org.apache.xmlgraphics@default:default"/>
@@ -324,6 +324,7 @@
         <setEntry value="org.eclipse.pde.junit.runtime@default:default"/>
         <setEntry value="org.eclipse.search.core@default:default"/>
         <setEntry value="org.eclipse.search@default:default"/>
+        <setEntry value="org.eclipse.swt.svg@default:false"/>
         <setEntry value="org.eclipse.swt.win32.win32.x86_64@default:false"/>
         <setEntry value="org.eclipse.swt@default:default"/>
         <setEntry value="org.eclipse.team.core@default:default"/>
@@ -424,7 +425,11 @@
         <setEntry value="com.servoy.eclipse.cloud@default:default"/>
         <setEntry value="com.servoy.eclipse.core@default:default"/>
         <setEntry value="com.servoy.eclipse.debug@default:default"/>
+        <setEntry value="com.servoy.eclipse.designer.rfb@default:default"/>
+        <setEntry value="com.servoy.eclipse.designer.rib@default:default"/>
         <setEntry value="com.servoy.eclipse.designer.wpm@default:default"/>
+        <setEntry value="com.servoy.eclipse.designer@default:default"/>
+        <setEntry value="com.servoy.eclipse.developer.mcp.tests@default:default"/>
         <setEntry value="com.servoy.eclipse.developer.mcp@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.ngdesktop@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.solution@default:default"/>
@@ -436,6 +441,8 @@
         <setEntry value="com.servoy.eclipse.ngclient@default:default"/>
         <setEntry value="com.servoy.eclipse.notification@default:default"/>
         <setEntry value="com.servoy.eclipse.opencode@default:default"/>
+        <setEntry value="com.servoy.eclipse.servoypilot.langchain4j@default:default"/>
+        <setEntry value="com.servoy.eclipse.servoypilot@default:default"/>
         <setEntry value="com.servoy.eclipse.ui.tweaks@3:true"/>
         <setEntry value="com.servoy.eclipse.ui@default:default"/>
         <setEntry value="j2db_log4j@default:true"/>
