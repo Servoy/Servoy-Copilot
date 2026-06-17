@@ -77,13 +77,45 @@ public class McpServerFactory
 		McpSchema.ServerCapabilities capabilities = createCapabilities();
 		List<SyncToolSpecification> toolSpecs = createToolSpecifications(serverImpl, excludedTools);
 
-		return McpServer.sync(transportProvider)
+		McpSyncServer server = McpServer.sync(transportProvider)
 			.serverInfo(info)
 			.capabilities(capabilities)
 			.tools(toolSpecs)
 			.jsonMapper(new io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier().get())
 			.jsonSchemaValidator(new io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier().get())
 			.build();
+
+		registerCancelledNotificationHandler(transportProvider);
+
+		return server;
+	}
+
+	@SuppressWarnings("unchecked")
+	private void registerCancelledNotificationHandler(
+		HttpServletStreamableServerTransportProvider transportProvider)
+	{
+		try
+		{
+			java.lang.reflect.Field sessionFactoryField =
+				HttpServletStreamableServerTransportProvider.class.getDeclaredField("sessionFactory");
+			sessionFactoryField.setAccessible(true);
+			Object sessionFactory = sessionFactoryField.get(transportProvider);
+			if (sessionFactory instanceof io.modelcontextprotocol.spec.DefaultMcpStreamableServerSessionFactory factory)
+			{
+				java.lang.reflect.Field handlersField =
+					io.modelcontextprotocol.spec.DefaultMcpStreamableServerSessionFactory.class
+						.getDeclaredField("notificationHandlers");
+				handlersField.setAccessible(true);
+				Map<String, io.modelcontextprotocol.server.McpNotificationHandler> handlers =
+					(Map<String, io.modelcontextprotocol.server.McpNotificationHandler>)handlersField.get(factory);
+				handlers.put("notifications/cancelled", (exchange, params) -> reactor.core.publisher.Mono.empty());
+			}
+		}
+		catch (Exception e)
+		{
+			Platform.getLog(McpServerFactory.class).warn(
+				"Could not register notifications/cancelled handler: " + e.getMessage());
+		}
 	}
 
 	// -------------------------------------------------------------------------
