@@ -14,6 +14,7 @@ Import-Package: org.junit;version="4.0.0",
  org.junit.jupiter.api.io;version="[6.1.0,7.0.0)",
  org.junit.jupiter.params,
  org.junit.jupiter.params.provider,
+ org.junit.platform.suite.api,
  org.junit.rules;version="4.0.0",
  org.junit.runner;version="4.0.0",
  org.junit.runners;version="4.0.0"

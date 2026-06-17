@@ -32,7 +32,7 @@ import com.servoy.eclipse.ui.node.SimpleUserNode;
 import com.servoy.eclipse.ui.node.UserNodeType;
 
 @DisplayName("CypressTestAdapterFactory")
-class CypressTestAdapterFactoryTest {
+public class CypressTestAdapterFactoryTest {
 	private CypressTestAdapterFactory factory;
 
 	@BeforeEach
@@ -74,6 +74,12 @@ class CypressTestAdapterFactoryTest {
 			assertTrue(Modifier.isStatic(field.getModifiers()));
 			assertTrue(Modifier.isFinal(field.getModifiers()));
 		}
+
+		@Test
+		@DisplayName("getDiscoveryService returns non-null")
+		void getDiscoveryServiceReturnsNonNull() {
+			assertNotNull(factory.getDiscoveryService());
+		}
 	}
 
 	@Nested
@@ -112,37 +118,173 @@ class CypressTestAdapterFactoryTest {
 
 			assertNull(result);
 		}
+	}
 
-		@Test
-		@DisplayName("returns null for FORM node before ServoyModel is available")
-		void returnsNullOrThrowsForFormNodeWithoutRuntime() {
-			SimpleUserNode node = new SimpleUserNode("myForm", UserNodeType.FORM, null, null);
+	@Nested
+	@DisplayName("resolveTarget")
+	class ResolveTargetTests {
+		private Path tempDir;
 
-			assertThrows(NullPointerException.class, () -> factory.getAdapter(node, CypressFormTestTarget.class));
+		@BeforeEach
+		void setUpTempDir() throws Exception {
+			tempDir = Files.createTempDirectory("adapter-resolve-test");
+		}
+
+		@AfterEach
+		void tearDown() throws Exception {
+			if (tempDir != null && Files.exists(tempDir)) {
+				deleteTempDir(tempDir);
+			}
 		}
 
 		@Test
-		@DisplayName("returns null for SOLUTION node before ServoyModel is available")
-		void returnsNullOrThrowsForSolutionNodeWithoutRuntime() {
-			SimpleUserNode node = new SimpleUserNode("MySol", UserNodeType.SOLUTION, null, null);
+		@DisplayName("returns SingleFormTestTarget for FORM type when test exists")
+		void returnsSingleFormTargetWhenTestExists() throws Exception {
+			Files.createFile(tempDir.resolve("loginForm.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
 
-			assertThrows(NullPointerException.class, () -> factory.getAdapter(node, CypressFormTestTarget.class));
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.FORM, "loginForm", null);
+
+			assertNotNull(target);
+			assertAll(
+				() -> assertEquals("loginForm", target.getFormName()),
+				() -> assertFalse(target.isSolutionLevel()),
+				() -> assertEquals(Collections.singletonList("loginForm"), target.getTestFormNames())
+			);
 		}
 
 		@Test
-		@DisplayName("returns null for FORMS node before ServoyModel is available")
-		void returnsNullOrThrowsForFormsNodeWithoutRuntime() {
-			SimpleUserNode node = new SimpleUserNode("Forms", UserNodeType.FORMS, null, null);
+		@DisplayName("returns null for FORM type when no test exists")
+		void returnsNullForFormWithoutTest() throws Exception {
+			injectMockDiscoveryService(tempDir);
 
-			assertThrows(NullPointerException.class, () -> factory.getAdapter(node, CypressFormTestTarget.class));
+			// This will call ServoyLog.logInfo which needs activeProject.getProject().getName()
+			// Since we pass null, it will throw NPE on the log line
+			assertThrows(NullPointerException.class,
+				() -> factory.resolveTarget(UserNodeType.FORM, "noTestForm", null));
 		}
 
 		@Test
-		@DisplayName("returns null for SOLUTION_ITEM node before ServoyModel is available")
-		void returnsNullOrThrowsForSolutionItemNodeWithoutRuntime() {
-			SimpleUserNode node = new SimpleUserNode("Item", UserNodeType.SOLUTION_ITEM, null, null);
+		@DisplayName("returns SolutionLevelTestTarget for SOLUTION type when tests exist")
+		void returnsSolutionTargetForSolutionType() throws Exception {
+			Files.createFile(tempDir.resolve("formA.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
 
-			assertThrows(NullPointerException.class, () -> factory.getAdapter(node, CypressFormTestTarget.class));
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.SOLUTION, null, null);
+
+			assertNotNull(target);
+			assertAll(
+				() -> assertNull(target.getFormName()),
+				() -> assertTrue(target.isSolutionLevel())
+			);
+		}
+
+		@Test
+		@DisplayName("returns SolutionLevelTestTarget for SOLUTION_ITEM type when tests exist")
+		void returnsSolutionTargetForSolutionItemType() throws Exception {
+			Files.createFile(tempDir.resolve("formB.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.SOLUTION_ITEM, null, null);
+
+			assertNotNull(target);
+			assertTrue(target.isSolutionLevel());
+		}
+
+		@Test
+		@DisplayName("returns SolutionLevelTestTarget for FORMS type when tests exist")
+		void returnsSolutionTargetForFormsType() throws Exception {
+			Files.createFile(tempDir.resolve("formC.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.FORMS, null, null);
+
+			assertNotNull(target);
+			assertTrue(target.isSolutionLevel());
+		}
+
+		@Test
+		@DisplayName("returns null for SOLUTION type when no tests exist")
+		void returnsNullForSolutionWithoutTests() throws Exception {
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.SOLUTION, null, null);
+
+			assertNull(target);
+		}
+
+		@Test
+		@DisplayName("returns null for SOLUTION_ITEM type when no tests exist")
+		void returnsNullForSolutionItemWithoutTests() throws Exception {
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.SOLUTION_ITEM, null, null);
+
+			assertNull(target);
+		}
+
+		@Test
+		@DisplayName("returns null for FORMS type when no tests exist")
+		void returnsNullForFormsWithoutTests() throws Exception {
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.FORMS, null, null);
+
+			assertNull(target);
+		}
+
+		@Test
+		@DisplayName("returns null for unrelated node type")
+		void returnsNullForUnrelatedType() throws Exception {
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.TABLE, null, null);
+
+			assertNull(target);
+		}
+
+		@Test
+		@DisplayName("returns null for null form name on FORM type when no test")
+		void returnsNullForNullFormNameNoTest() throws Exception {
+			injectMockDiscoveryService(tempDir);
+
+			// formName is null, discoveryService.hasTest(null) returns false
+			// Then it hits the log line which needs activeProject
+			assertThrows(NullPointerException.class,
+				() -> factory.resolveTarget(UserNodeType.FORM, null, null));
+		}
+
+		@Test
+		@DisplayName("SolutionLevelTestTarget delegates getTestFormNames to discoveryService")
+		void solutionTargetDelegatesGetTestFormNames() throws Exception {
+			Files.createFile(tempDir.resolve("formX.spec.cy.js"));
+			Files.createFile(tempDir.resolve("formY.spec.cy.js"));
+			Files.createFile(tempDir.resolve("formZ.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.SOLUTION, null, null);
+
+			assertNotNull(target);
+			List<String> forms = target.getTestFormNames();
+			assertAll(
+				() -> assertEquals(3, forms.size()),
+				() -> assertTrue(forms.contains("formX")),
+				() -> assertTrue(forms.contains("formY")),
+				() -> assertTrue(forms.contains("formZ"))
+			);
+		}
+
+		@Test
+		@DisplayName("SingleFormTestTarget returns single-element list")
+		void singleFormTargetReturnsSingleList() throws Exception {
+			Files.createFile(tempDir.resolve("myForm.spec.cy.js"));
+			injectMockDiscoveryService(tempDir);
+
+			CypressFormTestTarget target = factory.resolveTarget(UserNodeType.FORM, "myForm", null);
+
+			assertNotNull(target);
+			assertEquals(1, target.getTestFormNames().size());
+			assertEquals("myForm", target.getTestFormNames().get(0));
 		}
 	}
 
@@ -209,27 +351,6 @@ class CypressTestAdapterFactoryTest {
 			assertAll(() -> assertEquals("myTestForm", target.getFormName()),
 					() -> assertFalse(target.isSolutionLevel()),
 					() -> assertEquals(Collections.singletonList("myTestForm"), target.getTestFormNames()));
-		}
-
-		@Test
-		@DisplayName("getTestFormNames returns single-element list matching formName")
-		void testFormNamesMatchesFormName() throws Exception {
-			Class<?>[] innerClasses = CypressTestAdapterFactory.class.getDeclaredClasses();
-			Class<?> singleFormClass = null;
-			for (Class<?> c : innerClasses) {
-				if (c.getSimpleName().equals("SingleFormTestTarget")) {
-					singleFormClass = c;
-					break;
-				}
-			}
-			assertNotNull(singleFormClass);
-
-			var ctor = singleFormClass.getDeclaredConstructors()[0];
-			ctor.setAccessible(true);
-			CypressFormTestTarget target = (CypressFormTestTarget) ctor.newInstance("anotherForm");
-
-			assertAll(() -> assertEquals(1, target.getTestFormNames().size()),
-					() -> assertEquals(target.getFormName(), target.getTestFormNames().get(0)));
 		}
 	}
 
@@ -299,19 +420,7 @@ class CypressTestAdapterFactoryTest {
 				assertAll(() -> assertEquals(2, forms.size()), () -> assertTrue(forms.contains("formX")),
 						() -> assertTrue(forms.contains("formY")));
 			} finally {
-				Files.walkFileTree(tempDir, new SimpleFileVisitor<Path>() {
-					@Override
-					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-						Files.delete(file);
-						return FileVisitResult.CONTINUE;
-					}
-
-					@Override
-					public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-						Files.delete(dir);
-						return FileVisitResult.CONTINUE;
-					}
-				});
+				deleteTempDir(tempDir);
 			}
 		}
 	}
@@ -346,13 +455,6 @@ class CypressTestAdapterFactoryTest {
 			SimpleUserNode node = new SimpleUserNode("Item", UserNodeType.SOLUTION_ITEM, null, null);
 			assertEquals(UserNodeType.SOLUTION_ITEM, node.getType());
 		}
-
-		@Test
-		@DisplayName("unrelated node type throws without runtime (ServoyModel unavailable)")
-		void unrelatedNodeTypeThrowsWithoutRuntime() {
-			SimpleUserNode node = new SimpleUserNode("table", UserNodeType.TABLE, null, null);
-			assertThrows(NullPointerException.class, () -> factory.getAdapter(node, CypressFormTestTarget.class));
-		}
 	}
 
 	private void injectMockDiscoveryService(Path formsDir) throws Exception {
@@ -370,5 +472,21 @@ class CypressTestAdapterFactoryTest {
 		Field serviceField = CypressTestAdapterFactory.class.getDeclaredField("discoveryService");
 		serviceField.setAccessible(true);
 		serviceField.set(factory, mockService);
+	}
+
+	private void deleteTempDir(Path dir) throws IOException {
+		Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+				Files.delete(file);
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+				Files.delete(d);
+				return FileVisitResult.CONTINUE;
+			}
+		});
 	}
 }

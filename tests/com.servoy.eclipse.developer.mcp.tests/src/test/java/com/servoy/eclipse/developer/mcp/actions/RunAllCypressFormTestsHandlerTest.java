@@ -3,6 +3,7 @@ package com.servoy.eclipse.developer.mcp.actions;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,17 +23,20 @@ import java.util.List;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.IHandler;
-import org.junit.jupiter.api.AfterEach;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import com.servoy.eclipse.developer.mcp.actions.RunAllCypressFormTestsHandler.TestRunResult;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
+import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 
 @DisplayName("RunAllCypressFormTestsHandler")
-class RunAllCypressFormTestsHandlerTest {
+public class RunAllCypressFormTestsHandlerTest {
 	private RunAllCypressFormTestsHandler handler;
 
 	@BeforeEach
@@ -75,6 +79,30 @@ class RunAllCypressFormTestsHandlerTest {
 			Method execute = RunAllCypressFormTestsHandler.class.getMethod("execute", ExecutionEvent.class);
 			assertTrue(Modifier.isPublic(execute.getModifiers()));
 		}
+
+		@Test
+		@DisplayName("has runTestsCore method")
+		void hasRunTestsCoreMethod() throws NoSuchMethodException {
+			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("runTestsCore",
+					List.class, FormSpecRunner.class, IProgressMonitor.class);
+			assertNotNull(m);
+		}
+
+		@Test
+		@DisplayName("has isTestPassed static method")
+		void hasIsTestPassedMethod() throws NoSuchMethodException {
+			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("isTestPassed", String.class);
+			assertNotNull(m);
+			assertTrue(Modifier.isStatic(m.getModifiers()));
+		}
+
+		@Test
+		@DisplayName("has formatAggregateResult static method")
+		void hasFormatAggregateResultMethod() throws NoSuchMethodException {
+			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("formatAggregateResult", TestRunResult.class);
+			assertNotNull(m);
+			assertTrue(Modifier.isStatic(m.getModifiers()));
+		}
 	}
 
 	@Nested
@@ -100,6 +128,327 @@ class RunAllCypressFormTestsHandlerTest {
 			Object result = assertDoesNotThrow(() -> handler.execute(event));
 
 			assertNull(result);
+		}
+	}
+
+	@Nested
+	@DisplayName("isTestPassed")
+	class IsTestPassed {
+		@Test
+		@DisplayName("returns true when result contains 'All tests passed'")
+		void returnsTrueForPassingResult() {
+			assertTrue(RunAllCypressFormTestsHandler.isTestPassed("All tests passed for myForm"));
+		}
+
+		@Test
+		@DisplayName("returns true when result contains 'All tests passed' anywhere")
+		void returnsTrueForPassingResultAnywhere() {
+			assertTrue(RunAllCypressFormTestsHandler.isTestPassed("**Form Spec Results: myForm**\n\nAll tests passed!\n\nsome output"));
+		}
+
+		@Test
+		@DisplayName("returns false when result does not contain pass marker")
+		void returnsFalseForFailingResult() {
+			assertFalse(RunAllCypressFormTestsHandler.isTestPassed("FAILED: formB had 2 errors"));
+		}
+
+		@Test
+		@DisplayName("returns false for null result")
+		void returnsFalseForNull() {
+			assertFalse(RunAllCypressFormTestsHandler.isTestPassed(null));
+		}
+
+		@Test
+		@DisplayName("returns false for empty result")
+		void returnsFalseForEmpty() {
+			assertFalse(RunAllCypressFormTestsHandler.isTestPassed(""));
+		}
+
+		@Test
+		@DisplayName("returns false for error result")
+		void returnsFalseForError() {
+			assertFalse(RunAllCypressFormTestsHandler.isTestPassed("Error: No active Servoy project."));
+		}
+	}
+
+	@Nested
+	@DisplayName("formatAggregateResult")
+	class FormatAggregateResult {
+		@Test
+		@DisplayName("formats result with all passed")
+		void formatsAllPassed() {
+			TestRunResult result = new TestRunResult(5, 0, 5, false, List.of());
+			String formatted = RunAllCypressFormTestsHandler.formatAggregateResult(result);
+			assertEquals("Total: 5 | Passed: 5 | Failed: 0", formatted);
+		}
+
+		@Test
+		@DisplayName("formats result with mixed pass/fail")
+		void formatsMixed() {
+			TestRunResult result = new TestRunResult(3, 2, 5, false, List.of());
+			String formatted = RunAllCypressFormTestsHandler.formatAggregateResult(result);
+			assertEquals("Total: 5 | Passed: 3 | Failed: 2", formatted);
+		}
+
+		@Test
+		@DisplayName("formats result with all failed")
+		void formatsAllFailed() {
+			TestRunResult result = new TestRunResult(0, 4, 4, false, List.of());
+			String formatted = RunAllCypressFormTestsHandler.formatAggregateResult(result);
+			assertEquals("Total: 4 | Passed: 0 | Failed: 4", formatted);
+		}
+
+		@Test
+		@DisplayName("formats result with single test")
+		void formatsSingleTest() {
+			TestRunResult result = new TestRunResult(1, 0, 1, false, List.of());
+			String formatted = RunAllCypressFormTestsHandler.formatAggregateResult(result);
+			assertEquals("Total: 1 | Passed: 1 | Failed: 0", formatted);
+		}
+	}
+
+	@Nested
+	@DisplayName("TestRunResult")
+	class TestRunResultTests {
+		@Test
+		@DisplayName("stores passed count correctly")
+		void storesPassedCount() {
+			TestRunResult result = new TestRunResult(3, 2, 5, false, List.of("a", "b"));
+			assertEquals(3, result.passed);
+		}
+
+		@Test
+		@DisplayName("stores failed count correctly")
+		void storesFailedCount() {
+			TestRunResult result = new TestRunResult(3, 2, 5, false, List.of("a", "b"));
+			assertEquals(2, result.failed);
+		}
+
+		@Test
+		@DisplayName("stores total count correctly")
+		void storesTotalCount() {
+			TestRunResult result = new TestRunResult(3, 2, 5, false, List.of("a", "b"));
+			assertEquals(5, result.total);
+		}
+
+		@Test
+		@DisplayName("stores cancelled flag correctly")
+		void storesCancelledFlag() {
+			TestRunResult cancelled = new TestRunResult(1, 0, 3, true, List.of("a"));
+			assertTrue(cancelled.cancelled);
+
+			TestRunResult notCancelled = new TestRunResult(3, 0, 3, false, List.of());
+			assertFalse(notCancelled.cancelled);
+		}
+
+		@Test
+		@DisplayName("stores results list correctly")
+		void storesResultsList() {
+			List<String> results = List.of("result1", "result2");
+			TestRunResult result = new TestRunResult(2, 0, 2, false, results);
+			assertEquals(results, result.results);
+		}
+	}
+
+	@Nested
+	@DisplayName("runTestsCore")
+	class RunTestsCore {
+
+		private FormSpecRunner createMockRunner(String passPrefix) {
+			return new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					if (formName.startsWith(passPrefix)) {
+						return "All tests passed for " + formName;
+					}
+					return "FAILED: " + formName + " had errors";
+				}
+			};
+		}
+
+		@Test
+		@DisplayName("returns all passed when all tests succeed")
+		void allTestsPass() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passFormA", "passFormB", "passFormC");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(3, result.passed),
+				() -> assertEquals(0, result.failed),
+				() -> assertEquals(3, result.total),
+				() -> assertFalse(result.cancelled),
+				() -> assertEquals(3, result.results.size())
+			);
+		}
+
+		@Test
+		@DisplayName("returns all failed when all tests fail")
+		void allTestsFail() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("failFormA", "failFormB");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(0, result.passed),
+				() -> assertEquals(2, result.failed),
+				() -> assertEquals(2, result.total),
+				() -> assertFalse(result.cancelled)
+			);
+		}
+
+		@Test
+		@DisplayName("returns mixed results when some pass and some fail")
+		void mixedResults() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passFormA", "failFormB", "passFormC", "failFormD", "failFormE");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(2, result.passed),
+				() -> assertEquals(3, result.failed),
+				() -> assertEquals(5, result.total),
+				() -> assertFalse(result.cancelled)
+			);
+		}
+
+		@Test
+		@DisplayName("returns empty result for empty test list")
+		void emptyTestList() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of();
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(0, result.passed),
+				() -> assertEquals(0, result.failed),
+				() -> assertEquals(0, result.total),
+				() -> assertFalse(result.cancelled),
+				() -> assertTrue(result.results.isEmpty())
+			);
+		}
+
+		@Test
+		@DisplayName("stores individual results in order")
+		void storesResultsInOrder() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passA", "failB", "passC");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertTrue(result.results.get(0).contains("All tests passed")),
+				() -> assertTrue(result.results.get(1).contains("FAILED")),
+				() -> assertTrue(result.results.get(2).contains("All tests passed"))
+			);
+		}
+
+		@Test
+		@DisplayName("works with null monitor")
+		void worksWithNullMonitor() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passA", "failB");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, null);
+
+			assertAll(
+				() -> assertEquals(1, result.passed),
+				() -> assertEquals(1, result.failed),
+				() -> assertFalse(result.cancelled)
+			);
+		}
+
+		@Test
+		@DisplayName("detects cancellation from monitor")
+		void detectsCancellation() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passA", "passB", "passC", "passD");
+
+			IProgressMonitor cancellingMonitor = new NullProgressMonitor() {
+				private int callCount = 0;
+
+				@Override
+				public boolean isCanceled() {
+					callCount++;
+					return callCount > 2; // cancel after 2nd form
+				}
+			};
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, cancellingMonitor);
+
+			assertTrue(result.cancelled);
+			assertTrue(result.results.size() < forms.size());
+		}
+
+		@Test
+		@DisplayName("single test pass")
+		void singleTestPass() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("passOnly");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(1, result.passed),
+				() -> assertEquals(0, result.failed),
+				() -> assertEquals(1, result.total),
+				() -> assertFalse(result.cancelled)
+			);
+		}
+
+		@Test
+		@DisplayName("single test fail")
+		void singleTestFail() {
+			FormSpecRunner mockRunner = createMockRunner("pass");
+			List<String> forms = List.of("failOnly");
+
+			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertAll(
+				() -> assertEquals(0, result.passed),
+				() -> assertEquals(1, result.failed),
+				() -> assertEquals(1, result.total),
+				() -> assertFalse(result.cancelled)
+			);
+		}
+
+		@Test
+		@DisplayName("headless flag is passed as true")
+		void headlessFlagPassedAsTrue() {
+			final boolean[] capturedHeadless = { false };
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					capturedHeadless[0] = headless;
+					return "All tests passed";
+				}
+			};
+
+			handler.runTestsCore(List.of("form1"), mockRunner, new NullProgressMonitor());
+
+			assertTrue(capturedHeadless[0]);
+		}
+
+		@Test
+		@DisplayName("form names are passed correctly to runner")
+		void formNamesPassedCorrectly() {
+			final java.util.List<String> capturedNames = new java.util.ArrayList<>();
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					capturedNames.add(formName);
+					return "All tests passed";
+				}
+			};
+
+			List<String> forms = List.of("loginForm", "dashboardForm", "settingsForm");
+			handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+
+			assertEquals(forms, capturedNames);
 		}
 	}
 
@@ -139,19 +488,7 @@ class RunAllCypressFormTestsHandlerTest {
 				assertAll(() -> assertEquals(3, testForms.size()), () -> assertTrue(testForms.contains("formA")),
 						() -> assertTrue(testForms.contains("formB")), () -> assertTrue(testForms.contains("formC")));
 			} finally {
-				Files.walkFileTree(tempDir, new SimpleFileVisitor<Path>() {
-					@Override
-					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-						Files.delete(file);
-						return FileVisitResult.CONTINUE;
-					}
-
-					@Override
-					public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-						Files.delete(dir);
-						return FileVisitResult.CONTINUE;
-					}
-				});
+				deleteTempDir(tempDir);
 			}
 		}
 
@@ -183,19 +520,7 @@ class RunAllCypressFormTestsHandlerTest {
 
 				assertTrue(testForms.isEmpty());
 			} finally {
-				Files.walkFileTree(tempDir, new SimpleFileVisitor<Path>() {
-					@Override
-					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-						Files.delete(file);
-						return FileVisitResult.CONTINUE;
-					}
-
-					@Override
-					public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-						Files.delete(dir);
-						return FileVisitResult.CONTINUE;
-					}
-				});
+				deleteTempDir(tempDir);
 			}
 		}
 
@@ -208,7 +533,7 @@ class RunAllCypressFormTestsHandlerTest {
 			int passed = 0;
 			int failed = 0;
 			for (String result : results) {
-				if (result.contains("All tests passed")) {
+				if (RunAllCypressFormTestsHandler.isTestPassed(result)) {
 					passed++;
 				} else {
 					failed++;
@@ -233,6 +558,22 @@ class RunAllCypressFormTestsHandlerTest {
 			genField.setAccessible(true);
 			genField.set(service, mockGenerator);
 			return service;
+		}
+
+		private void deleteTempDir(Path dir) throws IOException {
+			Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+				@Override
+				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+					Files.delete(file);
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+					Files.delete(d);
+					return FileVisitResult.CONTINUE;
+				}
+			});
 		}
 	}
 

@@ -16,7 +16,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("CypressTestPropertyTester")
-class CypressTestPropertyTesterTest {
+public class CypressTestPropertyTesterTest {
 	private CypressTestPropertyTester tester;
 
 	@BeforeEach

@@ -26,29 +26,55 @@ public class CypressTestAdapterFactory implements IAdapterFactory {
 			return null;
 		}
 
-		ServoyProject activeProject = ServoyModelFinder.getServoyModel().getActiveProject();
+		ServoyProject activeProject = getActiveProject();
 		if (activeProject == null) {
 			ServoyLog.logInfo("CypressTestAdapterFactory: no active project");
 			return null;
 		}
 
 		UserNodeType type = node.getType();
+		String formName = node.getName();
 
+		CypressFormTestTarget target = resolveTarget(type, formName, activeProject);
+		if (target != null) {
+			return adapterType.cast(target);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Core decision logic for resolving a CypressFormTestTarget from node type and form name.
+	 * Package-private for testability.
+	 */
+	CypressFormTestTarget resolveTarget(UserNodeType type, String formName, ServoyProject activeProject) {
 		if (type == UserNodeType.FORM) {
-			String formName = node.getName();
 			boolean hasTest = formName != null && discoveryService.hasTest(formName);
 			if (hasTest) {
-				return adapterType.cast(new SingleFormTestTarget(formName));
+				return new SingleFormTestTarget(formName);
 			}
 			ServoyLog.logInfo("CypressTestAdapterFactory: form '" + formName + "' hasTest=" + hasTest
 				+ " activeProject=" + activeProject.getProject().getName());
 		} else if (type == UserNodeType.SOLUTION || type == UserNodeType.SOLUTION_ITEM || type == UserNodeType.FORMS) {
 			if (discoveryService.hasAnyTest()) {
-				return adapterType.cast(new SolutionLevelTestTarget());
+				return new SolutionLevelTestTarget();
 			}
 		}
-
 		return null;
+	}
+
+	/**
+	 * Gets the active ServoyProject. Package-private for testability.
+	 */
+	ServoyProject getActiveProject() {
+		return ServoyModelFinder.getServoyModel().getActiveProject();
+	}
+
+	/**
+	 * Returns the discovery service. Package-private for testability.
+	 */
+	CypressTestDiscoveryService getDiscoveryService() {
+		return discoveryService;
 	}
 
 	@Override
@@ -56,7 +82,7 @@ public class CypressTestAdapterFactory implements IAdapterFactory {
 		return ADAPTERS;
 	}
 
-	private static class SingleFormTestTarget implements CypressFormTestTarget {
+	static class SingleFormTestTarget implements CypressFormTestTarget {
 		private final String formName;
 
 		SingleFormTestTarget(String formName) {
@@ -79,7 +105,7 @@ public class CypressTestAdapterFactory implements IAdapterFactory {
 		}
 	}
 
-	private class SolutionLevelTestTarget implements CypressFormTestTarget {
+	class SolutionLevelTestTarget implements CypressFormTestTarget {
 		@Override
 		public String getFormName() {
 			return null;

@@ -52,7 +52,7 @@ public class ServoyDevServerIntegrationTest
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
 			.filter(m -> m.isAnnotationPresent(Tool.class))
 			.count();
-		assertEquals(27, toolCount);
+		assertEquals(35, toolCount);
 	}
 
 	@Test

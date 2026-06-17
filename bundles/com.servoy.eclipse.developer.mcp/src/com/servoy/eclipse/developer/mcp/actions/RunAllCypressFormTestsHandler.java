@@ -1,5 +1,6 @@
 package com.servoy.eclipse.developer.mcp.actions;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.core.commands.AbstractHandler;
@@ -21,6 +22,26 @@ import org.eclipse.ui.handlers.HandlerUtil;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 
 public class RunAllCypressFormTestsHandler extends AbstractHandler {
+
+	/**
+	 * Holds the aggregate results of running multiple Cypress form tests.
+	 */
+	static class TestRunResult {
+		final int passed;
+		final int failed;
+		final int total;
+		final boolean cancelled;
+		final List<String> results;
+
+		TestRunResult(int passed, int failed, int total, boolean cancelled, List<String> results) {
+			this.passed = passed;
+			this.failed = failed;
+			this.total = total;
+			this.cancelled = cancelled;
+			this.results = results;
+		}
+	}
+
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
 		ISelection selection = HandlerUtil.getCurrentSelection(event);
@@ -51,33 +72,24 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 				CypressConsoleUtil.showConsole(console);
 
 				FormSpecRunner runner = new FormSpecRunner();
-				int passed = 0;
-				int failed = 0;
 
 				try (MessageConsoleStream stream = console.newMessageStream()) {
 					stream.println("Running " + testForms.size() + " Cypress form test(s)...\n");
 
-					for (String formName : testForms) {
-						if (monitor.isCanceled()) {
-							stream.println("\nTest run cancelled.");
-							return Status.CANCEL_STATUS;
-						}
+					TestRunResult result = runTestsCore(testForms, runner, monitor);
 
-						monitor.subTask("Testing: " + formName);
-						String result = runner.runSpec(formName, true);
-						stream.println(result);
+					for (String line : result.results) {
+						stream.println(line);
 						stream.println("---\n");
+					}
 
-						if (result.contains("All tests passed")) {
-							passed++;
-						} else {
-							failed++;
-						}
-						monitor.worked(1);
+					if (result.cancelled) {
+						stream.println("\nTest run cancelled.");
+						return Status.CANCEL_STATUS;
 					}
 
 					stream.println("\n=== Aggregate Results ===");
-					stream.println("Total: " + testForms.size() + " | Passed: " + passed + " | Failed: " + failed);
+					stream.println(formatAggregateResult(result));
 				} catch (Exception e) {
 					Display.getDefault().asyncExec(() -> MessageDialog.openError(null, "Cypress Form Tests",
 							"Error running tests: " + e.getMessage()));
@@ -91,5 +103,57 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 		job.schedule();
 
 		return null;
+	}
+
+	/**
+	 * Core test execution logic separated from Eclipse UI concerns.
+	 * Iterates through test forms, runs each spec, and counts pass/fail results.
+	 * Package-private for testability.
+	 */
+	TestRunResult runTestsCore(List<String> testForms, FormSpecRunner runner, IProgressMonitor monitor) {
+		int passed = 0;
+		int failed = 0;
+		List<String> results = new ArrayList<>();
+
+		for (String formName : testForms) {
+			if (monitor != null && monitor.isCanceled()) {
+				return new TestRunResult(passed, failed, testForms.size(), true, results);
+			}
+
+			if (monitor != null) {
+				monitor.subTask("Testing: " + formName);
+			}
+
+			String result = runner.runSpec(formName, true);
+			results.add(result);
+
+			if (isTestPassed(result)) {
+				passed++;
+			} else {
+				failed++;
+			}
+
+			if (monitor != null) {
+				monitor.worked(1);
+			}
+		}
+
+		return new TestRunResult(passed, failed, testForms.size(), false, results);
+	}
+
+	/**
+	 * Determines whether a test result indicates success.
+	 * Package-private for testability.
+	 */
+	static boolean isTestPassed(String result) {
+		return result != null && result.contains("All tests passed");
+	}
+
+	/**
+	 * Formats the aggregate result summary line.
+	 * Package-private for testability.
+	 */
+	static String formatAggregateResult(TestRunResult result) {
+		return "Total: " + result.total + " | Passed: " + result.passed + " | Failed: " + result.failed;
 	}
 }

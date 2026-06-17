@@ -27,7 +27,7 @@ import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
 
 @DisplayName("CypressEditorInputPropertyTester")
-class CypressEditorInputPropertyTesterTest {
+public class CypressEditorInputPropertyTesterTest {
 	private CypressEditorInputPropertyTester tester;
 	private Path tempDir;
 

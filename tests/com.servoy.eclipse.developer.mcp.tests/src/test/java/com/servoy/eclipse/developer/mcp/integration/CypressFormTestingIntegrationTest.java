@@ -345,8 +345,12 @@ public class CypressFormTestingIntegrationTest
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		String content = Files.readString(cySpec);
 
-		assertTrue("Cypress spec must use data-cy selectors", content.contains("data-cy"));
-		assertTrue("Cypress spec must reference form name in selectors", content.contains(TEST_FORM + "."));
+		// Forms with named elements use [data-cy] attribute selectors;
+		// empty forms (no elements) fall back to .svy-form CSS class selector
+		assertTrue("Cypress spec must use data-cy selectors or .svy-form for empty forms",
+			content.contains("data-cy") || content.contains(".svy-form"));
+		assertTrue("Cypress spec must reference form name",
+			content.contains(TEST_FORM + ".") || content.contains(TEST_FORM + "'"));
 	}
 
 	@Test

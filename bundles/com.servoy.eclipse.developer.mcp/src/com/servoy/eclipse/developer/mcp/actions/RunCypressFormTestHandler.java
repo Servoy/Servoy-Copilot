@@ -48,10 +48,9 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 					console.clearConsole();
 					CypressConsoleUtil.showConsole(console);
 
-					com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
+					enableTestingMode();
 
-					FormSpecRunner runner = new FormSpecRunner();
-					String result = runner.runSpec(targetFormName, false);
+					String result = runFormTestCore(targetFormName, new FormSpecRunner());
 
 					try (MessageConsoleStream stream = console.newMessageStream()) {
 						stream.println(result);
@@ -69,6 +68,34 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 		job.schedule();
 
 		return null;
+	}
+
+	/**
+	 * Core test execution logic separated from Eclipse UI concerns.
+	 * Runs a single form test and returns the result string.
+	 * Package-private for testability.
+	 */
+	String runFormTestCore(String formName, FormSpecRunner runner) {
+		if (formName == null || formName.isBlank()) {
+			return "Error: No form name specified.";
+		}
+		return runner.runSpec(formName, false);
+	}
+
+	/**
+	 * Enables Servoy NG client testing mode.
+	 * Package-private for testability.
+	 */
+	void enableTestingMode() {
+		com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
+	}
+
+	/**
+	 * Returns the discovery service instance.
+	 * Package-private for testability.
+	 */
+	CypressTestDiscoveryService getDiscoveryService() {
+		return discoveryService;
 	}
 
 	private String getFormNameFromSelection(ExecutionEvent event) {

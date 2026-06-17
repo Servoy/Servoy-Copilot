@@ -7,16 +7,32 @@ import org.eclipse.ui.console.IConsoleManager;
 import org.eclipse.ui.console.MessageConsole;
 
 public final class CypressConsoleUtil {
-	private static final String CONSOLE_NAME = "Cypress Form Tests";
+	static final String CONSOLE_NAME = "Cypress Form Tests";
 
 	private CypressConsoleUtil() {
+	}
+
+	/**
+	 * Returns the console name used for Cypress test output.
+	 * Package-private for testability.
+	 */
+	static String getConsoleName() {
+		return CONSOLE_NAME;
+	}
+
+	/**
+	 * Checks whether the given console matches the Cypress console by name.
+	 * Package-private for testability.
+	 */
+	static boolean isMatchingConsole(IConsole console) {
+		return console != null && CONSOLE_NAME.equals(console.getName()) && console instanceof MessageConsole;
 	}
 
 	public static MessageConsole findOrCreateConsole() {
 		IConsoleManager consoleManager = ConsolePlugin.getDefault().getConsoleManager();
 		for (IConsole existing : consoleManager.getConsoles()) {
-			if (CONSOLE_NAME.equals(existing.getName()) && existing instanceof MessageConsole mc) {
-				return mc;
+			if (isMatchingConsole(existing)) {
+				return (MessageConsole) existing;
 			}
 		}
 		MessageConsole console = new MessageConsole(CONSOLE_NAME, null);

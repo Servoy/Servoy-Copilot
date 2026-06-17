@@ -29,9 +29,10 @@ import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
+import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 
 @DisplayName("RunCypressFormTestHandler")
-class RunCypressFormTestHandlerTest {
+public class RunCypressFormTestHandlerTest {
 	private RunCypressFormTestHandler handler;
 
 	@BeforeEach
@@ -106,6 +107,30 @@ class RunCypressFormTestHandlerTest {
 			}
 			assertTrue(found, "Should have getFormNameFromActiveEditor method");
 		}
+
+		@Test
+		@DisplayName("has runFormTestCore method")
+		void hasRunFormTestCoreMethod() throws NoSuchMethodException {
+			Method m = RunCypressFormTestHandler.class.getDeclaredMethod("runFormTestCore",
+					String.class, FormSpecRunner.class);
+			assertNotNull(m);
+			assertEquals(String.class, m.getReturnType());
+		}
+
+		@Test
+		@DisplayName("has enableTestingMode method")
+		void hasEnableTestingModeMethod() throws NoSuchMethodException {
+			Method m = RunCypressFormTestHandler.class.getDeclaredMethod("enableTestingMode");
+			assertNotNull(m);
+		}
+
+		@Test
+		@DisplayName("has getDiscoveryService method")
+		void hasGetDiscoveryServiceMethod() throws NoSuchMethodException {
+			Method m = RunCypressFormTestHandler.class.getDeclaredMethod("getDiscoveryService");
+			assertNotNull(m);
+			assertEquals(CypressTestDiscoveryService.class, m.getReturnType());
+		}
 	}
 
 	@Nested
@@ -120,9 +145,133 @@ class RunCypressFormTestHandlerTest {
 		@Test
 		@DisplayName("discoveryService is initialized on construction")
 		void discoveryServiceInitialized() throws Exception {
-			Field field = RunCypressFormTestHandler.class.getDeclaredField("discoveryService");
-			field.setAccessible(true);
-			assertNotNull(field.get(handler));
+			assertNotNull(handler.getDiscoveryService());
+		}
+
+		@Test
+		@DisplayName("getDiscoveryService returns non-null")
+		void getDiscoveryServiceReturnsNonNull() {
+			assertNotNull(handler.getDiscoveryService());
+		}
+	}
+
+	@Nested
+	@DisplayName("runFormTestCore")
+	class RunFormTestCoreTests {
+
+		@Test
+		@DisplayName("returns error for null form name")
+		void returnsErrorForNullFormName() {
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					return "All tests passed";
+				}
+			};
+
+			String result = handler.runFormTestCore(null, mockRunner);
+
+			assertTrue(result.contains("Error"));
+		}
+
+		@Test
+		@DisplayName("returns error for blank form name")
+		void returnsErrorForBlankFormName() {
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					return "All tests passed";
+				}
+			};
+
+			String result = handler.runFormTestCore("   ", mockRunner);
+
+			assertTrue(result.contains("Error"));
+		}
+
+		@Test
+		@DisplayName("delegates to runner.runSpec with headless=false")
+		void delegatesToRunnerWithHeadlessFalse() {
+			final boolean[] capturedHeadless = { true };
+			final String[] capturedFormName = { null };
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					capturedFormName[0] = formName;
+					capturedHeadless[0] = headless;
+					return "All tests passed for " + formName;
+				}
+			};
+
+			String result = handler.runFormTestCore("myForm", mockRunner);
+
+			assertAll(
+				() -> assertEquals("myForm", capturedFormName[0]),
+				() -> assertEquals(false, capturedHeadless[0]),
+				() -> assertTrue(result.contains("All tests passed"))
+			);
+		}
+
+		@Test
+		@DisplayName("returns runner result directly")
+		void returnsRunnerResultDirectly() {
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					return "FAILED: " + formName + " had 3 errors";
+				}
+			};
+
+			String result = handler.runFormTestCore("failingForm", mockRunner);
+
+			assertEquals("FAILED: failingForm had 3 errors", result);
+		}
+
+		@Test
+		@DisplayName("passes correct form name to runner")
+		void passesCorrectFormName() {
+			final String[] captured = { null };
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					captured[0] = formName;
+					return "done";
+				}
+			};
+
+			handler.runFormTestCore("specificFormName", mockRunner);
+
+			assertEquals("specificFormName", captured[0]);
+		}
+
+		@Test
+		@DisplayName("handles runner returning error string")
+		void handlesRunnerReturningError() {
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					return "Error: No active Servoy project.";
+				}
+			};
+
+			String result = handler.runFormTestCore("anyForm", mockRunner);
+
+			assertEquals("Error: No active Servoy project.", result);
+		}
+
+		@Test
+		@DisplayName("handles runner returning empty string")
+		void handlesRunnerReturningEmpty() {
+			FormSpecRunner mockRunner = new FormSpecRunner() {
+				@Override
+				public String runSpec(String formName, boolean headless) {
+					return "";
+				}
+			};
+
+			String result = handler.runFormTestCore("anyForm", mockRunner);
+
+			assertEquals("", result);
 		}
 	}
 
@@ -212,11 +361,7 @@ class RunCypressFormTestHandlerTest {
 		void discoveryServiceDetectsTest() throws Exception {
 			Files.createFile(tempDir.resolve("loginForm.spec.cy.js"));
 
-			Field field = RunCypressFormTestHandler.class.getDeclaredField("discoveryService");
-			field.setAccessible(true);
-			CypressTestDiscoveryService service = (CypressTestDiscoveryService) field.get(handler);
-
-			assertTrue(service.hasTest("loginForm"));
+			assertTrue(handler.getDiscoveryService().hasTest("loginForm"));
 		}
 
 		@Test
