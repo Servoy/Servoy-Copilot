@@ -1328,38 +1328,11 @@ public class ServoyDevServer {
 	// Servoy Solution tools (Faza 3 + 5)
 	// -------------------------------------------------------------------------
 
-	@Tool(name = "deleteForms", description = "Deletes one or more forms from the active solution. "
-			+ "Provide a comma-separated list of form names.", type = "object")
-	public String deleteForms(
-			@ToolParam(name = "names", description = "Comma-separated form names to delete (e.g. 'testForm,oldForm')", required = true) String names) {
-		if (names == null || names.isBlank())
-			return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-				.toList();
-		return solutionService.deleteForms(nameList);
-	}
-
-	@Tool(name = "deleteRelations", description = "Deletes one or more relations from the active solution. "
-			+ "Provide a comma-separated list of relation names.", type = "object")
-	public String deleteRelations(
-			@ToolParam(name = "names", description = "Comma-separated relation names to delete (e.g. 'customers_to_orders,old_relation')", required = true) String names) {
-		if (names == null || names.isBlank())
-			return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-				.toList();
-		return solutionService.deleteRelations(nameList);
-	}
-
-	@Tool(name = "deleteValueLists", description = "Deletes one or more valuelists from the active solution. "
-			+ "Provide a comma-separated list of valuelist names.", type = "object")
-	public String deleteValueLists(
-			@ToolParam(name = "names", description = "Comma-separated valuelist names to delete (e.g. 'status_list,old_vl')", required = true) String names) {
-		if (names == null || names.isBlank())
-			return "Error: names parameter is required";
-		List<String> nameList = java.util.Arrays.stream(names.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-				.toList();
-		return solutionService.deleteValueLists(nameList);
-	}
+	// Note: deleteForms / deleteRelations / deleteValueLists were removed.
+	// Use the unified `deleteFile` tool on servoy-coder with the artifact path
+	// (forms/<name>.frm, relations/<name>.rel, valuelists/<name>.val); it routes
+	// through ServoySolutionService for active-solution-aware deletion that
+	// preserves referential consistency and removes the .js companion of forms.
 
 	// -------------------------------------------------------------------------
 	// Servoy Artifact creation tools (Faza 4)

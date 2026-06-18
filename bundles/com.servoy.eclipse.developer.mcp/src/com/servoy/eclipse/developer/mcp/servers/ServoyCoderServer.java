@@ -26,6 +26,7 @@ import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
+import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 
 /**
  * MCP server providing generic file-editing tools for the Servoy Developer MCP endpoint.
@@ -44,6 +45,8 @@ public class ServoyCoderServer
 {
 	@Inject
 	private CodeEditingService codeEditingService;
+
+	private final ServoySolutionService solutionService = new ServoySolutionService();
 
 	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyCoderServer() { }
@@ -138,13 +141,48 @@ public class ServoyCoderServer
 	}
 
 	@Tool(name = "deleteFile",
-		description = "Deletes a file from the specified project.",
+		description = "Deletes a file from the specified project. "
+			+ "If the path points to a Servoy artifact in the active solution or its modules, "
+			+ "the deletion is routed through the Servoy repository so referential consistency is preserved: "
+			+ "'forms/<name>.frm' deletes the form (and its '.js' script companion), "
+			+ "'relations/<name>.rel' deletes the relation, "
+			+ "'valuelists/<name>.val' deletes the valuelist. "
+			+ "Deleting a form's '.js' file directly is rejected; delete the matching '.frm' instead. "
+			+ "For all other paths the file is removed as a plain workspace resource.",
 		type = "object")
 	public String deleteFile(
-		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
+		@ToolParam(name = "projectName", description = "The name of the project containing the file. Ignored when the path targets a Servoy artifact (.frm/.rel/.val); the active solution + modules are used.", required = true) String projectName,
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath)
 	{
+		if (filePath == null || filePath.isBlank())
+			return "Error: filePath parameter is required";
+
+		String normalized = filePath.replace('\\', '/').replaceFirst("^/+", "");
+		String lower = normalized.toLowerCase();
+
+		// Reject orphaning a form's .js companion
+		if (lower.endsWith(".js") && lower.startsWith("forms/"))
+		{
+			String base = normalized.substring("forms/".length(), normalized.length() - ".js".length());
+			return "Error: '" + filePath + "' is the script companion of form '" + base
+				+ "'. Delete 'forms/" + base + ".frm' instead to remove both files together.";
+		}
+
+		if (lower.endsWith(".frm"))
+			return solutionService.deleteForms(java.util.List.of(stripExtension(normalized, ".frm")));
+		if (lower.endsWith(".rel"))
+			return solutionService.deleteRelations(java.util.List.of(stripExtension(normalized, ".rel")));
+		if (lower.endsWith(".val"))
+			return solutionService.deleteValueLists(java.util.List.of(stripExtension(normalized, ".val")));
+
 		return codeEditingService.deleteFile(projectName, filePath);
+	}
+
+	private static String stripExtension(String path, String ext)
+	{
+		int slash = path.lastIndexOf('/');
+		String file = slash < 0 ? path : path.substring(slash + 1);
+		return file.substring(0, file.length() - ext.length());
 	}
 
 	@Tool(name = "replaceFileContent",
