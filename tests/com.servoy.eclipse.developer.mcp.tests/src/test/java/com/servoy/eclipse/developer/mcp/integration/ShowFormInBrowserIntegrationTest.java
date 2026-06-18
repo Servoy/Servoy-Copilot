@@ -11,9 +11,6 @@ package com.servoy.eclipse.developer.mcp.integration;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.awt.Point;
 
 import org.eclipse.core.resources.ICommand;
@@ -39,17 +36,18 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 /**
  * Integration tests for the ShowFormInBrowser tool with actual form creation.
  * <p>
- * Creates Servoy forms with labels and other elements, then opens them in the browser
- * using the formpreview mechanism. Verifies the full flow from form creation to browser display.
+ * Creates Servoy forms with labels and other elements, then opens them in the
+ * browser using the formpreview mechanism. Verifies the full flow from form
+ * creation to browser display.
  * <p>
  * <b>Prerequisites:</b>
  * <ul>
- *   <li>Run as a JUnit Plugin Test inside Eclipse IDE with Servoy plugins active.</li>
- *   <li>Servoy Application Server must be running.</li>
+ * <li>Run as a JUnit Plugin Test inside Eclipse IDE with Servoy plugins
+ * active.</li>
+ * <li>Servoy Application Server must be running.</li>
  * </ul>
  */
-public class ShowFormInBrowserIntegrationTest
-{
+public class ShowFormInBrowserIntegrationTest {
 	private static final String TEST_SOLUTION = "test_showform_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String FORM_WITH_LABEL = "formWithLabel";
@@ -63,12 +61,10 @@ public class ShowFormInBrowserIntegrationTest
 	private ServoyProject activeProject;
 
 	@Before
-	public void setUp() throws Exception
-	{
+	public void setUp() throws Exception {
 		tool = new ServoyTestingServer();
 
-		assertNotNull("No Display available - test requires a running Eclipse UI",
-			Display.getDefault());
+		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
 		ensureTestSolutionInWorkspace();
@@ -83,8 +79,7 @@ public class ShowFormInBrowserIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testCreateFormWithLabel_formExists() throws Exception
-	{
+	public void testCreateFormWithLabel_formExists() throws Exception {
 		Form form = ensureForm(FORM_WITH_LABEL);
 		assertNotNull("Form should be created", form);
 
@@ -98,28 +93,23 @@ public class ShowFormInBrowserIntegrationTest
 	}
 
 	@Test
-	public void testCreateFormWithLabel_openInBrowser_returnsUrl() throws Exception
-	{
+	public void testCreateFormWithLabel_openInBrowser_returnsUrl() throws Exception {
 		ensureForm(FORM_WITH_LABEL);
 
 		String result = tool.showFormInBrowser(FORM_WITH_LABEL);
 
 		assertNotNull("Result should not be null", result);
-		assertTrue("Result should contain formpreview parameter",
-			result.contains("formpreview=" + FORM_WITH_LABEL));
-		assertTrue("Result should confirm form was opened",
-			result.contains("Opened form"));
+		assertTrue("Result should contain formpreview parameter", result.contains("formpreview=" + FORM_WITH_LABEL));
+		assertTrue("Result should confirm form was opened", result.contains("Opened form"));
 	}
 
 	@Test
-	public void testCreateFormWithLabel_urlHasCorrectSolution() throws Exception
-	{
+	public void testCreateFormWithLabel_urlHasCorrectSolution() throws Exception {
 		ensureForm(FORM_WITH_LABEL);
 
 		String result = tool.showFormInBrowser(FORM_WITH_LABEL);
 
-		assertTrue("URL should contain solution name",
-			result.contains("/solution/" + TEST_SOLUTION + "/"));
+		assertTrue("URL should contain solution name", result.contains("/solution/" + TEST_SOLUTION + "/"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -127,8 +117,7 @@ public class ShowFormInBrowserIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testCreateFormWithMultipleLabels_allLabelsCreated() throws Exception
-	{
+	public void testCreateFormWithMultipleLabels_allLabelsCreated() throws Exception {
 		Form form = ensureForm(FORM_WITH_MULTIPLE_LABELS);
 
 		GraphicalComponent lbl1 = form.createNewGraphicalComponent(new Point(20, 20));
@@ -150,15 +139,14 @@ public class ShowFormInBrowserIntegrationTest
 	}
 
 	@Test
-	public void testCreateFormWithMultipleLabels_openInBrowser() throws Exception
-	{
+	public void testCreateFormWithMultipleLabels_openInBrowser() throws Exception {
 		ensureForm(FORM_WITH_MULTIPLE_LABELS);
 
 		String result = tool.showFormInBrowser(FORM_WITH_MULTIPLE_LABELS);
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Should open form with multiple labels",
-			result.contains("formpreview=" + FORM_WITH_MULTIPLE_LABELS));
+				result.contains("formpreview=" + FORM_WITH_MULTIPLE_LABELS));
 	}
 
 	// -----------------------------------------------------------------------
@@ -166,15 +154,13 @@ public class ShowFormInBrowserIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testCreateEmptyForm_openInBrowser() throws Exception
-	{
+	public void testCreateEmptyForm_openInBrowser() throws Exception {
 		ensureForm(FORM_EMPTY);
 
 		String result = tool.showFormInBrowser(FORM_EMPTY);
 
 		assertNotNull("Result should not be null", result);
-		assertTrue("Should open empty form",
-			result.contains("formpreview=" + FORM_EMPTY));
+		assertTrue("Should open empty form", result.contains("formpreview=" + FORM_EMPTY));
 	}
 
 	// -----------------------------------------------------------------------
@@ -182,34 +168,32 @@ public class ShowFormInBrowserIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testShowFormInBrowser_nullForm_returnsError()
-	{
+	public void testShowFormInBrowser_nullForm_returnsError() {
 		String result = tool.showFormInBrowser(null);
 
 		assertNotNull("Result should not be null", result);
-		assertTrue("Should contain URL or handle null gracefully",
-			result.contains("formpreview") || result.contains("Error"));
+		// The tool may return an error or treat null as empty and produce a URL
+		assertTrue("Should return error or a URL for null form",
+				result.startsWith("Error") || result.contains("formpreview="));
 	}
 
 	@Test
-	public void testShowFormInBrowser_emptyString_returnsUrl()
-	{
+	public void testShowFormInBrowser_emptyString_returnsUrl() {
 		String result = tool.showFormInBrowser("");
 
 		assertNotNull("Result should not be null", result);
-		assertTrue("Should contain URL with empty formpreview",
-			result.contains("formpreview=") || result.contains("Error"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("Should contain URL with empty formpreview", result.contains("formpreview="));
 	}
 
 	@Test
-	public void testCheckNGClientStatus_returnsInfo()
-	{
+	public void testCheckNGClientStatus_returnsInfo() {
 		String result = tool.checkNGClientStatus();
 
 		assertNotNull("Status should not be null", result);
 		assertFalse("Status should not be empty", result.isEmpty());
-		assertTrue("Status should contain useful info",
-			result.contains("running") || result.contains("URL") || result.contains("Error"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("Status should contain useful info", result.contains("running") || result.contains("URL"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -217,8 +201,7 @@ public class ShowFormInBrowserIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testOpenMultipleForms_sequentially() throws Exception
-	{
+	public void testOpenMultipleForms_sequentially() throws Exception {
 		ensureForm(FORM_WITH_LABEL);
 		ensureForm(FORM_EMPTY);
 
@@ -227,20 +210,18 @@ public class ShowFormInBrowserIntegrationTest
 
 		assertNotNull("First result should not be null", result1);
 		assertNotNull("Second result should not be null", result2);
-		assertTrue("First should open formWithLabel",
-			result1.contains("formpreview=" + FORM_WITH_LABEL));
-		assertTrue("Second should open formEmpty",
-			result2.contains("formpreview=" + FORM_EMPTY));
+		assertTrue("First should open formWithLabel", result1.contains("formpreview=" + FORM_WITH_LABEL));
+		assertTrue("Second should open formEmpty", result2.contains("formpreview=" + FORM_EMPTY));
 	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private Form ensureForm(String formName) throws Exception
-	{
+	private Form ensureForm(String formName) throws Exception {
 		Form existing = activeProject.getEditingSolution().getForm(formName);
-		if (existing != null) return existing;
+		if (existing != null)
+			return existing;
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
@@ -250,41 +231,33 @@ public class ShowFormInBrowserIntegrationTest
 
 	private static Boolean appServerAvailableCache = null;
 
-	private void waitForAppServer() throws InterruptedException
-	{
-		if (appServerAvailableCache == null)
-		{
+	private void waitForAppServer() throws InterruptedException {
+		if (appServerAvailableCache == null) {
 			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
-			{
+			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
 				Thread.sleep(500);
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assertTrue("Servoy application server not started - skipping",
-			appServerAvailableCache);
+		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
 	}
 
-	private void ensureTestSolutionInWorkspace() throws Exception
-	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+	private void ensureTestSolutionInWorkspace() throws Exception {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
+			if (!res.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
 				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
 				res.create(d, monitor);
 			}
-			if (!res.isOpen()) res.open(monitor);
+			if (!res.isOpen())
+				res.open(monitor);
 
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists())
-			{
+			if (!sol.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
+				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+						"org.eclipse.dltk.javascript.core.nature" });
 				ICommand sc = d.newCommand();
 				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 				ICommand sb = d.newCommand();
@@ -293,94 +266,86 @@ public class ShowFormInBrowserIntegrationTest
 				d.setReferencedProjects(new IProject[] { res });
 				sol.create(d, monitor);
 			}
-			if (!sol.isOpen()) sol.open(monitor);
+			if (!sol.isOpen())
+				sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
-				"solutionType:1,\ntypeid:43,\nuuid:\"d4e5f6a7-b8c9-0123-def0-456789abcdef\"\n",
-				monitor);
+					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
+							+ TEST_SOLUTION + "\",\n"
+							+ "solutionType:1,\ntypeid:43,\nuuid:\"d4e5f6a7-b8c9-0123-def0-456789abcdef\"\n",
+					monitor);
 			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"d4e5f6a7-b8c9-0123-def0-456789abcdef\",\nversion:\"1.0\"\n",
-				monitor);
+					"typeid:43,\nuuid:\"d4e5f6a7-b8c9-0123-def0-456789abcdef\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					monitor);
 		}, new NullProgressMonitor());
 
 		pumpEvents(1000);
 	}
 
-	private void ensureActiveProject() throws Exception
-	{
+	private void ensureActiveProject() throws Exception {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
 		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName())) return;
+		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
+			return;
 
 		model.refreshServoyProjects();
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace",
-			projects != null && projects.length > 0);
+		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
-		for (ServoyProject p : projects)
-		{
-			if (TEST_SOLUTION.equals(p.getProject().getName()))
-			{
+		for (ServoyProject p : projects) {
+			if (TEST_SOLUTION.equals(p.getProject().getName())) {
 				toActivate = p;
 				break;
 			}
 		}
-		if (toActivate == null) toActivate = projects[0];
+		if (toActivate == null)
+			toActivate = projects[0];
 
-		try
-		{
+		try {
 			model.setActiveProject(toActivate, true);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			// caught by assumeNotNull below
 		}
 
 		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
 		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread())
-		{
+		if (display.getThread() == Thread.currentThread()) {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				display.readAndDispatch();
-		}
-		else
-		{
+		} else {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				Thread.sleep(200);
 		}
 
-		assertNotNull("Active project not set - skipping",
-			model.getActiveProject());
+		assertNotNull("Active project not set - skipping", model.getActiveProject());
 	}
 
 	private void writeProjectFile(IProject project, String fileName, String content,
-		org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException
-	{
+			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
 		org.eclipse.core.resources.IFile file = project.getFile(fileName);
 		if (!file.exists())
-			file.create(new java.io.ByteArrayInputStream(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)), true, monitor);
+			file.create(new java.io.ByteArrayInputStream(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+					true, monitor);
 	}
 
-	private void pumpEvents(long ms)
-	{
+	private void pumpEvents(long ms) {
 		Display display = Display.getDefault();
 		long end = System.currentTimeMillis() + ms;
-		if (display.getThread() == Thread.currentThread())
-		{
+		if (display.getThread() == Thread.currentThread()) {
 			while (System.currentTimeMillis() < end)
 				display.readAndDispatch();
-		}
-		else
-		{
-			try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+		} else {
+			try {
+				Thread.sleep(ms);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
 		}
 	}
 }

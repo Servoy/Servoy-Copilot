@@ -71,6 +71,10 @@ public class FormPreviewService
 			}
 			String solutionName = activeProject.getSolution().getName();
 			int port = ApplicationServerRegistry.get().getWebServerPort();
+			if (port <= 0)
+			{
+				return "Error: Tomcat web server is not running (port=" + port + "). Please check the Tomcat starter.";
+			}
 			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName;
 
 			Display.getDefault().asyncExec(() -> {
@@ -103,13 +107,28 @@ public class FormPreviewService
 	{
 		try
 		{
+			if (formName == null || formName.trim().isEmpty())
+			{
+				return "Error: Form name must not be null or empty.";
+			}
+
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "Error: No active Servoy project. Please open a solution.";
 			}
+
+			if (activeProject.getEditingSolution().getForm(formName) == null)
+			{
+				return "Error: Form '" + formName + "' does not exist in solution '" + activeProject.getSolution().getName() + "'.";
+			}
+
 			String solutionName = activeProject.getSolution().getName();
 			int port = ApplicationServerRegistry.get().getWebServerPort();
+			if (port <= 0)
+			{
+				return "Error: Tomcat web server is not running (port=" + port + "). Please check the Tomcat starter.";
+			}
 			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName;
 
 			Path playwrightDir = getPlaywrightDir();

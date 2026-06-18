@@ -32,64 +32,50 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 /**
  * JUnit 4 tests for {@link ServoyDevServer}.
  */
-public class ServoyDevServerIntegrationTest
-{
+public class ServoyDevServerIntegrationTest {
 	private final ServoyDevServer server = new ServoyDevServer();
 
 	@Test
-	public void testServoyDevServer_hasCorrectAnnotation()
-	{
-		com.servoy.eclipse.developer.mcp.annotations.McpServer ann =
-			ServoyDevServer.class.getAnnotation(
-				com.servoy.eclipse.developer.mcp.annotations.McpServer.class);
+	public void testServoyDevServer_hasCorrectAnnotation() {
+		com.servoy.eclipse.developer.mcp.annotations.McpServer ann = ServoyDevServer.class
+				.getAnnotation(com.servoy.eclipse.developer.mcp.annotations.McpServer.class);
 		assertNotNull("ServoyDevServer must have @McpServer annotation", ann);
 		assertEquals("servoy-dev", ann.name());
 	}
 
 	@Test
-	public void testServoyDevServer_hasCorrectToolCount()
-	{
+	public void testServoyDevServer_hasCorrectToolCount() {
 		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(Tool.class))
-			.count();
+				.filter(m -> m.isAnnotationPresent(Tool.class)).count();
 		assertEquals(35, toolCount);
 	}
 
 	@Test
-	public void testResolveIdentifierType_nullIdentifier_returnsError()
-	{
-		try
-		{
+	public void testResolveIdentifierType_nullIdentifier_returnsError() {
+		try {
 			String result = server.resolveIdentifierType(null, "someForm", null);
 			assertNotNull(result);
-			assertTrue("Should return error for null identifier",
-				result.contains("Error") || result.contains("required") || result.contains("not found"));
-		}
-		catch (Throwable e)
-		{
+			assertTrue("Should start with Error for null identifier", result.startsWith("Error"));
+			assertTrue("Should mention required", result.contains("required"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testResolveIdentifierType_unknownForm_returnsNotFound()
-	{
-		try
-		{
+	public void testResolveIdentifierType_unknownForm_returnsNotFound() {
+		try {
 			String result = server.resolveIdentifierType("myVar", "nonExistentForm_XYZ_ABC", null);
 			assertNotNull(result);
 			assertTrue("Should return not-found message",
-				result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC") || result.contains("Error"));
-		}
-		catch (Throwable e)
-		{
+					result.contains("not found") || result.contains("nonExistentForm_XYZ_ABC"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testPing_returnsPong()
-	{
+	public void testPing_returnsPong() {
 		assertEquals("pong", server.ping());
 	}
 
@@ -98,81 +84,64 @@ public class ServoyDevServerIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testServoyDevServer_hasCreateSolutionTool()
-	{
-		assertTrue("ServoyDevServer must have a 'createSolution' tool",
-			hasToolNamed("createSolution"));
+	public void testServoyDevServer_hasCreateSolutionTool() {
+		assertTrue("ServoyDevServer must have a 'createSolution' tool", hasToolNamed("createSolution"));
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionHasFiveParams()
-	{
+	public void testServoyDevServer_createSolutionHasFiveParams() {
 		Method method = findToolMethod("createSolution");
 		assertNotNull("createSolution tool must exist", method);
 		assertEquals("createSolution must have 5 parameters", 5, method.getParameterCount());
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionReturnsString()
-	{
+	public void testServoyDevServer_createSolutionReturnsString() {
 		Method method = findToolMethod("createSolution");
 		assertNotNull(method);
 		assertEquals("createSolution must return String", String.class, method.getReturnType());
 	}
 
 	@Test
-	public void testServoyDevServer_createSolution_rejectsNullName()
-	{
+	public void testServoyDevServer_createSolution_rejectsNullName() {
 		String result = server.createSolution(null, null, null, null, null);
-		assertTrue("createSolution must reject null name",
-			result.contains("Error") && result.contains("required"));
+		assertTrue("createSolution must reject null name", result.contains("Error") && result.contains("required"));
 	}
 
 	@Test
-	public void testServoyDevServer_createSolution_rejectsBlankName()
-	{
+	public void testServoyDevServer_createSolution_rejectsBlankName() {
 		String result = server.createSolution("   ", null, null, null, null);
-		assertTrue("createSolution must reject blank name",
-			result.contains("Error") && result.contains("required"));
+		assertTrue("createSolution must reject blank name", result.contains("Error") && result.contains("required"));
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionHasToolParamAnnotations()
-	{
+	public void testServoyDevServer_createSolutionHasToolParamAnnotations() {
 		Method method = findToolMethod("createSolution");
 		assertNotNull(method);
-		long paramCount = Arrays.stream(method.getParameters())
-			.filter(p -> p.isAnnotationPresent(ToolParam.class))
-			.count();
+		long paramCount = Arrays.stream(method.getParameters()).filter(p -> p.isAnnotationPresent(ToolParam.class))
+				.count();
 		assertEquals("All 5 createSolution params must have @ToolParam", 5, paramCount);
 	}
 
 	@Test
-	public void testServoyDevServer_createSolutionDescriptionMentionsWizard()
-	{
+	public void testServoyDevServer_createSolutionDescriptionMentionsWizard() {
 		Method method = findToolMethod("createSolution");
 		assertNotNull(method);
 		Tool tool = method.getAnnotation(Tool.class);
-		assertTrue("createSolution description should mention wizard",
-			tool.description().contains("wizard"));
+		assertTrue("createSolution description should mention wizard", tool.description().contains("wizard"));
 	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private boolean hasToolNamed(String name)
-	{
-		return Arrays.stream(ServoyDevServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(Tool.class))
-			.anyMatch(m -> name.equals(m.getAnnotation(Tool.class).name()));
+	private boolean hasToolNamed(String name) {
+		return Arrays.stream(ServoyDevServer.class.getMethods()).filter(m -> m.isAnnotationPresent(Tool.class))
+				.anyMatch(m -> name.equals(m.getAnnotation(Tool.class).name()));
 	}
 
-	private Method findToolMethod(String toolName)
-	{
-		return Arrays.stream(ServoyDevServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(Tool.class))
-			.filter(m -> toolName.equals(m.getAnnotation(Tool.class).name()))
-			.findFirst().orElse(null);
+	private Method findToolMethod(String toolName) {
+		return Arrays.stream(ServoyDevServer.class.getMethods()).filter(m -> m.isAnnotationPresent(Tool.class))
+				.filter(m -> toolName.equals(m.getAnnotation(Tool.class).name())).findFirst().orElse(null);
 	}
 }

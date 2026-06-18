@@ -56,14 +56,14 @@ import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
- * Integration tests for {@link PersistRenameService} - tests renaming of forms, relations,
- * valuelists, and scopes with a real Servoy workspace.
+ * Integration tests for {@link PersistRenameService} - tests renaming of forms,
+ * relations, valuelists, and scopes with a real Servoy workspace.
  *
- * These tests require a running Servoy application server and create a test solution.
- * They are skipped (via Assume) when the environment is not available.
+ * These tests require a running Servoy application server and create a test
+ * solution. They are skipped (via Assume) when the environment is not
+ * available.
  */
-public class RenamePersistIntegrationTest
-{
+public class RenamePersistIntegrationTest {
 	private static final String TEST_SOLUTION = "test_rename_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 
@@ -77,13 +77,11 @@ public class RenamePersistIntegrationTest
 	private static Boolean appServerAvailableCache;
 
 	@Before
-	public void setUp() throws Exception
-	{
+	public void setUp() throws Exception {
 		renameService = new PersistRenameService();
 		devServer = new ServoyDevServer();
 
-		assertNotNull("No Display available - test requires a running Eclipse UI",
-			Display.getDefault());
+		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
 		ensureTestSolutionInWorkspace();
@@ -98,8 +96,7 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameForm_success() throws Exception
-	{
+	public void testRenameForm_success() throws Exception {
 		String formName = "renameTestForm_" + System.currentTimeMillis();
 		String newName = formName + "_renamed";
 
@@ -117,17 +114,16 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameForm_notFound_returnsError() throws Exception
-	{
+	public void testRenameForm_notFound_returnsError() throws Exception {
 		String result = renameService.renameForm("nonExistentForm_XYZ_12345", "newName", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent form", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent form",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameForm_viaTool() throws Exception
-	{
+	public void testRenameForm_viaTool() throws Exception {
 		String formName = "toolRenameForm_" + System.currentTimeMillis();
 		String newName = formName + "_renamed";
 
@@ -137,8 +133,7 @@ public class RenamePersistIntegrationTest
 		String result = devServer.renamePersist("form", formName, newName, null);
 
 		assertNotNull(result);
-		assertTrue("Tool should indicate success",
-			result.contains("successfully") || result.contains("Renamed") || result.contains("Error"));
+		assertTrue("Tool should indicate success", result.contains("successfully") || result.contains("Renamed"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -146,23 +141,23 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameRelation_notFound_returnsError() throws Exception
-	{
+	public void testRenameRelation_notFound_returnsError() throws Exception {
 		String result = renameService.renameRelation("nonExistentRelation_XYZ", "newName", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent relation", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent relation",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameRelation_success() throws Exception
-	{
+	public void testRenameRelation_success() throws Exception {
 		String relName = "testRel_" + System.currentTimeMillis();
 		String newRelName = relName + "_renamed";
 
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
-		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1", "db:/mem/table2", 1);
+		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/table1",
+				"db:/mem/table2", 1);
 		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
 
@@ -176,21 +171,22 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameRelation_viaTool() throws Exception
-	{
+	public void testRenameRelation_viaTool() throws Exception {
 		String relName = "toolRel_" + System.currentTimeMillis();
 		String newRelName = relName + "_renamed";
 
 		Solution solution = activeProject.getEditingSolution();
 		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
-		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/t1", "db:/mem/t2", 1);
+		com.servoy.j2db.persistence.Relation rel = solution.createNewRelation(validator, relName, "db:/mem/t1",
+				"db:/mem/t2", 1);
 		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
 
 		String result = devServer.renamePersist("relation", relName, newRelName, null);
 
 		assertNotNull(result);
-		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+		assertTrue("Tool should indicate success: " + result,
+				result.contains("successfully") || result.contains("Renamed"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -198,17 +194,16 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameValueList_notFound_returnsError() throws Exception
-	{
+	public void testRenameValueList_notFound_returnsError() throws Exception {
 		String result = renameService.renameValueList("nonExistentVL_XYZ", "newName", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent valuelist", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent valuelist",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameValueList_success() throws Exception
-	{
+	public void testRenameValueList_success() throws Exception {
 		String vlName = "testVL_" + System.currentTimeMillis();
 		String newVlName = vlName + "_renamed";
 
@@ -228,8 +223,7 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameValueList_viaTool() throws Exception
-	{
+	public void testRenameValueList_viaTool() throws Exception {
 		String vlName = "toolVL_" + System.currentTimeMillis();
 		String newVlName = vlName + "_renamed";
 
@@ -242,26 +236,25 @@ public class RenamePersistIntegrationTest
 		String result = devServer.renamePersist("valuelist", vlName, newVlName, null);
 
 		assertNotNull(result);
-		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+		assertTrue("Tool should indicate success: " + result,
+				result.contains("successfully") || result.contains("Renamed"));
 	}
-
 
 	// -----------------------------------------------------------------------
 	// Media rename tests
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameMedia_notFound_returnsError() throws Exception
-	{
+	public void testRenameMedia_notFound_returnsError() throws Exception {
 		String result = renameService.renameMedia("nonExistentMedia_XYZ.png", "newName.png", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent media", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent media",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameMedia_success() throws Exception
-	{
+	public void testRenameMedia_success() throws Exception {
 		String mediaName = "testMedia_" + System.currentTimeMillis() + ".png";
 		String newMediaName = "testMedia_" + System.currentTimeMillis() + "_renamed.png";
 
@@ -283,8 +276,7 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameMedia_duplicateName_returnsError() throws Exception
-	{
+	public void testRenameMedia_duplicateName_returnsError() throws Exception {
 		String mediaName1 = "mediaDup1_" + System.currentTimeMillis() + ".png";
 		String mediaName2 = "mediaDup2_" + System.currentTimeMillis() + ".png";
 
@@ -301,12 +293,12 @@ public class RenamePersistIntegrationTest
 		String result = renameService.renameMedia(mediaName1, mediaName2, activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for duplicate: " + result, result.contains("Error") || result.contains("already exists"));
+		assertTrue("Should return error for duplicate: " + result,
+				result.contains("Error") || result.contains("already exists"));
 	}
 
 	@Test
-	public void testRenameMedia_viaTool() throws Exception
-	{
+	public void testRenameMedia_viaTool() throws Exception {
 		String mediaName = "toolMedia_" + System.currentTimeMillis() + ".png";
 		String newMediaName = "toolMedia_" + System.currentTimeMillis() + "_renamed.png";
 
@@ -320,7 +312,8 @@ public class RenamePersistIntegrationTest
 		String result = devServer.renamePersist("media", mediaName, newMediaName, null);
 
 		assertNotNull(result);
-		assertTrue("Tool should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
+		assertTrue("Tool should indicate success: " + result,
+				result.contains("successfully") || result.contains("Renamed"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -328,21 +321,21 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameScope_notFound_returnsError() throws Exception
-	{
+	public void testRenameScope_notFound_returnsError() throws Exception {
 		String result = renameService.renameScope("nonExistentScope_XYZ", "newScope", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent scope", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent scope",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameScope_success() throws Exception
-	{
+	public void testRenameScope_success() throws Exception {
 		String scopeName = "testScope_" + System.currentTimeMillis();
 		IProject project = activeProject.getProject();
 		IFile scopeFile = project.getFile(scopeName + ".js");
-		scopeFile.create(new ByteArrayInputStream("// scope file".getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+		scopeFile.create(new ByteArrayInputStream("// scope file".getBytes(StandardCharsets.UTF_8)), true,
+				new NullProgressMonitor());
 		assertTrue("Scope file should exist", scopeFile.exists());
 
 		String newScopeName = scopeName + "_renamed";
@@ -362,8 +355,7 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameForm_withSpecFiles_renames_allFiles() throws Exception
-	{
+	public void testRenameForm_withSpecFiles_renames_allFiles() throws Exception {
 		String formName = "specTestForm_" + System.currentTimeMillis();
 		String newName = formName + "_renamed";
 
@@ -380,10 +372,13 @@ public class RenamePersistIntegrationTest
 		if (!testsFolder.exists())
 			testsFolder.create(true, true, new NullProgressMonitor());
 		IFile specCyFile = project.getFile("medias/tests/" + formName + ".spec.cy.js");
-		specCyFile.create(new ByteArrayInputStream(("describe('" + formName + "', () => {});").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+		specCyFile.create(
+				new ByteArrayInputStream(("describe('" + formName + "', () => {});").getBytes(StandardCharsets.UTF_8)),
+				true, new NullProgressMonitor());
 
 		IFile specJsFile = project.getFile("forms/" + formName + ".spec.js");
-		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true,
+				new NullProgressMonitor());
 
 		assertTrue(".spec.cy.js should exist before rename", specCyFile.exists());
 		assertTrue(".spec.js should exist before rename", specJsFile.exists());
@@ -410,8 +405,7 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameForm_withOnlyJsFile_renames_jsFile() throws Exception
-	{
+	public void testRenameForm_withOnlyJsFile_renames_jsFile() throws Exception {
 		String formName = "jsOnlyForm_" + System.currentTimeMillis();
 		String newName = formName + "_renamed";
 
@@ -420,7 +414,8 @@ public class RenamePersistIntegrationTest
 
 		IProject project = activeProject.getProject();
 		IFile jsFile = project.getFile("forms/" + formName + ".js");
-		jsFile.create(new ByteArrayInputStream("// form js".getBytes(StandardCharsets.UTF_8)), true, new NullProgressMonitor());
+		jsFile.create(new ByteArrayInputStream("// form js".getBytes(StandardCharsets.UTF_8)), true,
+				new NullProgressMonitor());
 
 		String result = renameService.renameForm(formName, newName, activeProject);
 		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
@@ -433,17 +428,16 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameMenu_notFound_returnsError() throws Exception
-	{
+	public void testRenameMenu_notFound_returnsError() throws Exception {
 		String result = renameService.renameMenu("nonExistentMenu_XYZ", "newName", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent menu", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent menu",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameMenu_success() throws Exception
-	{
+	public void testRenameMenu_success() throws Exception {
 		String menuName = "testMenu_" + System.currentTimeMillis();
 		String newMenuName = menuName + "_renamed";
 
@@ -460,10 +454,8 @@ public class RenamePersistIntegrationTest
 
 		boolean foundRenamed = false;
 		java.util.Iterator<Menu> iter = solution.getMenus(false);
-		while (iter.hasNext())
-		{
-			if (newMenuName.equals(iter.next().getName()))
-			{
+		while (iter.hasNext()) {
+			if (newMenuName.equals(iter.next().getName())) {
 				foundRenamed = true;
 				break;
 			}
@@ -476,17 +468,16 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameMenuItem_notFound_returnsError() throws Exception
-	{
+	public void testRenameMenuItem_notFound_returnsError() throws Exception {
 		String result = renameService.renameMenuItem("nonExistentMenuItem_XYZ", "newName", activeProject);
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent menuitem", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent menuitem",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameMenuItem_success() throws Exception
-	{
+	public void testRenameMenuItem_success() throws Exception {
 		String menuName = "menuForItem_" + System.currentTimeMillis();
 		String itemName = "testItem_" + System.currentTimeMillis();
 		String newItemName = itemName + "_renamed";
@@ -507,8 +498,7 @@ public class RenamePersistIntegrationTest
 	}
 
 	@Test
-	public void testRenameMenuItem_viaTool() throws Exception
-	{
+	public void testRenameMenuItem_viaTool() throws Exception {
 		String menuName = "menuForToolItem_" + System.currentTimeMillis();
 		String itemName = "toolItem_" + System.currentTimeMillis();
 		String newItemName = itemName + "_renamed";
@@ -526,7 +516,7 @@ public class RenamePersistIntegrationTest
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success: " + result,
-			result.contains("successfully") || result.contains("Renamed"));
+				result.contains("successfully") || result.contains("Renamed"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -534,21 +524,21 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenameSolution_notFound_returnsError()
-	{
+	public void testRenameSolution_notFound_returnsError() {
 		String result = renameService.renameSolution("nonExistentSolution_XYZ_99999", "newSolName");
 
 		assertNotNull(result);
-		assertTrue("Should return error for non-existent solution", result.contains("Error") || result.contains("not found"));
+		assertTrue("Should return error for non-existent solution",
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	@Test
-	public void testRenameSolution_duplicateName_returnsError()
-	{
+	public void testRenameSolution_duplicateName_returnsError() {
 		String result = renameService.renameSolution(TEST_SOLUTION, SERVOY_RESOURCES);
 
 		assertNotNull(result);
-		assertTrue("Should return error for duplicate name", result.contains("Error") || result.contains("already exists"));
+		assertTrue("Should return error for duplicate name",
+				result.contains("Error") || result.contains("already exists"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -556,55 +546,51 @@ public class RenamePersistIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenamePersist_unsupportedType_returnsError()
-	{
+	public void testRenamePersist_unsupportedType_returnsError() {
 		String result = devServer.renamePersist("unknown_type", "old", "new", null);
 
 		assertNotNull(result);
-		assertTrue("Should return error for unsupported type",
-			result.contains("Error") || result.contains("Unsupported"));
+		assertTrue("Should start with Error for unsupported type", result.startsWith("Error"));
+		assertTrue("Should mention Unsupported", result.contains("Unsupported"));
 	}
 
 	@Test
-	public void testRenamePersist_sameName_returnsError()
-	{
+	public void testRenamePersist_sameName_returnsError() {
 		String result = devServer.renamePersist("form", "myForm", "myForm", null);
 
 		assertNotNull(result);
-		assertTrue("Should return error for same name", result.contains("Error") || result.contains("same"));
+		assertTrue("Should start with Error for same name", result.startsWith("Error"));
+		assertTrue("Should mention same", result.contains("same"));
 	}
 
 	@Test
-	public void testRenamePersist_nullOldName_returnsError()
-	{
+	public void testRenamePersist_nullOldName_returnsError() {
 		String result = devServer.renamePersist("form", null, "newName", null);
 
 		assertNotNull(result);
-		assertTrue("Should return error for null oldName", result.contains("Error"));
+		assertTrue("Should start with Error for null oldName", result.startsWith("Error"));
+		assertTrue("Should mention required or oldName", result.contains("required") || result.contains("oldName"));
 	}
 
 	@Test
-	public void testRenamePersist_nullNewName_returnsError()
-	{
+	public void testRenamePersist_nullNewName_returnsError() {
 		String result = devServer.renamePersist("form", "oldName", null, null);
 
 		assertNotNull(result);
-		assertTrue("Should return error for null newName", result.contains("Error"));
+		assertTrue("Should start with Error for null newName", result.startsWith("Error"));
+		assertTrue("Should mention required or newName", result.contains("required") || result.contains("newName"));
 	}
 
 	@Test
-	public void testRenameSolution_success() throws Exception
-	{
+	public void testRenameSolution_success() throws Exception {
 		String solName = "renameSolTest_" + System.currentTimeMillis();
 		String newSolName = solName + "_renamed";
 
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
 			IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(solName);
-			d.setNatureIds(new String[] {
-				"com.servoy.eclipse.core.ServoyProject",
-				"org.eclipse.dltk.javascript.core.nature"
-			});
+			d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+					"org.eclipse.dltk.javascript.core.nature" });
 			ICommand sc = d.newCommand();
 			sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 			ICommand sb = d.newCommand();
@@ -616,12 +602,12 @@ public class RenamePersistIntegrationTest
 			sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + solName + "\",\n" +
-				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n",
-				monitor);
+					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
+							+ solName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
+							+ java.util.UUID.randomUUID().toString() + "\"\n",
+					monitor);
 			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n",
-				monitor);
+					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
 		}, new NullProgressMonitor());
 
 		pumpEvents(2000);
@@ -647,29 +633,26 @@ public class RenamePersistIntegrationTest
 		assertTrue("New project should exist after rename", newProject.exists());
 
 		// cleanup
-		try
-		{
+		try {
 			newProject.delete(true, new NullProgressMonitor());
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			// best effort
 		}
 	}
 
 	@Test
-	public void testRenameSolution_updatesModuleReferences() throws Exception
-	{
+	public void testRenameSolution_updatesModuleReferences() throws Exception {
 		String moduleName = "renModRef_" + System.currentTimeMillis();
 		String parentName = "renModParent_" + System.currentTimeMillis();
 		String newModuleName = moduleName + "_renamed";
 
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
 
 			IProject modProj = ResourcesPlugin.getWorkspace().getRoot().getProject(moduleName);
 			IProjectDescription md = ResourcesPlugin.getWorkspace().newProjectDescription(moduleName);
-			md.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject", "org.eclipse.dltk.javascript.core.nature" });
+			md.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+					"org.eclipse.dltk.javascript.core.nature" });
 			ICommand sc1 = md.newCommand();
 			sc1.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 			ICommand sb1 = md.newCommand();
@@ -679,14 +662,17 @@ public class RenamePersistIntegrationTest
 			modProj.create(md, monitor);
 			modProj.open(monitor);
 			writeProjectFile(modProj, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + moduleName + "\",\n" +
-				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n", monitor);
+					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
+							+ moduleName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
+							+ java.util.UUID.randomUUID().toString() + "\"\n",
+					monitor);
 			writeProjectFile(modProj, "solution_settings.obj",
-				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
+					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
 
 			IProject parProj = ResourcesPlugin.getWorkspace().getRoot().getProject(parentName);
 			IProjectDescription pd = ResourcesPlugin.getWorkspace().newProjectDescription(parentName);
-			pd.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject", "org.eclipse.dltk.javascript.core.nature" });
+			pd.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+					"org.eclipse.dltk.javascript.core.nature" });
 			ICommand sc2 = pd.newCommand();
 			sc2.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 			ICommand sb2 = pd.newCommand();
@@ -696,10 +682,12 @@ public class RenamePersistIntegrationTest
 			parProj.create(pd, monitor);
 			parProj.open(monitor);
 			writeProjectFile(parProj, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + parentName + "\",\n" +
-				"solutionType:1024,\ntypeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\"\n", monitor);
+					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
+							+ parentName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
+							+ java.util.UUID.randomUUID().toString() + "\"\n",
+					monitor);
 			writeProjectFile(parProj, "solution_settings.obj",
-				"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
+					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
 		}, new NullProgressMonitor());
 
 		pumpEvents(2000);
@@ -727,26 +715,23 @@ public class RenamePersistIntegrationTest
 		pumpEvents(1000);
 
 		ServoyProject updatedParent = model.getServoyProject(parentName);
-		if (updatedParent != null && updatedParent.getEditingSolution() != null)
-		{
+		if (updatedParent != null && updatedParent.getEditingSolution() != null) {
 			String modules = updatedParent.getEditingSolution().getModulesNames();
 			assertNotNull("Parent should still have modules", modules);
-			assertTrue("Module reference should be updated to new name: " + modules,
-				modules.contains(newModuleName));
+			assertTrue("Module reference should be updated to new name: " + modules, modules.contains(newModuleName));
 			assertFalse("Old module name should not be in references: " + modules,
-				modules.contains(moduleName) && !modules.contains(newModuleName));
+					modules.contains(moduleName) && !modules.contains(newModuleName));
 		}
 
 		// cleanup
-		try
-		{
+		try {
 			IProject renamedMod = ResourcesPlugin.getWorkspace().getRoot().getProject(newModuleName);
-			if (renamedMod.exists()) renamedMod.delete(true, new NullProgressMonitor());
+			if (renamedMod.exists())
+				renamedMod.delete(true, new NullProgressMonitor());
 			IProject par = ResourcesPlugin.getWorkspace().getRoot().getProject(parentName);
-			if (par.exists()) par.delete(true, new NullProgressMonitor());
-		}
-		catch (Exception e)
-		{
+			if (par.exists())
+				par.delete(true, new NullProgressMonitor());
+		} catch (Exception e) {
 			// best effort
 		}
 	}
@@ -755,41 +740,33 @@ public class RenamePersistIntegrationTest
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private void waitForAppServer() throws InterruptedException
-	{
-		if (appServerAvailableCache == null)
-		{
+	private void waitForAppServer() throws InterruptedException {
+		if (appServerAvailableCache == null) {
 			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
-			{
+			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
 				Thread.sleep(500);
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assertTrue("Servoy application server not started - skipping",
-			appServerAvailableCache);
+		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
 	}
 
-	private void ensureTestSolutionInWorkspace() throws Exception
-	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+	private void ensureTestSolutionInWorkspace() throws Exception {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
+			if (!res.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
 				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
 				res.create(d, monitor);
 			}
-			if (!res.isOpen()) res.open(monitor);
+			if (!res.isOpen())
+				res.open(monitor);
 
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists())
-			{
+			if (!sol.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
+				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+						"org.eclipse.dltk.javascript.core.nature" });
 				ICommand sc = d.newCommand();
 				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 				ICommand sb = d.newCommand();
@@ -798,106 +775,88 @@ public class RenamePersistIntegrationTest
 				d.setReferencedProjects(new IProject[] { res });
 				sol.create(d, monitor);
 			}
-			if (!sol.isOpen()) sol.open(monitor);
+			if (!sol.isOpen())
+				sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
-				"solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\"\n",
-				monitor);
+					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
+							+ TEST_SOLUTION + "\",\n"
+							+ "solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\"\n",
+					monitor);
 			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\",\nversion:\"1.0\"\n",
-				monitor);
+					"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					monitor);
 		}, new NullProgressMonitor());
 
 		pumpEvents(1000);
 	}
 
-	private void ensureActiveProject() throws Exception
-	{
+	private void ensureActiveProject() throws Exception {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
 		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName())) return;
+		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
+			return;
 
 		model.refreshServoyProjects();
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace",
-			projects != null && projects.length > 0);
+		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
-		for (ServoyProject p : projects)
-		{
-			if (TEST_SOLUTION.equals(p.getProject().getName()))
-			{
+		for (ServoyProject p : projects) {
+			if (TEST_SOLUTION.equals(p.getProject().getName())) {
 				toActivate = p;
 				break;
 			}
 		}
-		if (toActivate == null) toActivate = projects[0];
+		if (toActivate == null)
+			toActivate = projects[0];
 
-		try
-		{
+		try {
 			model.setActiveProject(toActivate, true);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			// caught by assumeNotNull below
 		}
 
 		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
 		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread())
-		{
+		if (display.getThread() == Thread.currentThread()) {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				display.readAndDispatch();
-		}
-		else
-		{
+		} else {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				Thread.sleep(200);
 		}
 
-		assertNotNull("Active project not set - skipping",
-			model.getActiveProject());
+		assertNotNull("Active project not set - skipping", model.getActiveProject());
 	}
 
-	private void writeProjectFile(IProject project, String fileName, String content, org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException
-	{
+	private void writeProjectFile(IProject project, String fileName, String content,
+			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
 		org.eclipse.core.resources.IFile file = project.getFile(fileName);
 		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		if (file.exists())
-		{
+		if (file.exists()) {
 			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
-		}
-		else
-		{
+		} else {
 			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
 		}
 	}
 
-	private void pumpEvents(long ms)
-	{
-		try
-		{
+	private void pumpEvents(long ms) {
+		try {
 			Display display = Display.getDefault();
 			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread())
-			{
+			if (display.getThread() == Thread.currentThread()) {
 				while (System.currentTimeMillis() < end)
 					display.readAndDispatch();
-			}
-			else
-			{
+			} else {
 				Thread.sleep(ms);
 			}
-		}
-		catch (InterruptedException e)
-		{
+		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
 	}

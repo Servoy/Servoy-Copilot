@@ -48,14 +48,14 @@ import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
- * Integration tests for the Cypress form testing workflow:
- * showFormInBrowser -> generateSpec -> testForm (Cypress run).
+ * Integration tests for the Cypress form testing workflow: showFormInBrowser ->
+ * generateSpec -> testForm (Cypress run).
  *
- * These tests require a running Servoy application server and an active solution.
- * They are skipped (via Assume) when the environment is not available.
+ * These tests require a running Servoy application server and an active
+ * solution. They are skipped (via Assume) when the environment is not
+ * available.
  */
-public class CypressFormTestingIntegrationTest
-{
+public class CypressFormTestingIntegrationTest {
 	private static final String TEST_SOLUTION = "test_cypress_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String TEST_FORM = "cypressTestForm";
@@ -71,14 +71,12 @@ public class CypressFormTestingIntegrationTest
 	private static Boolean appServerAvailableCache;
 
 	@Before
-	public void setUp() throws Exception
-	{
+	public void setUp() throws Exception {
 		testingServer = new ServoyTestingServer();
 		specGenerator = new FormSpecGenerator();
 		specRunner = new FormSpecRunner();
 
-		assertNotNull("No Display available - test requires a running Eclipse UI",
-			Display.getDefault());
+		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
 		ensureTestSolutionInWorkspace();
@@ -89,20 +87,18 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@org.junit.AfterClass
-	public static void tearDownClass() throws Exception
-	{
+	public static void tearDownClass() throws Exception {
 		// Wait for server to release formpreview sessions before next test suite starts
 		Thread.sleep(5000);
 	}
 
-
 	// -----------------------------------------------------------------------
-	// showFormInBrowser tests (only 1 test opens browser - validates the combined behavior)
+	// showFormInBrowser tests (only 1 test opens browser - validates the combined
+	// behavior)
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testShowFormInBrowser_opensAndGeneratesSpecFiles() throws Exception
-	{
+	public void testShowFormInBrowser_opensAndGeneratesSpecFiles() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -113,19 +109,15 @@ public class CypressFormTestingIntegrationTest
 
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		assertNotNull("Cypress spec path should not be null", cySpec);
-		assertTrue("Cypress spec file should exist after showFormInBrowser",
-			Files.exists(cySpec));
+		assertTrue("Cypress spec file should exist after showFormInBrowser", Files.exists(cySpec));
 
 		IProject project = activeProject.getProject();
-		Path setupPath = project.getLocation().toFile().toPath()
-			.resolve("forms").resolve(TEST_FORM + ".spec.js");
-		assertTrue("Setup spec.js file should exist in forms/ directory",
-			Files.exists(setupPath));
+		Path setupPath = project.getLocation().toFile().toPath().resolve("forms").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup spec.js file should exist in forms/ directory", Files.exists(setupPath));
 	}
 
 	@Test
-	public void testShowFormInBrowser_doesNotRegenerateExistingSpec() throws Exception
-	{
+	public void testShowFormInBrowser_doesNotRegenerateExistingSpec() throws Exception {
 		ensureForm(TEST_FORM);
 
 		if (!specGenerator.specExists(TEST_FORM))
@@ -139,8 +131,7 @@ public class CypressFormTestingIntegrationTest
 		testingServer.showFormInBrowser(TEST_FORM);
 		long secondModified = Files.getLastModifiedTime(cySpec).toMillis();
 
-		assertTrue("Spec file should not be regenerated if it already exists",
-			firstModified == secondModified);
+		assertTrue("Spec file should not be regenerated if it already exists", firstModified == secondModified);
 	}
 
 	// -----------------------------------------------------------------------
@@ -148,15 +139,13 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testSpecExists_falseBeforeGeneration()
-	{
+	public void testSpecExists_falseBeforeGeneration() {
 		boolean exists = specGenerator.specExists("nonExistentForm_XYZ");
 		assertTrue("specExists should return false for non-existent form", !exists);
 	}
 
 	@Test
-	public void testSpecExists_trueAfterGeneration() throws Exception
-	{
+	public void testSpecExists_trueAfterGeneration() throws Exception {
 		ensureForm(TEST_FORM);
 		if (!specGenerator.specExists(TEST_FORM))
 			specGenerator.generateSpec(TEST_FORM);
@@ -170,8 +159,7 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testGenerateFormSpec_returnsSuccessMessage() throws Exception
-	{
+	public void testGenerateFormSpec_returnsSuccessMessage() throws Exception {
 		ensureForm(TEST_FORM);
 
 		deleteSpecFiles(TEST_FORM);
@@ -179,18 +167,17 @@ public class CypressFormTestingIntegrationTest
 		String result = testingServer.generateFormSpec(TEST_FORM);
 
 		assertNotNull(result);
-		assertTrue("Should mention created files",
-			result.contains("Created") || result.contains("already exist"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("Should mention created files", result.contains("Created"));
 	}
 
 	@Test
-	public void testGenerateFormSpec_nonExistentForm_returnsError()
-	{
+	public void testGenerateFormSpec_nonExistentForm_returnsError() {
 		String result = testingServer.generateFormSpec("totally_fake_form_xyz");
 
 		assertNotNull(result);
 		assertTrue("Should return error for non-existent form",
-			result.contains("Error") || result.contains("not found"));
+				result.contains("Error") || result.contains("not found"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -198,8 +185,7 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testTestForm_runsAndReturnsResults() throws Exception
-	{
+	public void testTestForm_runsAndReturnsResults() throws Exception {
 		ensureForm(TEST_FORM);
 		if (!specGenerator.specExists(TEST_FORM))
 			specGenerator.generateSpec(TEST_FORM);
@@ -207,13 +193,12 @@ public class CypressFormTestingIntegrationTest
 		String result = testingServer.testForm(TEST_FORM);
 
 		assertNotNull("testForm result should not be null", result);
-		assertTrue("testForm should return results",
-			result.contains("passed") || result.contains("failed") || result.contains("Error"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("testForm should return results", result.contains("passed") || result.contains("failed"));
 	}
 
 	@Test
-	public void testTestForm_autoGeneratesSpecIfMissing() throws Exception
-	{
+	public void testTestForm_autoGeneratesSpecIfMissing() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -221,8 +206,7 @@ public class CypressFormTestingIntegrationTest
 
 		assertNotNull(result);
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
-		assertTrue("testForm should auto-generate spec file",
-			cySpec != null && Files.exists(cySpec));
+		assertTrue("testForm should auto-generate spec file", cySpec != null && Files.exists(cySpec));
 	}
 
 	// -----------------------------------------------------------------------
@@ -230,8 +214,7 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testShowFormInBrowser_enablesTestingMode() throws Exception
-	{
+	public void testShowFormInBrowser_enablesTestingMode() throws Exception {
 		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
 
 		ensureForm(TEST_FORM);
@@ -243,8 +226,7 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testTestForm_enablesTestingMode() throws Exception
-	{
+	public void testTestForm_enablesTestingMode() throws Exception {
 		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
 
 		ensureForm(TEST_FORM);
@@ -259,8 +241,7 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testShowAndTest_enablesTestingMode() throws Exception
-	{
+	public void testShowAndTest_enablesTestingMode() throws Exception {
 		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
 
 		ensureForm(TEST_FORM);
@@ -279,21 +260,19 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testCypressConfigIsGenerated() throws Exception
-	{
+	public void testCypressConfigIsGenerated() throws Exception {
 		ensureForm(TEST_FORM);
 		if (!specGenerator.specExists(TEST_FORM))
 			specGenerator.generateSpec(TEST_FORM);
 
 		specRunner.runSpec(TEST_FORM, true);
 
-		Path cypressDir = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
-			.getParent().resolve(".metadata").resolve(".plugins")
-			.resolve("com.servoy.eclipse.developer.mcp").resolve("cypress");
+		Path cypressDir = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().getParent()
+				.resolve(".metadata").resolve(".plugins").resolve("com.servoy.eclipse.developer.mcp")
+				.resolve("cypress");
 		Path configFile = cypressDir.resolve("cypress.config.js");
 
-		assertTrue("cypress.config.js should be generated",
-			Files.exists(configFile));
+		assertTrue("cypress.config.js should be generated", Files.exists(configFile));
 
 		String content = Files.readString(configFile);
 		assertTrue("Config should have baseUrl", content.contains("baseUrl"));
@@ -306,8 +285,7 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testGenerateFormSpec_createsSpecCyFile() throws Exception
-	{
+	public void testGenerateFormSpec_createsSpecCyFile() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -322,21 +300,19 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testGenerateFormSpec_createsSetupJsFile() throws Exception
-	{
+	public void testGenerateFormSpec_createsSetupJsFile() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = activeProject.getProject().getLocation().toFile().toPath()
-			.resolve("forms").resolve(TEST_FORM + ".spec.js");
+		Path setupPath = activeProject.getProject().getLocation().toFile().toPath().resolve("forms")
+				.resolve(TEST_FORM + ".spec.js");
 		assertTrue("Setup .spec.js should be created in forms/", Files.exists(setupPath));
 	}
 
 	@Test
-	public void testGenerateFormSpec_specCyUsesDataCySelectors() throws Exception
-	{
+	public void testGenerateFormSpec_specCyUsesDataCySelectors() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -348,14 +324,13 @@ public class CypressFormTestingIntegrationTest
 		// Forms with named elements use [data-cy] attribute selectors;
 		// empty forms (no elements) fall back to .svy-form CSS class selector
 		assertTrue("Cypress spec must use data-cy selectors or .svy-form for empty forms",
-			content.contains("data-cy") || content.contains(".svy-form"));
+				content.contains("data-cy") || content.contains(".svy-form"));
 		assertTrue("Cypress spec must reference form name",
-			content.contains(TEST_FORM + ".") || content.contains(TEST_FORM + "'"));
+				content.contains(TEST_FORM + ".") || content.contains(TEST_FORM + "'"));
 	}
 
 	@Test
-	public void testGenerateFormSpec_specCyUsesBeforeEach() throws Exception
-	{
+	public void testGenerateFormSpec_specCyUsesBeforeEach() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -369,8 +344,7 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testGenerateFormSpec_specCyUsesSvyTestMode() throws Exception
-	{
+	public void testGenerateFormSpec_specCyUsesSvyTestMode() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -379,20 +353,18 @@ public class CypressFormTestingIntegrationTest
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		String content = Files.readString(cySpec);
 
-		assertTrue("Cypress spec must include svy_testmode=true in URL",
-			content.contains("svy_testmode=true"));
+		assertTrue("Cypress spec must include svy_testmode=true in URL", content.contains("svy_testmode=true"));
 	}
 
 	@Test
-	public void testGenerateFormSpec_setupJsHasProperties() throws Exception
-	{
+	public void testGenerateFormSpec_setupJsHasProperties() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = activeProject.getProject().getLocation().toFile().toPath()
-			.resolve("forms").resolve(TEST_FORM + ".spec.js");
+		Path setupPath = activeProject.getProject().getLocation().toFile().toPath().resolve("forms")
+				.resolve(TEST_FORM + ".spec.js");
 		String content = Files.readString(setupPath);
 
 		assertTrue("Setup must have @properties annotation", content.contains("@properties"));
@@ -401,8 +373,7 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testGenerateFormSpec_specInMediasTests() throws Exception
-	{
+	public void testGenerateFormSpec_specInMediasTests() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -411,12 +382,11 @@ public class CypressFormTestingIntegrationTest
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		assertNotNull(cySpec);
 		assertTrue("Cypress spec should be in medias/tests/ directory",
-			cySpec.toString().contains("medias") && cySpec.toString().contains("tests"));
+				cySpec.toString().contains("medias") && cySpec.toString().contains("tests"));
 	}
 
 	@Test
-	public void testGenerateFormSpec_runCypressDirectly() throws Exception
-	{
+	public void testGenerateFormSpec_runCypressDirectly() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -425,8 +395,9 @@ public class CypressFormTestingIntegrationTest
 		String result = specRunner.runSpec(TEST_FORM, true);
 
 		assertNotNull("runSpec result should not be null", result);
-		assertTrue("runSpec should return pass/fail or error",
-			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("runSpec should return pass/fail or timed out",
+				result.contains("passed") || result.contains("failed") || result.contains("timed out"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -436,43 +407,38 @@ public class CypressFormTestingIntegrationTest
 	private static final String BUTTON_LABEL_FORM = "cypressButtonLabelForm";
 
 	@Test
-	public void testCypress_buttonClickUpdatesLabel() throws Exception
-	{
+	public void testCypress_buttonClickUpdatesLabel() throws Exception {
 		ensureButtonLabelForm();
 		deleteSpecFiles(BUTTON_LABEL_FORM);
 
 		Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("medias/tests");
 		Files.createDirectories(testsDir);
 
-		String cySpec = "describe('" + BUTTON_LABEL_FORM + " - button click', () => {\n\n" +
-			"  beforeEach(() => {\n" +
-			"    cy.visit('?formpreview=" + BUTTON_LABEL_FORM + "&svy_testmode=true');\n" +
-			"    cy.get('[data-cy^=\"" + BUTTON_LABEL_FORM + ".\"]', { timeout: 30000 }).should('exist');\n" +
-			"  });\n\n" +
-			"  it('button click updates label text', () => {\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 1');\n" +
-			"  });\n\n" +
-			"  it('multiple clicks increment counter', () => {\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 1');\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".button_1\"]').click();\n" +
-			"    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM + ".label_2\"]').should('contain.text', 'CLICKED 2');\n" +
-			"  });\n\n" +
-			"});\n";
+		String cySpec = "describe('" + BUTTON_LABEL_FORM + " - button click', () => {\n\n" + "  beforeEach(() => {\n"
+				+ "    cy.visit('?formpreview=" + BUTTON_LABEL_FORM + "&svy_testmode=true');\n"
+				+ "    cy.get('[data-cy^=\"" + BUTTON_LABEL_FORM + ".\"]', { timeout: 30000 }).should('exist');\n"
+				+ "  });\n\n" + "  it('button click updates label text', () => {\n" + "    cy.get('[data-cy=\""
+				+ BUTTON_LABEL_FORM + ".button_1\"]').click();\n" + "    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM
+				+ ".label_2\"]').should('contain.text', 'CLICKED 1');\n" + "  });\n\n"
+				+ "  it('multiple clicks increment counter', () => {\n" + "    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM
+				+ ".button_1\"]').click();\n" + "    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM
+				+ ".label_2\"]').should('contain.text', 'CLICKED 1');\n" + "    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM
+				+ ".button_1\"]').click();\n" + "    cy.get('[data-cy=\"" + BUTTON_LABEL_FORM
+				+ ".label_2\"]').should('contain.text', 'CLICKED 2');\n" + "  });\n\n" + "});\n";
 
-		Files.writeString(testsDir.resolve(BUTTON_LABEL_FORM + ".spec.cy.js"), cySpec, java.nio.charset.StandardCharsets.UTF_8);
+		Files.writeString(testsDir.resolve(BUTTON_LABEL_FORM + ".spec.cy.js"), cySpec,
+				java.nio.charset.StandardCharsets.UTF_8);
 
 		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
 
 		assertNotNull("Cypress button/label test result should not be null", result);
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
 		assertTrue("Cypress button/label test should return results",
-			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+				result.contains("passed") || result.contains("failed") || result.contains("timed out"));
 	}
 
 	@Test
-	public void testCypress_generatedSpecPassesForButtonLabelForm() throws Exception
-	{
+	public void testCypress_generatedSpecPassesForButtonLabelForm() throws Exception {
 		ensureButtonLabelForm();
 		deleteSpecFiles(BUTTON_LABEL_FORM);
 
@@ -481,14 +447,15 @@ public class CypressFormTestingIntegrationTest
 		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
 
 		assertNotNull("Generated spec run result should not be null", result);
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
 		assertTrue("Generated spec should return results",
-			result.contains("passed") || result.contains("failed") || result.contains("Error") || result.contains("timed out"));
+				result.contains("passed") || result.contains("failed") || result.contains("timed out"));
 	}
 
-	private void ensureButtonLabelForm() throws Exception
-	{
+	private void ensureButtonLabelForm() throws Exception {
 		Form existing = activeProject.getEditingSolution().getForm(BUTTON_LABEL_FORM);
-		if (existing != null) return;
+		if (existing != null)
+			return;
 
 		new ServoyArtifactCreationService().createForm(BUTTON_LABEL_FORM, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(BUTTON_LABEL_FORM);
@@ -499,21 +466,14 @@ public class CypressFormTestingIntegrationTest
 		Path formsDir = project.getLocation().toFile().toPath().resolve("forms");
 
 		// Write form script with button click handler
-		String formScript = "/**\n" +
-			" * @type {Number}\n" +
-			" * @properties={typeid:35,uuid:\"" + java.util.UUID.randomUUID() + "\",variableType:4}\n" +
-			" */\n" +
-			"var i = 1;\n\n" +
-			"/**\n" +
-			" * @param {JSEvent} event\n" +
-			" * @properties={typeid:24,uuid:\"" + java.util.UUID.randomUUID() + "\"}\n" +
-			" */\n" +
-			"function onAction(event) {\n" +
-			"\telements.label_2.text = 'CLICKED ' + i;\n" +
-			"\ti++;\n" +
-			"}\n";
+		String formScript = "/**\n" + " * @type {Number}\n" + " * @properties={typeid:35,uuid:\""
+				+ java.util.UUID.randomUUID() + "\",variableType:4}\n" + " */\n" + "var i = 1;\n\n" + "/**\n"
+				+ " * @param {JSEvent} event\n" + " * @properties={typeid:24,uuid:\"" + java.util.UUID.randomUUID()
+				+ "\"}\n" + " */\n" + "function onAction(event) {\n" + "\telements.label_2.text = 'CLICKED ' + i;\n"
+				+ "\ti++;\n" + "}\n";
 
-		Files.writeString(formsDir.resolve(BUTTON_LABEL_FORM + ".js"), formScript, java.nio.charset.StandardCharsets.UTF_8);
+		Files.writeString(formsDir.resolve(BUTTON_LABEL_FORM + ".js"), formScript,
+				java.nio.charset.StandardCharsets.UTF_8);
 	}
 
 	// -----------------------------------------------------------------------
@@ -524,8 +484,7 @@ public class CypressFormTestingIntegrationTest
 	private static final String CYPRESS_TEST_TABLE = "cypress_test_orders";
 
 	@Test
-	public void testFormWithDataSetup_insertsRecord_showsForm_cleansUp() throws Exception
-	{
+	public void testFormWithDataSetup_insertsRecord_showsForm_cleansUp() throws Exception {
 		ensureCypressTestTable();
 
 		String formName = "ordersDataTest";
@@ -542,66 +501,53 @@ public class CypressFormTestingIntegrationTest
 		assertNotNull(setupResult);
 		assertTrue("Setup should succeed: " + setupResult, setupResult.contains("inserted"));
 		assertTrue("Setup should mention server and table: " + setupResult,
-			setupResult.contains(CYPRESS_TEST_SERVER) && setupResult.contains(CYPRESS_TEST_TABLE));
+				setupResult.contains(CYPRESS_TEST_SERVER) && setupResult.contains(CYPRESS_TEST_TABLE));
 
-		try
-		{
+		try {
 			String showResult = testingServer.showFormInBrowser(formName);
 			assertNotNull(showResult);
 			assertTrue("Should contain URL: " + showResult, showResult.contains("formpreview"));
-		}
-		finally
-		{
-			String teardownResult = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_TEST_CITY");
+		} finally {
+			String teardownResult = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+					"CYPRESS_TEST_CITY");
 			assertNotNull(teardownResult);
 			assertTrue("Teardown should succeed: " + teardownResult, teardownResult.contains("deleted"));
 		}
 	}
 
-	private void ensureCypressTestTable() throws Exception
-	{
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager =
-			(com.servoy.j2db.persistence.IServerManagerInternal)ApplicationServerRegistry.get().getServerManager();
+	private void ensureCypressTestTable() throws Exception {
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) ApplicationServerRegistry
+				.get().getServerManager();
 
-		IServerInternal server = (IServerInternal)serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
-		if (server == null)
-		{
+		IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
+		if (server == null) {
 			Class.forName("org.hsqldb.jdbcDriver");
 			com.servoy.j2db.persistence.ServerConfig config = new com.servoy.j2db.persistence.ServerConfig(
-				CYPRESS_TEST_SERVER, "sa", "", "jdbc:hsqldb:mem:" + CYPRESS_TEST_SERVER, null,
-				"org.hsqldb.jdbcDriver",
-				com.servoy.j2db.persistence.ServerConfig.NONE,
-				com.servoy.j2db.persistence.ServerConfig.NONE,
-				5, 2, 20,
-				com.servoy.j2db.persistence.ServerConfig.CONNECTION_EXCEPTION_VALIDATION,
-				null, null, true, true, false, false, 0, null, null, null, false, null, null);
-			server = (IServerInternal)serverManager.createServer(config);
+					CYPRESS_TEST_SERVER, "sa", "", "jdbc:hsqldb:mem:" + CYPRESS_TEST_SERVER, null,
+					"org.hsqldb.jdbcDriver", com.servoy.j2db.persistence.ServerConfig.NONE,
+					com.servoy.j2db.persistence.ServerConfig.NONE, 5, 2, 20,
+					com.servoy.j2db.persistence.ServerConfig.CONNECTION_EXCEPTION_VALIDATION, null, null, true, true,
+					false, false, 0, null, null, null, false, null, null);
+			server = (IServerInternal) serverManager.createServer(config);
 		}
 		assertNotNull("cypress_test server must be available", server);
 
-		try (java.sql.Connection conn = server.getRawConnection())
-		{
+		try (java.sql.Connection conn = server.getRawConnection()) {
 			java.sql.DatabaseMetaData meta = conn.getMetaData();
-			try (java.sql.ResultSet rs = meta.getTables(null, null, CYPRESS_TEST_TABLE.toUpperCase(), null))
-			{
-				if (rs.next()) return;
+			try (java.sql.ResultSet rs = meta.getTables(null, null, CYPRESS_TEST_TABLE.toUpperCase(), null)) {
+				if (rs.next())
+					return;
 			}
 
-			conn.createStatement().executeUpdate(
-				"CREATE TABLE " + CYPRESS_TEST_TABLE + " (" +
-				"  orderid INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY," +
-				"  customerid VARCHAR(50)," +
-				"  shipcity VARCHAR(100)," +
-				"  shipcountry VARCHAR(100)," +
-				"  freight DOUBLE" +
-				")");
+			conn.createStatement().executeUpdate("CREATE TABLE " + CYPRESS_TEST_TABLE + " ("
+					+ "  orderid INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY," + "  customerid VARCHAR(50),"
+					+ "  shipcity VARCHAR(100)," + "  shipcountry VARCHAR(100)," + "  freight DOUBLE" + ")");
 			conn.commit();
 		}
 	}
 
 	@Test
-	public void testExecuteTestSetup_invalidServer_returnsError()
-	{
+	public void testExecuteTestSetup_invalidServer_returnsError() {
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
 		data.put("col1", "val1");
 
@@ -611,24 +557,21 @@ public class CypressFormTestingIntegrationTest
 	}
 
 	@Test
-	public void testExecuteTestTeardown_invalidServer_returnsError()
-	{
+	public void testExecuteTestTeardown_invalidServer_returnsError() {
 		String result = specRunner.executeTestTeardown("nonexistent_server_xyz", "table", "col", "val");
 		assertNotNull(result);
 		assertTrue("Should return error: " + result, result.contains("Error"));
 	}
 
 	@Test
-	public void testExecuteTestSetup_nullParams_returnsError()
-	{
+	public void testExecuteTestSetup_nullParams_returnsError() {
 		String result = specRunner.executeTestSetup(null, null, null);
 		assertNotNull(result);
 		assertTrue("Should return error: " + result, result.contains("Error"));
 	}
 
 	@Test
-	public void testSetupAndTeardown_multipleRecords() throws Exception
-	{
+	public void testSetupAndTeardown_multipleRecords() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> row1 = new java.util.LinkedHashMap<>();
@@ -645,16 +588,16 @@ public class CypressFormTestingIntegrationTest
 		String r2 = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, row2);
 		assertTrue("First insert should succeed: " + r1, r1.contains("inserted"));
 		assertTrue("First insert should have correct message format: " + r1,
-			r1.equals("Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE));
+				r1.equals("Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE));
 		assertTrue("Second insert should succeed: " + r2, r2.contains("inserted"));
 
-		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_MULTI_TEST");
+		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"CYPRESS_MULTI_TEST");
 		assertTrue("Teardown should delete 2 rows: " + teardown, teardown.contains("deleted 2"));
 	}
 
 	@Test
-	public void testSetup_returnMessageFormat() throws Exception
-	{
+	public void testSetup_returnMessageFormat() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -663,31 +606,27 @@ public class CypressFormTestingIntegrationTest
 
 		String result = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 		assertEquals("Return message should match exact format",
-			"Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE, result);
+				"Test setup: inserted 1 row into " + CYPRESS_TEST_SERVER + "." + CYPRESS_TEST_TABLE, result);
 
 		specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_FORMAT_TEST");
 	}
 
 	@Test
-	public void testSetupAndTeardown_newTable_createAndDrop() throws Exception
-	{
+	public void testSetupAndTeardown_newTable_createAndDrop() throws Exception {
 		ensureCypressTestTable();
 
 		String dynamicTable = "cypress_dynamic_" + System.currentTimeMillis();
 
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager =
-			(com.servoy.j2db.persistence.IServerManagerInternal)ApplicationServerRegistry.get().getServerManager();
-		IServerInternal server = (IServerInternal)serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) ApplicationServerRegistry
+				.get().getServerManager();
+		IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
 		assertNotNull("Server must be available", server);
 
-		try (java.sql.Connection conn = server.getRawConnection())
-		{
-			conn.createStatement().executeUpdate(
-				"CREATE TABLE " + dynamicTable + " (" +
-				"  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY," +
-				"  name VARCHAR(100)," +
-				"  value VARCHAR(200)" +
-				")");
+		try (java.sql.Connection conn = server.getRawConnection()) {
+			conn.createStatement()
+					.executeUpdate("CREATE TABLE " + dynamicTable + " ("
+							+ "  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY," + "  name VARCHAR(100),"
+							+ "  value VARCHAR(200)" + ")");
 			conn.commit();
 		}
 
@@ -701,26 +640,24 @@ public class CypressFormTestingIntegrationTest
 		String teardownResult = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, dynamicTable, "name", "test_key");
 		assertTrue("Teardown should succeed: " + teardownResult, teardownResult.contains("deleted 1"));
 
-		try (java.sql.Connection conn = server.getRawConnection())
-		{
+		try (java.sql.Connection conn = server.getRawConnection()) {
 			conn.createStatement().executeUpdate("DROP TABLE " + dynamicTable);
 			conn.commit();
 		}
 	}
 
 	@Test
-	public void testTeardown_noMatchingRows_deletesZero() throws Exception
-	{
+	public void testTeardown_noMatchingRows_deletesZero() throws Exception {
 		ensureCypressTestTable();
 
-		String result = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "NONEXISTENT_CITY_XYZ_999");
+		String result = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"NONEXISTENT_CITY_XYZ_999");
 		assertNotNull(result);
 		assertTrue("Should delete 0 rows: " + result, result.contains("deleted 0"));
 	}
 
 	@Test
-	public void testSetup_verifyDataPersists_viaSelect() throws Exception
-	{
+	public void testSetup_verifyDataPersists_viaSelect() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -730,35 +667,29 @@ public class CypressFormTestingIntegrationTest
 
 		specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 
-		try
-		{
-			com.servoy.j2db.persistence.IServerManagerInternal serverManager =
-				(com.servoy.j2db.persistence.IServerManagerInternal)ApplicationServerRegistry.get().getServerManager();
-			IServerInternal server = (IServerInternal)serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
+		try {
+			com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) ApplicationServerRegistry
+					.get().getServerManager();
+			IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
 
 			try (java.sql.Connection conn = server.getRawConnection();
-				java.sql.PreparedStatement ps = conn.prepareStatement(
-					"SELECT customerid, shipcity, freight FROM " + CYPRESS_TEST_TABLE + " WHERE shipcity = ?"))
-			{
+					java.sql.PreparedStatement ps = conn.prepareStatement("SELECT customerid, shipcity, freight FROM "
+							+ CYPRESS_TEST_TABLE + " WHERE shipcity = ?")) {
 				ps.setString(1, "CYPRESS_VERIFY_TEST");
-				try (java.sql.ResultSet rs = ps.executeQuery())
-				{
+				try (java.sql.ResultSet rs = ps.executeQuery()) {
 					assertTrue("Should find inserted record", rs.next());
 					assertEquals("customerid should match", "VERIFY1", rs.getString("customerid"));
 					assertEquals("shipcity should match", "CYPRESS_VERIFY_TEST", rs.getString("shipcity"));
 					assertEquals("freight should match", 55.55, rs.getDouble("freight"), 0.01);
 				}
 			}
-		}
-		finally
-		{
+		} finally {
 			specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_VERIFY_TEST");
 		}
 	}
 
 	@Test
-	public void testSetup_specialCharactersInValues() throws Exception
-	{
+	public void testSetup_specialCharactersInValues() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -769,13 +700,13 @@ public class CypressFormTestingIntegrationTest
 		String result = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 		assertTrue("Should handle special chars: " + result, result.contains("inserted"));
 
-		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_SPECIAL_CHARS");
+		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"CYPRESS_SPECIAL_CHARS");
 		assertTrue("Teardown should succeed: " + teardown, teardown.contains("deleted 1"));
 	}
 
 	@Test
-	public void testSetup_nullColumnValue() throws Exception
-	{
+	public void testSetup_nullColumnValue() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -786,13 +717,13 @@ public class CypressFormTestingIntegrationTest
 		String result = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 		assertTrue("Should handle null value: " + result, result.contains("inserted"));
 
-		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_NULL_TEST");
+		String teardown = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"CYPRESS_NULL_TEST");
 		assertTrue("Teardown should succeed: " + teardown, teardown.contains("deleted 1"));
 	}
 
 	@Test
-	public void testSetup_integerAndDoubleTypes() throws Exception
-	{
+	public void testSetup_integerAndDoubleTypes() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -803,30 +734,25 @@ public class CypressFormTestingIntegrationTest
 		String result = specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 		assertTrue("Should handle numeric types: " + result, result.contains("inserted"));
 
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager =
-			(com.servoy.j2db.persistence.IServerManagerInternal)ApplicationServerRegistry.get().getServerManager();
-		IServerInternal server = (IServerInternal)serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) ApplicationServerRegistry
+				.get().getServerManager();
+		IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
 
 		try (java.sql.Connection conn = server.getRawConnection();
-			java.sql.PreparedStatement ps = conn.prepareStatement(
-				"SELECT freight FROM " + CYPRESS_TEST_TABLE + " WHERE shipcity = ?"))
-		{
+				java.sql.PreparedStatement ps = conn
+						.prepareStatement("SELECT freight FROM " + CYPRESS_TEST_TABLE + " WHERE shipcity = ?")) {
 			ps.setString(1, "CYPRESS_TYPES_TEST");
-			try (java.sql.ResultSet rs = ps.executeQuery())
-			{
+			try (java.sql.ResultSet rs = ps.executeQuery()) {
 				assertTrue("Should find record", rs.next());
 				assertEquals("freight should be 123.456", 123.456, rs.getDouble("freight"), 0.001);
 			}
-		}
-		finally
-		{
+		} finally {
 			specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_TYPES_TEST");
 		}
 	}
 
 	@Test
-	public void testTeardown_idempotent_secondCallDeletesZero() throws Exception
-	{
+	public void testTeardown_idempotent_secondCallDeletesZero() throws Exception {
 		ensureCypressTestTable();
 
 		java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
@@ -835,10 +761,12 @@ public class CypressFormTestingIntegrationTest
 
 		specRunner.executeTestSetup(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, data);
 
-		String first = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_IDEMPOTENT_TEST");
+		String first = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"CYPRESS_IDEMPOTENT_TEST");
 		assertTrue("First teardown should delete 1: " + first, first.contains("deleted 1"));
 
-		String second = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity", "CYPRESS_IDEMPOTENT_TEST");
+		String second = specRunner.executeTestTeardown(CYPRESS_TEST_SERVER, CYPRESS_TEST_TABLE, "shipcity",
+				"CYPRESS_IDEMPOTENT_TEST");
 		assertTrue("Second teardown should delete 0: " + second, second.contains("deleted 0"));
 	}
 
@@ -847,26 +775,31 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testScreenshotForm_validForm_returnsResult() throws Exception
-	{
+	public void testScreenshotForm_validForm_returnsResult() throws Exception {
 		ensureForm(TEST_FORM);
 		String result = testingServer.screenshotForm(TEST_FORM, 2);
 		assertNotNull("screenshotForm should return a result", result);
-		assertTrue("Should return file path or error: " + result,
-			result.contains(".png") || result.contains("Error") || result.contains("screenshot"));
+		// Screenshot requires a running NG client; when the server is not running
+		// (port -1) the tool returns an environment-dependent error which is
+		// acceptable.
+		if (result.startsWith("Error")) {
+			assertTrue("Environment error should mention screenshot or navigation: " + result,
+					result.contains("screenshot") || result.contains("navigate") || result.contains("localhost:-1"));
+		} else {
+			assertTrue("Should return file path or screenshot info: " + result,
+					result.contains(".png") || result.contains("screenshot"));
+		}
 	}
 
 	@Test
-	public void testScreenshotForm_nullForm_returnsError()
-	{
+	public void testScreenshotForm_nullForm_returnsError() {
 		String result = testingServer.screenshotForm(null, 1);
 		assertNotNull(result);
 		assertTrue("Should return error for null form: " + result, result.contains("Error"));
 	}
 
 	@Test
-	public void testScreenshotForm_nonExistentForm_returnsError()
-	{
+	public void testScreenshotForm_nonExistentForm_returnsError() {
 		String result = testingServer.screenshotForm("totally_fake_form_xyz_99999", 1);
 		assertNotNull(result);
 		assertTrue("Should return error for non-existent form: " + result, result.contains("Error"));
@@ -877,26 +810,23 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testCreateTestFile_validParams_createsFile() throws Exception
-	{
+	public void testCreateTestFile_validParams_createsFile() throws Exception {
 		String fileName = "test_pde_cypress_" + System.currentTimeMillis() + ".js";
 		String result = testingServer.createTestFile(fileName, "TARGET");
 		assertNotNull(result);
-		assertTrue("Should succeed or show path: " + result,
-			result.contains("Created") || result.contains(fileName) || result.contains("Error"));
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("Should succeed or show path: " + result, result.contains("Created") || result.contains(fileName));
 	}
 
 	@Test
-	public void testCreateTestFile_invalidPrefix_returnsError()
-	{
+	public void testCreateTestFile_invalidPrefix_returnsError() {
 		String result = testingServer.createTestFile("invalid_no_prefix.js", "TARGET");
 		assertNotNull(result);
 		assertTrue("Should return error: " + result, result.contains("Error") && result.contains("test_"));
 	}
 
 	@Test
-	public void testCreateTestFile_invalidExtension_returnsError()
-	{
+	public void testCreateTestFile_invalidExtension_returnsError() {
 		String result = testingServer.createTestFile("test_something.txt", "TARGET");
 		assertNotNull(result);
 		assertTrue("Should return error: " + result, result.contains("Error") && result.contains(".js"));
@@ -907,21 +837,21 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testAddTestMethod_validParams_addsMethod() throws Exception
-	{
+	public void testAddTestMethod_validParams_addsMethod() throws Exception {
 		String fileName = "test_pde_addmethod_" + System.currentTimeMillis() + ".js";
 		testingServer.createTestFile(fileName, "TARGET");
 
 		String result = testingServer.addTestMethod(fileName, "test_myNewMethod", "jsunit.assertTrue('works', true);");
 		assertNotNull(result);
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
 		assertTrue("Should succeed: " + result,
-			result.contains("Added") || result.contains("success") || result.contains("replaced") || result.contains("Error"));
+				result.contains("Added") || result.contains("success") || result.contains("replaced"));
 	}
 
 	@Test
-	public void testAddTestMethod_nonExistentFile_returnsError()
-	{
-		String result = testingServer.addTestMethod("test_nonexistent_xyz_99999.js", "test_method", "jsunit.assertTrue(true);");
+	public void testAddTestMethod_nonExistentFile_returnsError() {
+		String result = testingServer.addTestMethod("test_nonexistent_xyz_99999.js", "test_method",
+				"jsunit.assertTrue(true);");
 		assertNotNull(result);
 		assertTrue("Should return error: " + result, result.contains("Error") || result.contains("not found"));
 	}
@@ -931,48 +861,43 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testTestFileExists_afterCreate_returnsTrue() throws Exception
-	{
+	public void testTestFileExists_afterCreate_returnsTrue() throws Exception {
 		String fileName = "test_exists_check_" + System.currentTimeMillis() + ".js";
 		testingServer.createTestFile(fileName, "TARGET");
 
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs =
-			com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance();
+		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+				.getInstance();
 		String solutionName = activeProject.getProject().getName();
 
-		assertTrue("testFileExists should return true after creation",
-			tfs.testFileExists(fileName, solutionName));
+		assertTrue("testFileExists should return true after creation", tfs.testFileExists(fileName, solutionName));
 	}
 
 	@Test
-	public void testTestFileExists_nonExistentFile_returnsFalse()
-	{
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs =
-			com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance();
+	public void testTestFileExists_nonExistentFile_returnsFalse() {
+		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+				.getInstance();
 		String solutionName = activeProject.getProject().getName();
 
 		assertFalse("testFileExists should return false for non-existent file",
-			tfs.testFileExists("test_totally_nonexistent_xyz_99999.js", solutionName));
+				tfs.testFileExists("test_totally_nonexistent_xyz_99999.js", solutionName));
 	}
 
 	@Test
-	public void testTestFileExists_nullSolution_returnsFalse()
-	{
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs =
-			com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance();
+	public void testTestFileExists_nullSolution_returnsFalse() {
+		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+				.getInstance();
 
 		assertFalse("testFileExists should return false for null solution",
-			tfs.testFileExists("test_something.js", null));
+				tfs.testFileExists("test_something.js", null));
 	}
 
 	@Test
-	public void testTestFileExists_invalidSolution_returnsFalse()
-	{
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs =
-			com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance();
+	public void testTestFileExists_invalidSolution_returnsFalse() {
+		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+				.getInstance();
 
 		assertFalse("testFileExists should return false for invalid solution",
-			tfs.testFileExists("test_something.js", "nonexistent_solution_xyz_99999"));
+				tfs.testFileExists("test_something.js", "nonexistent_solution_xyz_99999"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -980,8 +905,7 @@ public class CypressFormTestingIntegrationTest
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testGenerateFormSpec_validForm_generatesFiles() throws Exception
-	{
+	public void testGenerateFormSpec_validForm_generatesFiles() throws Exception {
 		String formName = "specGenTestForm_" + System.currentTimeMillis();
 		ensureForm(formName);
 		deleteSpecFiles(formName);
@@ -989,17 +913,17 @@ public class CypressFormTestingIntegrationTest
 		String result = testingServer.generateFormSpec(formName);
 		assertNotNull(result);
 		assertTrue("Should create spec files: " + result,
-			result.contains("Created") || result.contains("already exist"));
+				result.contains("Created") || result.contains("already exist"));
 	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private Form ensureFormWithDataSource(String formName, String dataSource) throws Exception
-	{
+	private Form ensureFormWithDataSource(String formName, String dataSource) throws Exception {
 		Form existing = activeProject.getEditingSolution().getForm(formName);
-		if (existing != null) return existing;
+		if (existing != null)
+			return existing;
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, dataSource, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
@@ -1007,10 +931,10 @@ public class CypressFormTestingIntegrationTest
 		return form;
 	}
 
-	private Form ensureForm(String formName) throws Exception
-	{
+	private Form ensureForm(String formName) throws Exception {
 		Form existing = activeProject.getEditingSolution().getForm(formName);
-		if (existing != null) return existing;
+		if (existing != null)
+			return existing;
 
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
@@ -1018,59 +942,47 @@ public class CypressFormTestingIntegrationTest
 		return form;
 	}
 
-	private void deleteSpecFiles(String formName)
-	{
-		try
-		{
+	private void deleteSpecFiles(String formName) {
+		try {
 			Path cySpec = specGenerator.getSpecFilePath(formName);
-			if (cySpec != null) Files.deleteIfExists(cySpec);
+			if (cySpec != null)
+				Files.deleteIfExists(cySpec);
 
 			IProject project = activeProject.getProject();
-			Path setupSpec = project.getLocation().toFile().toPath()
-				.resolve("forms").resolve(formName + ".spec.js");
+			Path setupSpec = project.getLocation().toFile().toPath().resolve("forms").resolve(formName + ".spec.js");
 			Files.deleteIfExists(setupSpec);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			// ignore
 		}
 	}
 
-	private void waitForAppServer() throws InterruptedException
-	{
-		if (appServerAvailableCache == null)
-		{
+	private void waitForAppServer() throws InterruptedException {
+		if (appServerAvailableCache == null) {
 			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
-			{
+			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
 				Thread.sleep(500);
 			}
 			appServerAvailableCache = ApplicationServerRegistry.exists();
 		}
-		assertTrue("Servoy application server not started - skipping",
-			appServerAvailableCache);
+		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
 	}
 
-	private void ensureTestSolutionInWorkspace() throws Exception
-	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+	private void ensureTestSolutionInWorkspace() throws Exception {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
+			if (!res.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
 				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
 				res.create(d, monitor);
 			}
-			if (!res.isOpen()) res.open(monitor);
+			if (!res.isOpen())
+				res.open(monitor);
 
 			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists())
-			{
+			if (!sol.exists()) {
 				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
+				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
+						"org.eclipse.dltk.javascript.core.nature" });
 				ICommand sc = d.newCommand();
 				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
 				ICommand sb = d.newCommand();
@@ -1079,107 +991,88 @@ public class CypressFormTestingIntegrationTest
 				d.setReferencedProjects(new IProject[] { res });
 				sol.create(d, monitor);
 			}
-			if (!sol.isOpen()) sol.open(monitor);
+			if (!sol.isOpen())
+				sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + com.servoy.j2db.persistence.AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n" +
-				"solutionType:1024,\ntypeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\"\n",
-				monitor);
+					"fileVersion:" + com.servoy.j2db.persistence.AbstractRepository.repository_version
+							+ ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n"
+							+ "solutionType:1024,\ntypeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\"\n",
+					monitor);
 			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n",
-				monitor);
+					"typeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					monitor);
 		}, new NullProgressMonitor());
 
 		pumpEvents(1000);
 	}
 
-	private void ensureActiveProject() throws Exception
-	{
+	private void ensureActiveProject() throws Exception {
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
 		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName())) return;
+		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
+			return;
 
 		model.refreshServoyProjects();
 		pumpEvents(1000);
 
 		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace",
-			projects != null && projects.length > 0);
+		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
 
 		ServoyProject toActivate = null;
-		for (ServoyProject p : projects)
-		{
-			if (TEST_SOLUTION.equals(p.getProject().getName()))
-			{
+		for (ServoyProject p : projects) {
+			if (TEST_SOLUTION.equals(p.getProject().getName())) {
 				toActivate = p;
 				break;
 			}
 		}
-		if (toActivate == null) toActivate = projects[0];
+		if (toActivate == null)
+			toActivate = projects[0];
 
-		try
-		{
+		try {
 			model.setActiveProject(toActivate, true);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			// caught by assumeNotNull below
 		}
 
 		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
 		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread())
-		{
+		if (display.getThread() == Thread.currentThread()) {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				display.readAndDispatch();
-		}
-		else
-		{
+		} else {
 			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
 				Thread.sleep(200);
 		}
 
-		assertNotNull("Active project not set - skipping",
-			model.getActiveProject());
+		assertNotNull("Active project not set - skipping", model.getActiveProject());
 	}
 
-	private void writeProjectFile(IProject project, String fileName, String content, org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException
-	{
+	private void writeProjectFile(IProject project, String fileName, String content,
+			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
 		org.eclipse.core.resources.IFile file = project.getFile(fileName);
 		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		if (file.exists())
-		{
+		if (file.exists()) {
 			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
-		}
-		else
-		{
+		} else {
 			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
 		}
 	}
 
-
-	private void pumpEvents(long ms)
-	{
-		try
-		{
+	private void pumpEvents(long ms) {
+		try {
 			Display display = Display.getDefault();
 			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread())
-			{
+			if (display.getThread() == Thread.currentThread()) {
 				while (System.currentTimeMillis() < end)
 					display.readAndDispatch();
-			}
-			else
-			{
+			} else {
 				Thread.sleep(ms);
 			}
-		}
-		catch (InterruptedException e)
-		{
+		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
 	}
