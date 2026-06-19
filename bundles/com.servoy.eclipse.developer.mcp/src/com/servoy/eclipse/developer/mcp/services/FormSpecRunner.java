@@ -102,6 +102,10 @@ public class FormSpecRunner
 			pb.directory(activeProject.getProject().getLocation().toFile());
 			pb.redirectErrorStream(true);
 			pb.environment().put("NODE_PATH", cypressDir.resolve("node_modules").toString());
+			// Ensure the bundled node is on PATH so npx/cypress can find their runtime
+			String existingPath = System.getenv("PATH");
+			pb.environment().put("PATH",
+				nodePath.getParent() + File.pathSeparator + (existingPath != null ? existingPath : ""));
 			Process process = pb.start();
 
 			StringBuilder output = new StringBuilder();
@@ -290,6 +294,7 @@ public class FormSpecRunner
 
 			if (needsInstall)
 			{
+				System.out.println("[Servoy MCP] Cypress not found at " + cypressDir + " â installing via npm (this may take a few minutes)...");
 				Files.createDirectories(cypressDir);
 				String packageJson = "{\n" +
 					"  \"name\": \"servoy-cypress\",\n" +
@@ -313,14 +318,28 @@ public class FormSpecRunner
 				ProcessBuilder pb = new ProcessBuilder(npmPath, "install");
 				pb.directory(cypressDir.toFile());
 				pb.redirectErrorStream(true);
+				// Ensure the bundled node is on PATH so npm (a node script) can find its runtime
+				String existingPath = System.getenv("PATH");
+				pb.environment().put("PATH",
+					nodePath.getParent() + File.pathSeparator + (existingPath != null ? existingPath : ""));
 				Process p = pb.start();
+				StringBuilder npmOutput = new StringBuilder();
 				try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)))
 				{
-					while (reader.readLine() != null) { /* drain */ }
+					String line;
+					while ((line = reader.readLine()) != null)
+					{
+						npmOutput.append(line).append("\n");
+					}
 				}
 				p.waitFor(180, TimeUnit.SECONDS);
 
-				if (p.exitValue() != 0) return "Error: npm install failed in cypress directory.";
+				if (p.exitValue() != 0)
+				{
+					System.err.println("[Servoy MCP] npm install FAILED. Output:\n" + npmOutput);
+					return "Error: npm install failed in cypress directory.\n" + npmOutput;
+				}
+				System.out.println("[Servoy MCP] Cypress installed successfully.");
 			}
 			return null;
 		}
