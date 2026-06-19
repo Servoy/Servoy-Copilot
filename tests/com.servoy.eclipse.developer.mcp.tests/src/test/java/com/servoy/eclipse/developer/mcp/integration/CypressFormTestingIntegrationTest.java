@@ -46,6 +46,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.server.shared.IApplicationServerSingleton;
 
 /**
  * Integration tests for the Cypress form testing workflow: showFormInBrowser ->
@@ -516,12 +517,12 @@ public class CypressFormTestingIntegrationTest {
 	}
 
 	private void ensureCypressTestTable() throws Exception {
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) ApplicationServerRegistry
-				.get().getServerManager();
+		IApplicationServerSingleton appServer = ApplicationServerRegistry.get();
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal)appServer.getServerManager();
 
 		IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
 		if (server == null) {
-			Class.forName("org.hsqldb.jdbcDriver");
+			Class.forName("org.hsqldb.jdbcDriver", true, appServer.getServerManager().getClassLoader());
 			com.servoy.j2db.persistence.ServerConfig config = new com.servoy.j2db.persistence.ServerConfig(
 					CYPRESS_TEST_SERVER, "sa", "", "jdbc:hsqldb:mem:" + CYPRESS_TEST_SERVER, null,
 					"org.hsqldb.jdbcDriver", com.servoy.j2db.persistence.ServerConfig.NONE,

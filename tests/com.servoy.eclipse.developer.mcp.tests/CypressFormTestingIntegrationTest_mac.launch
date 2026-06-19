@@ -48,7 +48,7 @@
     <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="-os ${target.os} -ws ${target.ws} -arch ${target.arch} -nl ${target.nl}"/>
     <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="com.servoy.eclipse.developer.mcp.tests"/>
     <stringAttribute key="org.eclipse.jdt.launching.SOURCE_PATH_PROVIDER" value="org.eclipse.pde.ui.workbenchClasspathProvider"/>
-    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Xms256m -Xmx1024m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.ngclient.titanium.build.disabled=true -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dchromium.integration.eclipse.disable=true"/>
+    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Xms256m -Xmx1024m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.ngclient.titanium.build.disabled=true -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=&quot;${servoy_install}/application_server/&quot; -Dproperty-file=&quot;${workspace_loc:com.servoy.eclipse.developer.mcp.tests/testresources}/servoy.properties&quot; -Dchromium.integration.eclipse.disable=true"/>
     <stringAttribute key="pde.version" value="3.3"/>
     <stringAttribute key="product" value="com.servoy.eclipse.core.ide"/>
     <booleanAttribute key="run_in_ui_thread" value="true"/>
