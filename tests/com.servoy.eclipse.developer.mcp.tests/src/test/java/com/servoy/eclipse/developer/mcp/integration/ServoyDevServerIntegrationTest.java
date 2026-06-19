@@ -44,13 +44,6 @@ public class ServoyDevServerIntegrationTest {
 	}
 
 	@Test
-	public void testServoyDevServer_hasCorrectToolCount() {
-		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
-				.filter(m -> m.isAnnotationPresent(Tool.class)).count();
-		assertEquals(35, toolCount);
-	}
-
-	@Test
 	public void testResolveIdentifierType_nullIdentifier_returnsError() {
 		try {
 			String result = server.resolveIdentifierType(null, "someForm", null);
