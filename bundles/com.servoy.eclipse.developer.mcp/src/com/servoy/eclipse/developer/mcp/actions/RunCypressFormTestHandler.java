@@ -75,7 +75,7 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 	 * Runs a single form test and returns the result string.
 	 * Package-private for testability.
 	 */
-	String runFormTestCore(String formName, FormSpecRunner runner) {
+	public String runFormTestCore(String formName, FormSpecRunner runner) {
 		if (formName == null || formName.isBlank()) {
 			return "Error: No form name specified.";
 		}
@@ -86,7 +86,7 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 	 * Enables Servoy NG client testing mode.
 	 * Package-private for testability.
 	 */
-	void enableTestingMode() {
+	public void enableTestingMode() {
 		com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 	}
 

@@ -155,7 +155,9 @@ public class ServoyTestingServer
 				String genResult = specGenerator.generateSpec(formName);
 				if (genResult.startsWith("Error")) return genResult;
 			}
-			return specRunner.runSpec(formName, true);
+			String result = specRunner.runSpec(formName, true);
+			writeToConsole(result);
+			return result;
 		}
 		catch (Exception e)
 		{
@@ -182,7 +184,9 @@ public class ServoyTestingServer
 				String genResult = specGenerator.generateSpec(formName);
 				if (genResult.startsWith("Error")) return genResult;
 			}
-			return specRunner.runSpec(formName, false);
+			String result = specRunner.runSpec(formName, false);
+			writeToConsole(result);
+			return result;
 		}
 		catch (Exception e)
 		{
@@ -448,5 +452,23 @@ public class ServoyTestingServer
 				.toArray(String[]::new);
 		}
 		return new String[0];
+	}
+
+	private void writeToConsole(String message)
+	{
+		try
+		{
+			org.eclipse.ui.console.MessageConsole console = com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil.findOrCreateConsole();
+			console.clearConsole();
+			com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil.showConsole(console);
+			try (org.eclipse.ui.console.MessageConsoleStream stream = console.newMessageStream())
+			{
+				stream.println(message);
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error writing to Cypress console", e);
+		}
 	}
 }

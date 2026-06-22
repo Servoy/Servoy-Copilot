@@ -20,8 +20,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,11 +31,13 @@ import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.console.MessageConsole;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
@@ -196,6 +196,13 @@ public class CypressFormTestingIntegrationTest {
 		assertNotNull("testForm result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
 		assertTrue("testForm should return results", result.contains("passed") || result.contains("failed"));
+
+		MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
+		pumpEvents(300);
+		String consoleContent = console.getDocument().get();
+		assertNotNull("Console document should not be null after testForm", consoleContent);
+		assertTrue("Console should contain test result written by testForm: " + consoleContent,
+				consoleContent.contains("passed") || consoleContent.contains("failed"));
 	}
 
 	@Test
@@ -254,6 +261,14 @@ public class CypressFormTestingIntegrationTest {
 		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
 		assertNotNull("testingMode should be set after showAndTest", value);
 		assertTrue("testingMode should be true", "true".equals(value));
+
+		MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
+		pumpEvents(300);
+		String consoleContent = console.getDocument().get();
+		assertNotNull("Console should have content after showAndTest", consoleContent);
+		assertTrue("Console should contain showAndTest output: " + consoleContent,
+				consoleContent.contains("passed") || consoleContent.contains("failed")
+						|| consoleContent.contains("timed out"));
 	}
 
 	// -----------------------------------------------------------------------

@@ -26,7 +26,7 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	/**
 	 * Holds the aggregate results of running multiple Cypress form tests.
 	 */
-	static class TestRunResult {
+	public static class TestRunResult {
 		final int passed;
 		final int failed;
 		final int total;
@@ -110,7 +110,7 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	 * Iterates through test forms, runs each spec, and counts pass/fail results.
 	 * Package-private for testability.
 	 */
-	TestRunResult runTestsCore(List<String> testForms, FormSpecRunner runner, IProgressMonitor monitor) {
+	public TestRunResult runTestsCore(List<String> testForms, FormSpecRunner runner, IProgressMonitor monitor) {
 		int passed = 0;
 		int failed = 0;
 		List<String> results = new ArrayList<>();
@@ -145,7 +145,7 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	 * Determines whether a test result indicates success.
 	 * Package-private for testability.
 	 */
-	static boolean isTestPassed(String result) {
+	public static boolean isTestPassed(String result) {
 		return result != null && result.contains("All tests passed");
 	}
 
@@ -153,7 +153,7 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	 * Formats the aggregate result summary line.
 	 * Package-private for testability.
 	 */
-	static String formatAggregateResult(TestRunResult result) {
+	public static String formatAggregateResult(TestRunResult result) {
 		return "Total: " + result.total + " | Passed: " + result.passed + " | Failed: " + result.failed;
 	}
 }
