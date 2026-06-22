@@ -103,7 +103,7 @@ public class CypressFormTestingIntegrationTest {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
-		String result = testingServer.showFormInBrowser(TEST_FORM);
+		String result = testingServer.showFormInBrowser(TEST_FORM, false);
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Should contain URL", result.contains("formpreview=" + TEST_FORM));
@@ -129,7 +129,7 @@ public class CypressFormTestingIntegrationTest {
 
 		Thread.sleep(1100);
 
-		testingServer.showFormInBrowser(TEST_FORM);
+		testingServer.showFormInBrowser(TEST_FORM, false);
 		long secondModified = Files.getLastModifiedTime(cySpec).toMillis();
 
 		assertTrue("Spec file should not be regenerated if it already exists", firstModified == secondModified);
@@ -226,7 +226,7 @@ public class CypressFormTestingIntegrationTest {
 		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
 
 		ensureForm(TEST_FORM);
-		testingServer.showFormInBrowser(TEST_FORM);
+		testingServer.showFormInBrowser(TEST_FORM, false);
 
 		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
 		assertNotNull("testingMode should be set after showFormInBrowser", value);
@@ -520,7 +520,7 @@ public class CypressFormTestingIntegrationTest {
 				setupResult.contains(CYPRESS_TEST_SERVER) && setupResult.contains(CYPRESS_TEST_TABLE));
 
 		try {
-			String showResult = testingServer.showFormInBrowser(formName);
+			String showResult = testingServer.showFormInBrowser(formName, false);
 			assertNotNull(showResult);
 			assertTrue("Should contain URL: " + showResult, showResult.contains("formpreview"));
 		} finally {

@@ -412,7 +412,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 			writeProjectFile(sol, "rootmetadata.obj",
 					"fileVersion:" + AbstractRepository.repository_version
 							+ ",\nmustAuthenticate:false,\nname:\"test_pilot_suite\",\n"
-							+ "solutionType:1,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"\n",
+							+ "solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"\n",
 					monitor);
 			writeProjectFile(sol, "solution_settings.obj",
 					"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n", monitor);
