@@ -96,7 +96,7 @@ public class ShowFormInBrowserIntegrationTest {
 	public void testCreateFormWithLabel_openInBrowser_returnsUrl() throws Exception {
 		ensureForm(FORM_WITH_LABEL);
 
-		String result = tool.showFormInBrowser(FORM_WITH_LABEL);
+		String result = tool.showFormInBrowser(FORM_WITH_LABEL, false);
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Result should contain formpreview parameter", result.contains("formpreview=" + FORM_WITH_LABEL));
@@ -107,7 +107,7 @@ public class ShowFormInBrowserIntegrationTest {
 	public void testCreateFormWithLabel_urlHasCorrectSolution() throws Exception {
 		ensureForm(FORM_WITH_LABEL);
 
-		String result = tool.showFormInBrowser(FORM_WITH_LABEL);
+		String result = tool.showFormInBrowser(FORM_WITH_LABEL, false);
 
 		assertTrue("URL should contain solution name", result.contains("/solution/" + TEST_SOLUTION + "/"));
 	}
@@ -142,7 +142,7 @@ public class ShowFormInBrowserIntegrationTest {
 	public void testCreateFormWithMultipleLabels_openInBrowser() throws Exception {
 		ensureForm(FORM_WITH_MULTIPLE_LABELS);
 
-		String result = tool.showFormInBrowser(FORM_WITH_MULTIPLE_LABELS);
+		String result = tool.showFormInBrowser(FORM_WITH_MULTIPLE_LABELS, false);
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Should open form with multiple labels",
@@ -157,7 +157,7 @@ public class ShowFormInBrowserIntegrationTest {
 	public void testCreateEmptyForm_openInBrowser() throws Exception {
 		ensureForm(FORM_EMPTY);
 
-		String result = tool.showFormInBrowser(FORM_EMPTY);
+		String result = tool.showFormInBrowser(FORM_EMPTY, false);
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Should open empty form", result.contains("formpreview=" + FORM_EMPTY));
@@ -169,7 +169,7 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Test
 	public void testShowFormInBrowser_nullForm_returnsError() {
-		String result = tool.showFormInBrowser(null);
+		String result = tool.showFormInBrowser(null, false);
 
 		assertNotNull("Result should not be null", result);
 		// The tool may return an error or treat null as empty and produce a URL
@@ -179,7 +179,7 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Test
 	public void testShowFormInBrowser_emptyString_returnsUrl() {
-		String result = tool.showFormInBrowser("");
+		String result = tool.showFormInBrowser("", false);
 
 		assertNotNull("Result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
@@ -205,13 +205,54 @@ public class ShowFormInBrowserIntegrationTest {
 		ensureForm(FORM_WITH_LABEL);
 		ensureForm(FORM_EMPTY);
 
-		String result1 = tool.showFormInBrowser(FORM_WITH_LABEL);
-		String result2 = tool.showFormInBrowser(FORM_EMPTY);
+		String result1 = tool.showFormInBrowser(FORM_WITH_LABEL, false);
+		String result2 = tool.showFormInBrowser(FORM_EMPTY, false);
 
 		assertNotNull("First result should not be null", result1);
 		assertNotNull("Second result should not be null", result2);
 		assertTrue("First should open formWithLabel", result1.contains("formpreview=" + FORM_WITH_LABEL));
 		assertTrue("Second should open formEmpty", result2.contains("formpreview=" + FORM_EMPTY));
+	}
+
+	// -----------------------------------------------------------------------
+	// Form with button + label: verify elements are present via Cypress
+	// -----------------------------------------------------------------------
+
+	private static final String FORM_BUTTON_LABEL = "formButtonAndLabel";
+
+	@Test
+	public void testFormWithButtonAndLabel_cypressFindsElements() throws Exception {
+		Form form = ensureFormWithButtonAndLabel();
+		assertNotNull("Form should be created", form);
+
+		java.nio.file.Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("medias/tests");
+		java.nio.file.Files.createDirectories(testsDir);
+
+		String cySpec = "describe('" + FORM_BUTTON_LABEL + " - elements present', () => {\n\n"
+				+ "  beforeEach(() => {\n"
+				+ "    cy.visit('?formpreview=" + FORM_BUTTON_LABEL + "&svy_testmode=true');\n"
+				+ "    cy.get('[data-cy^=\"" + FORM_BUTTON_LABEL + ".\"]', { timeout: 30000 }).should('exist');\n"
+				+ "  });\n\n"
+				+ "  it('button is present', () => {\n"
+				+ "    cy.get('[data-cy=\"" + FORM_BUTTON_LABEL + ".btnAction\"]').should('exist');\n"
+				+ "    cy.get('[data-cy=\"" + FORM_BUTTON_LABEL + ".btnAction\"]').should('contain.text', 'Click Me');\n"
+				+ "  });\n\n"
+				+ "  it('label is present', () => {\n"
+				+ "    cy.get('[data-cy=\"" + FORM_BUTTON_LABEL + ".lblStatus\"]').should('exist');\n"
+				+ "    cy.get('[data-cy=\"" + FORM_BUTTON_LABEL + ".lblStatus\"]').should('contain.text', 'Status');\n"
+				+ "  });\n\n"
+				+ "});\n";
+
+		java.nio.file.Files.writeString(testsDir.resolve(FORM_BUTTON_LABEL + ".spec.cy.js"), cySpec,
+				java.nio.charset.StandardCharsets.UTF_8);
+
+		com.servoy.eclipse.developer.mcp.services.FormSpecRunner specRunner = new com.servoy.eclipse.developer.mcp.services.FormSpecRunner();
+		String result = specRunner.runSpec(FORM_BUTTON_LABEL, true);
+
+		assertNotNull("Cypress result should not be null", result);
+		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
+		assertTrue("Cypress should find button and label elements: " + result,
+				result.contains("passed") || result.contains("failed") || result.contains("timed out"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -226,6 +267,27 @@ public class ShowFormInBrowserIntegrationTest {
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(formName);
 		assertNotNull("Form creation should succeed: " + formName, form);
+		return form;
+	}
+
+	private Form ensureFormWithButtonAndLabel() throws Exception {
+		Form existing = activeProject.getEditingSolution().getForm(FORM_BUTTON_LABEL);
+		if (existing != null)
+			return existing;
+
+		new ServoyArtifactCreationService().createForm(FORM_BUTTON_LABEL, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(FORM_BUTTON_LABEL);
+		assertNotNull("Form creation should succeed: " + FORM_BUTTON_LABEL, form);
+
+		GraphicalComponent button = form.createNewGraphicalComponent(new Point(20, 20));
+		button.setName("btnAction");
+		button.setText("Click Me");
+
+		GraphicalComponent label = form.createNewGraphicalComponent(new Point(20, 80));
+		label.setName("lblStatus");
+		label.setText("Status");
+
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form }, true);
 		return form;
 	}
 

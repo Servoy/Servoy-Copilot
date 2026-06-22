@@ -79,10 +79,15 @@ public class ServoyTestingServer
 	public String showFormInBrowser(
 		@ToolParam(description = "The name of the form to show in the browser (e.g. 'mainForm', 'orderDetails')") String formName)
 	{
+		return showFormInBrowser(formName, true);
+	}
+
+	public String showFormInBrowser(String formName, boolean openBrowser)
+	{
 		try
 		{
 			ensureTestingMode();
-			String result = formPreview.showFormInBrowser(formName);
+			String result = formPreview.showFormInBrowser(formName, openBrowser);
 			if (!result.startsWith("Error") && !specGenerator.specExists(formName))
 			{
 				String specResult = specGenerator.generateSpec(formName);

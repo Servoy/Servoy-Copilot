@@ -62,6 +62,11 @@ public class FormPreviewService
 
 	public String showFormInBrowser(String formName)
 	{
+		return showFormInBrowser(formName, true);
+	}
+
+	public String showFormInBrowser(String formName, boolean openBrowser)
+	{
 		try
 		{
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -77,22 +82,25 @@ public class FormPreviewService
 			}
 			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName;
 
-			Display.getDefault().asyncExec(() -> {
-				try
-				{
-					org.eclipse.ui.PlatformUI.getWorkbench().getBrowserSupport()
-						.createBrowser(
-							org.eclipse.ui.browser.IWorkbenchBrowserSupport.LOCATION_BAR |
-								org.eclipse.ui.browser.IWorkbenchBrowserSupport.NAVIGATION_BAR |
-								org.eclipse.ui.browser.IWorkbenchBrowserSupport.AS_EXTERNAL,
-							"servoy.formpreview", null, null)
-						.openURL(new java.net.URL(url));
-				}
-				catch (Exception e)
-				{
-					ServoyLog.logError("Cannot open form in browser", e);
-				}
-			});
+			if (openBrowser)
+			{
+				Display.getDefault().asyncExec(() -> {
+					try
+					{
+						org.eclipse.ui.PlatformUI.getWorkbench().getBrowserSupport()
+							.createBrowser(
+								org.eclipse.ui.browser.IWorkbenchBrowserSupport.LOCATION_BAR |
+									org.eclipse.ui.browser.IWorkbenchBrowserSupport.NAVIGATION_BAR |
+									org.eclipse.ui.browser.IWorkbenchBrowserSupport.AS_EXTERNAL,
+								"servoy.formpreview", null, null)
+							.openURL(new java.net.URL(url));
+					}
+					catch (Exception e)
+					{
+						ServoyLog.logError("Cannot open form in browser", e);
+					}
+				});
+			}
 
 			return "Opened form '" + formName + "' in external browser: " + url;
 		}
