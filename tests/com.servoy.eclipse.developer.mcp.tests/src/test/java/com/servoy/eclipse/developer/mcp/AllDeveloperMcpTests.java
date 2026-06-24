@@ -29,9 +29,11 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
 import com.servoy.eclipse.developer.mcp.servers.AnalyzeCodeToolTest;
 import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
+import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 
 /**
  * JUnit 4 test suite for all Servoy Developer MCP tests.
@@ -51,6 +53,8 @@ import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 	GenerateTestCasesToolTest.class,
 	ServoyMediaServerTest.class,
 	ShowFormInBrowserToolTest.class,
+	ServoyWpmServerTest.class,
+	WpmServiceTest.class,
 })
 public class AllDeveloperMcpTests
 {

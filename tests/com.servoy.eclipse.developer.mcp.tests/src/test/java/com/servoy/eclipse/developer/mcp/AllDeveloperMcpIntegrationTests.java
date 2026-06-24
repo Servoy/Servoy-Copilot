@@ -31,6 +31,7 @@ import com.servoy.eclipse.developer.mcp.integration.PersistDuplicateIntegrationT
 import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
 
 /**
@@ -56,6 +57,7 @@ import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegration
 	RenamePersistIntegrationTest.class,
 	ServoyDevServerIntegrationTest.class,
 	ServoyIdeServerIntegrationTest.class,
+	ServoyWpmServerIntegrationTest.class,
 	ShowFormInBrowserIntegrationTest.class,
 })
 public class AllDeveloperMcpIntegrationTests

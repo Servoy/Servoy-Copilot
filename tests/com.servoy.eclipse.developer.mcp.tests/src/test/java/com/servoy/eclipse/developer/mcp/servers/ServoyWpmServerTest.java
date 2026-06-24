@@ -64,6 +64,100 @@ public class ServoyWpmServerTest
 	}
 
 	@Test
+	public void testServoyWpmServer_hasUninstallPackageTool()
+	{
+		assertTrue("ServoyWpmServer must have an 'uninstallPackage' tool", hasToolNamed("uninstallPackage"));
+	}
+
+	@Test
+	public void testServoyWpmServer_uninstallPackageNameIsRequired()
+	{
+		Method method = findToolMethod("uninstallPackage");
+		assertNotNull(method);
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertTrue("uninstallPackage 'packageName' param must be required", param.required());
+	}
+
+	@Test
+	public void testServoyWpmServer_uninstallPackageHasThreeParams()
+	{
+		Method method = findToolMethod("uninstallPackage");
+		assertNotNull(method);
+		assertEquals("uninstallPackage must have 3 parameters", 3, method.getParameterCount());
+	}
+
+	@Test
+	public void testServoyWpmServer_uninstallPackageSolutionIsOptional()
+	{
+		Method method = findToolMethod("uninstallPackage");
+		assertNotNull(method);
+		ToolParam param = method.getParameters()[1].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertFalse("uninstallPackage 'solutionName' param must be optional", param.required());
+	}
+
+	@Test
+	public void testServoyWpmServer_uninstallPackageForceIsOptional()
+	{
+		Method method = findToolMethod("uninstallPackage");
+		assertNotNull(method);
+		ToolParam param = method.getParameters()[2].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertFalse("uninstallPackage 'force' param must be optional", param.required());
+	}
+
+	@Test
+	public void testServoyWpmServer_hasGetAvailableWebPackagesTool()
+	{
+		assertTrue("ServoyWpmServer must have a 'getAvailableWebPackages' tool", hasToolNamed("getAvailableWebPackages"));
+	}
+
+	@Test
+	public void testServoyWpmServer_hasGetInstalledPackagesTool()
+	{
+		assertTrue("ServoyWpmServer must have a 'getInstalledPackages' tool", hasToolNamed("getInstalledPackages"));
+	}
+
+	@Test
+	public void testServoyWpmServer_hasGetComponentsTool()
+	{
+		assertTrue("ServoyWpmServer must have a 'getComponents' tool", hasToolNamed("getComponents"));
+	}
+
+	@Test
+	public void testServoyWpmServer_hasGetComponentSpecTool()
+	{
+		assertTrue("ServoyWpmServer must have a 'getComponentSpec' tool", hasToolNamed("getComponentSpec"));
+	}
+
+	@Test
+	public void testServoyWpmServer_hasGetComponentDocsTool()
+	{
+		assertTrue("ServoyWpmServer must have a 'getComponentDocs' tool", hasToolNamed("getComponentDocs"));
+	}
+
+	@Test
+	public void testServoyWpmServer_getComponentSpecObjectNameIsRequired()
+	{
+		Method method = findToolMethod("getComponentSpec");
+		assertNotNull(method);
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertTrue("getComponentSpec 'objectName' param must be required", param.required());
+	}
+
+	@Test
+	public void testServoyWpmServer_getComponentsServicesIsOptional()
+	{
+		Method method = findToolMethod("getComponents");
+		assertNotNull(method);
+		ToolParam param = method.getParameters()[1].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertFalse("getComponents 'services' param must be optional", param.required());
+	}
+
+	@Test
 	public void testServoyWpmServer_allToolsHaveDescriptions()
 	{
 		List<Method> toolMethods = getToolMethods();
