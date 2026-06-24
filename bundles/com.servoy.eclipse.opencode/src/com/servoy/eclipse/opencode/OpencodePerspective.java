@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -44,7 +44,7 @@ public class OpencodePerspective implements IPerspectiveFactory {
 
 	@Override
 	public void createInitialLayout(IPageLayout layout) {
-		// Hide the editor area â the browser view fills the space.
+		// Hide the editor area - the browser view fills the space.
 		layout.setEditorAreaVisible(false);
 
 		// Browser view fills the full area.

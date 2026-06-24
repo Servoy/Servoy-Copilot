@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -35,7 +35,7 @@ import org.junit.rules.TemporaryFolder;
  * Unit tests for the package-private {@link ProviderConfigWriter} utility
  * class.
  * <p>
- * No OSGi runtime is required â all methods under test are pure Java and
+ * No OSGi runtime is required - all methods under test are pure Java and
  * operate on in-memory values or temporary file-system resources.
  * </p>
  *
@@ -48,7 +48,7 @@ public class ProviderConfigWriterTest {
 	public TemporaryFolder tmp = new TemporaryFolder();
 
 	// -----------------------------------------------------------------------
-	// buildProviderEnvVars â returns empty when property not set
+	// buildProviderEnvVars - returns empty when property not set
 	// -----------------------------------------------------------------------
 
 	/**
@@ -111,7 +111,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â file does not exist: no-op
+	// mergeProviderConfig - file does not exist: no-op
 	// -----------------------------------------------------------------------
 
 	/**
@@ -128,7 +128,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â existing file with $schema: unchanged
+	// mergeProviderConfig - existing file with $schema: unchanged
 	// -----------------------------------------------------------------------
 
 	/**
@@ -158,7 +158,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â existing file without $schema: schema inserted
+	// mergeProviderConfig - existing file without $schema: schema inserted
 	// -----------------------------------------------------------------------
 
 	/**
@@ -191,7 +191,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â provider/model keys from zip are preserved as-is
+	// mergeProviderConfig - provider/model keys from zip are preserved as-is
 	// -----------------------------------------------------------------------
 
 	/**
@@ -222,7 +222,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â user-added keys preserved
+	// mergeProviderConfig - user-added keys preserved
 	// -----------------------------------------------------------------------
 
 	/**
@@ -249,7 +249,7 @@ public class ProviderConfigWriterTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// mergeProviderConfig â mcp block byte-for-byte unchanged
+	// mergeProviderConfig - mcp block byte-for-byte unchanged
 	// -----------------------------------------------------------------------
 
 	/**

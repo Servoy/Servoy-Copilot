@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -41,7 +41,7 @@ public class ServoyWpmServer
 
 	@Tool(name = "searchPackages", description = "Search Servoy Package Manager (SPM) for available components, services, or layouts by keyword. Returns matching packages with name, type, description, version, and install status.")
 	public String searchPackages(
-		@ToolParam(name = "query", description = "Search keywords â package name, description, or functionality (e.g. 'calendar', 'data grid', 'excel export')") String query,
+		@ToolParam(name = "query", description = "Search keywords - package name, description, or functionality (e.g. 'calendar', 'data grid', 'excel export')") String query,
 		@ToolParam(name = "packageType", description = "Filter by package type: Web-Component, Web-Service, Web-Layout, Solution, Solution-Main. Leave empty for all types.", required = false) String packageType)
 	{
 		try

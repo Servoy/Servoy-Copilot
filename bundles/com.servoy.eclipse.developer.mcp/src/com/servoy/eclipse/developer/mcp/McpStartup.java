@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -23,7 +23,7 @@ import org.eclipse.ui.PlatformUI;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
- * IStartup implementation â triggers early activation of this plugin and
+ * IStartup implementation - triggers early activation of this plugin and
  * bootstraps the {@link McpServerRegistry} via E4 dependency injection once
  * the workbench window is available.
  */

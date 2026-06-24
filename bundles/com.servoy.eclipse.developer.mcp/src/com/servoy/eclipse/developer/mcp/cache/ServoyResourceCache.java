@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -30,7 +30,7 @@ import java.util.Optional;
  * </p>
  * <p>
  * URIs use the scheme {@code workspace:///ProjectName/path/to/file}.
- * No JDT dependency â Servoy Developer is not a Java IDE.
+ * No JDT dependency - Servoy Developer is not a Java IDE.
  * </p>
  * <p>
  * This is a process-scoped singleton. It is populated as a side-effect
@@ -142,7 +142,7 @@ public class ServoyResourceCache
 		StringBuilder sb = new StringBuilder();
 		for (CachedEntry e : entries.values())
 		{
-			sb.append("â¢ ").append(e.toSummary()).append("\n");
+			sb.append("-¢ ").append(e.toSummary()).append("\n");
 		}
 		return sb.toString();
 	}

@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -32,7 +32,7 @@ import org.eclipse.core.runtime.IPath;
 /**
  * Provides Markdown outline and section reading for MCP tools.
  * <p>
- * Ported from AssistAI's {@code MarkdownService} â no changes needed, pure Eclipse resources API.
+ * Ported from AssistAI's {@code MarkdownService} - no changes needed, pure Eclipse resources API.
  * </p>
  */
 @org.eclipse.e4.core.di.annotations.Creatable
@@ -153,7 +153,7 @@ public class MarkdownService
 		}
 		catch (NumberFormatException e)
 		{
-			// Not a number â search by text
+			// Not a number - search by text
 		}
 
 		if (target == null)

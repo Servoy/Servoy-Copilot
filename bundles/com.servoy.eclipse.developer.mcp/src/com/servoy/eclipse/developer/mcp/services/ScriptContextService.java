@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -247,7 +247,7 @@ public class ScriptContextService
 				return sb.toString();
 			}
 
-			// Other model element â try JSDoc fallback
+			// Other model element - try JSDoc fallback
 			String jsDocType = extractJSDocType(fileContent, offset);
 			if (jsDocType != null)
 			{

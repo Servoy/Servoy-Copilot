@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -58,13 +58,13 @@ import jakarta.servlet.http.HttpServlet;
 @Singleton
 public class McpServerRegistry {
 	/**
-	 * URL prefix for all MCP endpoints â distinct from the existing /mcp path
+	 * URL prefix for all MCP endpoints - distinct from the existing /mcp path
 	 * used by workflows.
 	 */
 	public static final String MCP_PATH_PREFIX = "/mcp";
 
 	/**
-	 * Named servlet wrapper classes â one per planned endpoint. Tomcat uses
+	 * Named servlet wrapper classes - one per planned endpoint. Tomcat uses
 	 * getClass().getSimpleName() as the wrapper name, so each registered
 	 * ServletInstance must be an instance of a distinct class. These named inner
 	 * classes provide that uniqueness without touching TomcatStartStop.
@@ -141,7 +141,7 @@ public class McpServerRegistry {
 		}
 	}
 
-	/** Maps server name â named servlet class to use as the Tomcat wrapper. */
+	/** Maps server name - named servlet class to use as the Tomcat wrapper. */
 	private static final Map<String, java.util.function.BiFunction<String, HttpServlet, BearerTokenAuthenticationFilter>> SERVLET_FACTORIES;
 	static {
 		SERVLET_FACTORIES = new HashMap<>();
@@ -224,7 +224,7 @@ public class McpServerRegistry {
 			var factory = SERVLET_FACTORIES.get(serverName);
 			if (factory == null) {
 				ServoyLog.logWarning("Servoy Developer MCP: no named servlet class for server '" + serverName
-						+ "' â skipping endpoint " + endpointPath, null);
+						+ "' - skipping endpoint " + endpointPath, null);
 				continue;
 			}
 

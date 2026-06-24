@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -58,7 +58,7 @@ class ProviderConfigWriter {
 	 * Returns an empty map when the property is absent or blank.
 	 * </p>
 	 *
-	 * @return unmodifiable map â either empty or a single-entry map with
+	 * @return unmodifiable map - either empty or a single-entry map with
 	 *         {@code GENAI_API_KEY}
 	 */
 	static Map<String, String> buildProviderEnvVars() {
@@ -87,7 +87,7 @@ class ProviderConfigWriter {
 		try {
 			existingJson = Files.readString(configFile, StandardCharsets.UTF_8);
 		} catch (IOException e) {
-			// Cannot read â leave the file as-is
+			// Cannot read - leave the file as-is
 			return;
 		}
 
@@ -194,7 +194,7 @@ class ProviderConfigWriter {
 		String searchKey = "\"" + key + "\""; //$NON-NLS-1$ //$NON-NLS-2$
 		int keyPos = json.indexOf(searchKey);
 		if (keyPos >= 0) {
-			// Key exists â replace its value
+			// Key exists - replace its value
 			int colonPos = json.indexOf(':', keyPos + searchKey.length());
 			if (colonPos < 0)
 				return json;
@@ -207,7 +207,7 @@ class ProviderConfigWriter {
 			// Replace from opening quote to closing quote (inclusive)
 			return json.substring(0, quoteStart) + "\"" + value + "\"" + json.substring(quoteEnd + 1); //$NON-NLS-1$ //$NON-NLS-2$
 		}
-		// Key absent â insert before the closing brace of the root object
+		// Key absent - insert before the closing brace of the root object
 		return insertTopLevelEntry(json, "\"" + key + "\": \"" + value + "\""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 	}
 
@@ -225,7 +225,7 @@ class ProviderConfigWriter {
 		String searchKey = "\"" + key + "\""; //$NON-NLS-1$ //$NON-NLS-2$
 		int keyPos = json.indexOf(searchKey);
 		if (keyPos >= 0) {
-			// Key exists â replace the entire object value
+			// Key exists - replace the entire object value
 			int colonPos = json.indexOf(':', keyPos + searchKey.length());
 			if (colonPos < 0)
 				return json;
@@ -249,7 +249,7 @@ class ProviderConfigWriter {
 			// Replace from opening brace to closing brace (inclusive)
 			return json.substring(0, braceStart) + objectJson + json.substring(pos + 1);
 		}
-		// Key absent â insert before the closing brace of the root object
+		// Key absent - insert before the closing brace of the root object
 		return insertTopLevelEntry(json, "\"" + key + "\": " + objectJson); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
@@ -266,7 +266,7 @@ class ProviderConfigWriter {
 		return before + comma + "\n  " + fragment + "\n" + json.substring(lastBrace); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
-	/** Private constructor â static utility class. */
+	/** Private constructor - static utility class. */
 	private ProviderConfigWriter() {
 	}
 }

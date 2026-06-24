@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -37,8 +37,8 @@ import dev.langchain4j.agent.tool.Tool;
  * MCP tool that reads the JSUnit coverage JSON report produced by JSUnitCoverageWriter
  * and exposes it to the AI assistant in two forms:
  * <ul>
- *   <li>{@link #getJSUnitCoverageReport} â compact markdown summary of covered/uncovered lines</li>
- *   <li>{@link #suggestTestsFromCoverage} â concrete test suggestions for uncovered lines</li>
+ *   <li>{@link #getJSUnitCoverageReport} - compact markdown summary of covered/uncovered lines</li>
+ *   <li>{@link #suggestTestsFromCoverage} - concrete test suggestions for uncovered lines</li>
  * </ul>
  */
 public interface IJSUnitCoverageTool
@@ -120,7 +120,7 @@ public interface IJSUnitCoverageTool
 
 			if (candidates.isEmpty())
 			{
-				return "All functions have full coverage â no uncovered lines found.";
+				return "All functions have full coverage - no uncovered lines found.";
 			}
 
 			List<FunctionCoverage> top = candidates.subList(0, Math.min(limit, candidates.size()));

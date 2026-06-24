@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -45,8 +45,8 @@ import org.eclipse.ui.texteditor.ITextEditor;
  * Ported from AssistAI's {@code ConsoleService}, {@code EditorService}, and
  * {@code CodeAnalysisService} (markers only). Differences:
  * <ul>
- *   <li>No JDT dependency â {@code getCompilationErrors} uses generic {@link IMarker} API.</li>
- *   <li>No {@code UISynchronize} / {@code UISynchronizeCallable} â Servoy Developer MCP runs headless.</li>
+ *   <li>No JDT dependency - {@code getCompilationErrors} uses generic {@link IMarker} API.</li>
+ *   <li>No {@code UISynchronize} / {@code UISynchronizeCallable} - Servoy Developer MCP runs headless.</li>
  * </ul>
  * </p>
  */

@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -132,7 +132,7 @@ public class WorkspaceService
 			response.append(" (lines ").append(effectiveStart).append("-").append(effectiveEnd)
 				.append(" of ").append(totalLines).append(")");
 			if (effectiveEnd < totalLines && endLine <= 0)
-				response.append(" [truncated at ").append(MAX_LINES_DEFAULT).append(" lines â use startLine/endLine for more]");
+				response.append(" [truncated at ").append(MAX_LINES_DEFAULT).append(" lines - use startLine/endLine for more]");
 			response.append("\n\n```\n");
 
 			int width = String.valueOf(totalLines).length();

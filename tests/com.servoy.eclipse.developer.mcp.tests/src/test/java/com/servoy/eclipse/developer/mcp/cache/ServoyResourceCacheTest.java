@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -30,7 +30,7 @@ import org.junit.Test;
 
 /**
  * JUnit 4 tests for {@link ServoyResourceCache}.
- * No OSGi or Eclipse workspace required â pure Java.
+ * No OSGi or Eclipse workspace required - pure Java.
  */
 public class ServoyResourceCacheTest
 {
@@ -91,7 +91,7 @@ public class ServoyResourceCacheTest
 	@Test
 	public void testLruEviction_maxEntriesExceeded() throws Exception
 	{
-		// Put 21 entries â the 1st should be evicted (LRU)
+		// Put 21 entries - the 1st should be evicted (LRU)
 		for (int i = 1; i <= 21; i++)
 		{
 			cache.put("workspace:///P/file" + i + ".js", "file" + i + ".js", "WORKSPACE_FILE", "content" + i);

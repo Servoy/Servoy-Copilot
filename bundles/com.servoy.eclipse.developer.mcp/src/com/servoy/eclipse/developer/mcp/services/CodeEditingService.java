@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -47,9 +47,9 @@ import org.eclipse.core.runtime.NullProgressMonitor;
  * <p>
  * Ported from AssistAI's {@code CodeEditingService}. Differences:
  * <ul>
- *   <li>No JDT dependencies â no Java refactoring, no code formatter, no organize imports.</li>
- *   <li>No {@code AiIgnoreService} â access control is at the MCP Bearer token layer.</li>
- *   <li>No {@code UISynchronize} / editor refresh â the MCP server runs headless in Servoy Developer.</li>
+ *   <li>No JDT dependencies - no Java refactoring, no code formatter, no organize imports.</li>
+ *   <li>No {@code AiIgnoreService} - access control is at the MCP Bearer token layer.</li>
+ *   <li>No {@code UISynchronize} / editor refresh - the MCP server runs headless in Servoy Developer.</li>
  * </ul>
  * </p>
  */

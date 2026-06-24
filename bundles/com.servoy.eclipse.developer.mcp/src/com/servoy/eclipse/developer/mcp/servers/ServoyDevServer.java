@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -658,7 +658,7 @@ public class ServoyDevServer {
 	}
 
 	@Tool(name = "setTarget", description = "Sets the active Servoy solution (target) in the Developer IDE. "
-			+ "Equivalent to activateSolution â loads the solution and its modules, and triggers a workspace build.", type = "object")
+			+ "Equivalent to activateSolution - loads the solution and its modules, and triggers a workspace build.", type = "object")
 	public String setTarget(
 			@ToolParam(name = "solutionName", description = "The name of the solution to activate", required = true) String solutionName) {
 		return activateSolution(solutionName);
@@ -2049,7 +2049,7 @@ public class ServoyDevServer {
 			boolean isViewable = Boolean.parseBoolean(viewable);
 			boolean isAccessible = Boolean.parseBoolean(accessible);
 
-			if (!isViewable && isAccessible) return "Error: Invalid combination â accessible=true has no effect when viewable=false. Valid combinations: viewable+accessible, viewable only, or neither.";
+			if (!isViewable && isAccessible) return "Error: Invalid combination - accessible=true has no effect when viewable=false. Valid combinations: viewable+accessible, viewable only, or neither.";
 
 			com.servoy.eclipse.model.repository.WorkspaceUserManager userManager = getUserManager();
 			if (userManager == null) return "Error: User manager not available";

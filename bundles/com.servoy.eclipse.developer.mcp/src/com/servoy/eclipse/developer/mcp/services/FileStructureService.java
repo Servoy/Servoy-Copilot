@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -37,7 +37,7 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * <p>
  * Ported from {@code com.servoy.eclipse.servoypilot.services.FileStructureService}.
  * Extracts symbols (functions, variables) with line numbers and parameter names.
- * Uses DLTK's {@code ISourceModule.getChildren()} for symbol extraction â fast,
+ * Uses DLTK's {@code ISourceModule.getChildren()} for symbol extraction - fast,
  * cached by DLTK's model infrastructure.
  * </p>
  */

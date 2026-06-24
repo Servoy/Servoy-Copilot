@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -40,20 +40,20 @@ import com.servoy.eclipse.ui.browser.IBrowser;
  * <p>
  * URL initialisation happens entirely inside {@link #createPartControl} so
  * that the view self-initialises correctly whether it is opened for the first
- * time or reopened after being closed â without needing a restart of the
+ * time or reopened after being closed - without needing a restart of the
  * opencode server process.
  * </p>
  * <p>
  * Three startup paths are handled:
  * <ol>
- * <li><b>No active solution</b> â a warning page is shown and an
+ * <li><b>No active solution</b> - a warning page is shown and an
  * {@link IActiveProjectListener} is registered. When a solution is
  * activated the listener navigates to the correct URL and unregisters
  * itself.</li>
- * <li><b>Active solution, server still starting</b> â the loading page is
+ * <li><b>Active solution, server still starting</b> - the loading page is
  * shown and a background thread waits for the server, then
  * navigates.</li>
- * <li><b>Active solution, server already ready</b> â navigation happens
+ * <li><b>Active solution, server already ready</b> - navigation happens
  * immediately (typical on reopen after the server is up).</li>
  * </ol>
  * </p>
@@ -98,11 +98,11 @@ public class OpenCodeView extends ViewPart {
 			[data-component="icon-button"][data-variant="primary"]:not(:disabled):hover {
 			  background-color: #d4891e !important;
 			}
-			/* Hide the session sidebar toggle button â panel is opened via JS */
+			/* Hide the session sidebar toggle button - panel is opened via JS */
 			[data-component="icon-button"][data-icon="menu"].titlebar-icon {
 			  display: none !important;
 			}
-			/* Hide the terminal toggle â not needed in the embedded view */
+			/* Hide the terminal toggle - not needed in the embedded view */
 			[aria-controls="terminal-panel"] {
 			  display: none !important;
 			}
@@ -194,7 +194,7 @@ public class OpenCodeView extends ViewPart {
 	}
 
 	// -----------------------------------------------------------------------
-	// URL initialisation â called on every createPartControl
+	// URL initialisation - called on every createPartControl
 	// -----------------------------------------------------------------------
 
 
@@ -207,11 +207,11 @@ public class OpenCodeView extends ViewPart {
 	 * Single state machine for the view URL. Re-entered whenever any precondition
 	 * changes (login completes, solution activated).
 	 * <ol>
-	 * <li>Login not yet done â show loading, wait for login event.</li>
-	 * <li>Login done, Servoy AI not configured â show "enable Servoy AI" page.</li>
-	 * <li>Dev/external-server override â use that URL directly.</li>
-	 * <li>No active solution â show "no solution" page, wait for project event.</li>
-	 * <li>All conditions met â start opencode (first time) and navigate.</li>
+	 * <li>Login not yet done - show loading, wait for login event.</li>
+	 * <li>Login done, Servoy AI not configured - show "enable Servoy AI" page.</li>
+	 * <li>Dev/external-server override - use that URL directly.</li>
+	 * <li>No active solution - show "no solution" page, wait for project event.</li>
+	 * <li>All conditions met - start opencode (first time) and navigate.</li>
 	 * </ol>
 	 */
 	private void initUrl() {
@@ -246,13 +246,13 @@ public class OpenCodeView extends ViewPart {
 			return;
 		}
 
-		// State 5: all conditions met â start opencode if not already started
+		// State 5: all conditions met - start opencode if not already started
 		Activator activator = Activator.getInstance();
 		if (activator == null) return;
 
 		activator.ensureServerStarting();
 
-		// Always resolve session via the switcher thread â it may need to wait for
+		// Always resolve session via the switcher thread - it may need to wait for
 		// server startup AND call the REST API to get/create a session.
 		browser.setUrl(getPageUrl("/resources/opencode-loading.html")); //$NON-NLS-1$
 		startUrlSwitcherThread();
@@ -306,7 +306,7 @@ public class OpenCodeView extends ViewPart {
 	}
 
 
-	/** Called when a solution is activated â re-enter the state machine on the UI thread. */
+	/** Called when a solution is activated - re-enter the state machine on the UI thread. */
 	private void onActiveSolutionAvailable() {
 		PlatformUI.getWorkbench().getDisplay().asyncExec(this::initUrl);
 	}
@@ -368,7 +368,7 @@ public class OpenCodeView extends ViewPart {
 
 	/**
 	 * Builds the URL to open for a project. Uses {@code /<base64>/session}
-	 * (no specific session ID) â the same path opencode's own UI navigates to
+	 * (no specific session ID) - the same path opencode's own UI navigates to
 	 * when opening a project, so it goes through the correct routing.
 	 */
 	private String resolveSessionUrl(int port, String projectPath) {

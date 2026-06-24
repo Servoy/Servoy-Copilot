@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -36,8 +36,8 @@ import org.eclipse.core.runtime.IPath;
  * <p>
  * Ported from AssistAI's {@code LocalHistoryService}. Differences:
  * <ul>
- *   <li>No {@code AiIgnoreService} â access control is not needed in Servoy Developer MCP</li>
- *   <li>No {@code UISynchronize} / editor refresh â the MCP server runs headless</li>
+ *   <li>No {@code AiIgnoreService} - access control is not needed in Servoy Developer MCP</li>
+ *   <li>No {@code UISynchronize} / editor refresh - the MCP server runs headless</li>
  *   <li>{@code restoreFileVersion} has been removed (no longer exposed as an MCP tool)</li>
  * </ul>
  * </p>

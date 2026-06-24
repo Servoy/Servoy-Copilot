@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -279,7 +279,7 @@ public class JSUnitRunnerService
 	private String formatGroupedResults(String groupType, List<String> names, List<ITestRunSession> sessions)
 	{
 		StringBuilder sb = new StringBuilder();
-		sb.append("**JSUnit Test Results â ").append(groupType).append("**\n\n");
+		sb.append("**JSUnit Test Results - ").append(groupType).append("**\n\n");
 
 		long totalPassed = 0, totalFailed = 0, totalErrors = 0, totalIgnored = 0;
 		List<String> details = new ArrayList<>();
@@ -291,7 +291,7 @@ public class JSUnitRunnerService
 
 			if (session == null)
 			{
-				details.add("\n**" + name + "** â timed out");
+				details.add("\n**" + name + "** - timed out");
 				continue;
 			}
 
@@ -309,7 +309,7 @@ public class JSUnitRunnerService
 			totalIgnored += ignored;
 
 			StringBuilder detail = new StringBuilder();
-			detail.append("\n**").append(name).append("** â ");
+			detail.append("\n**").append(name).append("** - ");
 			detail.append("Passed: ").append(passed).append("  Failed: ").append(failed).append("  Errors: ").append(errors);
 			if (ignored > 0) detail.append("  Ignored: ").append(ignored);
 
@@ -327,7 +327,7 @@ public class JSUnitRunnerService
 				{
 					if (trace.getExpected() != null)
 					{
-						detail.append(" â expected: ").append(trace.getExpected())
+						detail.append(" - expected: ").append(trace.getExpected())
 							.append(", actual: ").append(trace.getActual());
 					}
 					else if (trace.getTrace() != null)

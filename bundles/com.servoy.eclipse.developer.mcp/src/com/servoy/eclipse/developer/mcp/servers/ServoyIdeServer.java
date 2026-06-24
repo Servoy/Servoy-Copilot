@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -358,7 +358,7 @@ public class ServoyIdeServer {
 		sb.append("# Search Results (").append(results.size()).append(" match(es))\n\n");
 		for (SearchResult r : results) {
 			sb.append("- ").append(r.filePath()).append(":").append(r.lineNumber());
-			sb.append(" â ").append(r.lineContent().trim()).append("\n");
+			sb.append(" - ").append(r.lineContent().trim()).append("\n");
 		}
 		return sb.toString();
 	}
@@ -401,7 +401,7 @@ public class ServoyIdeServer {
 			@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
 			@ToolParam(name = "methodNames", description = "Comma-separated function names to retrieve (e.g. 'onLoad,saveRecord')", required = true) String methodNames,
 			@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName,
-			@ToolParam(name = "includeJavadoc", description = "Not used â kept for API compatibility.", required = false) String includeJavadoc) {
+			@ToolParam(name = "includeJavadoc", description = "Not used - kept for API compatibility.", required = false) String includeJavadoc) {
 		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
 		if (file == null)
 			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
@@ -435,7 +435,7 @@ public class ServoyIdeServer {
 			@ToolParam(name = "name", description = "Form name, scope name, or project-relative path (e.g. 'customers', 'utils', 'forms/customers.js')", required = true) String name,
 			@ToolParam(name = "methodNames", description = "Comma-separated function names to fully expand. Functions not listed are collapsed to their signature.", required = false) String methodNames,
 			@ToolParam(name = "moduleName", description = "Module/project name to search in. If omitted, searches in the active solution.", required = false) String moduleName,
-			@ToolParam(name = "excludeImports", description = "Not used â kept for API compatibility.", required = false) String excludeImports) {
+			@ToolParam(name = "excludeImports", description = "Not used - kept for API compatibility.", required = false) String excludeImports) {
 		org.eclipse.core.resources.IFile file = servoyScriptResolver.resolveScript(name, moduleName);
 		if (file == null)
 			return servoyScriptResolver.buildNotFoundMessage(name, moduleName);
@@ -457,7 +457,7 @@ public class ServoyIdeServer {
 		sb.append("# ").append(resourcePath).append("\n\n");
 
 		if (outline.isEmpty()) {
-			// No symbols found â return full file
+			// No symbols found - return full file
 			return workspaceService.readProjectResource(projectName, resourcePath, true, 0, 0);
 		}
 

@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -82,7 +82,7 @@ class OpenCodeUtil {
 		return null;
 	}
 
-	/** Private constructor â static utility class. */
+	/** Private constructor - static utility class. */
 	private OpenCodeUtil() {
 	}
 }
