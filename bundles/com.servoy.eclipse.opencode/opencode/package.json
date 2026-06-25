@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "opencode-ai": "~1.16.0"
+    "opencode-ai": "~1.17.7"
   }
 }
