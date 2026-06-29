@@ -3,35 +3,59 @@
   "mcp": {
     "eclipse-ide": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-ide"
+      "url": "http://localhost:8085/mcp/eclipse-ide",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "time": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/time"
+      "url": "http://localhost:8085/mcp/time",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "memory": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/memory"
+      "url": "http://localhost:8085/mcp/memory",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "eclipse-coder": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-coder"
+      "url": "http://localhost:8085/mcp/eclipse-coder",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "eclipse-runner": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-runner"
+      "url": "http://localhost:8085/mcp/eclipse-runner",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "eclipse-context": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-context"
+      "url": "http://localhost:8085/mcp/eclipse-context",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "eclipse-git": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-git"
+      "url": "http://localhost:8085/mcp/eclipse-git",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     },
     "eclipse-pde": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-pde"
+      "url": "http://localhost:8085/mcp/eclipse-pde",
+      "headers": {
+        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
+      }
     }
   }
 }

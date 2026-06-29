@@ -258,7 +258,7 @@ public class IdeStateService
 				result.append(" at ").append(filePath);
 				if (lineNumber > 0) result.append(":").append(lineNumber);
 				result.append("\n  ").append(message).append("\n");
-				result.append("  *(source: ").append(sourceId).append(")*\n\n");
+				result.append("  *(source: ").append(sourceId).append(", Marker ID: ").append(marker.getId()).append(")*\n\n");
 
 				count++;
 			}

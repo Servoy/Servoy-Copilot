@@ -21,6 +21,7 @@ import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
 
 import com.servoy.eclipse.developer.mcp.integration.AddTestMethodIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.CodeAnalysisIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CreateTestFileIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CypressConsoleUtilIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CypressFormTestingIntegrationTest;
@@ -47,6 +48,7 @@ import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegration
 @RunWith(Suite.class)
 @SuiteClasses({
 	AddTestMethodIntegrationTest.class,
+	CodeAnalysisIntegrationTest.class,
 	CreateTestFileIntegrationTest.class,
 	CypressConsoleUtilIntegrationTest.class,
 	CypressFormTestingIntegrationTest.class,

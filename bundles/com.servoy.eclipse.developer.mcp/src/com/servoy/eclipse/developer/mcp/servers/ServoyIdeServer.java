@@ -26,6 +26,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.services.CodeAnalysisService;
 import com.servoy.eclipse.developer.mcp.services.FileStructureService;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
 import com.servoy.eclipse.developer.mcp.services.MarkdownService;
@@ -52,9 +53,13 @@ import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResult;
  * </p>
  * <p>
  * Excluded (Java/JDT-only, removed): {@code getJavaDoc},
- * {@code getImportSuggestions}, {@code getTypeHierarchy},
- * {@code getMethodCallHierarchy}, {@code findReferences},
- * {@code executeQuickFix}.
+ * {@code getImportSuggestions}.
+ * </p>
+ * <p>
+ * Servoy-native implementations (delegating to {@link CodeAnalysisService}):
+ * {@code getTypeHierarchy} (form inheritance), {@code getMethodCallHierarchy}
+ * (DLTK-backed callers), {@code findReferences} (DLTK + text search),
+ * {@code executeQuickFix} (IMarkerHelpRegistry).
  * </p>
  */
 @Creatable
@@ -72,6 +77,8 @@ public class ServoyIdeServer {
 	private ServoyScriptResolver servoyScriptResolver;
 	@Inject
 	private FileStructureService fileStructureService;
+	@Inject
+	private CodeAnalysisService codeAnalysisService;
 
 	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyIdeServer() {
@@ -86,6 +93,7 @@ public class ServoyIdeServer {
 		this.ideStateService = ideStateService;
 		this.servoyScriptResolver = new ServoyScriptResolver();
 		this.fileStructureService = new FileStructureService();
+		this.codeAnalysisService = new CodeAnalysisService();
 	}
 
 	@Tool(name = "listProjects", description = "List all available projects in the workspace with their detected natures (Java, Maven, Servoy, etc.).", type = "object")
@@ -479,5 +487,46 @@ public class ServoyIdeServer {
 			}
 		}
 		return sb.toString();
+	}
+
+	@Tool(name = "findReferences", description = "Finds all references/usages of a Servoy form method or scope variable across the workspace. "
+			+ "Use fullyQualifiedClassName to identify the form or scope (e.g. 'forms.myForm', 'scopes.globals') "
+			+ "and elementName to specify the method or variable name. Essential before renaming or deleting elements.", type = "object")
+	public String findReferences(
+			@ToolParam(name = "fullyQualifiedClassName", description = "The form or scope name containing the element (e.g. 'forms.myForm', 'scopes.globals')", required = true) String fullyQualifiedClassName,
+			@ToolParam(name = "elementName", description = "The method or variable name to search for (optional — required for meaningful results)", required = false) String elementName)
+	{
+		return codeAnalysisService.findReferences(fullyQualifiedClassName, elementName);
+	}
+
+	@Tool(name = "getTypeHierarchy", description = "Retrieves the form inheritance hierarchy for a given Servoy form: "
+			+ "its supertypes (forms it extends, walking up the chain) and its direct subtypes (forms that extend it). "
+			+ "Use the form name with or without the 'forms.' prefix.", type = "object")
+	public String getTypeHierarchy(
+			@ToolParam(name = "fullyQualifiedClassName", description = "The form name to analyse (e.g. 'forms.myForm' or just 'myForm')", required = true) String fullyQualifiedClassName)
+	{
+		return codeAnalysisService.getTypeHierarchy(fullyQualifiedClassName);
+	}
+
+	@Tool(name = "getMethodCallHierarchy", description = "Retrieves the callers of a specified Servoy form method or scope function. "
+			+ "Shows which files and lines call the method, up to the specified depth.", type = "object")
+	public String getMethodCallHierarchy(
+			@ToolParam(name = "fullyQualifiedClassName", description = "The form or scope name containing the method (e.g. 'forms.myForm', 'scopes.globals')", required = true) String fullyQualifiedClassName,
+			@ToolParam(name = "methodName", description = "The name of the method to analyze", required = true) String methodName,
+			@ToolParam(name = "methodSignature", description = "The signature of the method (optional, reserved for future overload disambiguation)", required = false) String methodSignature,
+			@ToolParam(name = "maxDepth", description = "Maximum depth of the call hierarchy to retrieve (default: 3)", required = false) String maxDepth)
+	{
+		return codeAnalysisService.getMethodCallHierarchy(fullyQualifiedClassName, methodName, methodSignature, maxDepth);
+	}
+
+	@Tool(name = "executeQuickFix", description = "Lists or applies a quick-fix resolution for a compilation problem marker. "
+			+ "Use getCompilationErrors first to obtain the Marker ID. "
+			+ "Pass proposalIndex=-1 to list available resolutions without applying any. "
+			+ "Pass proposalIndex=N to apply resolution N.", type = "object")
+	public String executeQuickFix(
+			@ToolParam(name = "markerId", description = "The Marker ID of the problem (from getCompilationErrors)", required = true) String markerId,
+			@ToolParam(name = "proposalIndex", description = "The 0-based index of the resolution to apply, or -1 to list available resolutions", required = true) String proposalIndex)
+	{
+		return codeAnalysisService.executeQuickFix(Long.parseLong(markerId), Integer.parseInt(proposalIndex));
 	}
 }
