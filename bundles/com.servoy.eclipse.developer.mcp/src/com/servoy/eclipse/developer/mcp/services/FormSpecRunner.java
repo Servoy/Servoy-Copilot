@@ -1,4 +1,4 @@
-package com.servoy.eclipse.developer.mcp.services;
+﻿package com.servoy.eclipse.developer.mcp.services;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -284,6 +284,169 @@ public class FormSpecRunner
 	}
 
 	/**
+	 * Runs the Cypress E2E spec for the given form from jenkins-custom/e2e-test-scripts/cypress/e2e/.
+	 *
+	 * @param targetForm the form name whose .cy.js to run (e.g. 'order_detail' → 'order_detail.cy.js')
+	 * @param headless true for headless (default), false for headed (debugging)
+	 * @return test results output
+	 */
+	public String runE2ESpec(String targetForm, boolean headless)
+	{
+		try
+		{
+			Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			Path e2eDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e");
+			// prefer cypress.config.ts (TypeScript project), fall back to cypress.config.js
+			Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
+			Path configFile = Files.exists(scriptsRoot.resolve("cypress.config.ts"))
+				? scriptsRoot.resolve("cypress.config.ts")
+				: scriptsRoot.resolve("cypress.config.js");
+
+			// find spec file:
+			// 1. exact match (supports relative paths like "applications/environment/queryPerformance.cy.ts")
+			// 2. <targetForm>.cy.js in root
+			// 3. <targetForm>.cy.ts in root
+			// 4. recursive search for <targetForm>.cy.js or <targetForm>.cy.ts anywhere under e2eDir
+			Path specFilePath = e2eDir.resolve(targetForm);
+			if (!Files.exists(specFilePath))
+			{
+				specFilePath = e2eDir.resolve(targetForm + ".cy.js");
+			}
+			if (!Files.exists(specFilePath))
+			{
+				specFilePath = e2eDir.resolve(targetForm + ".cy.ts");
+			}
+			if (!Files.exists(specFilePath) && Files.exists(e2eDir))
+			{
+				// recursive walk: find first file whose base name (without .cy.js/.cy.ts) matches targetForm
+				String baseName = targetForm.replaceAll("\\.cy\\.(js|ts)$", "");
+				try (java.util.stream.Stream<Path> walk = Files.walk(e2eDir))
+				{
+					specFilePath = walk
+						.filter(p -> {
+							String name = p.getFileName().toString();
+							return name.equals(baseName + ".cy.js") || name.equals(baseName + ".cy.ts");
+						})
+						.findFirst()
+						.orElse(e2eDir.resolve(targetForm + ".cy.js")); // keep as missing path for error message
+				}
+			}
+			if (!Files.exists(specFilePath))
+			{
+				return "Error: E2E spec file not found for '" + targetForm + "'. " +
+					"Searched recursively under " + e2eDir + " for '" + targetForm + ".cy.js' or '" + targetForm + ".cy.ts'. " +
+					"Use generateCypressE2ETest to create a new one, or pass the relative path (e.g. 'applications/environment/queryPerformance.cy.ts').";
+			}
+			if (!Files.exists(configFile))
+			{
+				return "Error: cypress.config.ts/js not found at " + scriptsRoot + ". Use generateCypressE2ETest first to scaffold the E2E test structure.";
+			}
+
+			// scriptsRoot already resolved above (for configFile detection)
+			Path scriptsDir = scriptsRoot;
+
+			// Prefer the project-local Cypress binary (node_modules/.bin/cypress) if present â
+			// this is the case for e2e-test-scripts repos that already have Cypress installed.
+			// Fall back to the internal .metadata-bundled installation only if not found.
+			Path scriptsNodeModulesBin = scriptsDir.resolve("node_modules").resolve(".bin");
+			String localCypressCmd = scriptsNodeModulesBin.resolve("cypress.cmd").toFile().exists()
+				? scriptsNodeModulesBin.resolve("cypress.cmd").toString()
+				: scriptsNodeModulesBin.resolve("cypress").toFile().exists()
+					? scriptsNodeModulesBin.resolve("cypress").toString()
+					: null;
+
+			List<String> command = new ArrayList<>();
+			if (localCypressCmd != null)
+			{
+				// use project-local cypress directly â no npm/npx lookup needed
+				command.add(localCypressCmd);
+				command.add("run");
+			}
+			else
+			{
+				// fall back to internal .metadata installation
+				Path cypressDir = getCypressDir();
+				String setupError = ensureCypressInstalled(cypressDir);
+				if (setupError != null)
+				{
+					return setupError;
+				}
+
+				File nodePath = getNodePath();
+				if (nodePath == null)
+				{
+					return "Error: Bundled Node.js not available and no local Cypress found in " + scriptsNodeModulesBin;
+				}
+
+				String npxPath = nodePath.getParent() + File.separator + "npx.cmd";
+				if (!new File(npxPath).exists())
+				{
+					npxPath = nodePath.getParent() + File.separator + "npx";
+				}
+				command.add(npxPath);
+				command.add("cypress");
+				command.add("run");
+			}
+			command.add("--spec");
+			command.add(specFilePath.toString());
+			command.add("--config-file");
+			command.add(configFile.toString());
+			if (!headless)
+			{
+				command.add("--headed");
+			}
+
+			ProcessBuilder pb = new ProcessBuilder(command);
+			pb.directory(scriptsDir.toFile());
+			pb.redirectErrorStream(true);
+			// NODE_PATH: use the project-local node_modules if present, otherwise the internal cypress dir
+			Path effectiveNodeModules = Files.exists(scriptsDir.resolve("node_modules"))
+				? scriptsDir.resolve("node_modules")
+				: getCypressDir().resolve("node_modules");
+			pb.environment().put("NODE_PATH", effectiveNodeModules.toString());
+			String existingPath = System.getenv("PATH");
+			// Prepend the project-local .bin to PATH so cypress.cmd is found; also add system node
+			String prependPath = scriptsDir.resolve("node_modules").resolve(".bin").toString();
+			File sysNode = getNodePath();
+			if (sysNode != null) prependPath = sysNode.getParent() + File.pathSeparator + prependPath;
+			pb.environment().put("PATH", prependPath + File.pathSeparator + (existingPath != null ? existingPath : ""));
+			Process process = pb.start();
+
+			StringBuilder output = new StringBuilder();
+			try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)))
+			{
+				String line;
+				while ((line = reader.readLine()) != null)
+				{
+					output.append(line).append("\n");
+				}
+			}
+
+			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+			if (!finished)
+			{
+				process.destroyForcibly();
+				return "Error: Cypress E2E test timed out after " + DEFAULT_TIMEOUT_SECONDS + " seconds.";
+			}
+
+			String rawOutput = output.toString();
+
+			if (process.exitValue() == 0)
+			{
+				return "**E2E Spec Results: " + targetForm + "**\n\nAll tests passed!\n\n" + rawOutput;
+			}
+			else
+			{
+				return "**E2E Spec Results: " + targetForm + "**\n\nSome tests failed:\n\n" + rawOutput;
+			}
+		}
+		catch (Exception e)
+		{
+			return "Error running E2E spec: " + e.getMessage();
+		}
+	}
+
+	/**
 	 * Ensures Cypress is installed locally in the .metadata plugins directory.
 	 */
 	private String ensureCypressInstalled(Path cypressDir)
@@ -294,7 +457,7 @@ public class FormSpecRunner
 
 			if (needsInstall)
 			{
-				System.out.println("[Servoy MCP] Cypress not found at " + cypressDir + " â installing via npm (this may take a few minutes)...");
+				System.out.println("[Servoy MCP] Cypress not found at " + cypressDir + " - installing via npm (this may take a few minutes)...");
 				Files.createDirectories(cypressDir);
 				String packageJson = "{\n" +
 					"  \"name\": \"servoy-cypress\",\n" +
