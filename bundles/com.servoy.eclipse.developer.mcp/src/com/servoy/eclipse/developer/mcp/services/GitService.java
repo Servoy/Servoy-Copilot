@@ -23,7 +23,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -35,9 +34,6 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.egit.core.project.RepositoryMapping;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.RawTextComparator;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEditor;
 import org.eclipse.jgit.dircache.DirCacheEntry;
@@ -257,7 +253,8 @@ public class GitService
 	public String getDiff(String projectName, boolean staged)
 	{
 		Repository repository = getRepository(projectName);
-		try (Git git = new Git(repository))
+		try (Git git = new Git(repository);
+			ByteArrayOutputStream out = new ByteArrayOutputStream())
 		{
 			ObjectId head = repository.resolve("HEAD");
 			if (head == null)
@@ -266,6 +263,7 @@ public class GitService
 			}
 
 			var diffCommand = git.diff();
+			diffCommand.setOutputStream(out);
 			if (staged)
 			{
 				diffCommand.setCached(true);
@@ -273,8 +271,9 @@ public class GitService
 				diffCommand.setOldTree(headTree);
 			}
 
-			List<DiffEntry> diffs = diffCommand.call();
-			return formatDiffEntries(repository, diffs);
+			diffCommand.call();
+			String result = out.toString("UTF-8");
+			return result.isEmpty() ? "No changes." : result;
 		}
 		catch (Exception e)
 		{
@@ -540,19 +539,4 @@ public class GitService
 		}
 	}
 
-	private static String formatDiffEntries(Repository repository, List<DiffEntry> diffs) throws IOException
-	{
-		try (var out = new ByteArrayOutputStream();
-			var formatter = new DiffFormatter(out))
-		{
-			formatter.setRepository(repository);
-			formatter.setDiffComparator(RawTextComparator.DEFAULT);
-			formatter.setDetectRenames(true);
-			for (DiffEntry diff : diffs)
-			{
-				formatter.format(diff);
-			}
-			return out.toString("UTF-8");
-		}
-	}
 }
