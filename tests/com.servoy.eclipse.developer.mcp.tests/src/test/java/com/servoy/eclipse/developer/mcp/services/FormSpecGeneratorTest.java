@@ -362,15 +362,34 @@ public class FormSpecGeneratorTest
 	}
 
 	@Test
-	public void testFormSpecGenerator_hasGetFormsDirMethod() throws NoSuchMethodException
+	public void testFormSpecGenerator_hasGetFormSpecDirMethod() throws NoSuchMethodException
 	{
-		assertNotNull("FormSpecGenerator must have getFormsDir() method",
-			FormSpecGenerator.class.getMethod("getFormsDir"));
+		assertNotNull("FormSpecGenerator must have getFormSpecDir() method",
+			FormSpecGenerator.class.getMethod("getFormSpecDir"));
 	}
 
 	@Test
-	public void testFormSpecGenerator_hasEnsureBuildpathExclusionMethod()
+	public void testFormSpecGenerator_doesNotHaveGetFormsDirMethod()
 	{
+		// SVY-21171: getFormsDir() was renamed to getFormSpecDir() when the Cypress
+		// form specs moved out of medias/tests to the workspace-relative e2e-form dir.
+		boolean found = false;
+		for (Method m : FormSpecGenerator.class.getDeclaredMethods())
+		{
+			if ("getFormsDir".equals(m.getName()))
+			{
+				found = true;
+				break;
+			}
+		}
+		assertTrue("FormSpecGenerator should no longer have getFormsDir() method (renamed to getFormSpecDir)", !found);
+	}
+
+	@Test
+	public void testFormSpecGenerator_doesNotHaveEnsureBuildpathExclusionMethod()
+	{
+		// SVY-21171: ensureBuildpathExclusion was removed because the moved specs
+		// live outside the solution and no longer need a .buildpath exclusion.
 		Method[] methods = FormSpecGenerator.class.getDeclaredMethods();
 		boolean found = false;
 		for (Method m : methods)
@@ -381,6 +400,6 @@ public class FormSpecGeneratorTest
 				break;
 			}
 		}
-		assertTrue("FormSpecGenerator must have ensureBuildpathExclusion method", found);
+		assertTrue("FormSpecGenerator should no longer have ensureBuildpathExclusion method", !found);
 	}
 }

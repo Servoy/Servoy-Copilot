@@ -157,7 +157,7 @@ public class ServoyDevServer {
 			// .buildpath - not a Servoy structural file, safe to write directly
 			writeTextFile(sol, ".buildpath",
 					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "<buildpath>\n"
-							+ "\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n"
+							+ "\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n"
 							+ "</buildpath>\n",
 					monitor);
 

@@ -19,19 +19,21 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
- * Generates Cypress test spec files (.spec.cy.js) and Servoy setUp/tearDown scripts (.spec.js)
- * for Servoy forms. Files are written next to the .frm file in the forms/ directory.
- * The .spec.js is a Servoy scope file (processed by DLTK for code completion).
- * The .spec.cy.js is excluded from DLTK via .buildpath pattern to avoid StackOverflow.
+ * Generates Cypress test spec files (.spec.cy.js) and Servoy setUp/tearDown
+ * scripts (.spec.js) for Servoy forms. The .spec.js is a Servoy scope file
+ * (processed by DLTK for code completion) written next to the .frm file in the
+ * solution's forms/ directory. The .spec.cy.js Cypress artifact is written to
+ * the workspace-relative directory
+ * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/ so it is never
+ * bundled into a deployed/exported solution (which includes everything under
+ * medias/).
  */
 @Creatable
 @SuppressWarnings("restriction")
-public class FormSpecGenerator
-{
+public class FormSpecGenerator {
 	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
 	private static final String SPEC_JS_EXTENSION = ".spec.js";
-	private static final String CYPRESS_TESTS_DIR = "medias/tests";
-	private static final String BUILDPATH_EXCLUSION_PATTERN = "**/*.spec.cy.js";
+	private static final String FORM_SPEC_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/e2e-form";
 
 	private static final Pattern DATA_SOURCE_PATTERN = Pattern.compile("\"dataSource\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern ELEMENT_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
@@ -39,86 +41,99 @@ public class FormSpecGenerator
 	private static final Pattern DATA_PROVIDER_PATTERN = Pattern.compile("\"dataProviderID\"\\s*:\\s*\"([^\"]+)\"");
 
 	/**
-	 * Generates spec files for the given form.
-	 * Cypress spec: {solutionProject}/medias/tests/{formName}.spec.cy.js
+	 * Generates spec files for the given form. Cypress spec:
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/{formName}.spec.cy.js
 	 * Servoy setUp/tearDown: {solutionProject}/forms/{formName}.spec.js
 	 */
-	public String generateSpec(String formName)
-	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			if (activeProject == null)
-			{
+	public String generateSpec(String formName) {
+		try {
+			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
+					.getActiveProject();
+			if (activeProject == null) {
 				return "Error: No active Servoy project.";
 			}
 
 			IProject project = activeProject.getProject();
 			IFile frmFile = project.getFile("forms/" + formName + ".frm");
-			if (!frmFile.exists())
-			{
+			if (!frmFile.exists()) {
 				return "Error: Form file not found: forms/" + formName + ".frm";
 			}
 
 			Path formsDir = frmFile.getLocation().toFile().toPath().getParent();
-			Path testsDir = project.getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+			Path testsDir = resolveFormSpecDir();
 			Files.createDirectories(testsDir);
 
 			Path cySpecPath = testsDir.resolve(formName + SPEC_CY_EXTENSION);
 			Path setupSpecPath = formsDir.resolve(formName + SPEC_JS_EXTENSION);
 
-			if (Files.exists(cySpecPath) && Files.exists(setupSpecPath))
-			{
-				return "Spec files already exist: medias/tests/" + formName + SPEC_CY_EXTENSION + " and forms/" + formName + SPEC_JS_EXTENSION;
+			if (Files.exists(cySpecPath) && Files.exists(setupSpecPath)) {
+				return "Spec files already exist: " + FORM_SPEC_RELATIVE_DIR + "/" + formName + SPEC_CY_EXTENSION
+						+ " and forms/" + formName + SPEC_JS_EXTENSION;
 			}
 
-			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
+			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()),
+					StandardCharsets.UTF_8);
 			FormMetadata metadata = parseFrmFile(frmContent, formName);
+			metadata.solutionName = activeProject.getSolution().getName();
 
 			StringBuilder result = new StringBuilder();
 
-			if (!Files.exists(cySpecPath))
-			{
+			if (!Files.exists(cySpecPath)) {
 				String cyContent = generateCypressSpecContent(metadata);
 				Files.writeString(cySpecPath, cyContent, StandardCharsets.UTF_8);
-				result.append("Created: medias/tests/").append(formName)
-					.append(SPEC_CY_EXTENSION).append(" (").append(metadata.namedElements.size()).append(" element assertions)\n");
+				result.append("Created: ").append(FORM_SPEC_RELATIVE_DIR).append("/").append(formName)
+						.append(SPEC_CY_EXTENSION).append(" (").append(metadata.namedElements.size())
+						.append(" element assertions)\n");
 			}
 
-			if (!Files.exists(setupSpecPath))
-			{
+			if (!Files.exists(setupSpecPath)) {
 				String setupContent = generateSetupContent(metadata);
 				Files.writeString(setupSpecPath, setupContent, StandardCharsets.UTF_8);
-				result.append("Created: forms/").append(formName)
-					.append(SPEC_JS_EXTENSION).append(" (setUp/tearDown for data setup)");
+				result.append("Created: forms/").append(formName).append(SPEC_JS_EXTENSION)
+						.append(" (setUp/tearDown for data setup)");
 			}
 
+			// Only the .spec.js lives inside the solution project tree; the .spec.cy.js is
+			// written to
+			// the workspace-relative e2e-form directory (outside the project), so a refresh
+			// of the
+			// solution project is sufficient.
 			project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
 
 			return result.toString().trim();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			return "Error generating spec: " + e.getMessage();
 		}
 	}
 
 	/**
+	 * Resolves the workspace-relative Cypress form-spec directory:
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form The directory
+	 * lives outside any solution project so the specs are never bundled into a
+	 * deployed/exported solution. The workspace root is the same anchor used by
+	 * FormSpecRunner.runE2ESpec and ServoyTestingServer.generateCypressE2ETest.
+	 */
+	private Path resolveFormSpecDir() {
+		Path workspaceRoot = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+				.toPath();
+		return workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+				.resolve("e2e-form");
+	}
+
+	/**
 	 * Checks if both spec files already exist for the given form.
 	 */
-	public boolean specExists(String formName)
-	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			if (activeProject == null) return false;
-			Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+	public boolean specExists(String formName) {
+		try {
+			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
+					.getActiveProject();
+			if (activeProject == null)
+				return false;
+			Path testsDir = resolveFormSpecDir();
 			Path formsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("forms");
 			return Files.exists(testsDir.resolve(formName + SPEC_CY_EXTENSION))
-				&& Files.exists(formsDir.resolve(formName + SPEC_JS_EXTENSION));
-		}
-		catch (Exception e)
-		{
+					&& Files.exists(formsDir.resolve(formName + SPEC_JS_EXTENSION));
+		} catch (Exception e) {
 			return false;
 		}
 	}
@@ -126,96 +141,46 @@ public class FormSpecGenerator
 	/**
 	 * Returns the path to the Cypress spec file for a given form.
 	 */
-	public Path getSpecFilePath(String formName)
-	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			if (activeProject == null) return null;
-			Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
+	public Path getSpecFilePath(String formName) {
+		try {
+			Path testsDir = resolveFormSpecDir();
 			return testsDir.resolve(formName + SPEC_CY_EXTENSION);
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			return null;
 		}
 	}
 
 	/**
-	 * Returns the Cypress tests directory for the active solution: {project}/medias/tests/
+	 * Returns the workspace-relative Cypress form-spec directory:
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form
 	 */
-	public Path getFormsDir()
-	{
-		try
-		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			if (activeProject == null) return null;
-			return activeProject.getProject().getLocation().toFile().toPath().resolve(CYPRESS_TESTS_DIR);
-		}
-		catch (Exception e)
-		{
+	public Path getFormSpecDir() {
+		try {
+			return resolveFormSpecDir();
+		} catch (Exception e) {
 			return null;
 		}
 	}
 
-	/**
-	 * Ensures the .buildpath file has an exclusion for *.spec.cy.js so DLTK doesn't parse them.
-	 */
-	private void ensureBuildpathExclusion(IProject project)
-	{
-		try
-		{
-			IFile buildpathFile = project.getFile(".buildpath");
-			if (!buildpathFile.exists()) return;
-
-			String content = new String(Files.readAllBytes(buildpathFile.getLocation().toFile().toPath()), StandardCharsets.UTF_8);
-
-			if (content.contains(BUILDPATH_EXCLUSION_PATTERN)) return;
-
-			String updatedContent = content.replace(
-				"excluding=\".stp/|medias/\"",
-				"excluding=\".stp/|medias/|" + BUILDPATH_EXCLUSION_PATTERN + "\"");
-
-			if (updatedContent.equals(content))
-			{
-				updatedContent = content.replace(
-					"excluding=\"",
-					"excluding=\"" + BUILDPATH_EXCLUSION_PATTERN + "|");
-			}
-
-			if (!updatedContent.equals(content))
-			{
-				Files.writeString(buildpathFile.getLocation().toFile().toPath(), updatedContent, StandardCharsets.UTF_8);
-			}
-		}
-		catch (Exception e)
-		{
-			ServoyLog.logWarning("ensureBuildpathExclusion failed: " + e.getMessage(), e);
-		}
-	}
-
-	private FormMetadata parseFrmFile(String content, String formName)
-	{
+	private FormMetadata parseFrmFile(String content, String formName) {
 		FormMetadata metadata = new FormMetadata();
 		metadata.formName = formName;
 
 		Matcher dsMatcher = DATA_SOURCE_PATTERN.matcher(content);
-		if (dsMatcher.find())
-		{
+		if (dsMatcher.find()) {
 			metadata.dataSource = dsMatcher.group(1);
 		}
 
 		String[] items = content.split("\\{");
-		for (String item : items)
-		{
+		for (String item : items) {
 			Matcher nameMatcher = ELEMENT_NAME_PATTERN.matcher(item);
 			Matcher typeMatcher = TYPE_NAME_PATTERN.matcher(item);
 			Matcher dpMatcher = DATA_PROVIDER_PATTERN.matcher(item);
 
-			if (nameMatcher.find())
-			{
+			if (nameMatcher.find()) {
 				String name = nameMatcher.group(1);
-				if (name.equals(formName)) continue;
+				if (name.equals(formName))
+					continue;
 
 				ElementInfo elem = new ElementInfo();
 				elem.name = name;
@@ -233,28 +198,25 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Generates Cypress spec content (.spec.cy.js).
-	 * Uses beforeEach() with cy.wait() for Servoy form rendering time.
-	 * Uses cy.visit() with relative URL, cy.get() with [data-cy] selectors.
-	 * Format: data-cy="formName.elementName" (rendered when servoy.ngclient.testingMode=true).
+	 * Generates Cypress spec content (.spec.cy.js). Uses beforeEach() with
+	 * cy.wait() for Servoy form rendering time. Uses cy.visit() with relative URL,
+	 * cy.get() with [data-cy] selectors. Format: data-cy="formName.elementName"
+	 * (rendered when servoy.ngclient.testingMode=true).
 	 */
-	private String generateCypressSpecContent(FormMetadata metadata)
-	{
+	private String generateCypressSpecContent(FormMetadata metadata) {
 		StringBuilder sb = new StringBuilder();
 
-		String formUrl = "?formpreview=" + metadata.formName + "&svy_testmode=true";
+		String formUrl = getFormUrl(metadata.solutionName, metadata.formName);
 
 		sb.append("describe('").append(metadata.formName).append("', () => {\n\n");
 
 		sb.append("  beforeEach(() => {\n");
 		sb.append("    cy.visit('").append(formUrl).append("');\n");
-		if (metadata.namedElements.isEmpty())
-		{
+		if (metadata.namedElements.isEmpty()) {
 			sb.append("    cy.get('.svy-form', { timeout: 30000 }).should('exist');\n");
-		}
-		else
-		{
-			sb.append("    cy.get('[data-cy^=\"").append(metadata.formName).append(".\"]', { timeout: 30000 }).should('exist');\n");
+		} else {
+			sb.append("    cy.get('[data-cy^=\"").append(metadata.formName)
+					.append(".\"]', { timeout: 30000 }).should('exist');\n");
 		}
 		sb.append("  });\n\n");
 
@@ -262,27 +224,22 @@ public class FormSpecGenerator
 		sb.append("    cy.get('.svy-error, .error-overlay').should('not.exist');\n");
 
 		List<ElementInfo> visibleElements = metadata.namedElements.stream()
-			.filter(e -> e.isWebComponent || e.isButton || e.isLabel)
-			.limit(8)
-			.toList();
+				.filter(e -> e.isWebComponent || e.isButton || e.isLabel).limit(8).toList();
 
-		for (ElementInfo elem : visibleElements)
-		{
-			sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(elem.name).append("\"]').should('be.visible');\n");
+		for (ElementInfo elem : visibleElements) {
+			sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(elem.name)
+					.append("\"]').should('be.visible');\n");
 		}
 		sb.append("  });\n\n");
 
 		List<ElementInfo> buttons = metadata.namedElements.stream()
-			.filter(e -> e.isButton || (e.typeName != null && e.typeName.contains("button")))
-			.limit(3)
-			.toList();
+				.filter(e -> e.isButton || (e.typeName != null && e.typeName.contains("button"))).limit(3).toList();
 
-		if (!buttons.isEmpty())
-		{
+		if (!buttons.isEmpty()) {
 			sb.append("  it('buttons are clickable', () => {\n");
-			for (ElementInfo button : buttons)
-			{
-				sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(button.name).append("\"]').should('be.visible').and('be.enabled');\n");
+			for (ElementInfo button : buttons) {
+				sb.append("    cy.get('[data-cy=\"").append(metadata.formName).append(".").append(button.name)
+						.append("\"]').should('be.visible').and('be.enabled');\n");
 			}
 			sb.append("  });\n\n");
 		}
@@ -293,26 +250,26 @@ public class FormSpecGenerator
 	}
 
 	/**
-	 * Returns a relative URL path for the form preview.
-	 * The baseUrl is provided by cypress.config.js.
+	 * Returns a relative URL path for the form preview, resolved against the
+	 * cypress.config baseUrl. The path must contain "/solution/" and end with
+	 * "/index.html" so that IndexPageFilter bypasses stateless login for the
+	 * formpreview request (see IndexPageFilter#doFilter).
 	 */
-	private String getFormUrl(String formName)
-	{
-		return "?formpreview=" + formName + "&svy_testmode=true";
+	private String getFormUrl(String solutionName, String formName) {
+		return "solution/" + solutionName + "/index.html?formpreview=" + formName + "&svy_testmode=true";
 	}
 
 	/**
-	 * Generates the Servoy setUp/tearDown script (.spec.js).
-	 * This file HAS @properties annotations - it's a Servoy scope file with full DLTK support.
+	 * Generates the Servoy setUp/tearDown script (.spec.js). This file
+	 * HAS @properties annotations - it's a Servoy scope file with full DLTK
+	 * support.
 	 */
-	private String generateSetupContent(FormMetadata metadata)
-	{
+	private String generateSetupContent(FormMetadata metadata) {
 		StringBuilder sb = new StringBuilder();
 
 		sb.append("/**\n");
 		sb.append(" * Form test setup/teardown for: ").append(metadata.formName).append("\n");
-		if (metadata.dataSource != null)
-		{
+		if (metadata.dataSource != null) {
 			sb.append(" * DataSource: ").append(metadata.dataSource).append("\n");
 		}
 		sb.append(" *\n");
@@ -325,17 +282,14 @@ public class FormSpecGenerator
 		sb.append(" * @properties={typeid:24,uuid:\"").append(UUID.randomUUID()).append("\"}\n");
 		sb.append(" */\n");
 		sb.append("function spec_setUp() {\n");
-		if (metadata.dataSource != null)
-		{
+		if (metadata.dataSource != null) {
 			sb.append("\t// DataSource: ").append(metadata.dataSource).append("\n");
 			sb.append("\t// Load specific records for testing:\n");
 			sb.append("\t// foundset.loadAllRecords();\n");
 			sb.append("\t// Or filter to specific test data:\n");
 			sb.append("\t// foundset.find();\n");
 			sb.append("\t// foundset.search();\n");
-		}
-		else
-		{
+		} else {
 			sb.append("\t// No dataSource on this form - set up form variables or other state\n");
 		}
 		sb.append("}\n\n");
@@ -351,15 +305,14 @@ public class FormSpecGenerator
 		return sb.toString();
 	}
 
-	private static class FormMetadata
-	{
+	private static class FormMetadata {
 		String formName;
+		String solutionName;
 		String dataSource;
 		List<ElementInfo> namedElements = new ArrayList<>();
 	}
 
-	private static class ElementInfo
-	{
+	private static class ElementInfo {
 		String name;
 		String typeName;
 		String dataProviderID;

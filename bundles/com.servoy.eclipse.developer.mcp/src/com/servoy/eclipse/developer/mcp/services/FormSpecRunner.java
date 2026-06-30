@@ -57,55 +57,83 @@ public class FormSpecRunner
 			Path specFilePath = specGenerator.getSpecFilePath(formName);
 			if (specFilePath == null || !Files.exists(specFilePath))
 			{
-				return "Error: Spec file not found: forms/" + formName + ".spec.cy.js. Use showFormInBrowser first to auto-generate it.";
+				return "Error: Spec file not found: jenkins-custom/e2e-test-scripts/cypress/e2e-form/" + formName +
+					".spec.cy.js. Use showFormInBrowser first to auto-generate it.";
 			}
 
-			Path cypressDir = getCypressDir();
-			String setupError = ensureCypressInstalled(cypressDir);
-			if (setupError != null)
-			{
-				return setupError;
-			}
-
-			String solutionName = activeProject.getSolution().getName();
-			int port = ApplicationServerRegistry.get().getWebServerPort();
-			String baseUrl = "http://localhost:" + port + "/solution/" + solutionName + "/index.html";
-
-			ensureCypressConfig(cypressDir, baseUrl);
-
-			File nodePath = getNodePath();
-			if (nodePath == null)
-			{
-				return "Error: Bundled Node.js not available.";
-			}
-
-			String npxPath = nodePath.getParent() + File.separator + "npx.cmd";
-			if (!new File(npxPath).exists())
-			{
-				npxPath = nodePath.getParent() + File.separator + "npx";
-			}
+			// The form spec lives under the e2e-test-scripts project tree, so Cypress MUST
+			// be run with that folder as its project root (a spec outside the project root
+			// is reported as "no spec files were found"). Reuse the same project-local
+			// Cypress install + config that runE2ESpec uses, rather than the bundled
+			// .metadata Cypress whose root is elsewhere.
+			Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
+			Path configFile = Files.exists(scriptsRoot.resolve("cypress.config.ts"))
+				? scriptsRoot.resolve("cypress.config.ts")
+				: scriptsRoot.resolve("cypress.config.js");
 
 			List<String> command = new ArrayList<>();
-			command.add(npxPath);
-			command.add("cypress");
-			command.add("run");
+			Path scriptsNodeModulesBin = scriptsRoot.resolve("node_modules").resolve(".bin");
+			String localCypressCmd = scriptsNodeModulesBin.resolve("cypress.cmd").toFile().exists()
+				? scriptsNodeModulesBin.resolve("cypress.cmd").toString()
+				: scriptsNodeModulesBin.resolve("cypress").toFile().exists()
+					? scriptsNodeModulesBin.resolve("cypress").toString()
+					: null;
+
+			File nodePath = getNodePath();
+
+			if (localCypressCmd != null)
+			{
+				// use project-local cypress directly â no npm/npx lookup needed
+				command.add(localCypressCmd);
+				command.add("run");
+			}
+			else
+			{
+				// fall back to internal .metadata installation
+				Path cypressDir = getCypressDir();
+				String setupError = ensureCypressInstalled(cypressDir);
+				if (setupError != null)
+				{
+					return setupError;
+				}
+				if (nodePath == null)
+				{
+					return "Error: Bundled Node.js not available and no local Cypress found in " + scriptsNodeModulesBin;
+				}
+				String npxPath = nodePath.getParent() + File.separator + "npx.cmd";
+				if (!new File(npxPath).exists())
+				{
+					npxPath = nodePath.getParent() + File.separator + "npx";
+				}
+				command.add(npxPath);
+				command.add("cypress");
+				command.add("run");
+			}
 			command.add("--spec");
 			command.add(specFilePath.toString());
-			command.add("--config-file");
-			command.add(cypressDir.resolve("cypress.config.js").toString());
+			if (Files.exists(configFile))
+			{
+				command.add("--config-file");
+				command.add(configFile.toString());
+			}
 			if (!headless)
 			{
 				command.add("--headed");
 			}
 
 			ProcessBuilder pb = new ProcessBuilder(command);
-			pb.directory(activeProject.getProject().getLocation().toFile());
+			pb.directory(scriptsRoot.toFile());
 			pb.redirectErrorStream(true);
-			pb.environment().put("NODE_PATH", cypressDir.resolve("node_modules").toString());
-			// Ensure the bundled node is on PATH so npx/cypress can find their runtime
+			// NODE_PATH: use the project-local node_modules if present, otherwise the internal cypress dir
+			Path effectiveNodeModules = Files.exists(scriptsRoot.resolve("node_modules"))
+				? scriptsRoot.resolve("node_modules")
+				: getCypressDir().resolve("node_modules");
+			pb.environment().put("NODE_PATH", effectiveNodeModules.toString());
 			String existingPath = System.getenv("PATH");
-			pb.environment().put("PATH",
-				nodePath.getParent() + File.pathSeparator + (existingPath != null ? existingPath : ""));
+			String prependPath = scriptsNodeModulesBin.toString();
+			if (nodePath != null) prependPath = nodePath.getParent() + File.pathSeparator + prependPath;
+			pb.environment().put("PATH", prependPath + File.pathSeparator + (existingPath != null ? existingPath : ""));
 			Process process = pb.start();
 
 			StringBuilder output = new StringBuilder();

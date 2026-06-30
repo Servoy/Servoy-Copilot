@@ -318,7 +318,7 @@ public class ServoyTestingServer
 
 	@Tool(name = "generateFormSpec",
 		description = "Generates Cypress test spec files for a Servoy form. " +
-			"Creates two files: a .spec.cy.js in medias/tests/ (Cypress UI assertions with data-cy selectors) " +
+			"Creates two files: a .spec.cy.js in jenkins-custom/e2e-test-scripts/cypress/e2e-form/ (Cypress UI assertions with data-cy selectors) " +
 			"and a .spec.js in forms/ (Servoy setUp/tearDown scope with DLTK code completion). " +
 			"Reads the form's .frm file to extract element names, dataSource, and structure. " +
 			"Requires servoy.ngclient.testingMode=true in servoy.properties for data-cy attributes.",

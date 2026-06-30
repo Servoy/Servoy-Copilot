@@ -61,7 +61,7 @@ public class CypressEditorInputPropertyTesterTest {
 		CypressTestDiscoveryService mockService = new CypressTestDiscoveryService();
 		FormSpecGenerator mockGenerator = new FormSpecGenerator() {
 			@Override
-			public Path getFormsDir() {
+			public Path getFormSpecDir() {
 				return formsDir;
 			}
 		};

@@ -7,13 +7,24 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
+/**
+ * Discovers Cypress form-spec files (*.spec.cy.js) by delegating to
+ * {@link FormSpecGenerator#getFormSpecDir()}, so discovery automatically
+ * follows the generator's location
+ * ({workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form).
+ *
+ * Note: discovery is workspace-wide, not per-solution. All solutions in the
+ * workspace share the single e2e-form directory. This is acceptable because
+ * spec file names are the form names, and form names are unique within the
+ * active solution context the discovery runs in.
+ */
 public class CypressTestDiscoveryService {
 	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
 
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
 
 	public boolean hasTest(String formName) {
-		Path testsDir = specGenerator.getFormsDir();
+		Path testsDir = specGenerator.getFormSpecDir();
 		if (testsDir == null || !Files.isDirectory(testsDir)) {
 			return false;
 		}
@@ -21,7 +32,7 @@ public class CypressTestDiscoveryService {
 	}
 
 	public List<String> discoverAllTestForms() {
-		Path testsDir = specGenerator.getFormsDir();
+		Path testsDir = specGenerator.getFormSpecDir();
 		if (testsDir == null || !Files.isDirectory(testsDir)) {
 			return Collections.emptyList();
 		}
@@ -36,7 +47,7 @@ public class CypressTestDiscoveryService {
 	}
 
 	public boolean hasAnyTest() {
-		Path testsDir = specGenerator.getFormsDir();
+		Path testsDir = specGenerator.getFormSpecDir();
 		if (testsDir == null || !Files.isDirectory(testsDir)) {
 			return false;
 		}

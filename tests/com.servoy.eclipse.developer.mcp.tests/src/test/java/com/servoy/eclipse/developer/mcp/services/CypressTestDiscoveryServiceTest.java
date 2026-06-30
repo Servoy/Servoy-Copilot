@@ -66,7 +66,7 @@ public class CypressTestDiscoveryServiceTest
 		FormSpecGenerator mockGenerator = new FormSpecGenerator()
 		{
 			@Override
-			public Path getFormsDir()
+			public Path getFormSpecDir()
 			{
 				return formsDir;
 			}

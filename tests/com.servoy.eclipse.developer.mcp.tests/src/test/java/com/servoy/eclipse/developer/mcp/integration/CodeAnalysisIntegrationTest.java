@@ -510,7 +510,7 @@ public class CodeAnalysisIntegrationTest
 			writeProjectFile(sol, "solution_settings.obj",
 				"typeid:43,\nuuid:\"c3d4e5f6-a7b8-9012-cdef-345678901abc\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 				monitor);
 		}, new NullProgressMonitor());
 

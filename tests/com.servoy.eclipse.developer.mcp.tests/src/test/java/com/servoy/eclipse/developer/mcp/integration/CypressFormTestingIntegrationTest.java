@@ -389,7 +389,7 @@ public class CypressFormTestingIntegrationTest {
 	}
 
 	@Test
-	public void testGenerateFormSpec_specInMediasTests() throws Exception {
+	public void testGenerateFormSpec_specInE2eFormDir() throws Exception {
 		ensureForm(TEST_FORM);
 		deleteSpecFiles(TEST_FORM);
 
@@ -397,8 +397,12 @@ public class CypressFormTestingIntegrationTest {
 
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		assertNotNull(cySpec);
-		assertTrue("Cypress spec should be in medias/tests/ directory",
-				cySpec.toString().contains("medias") && cySpec.toString().contains("tests"));
+		String path = cySpec.toString().replace('\\', '/');
+		assertTrue("Cypress spec should be in jenkins-custom/e2e-test-scripts/cypress/e2e-form/ directory: " + path,
+				path.contains("jenkins-custom") && path.contains("e2e-test-scripts") && path.contains("cypress")
+						&& path.contains("e2e-form"));
+		assertTrue("Cypress spec must no longer live under medias/tests: " + path,
+				!path.contains("medias"));
 	}
 
 	@Test
@@ -427,7 +431,7 @@ public class CypressFormTestingIntegrationTest {
 		ensureButtonLabelForm();
 		deleteSpecFiles(BUTTON_LABEL_FORM);
 
-		Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("medias/tests");
+		Path testsDir = specGenerator.getFormSpecDir();
 		Files.createDirectories(testsDir);
 
 		String cySpec = "describe('" + BUTTON_LABEL_FORM + " - button click', () => {\n\n" + "  beforeEach(() => {\n"
@@ -1018,7 +1022,7 @@ public class CypressFormTestingIntegrationTest {
 			writeProjectFile(sol, "solution_settings.obj",
 					"typeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 					monitor);
 		}, new NullProgressMonitor());
 

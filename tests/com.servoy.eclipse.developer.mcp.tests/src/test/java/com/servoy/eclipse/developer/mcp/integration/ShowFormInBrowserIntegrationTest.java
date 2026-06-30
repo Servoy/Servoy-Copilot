@@ -225,7 +225,7 @@ public class ShowFormInBrowserIntegrationTest {
 		Form form = ensureFormWithButtonAndLabel();
 		assertNotNull("Form should be created", form);
 
-		java.nio.file.Path testsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("medias/tests");
+		java.nio.file.Path testsDir = new com.servoy.eclipse.developer.mcp.services.FormSpecGenerator().getFormSpecDir();
 		java.nio.file.Files.createDirectories(testsDir);
 
 		String cySpec = "describe('" + FORM_BUTTON_LABEL + " - elements present', () => {\n\n"

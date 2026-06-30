@@ -451,7 +451,7 @@ public class PersistDuplicateIntegrationTest {
 			writeProjectFile(sol, "solution_settings.obj",
 					"typeid:43,\nuuid:\"b2c3d4e5-f6a7-8901-bcde-234567890abc\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 					monitor);
 		}, new NullProgressMonitor());
 
