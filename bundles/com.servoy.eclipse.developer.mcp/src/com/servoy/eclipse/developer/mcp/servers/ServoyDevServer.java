@@ -57,6 +57,7 @@ import com.servoy.eclipse.developer.mcp.dto.IdentifierContext;
 import com.servoy.eclipse.developer.mcp.services.CodeContextService;
 import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorService;
 import com.servoy.eclipse.developer.mcp.services.FilePathResolver;
+import com.servoy.eclipse.developer.mcp.services.FormatValidatorService;
 import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
 import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
 import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
@@ -110,6 +111,7 @@ public class ServoyDevServer {
 	private final JsCodeValidatorService jsCodeValidator = new JsCodeValidatorService();
 	private final ServoySolutionService solutionService = new ServoySolutionService();
 	private final ServoyArtifactCreationService artifactService = new ServoyArtifactCreationService();
+	private final FormatValidatorService formatValidatorService = new FormatValidatorService();
 
 	public ServoyDevServer() {
 	}
@@ -1321,6 +1323,228 @@ public class ServoyDevServer {
 		} catch (Exception e) {
 			ServoyLog.logError("Error validating code", e);
 			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "validateFormat", description = "Validates a Servoy format string for a given column data type. "
+			+ "Parses the format using Servoy's FormatParser, then compiles the display/edit pattern with "
+			+ "SimpleDateFormat (DATETIME) or DecimalFormat (NUMBER/INTEGER) to catch invalid patterns early. "
+			+ "TEXT and MEDIA types have no pattern syntax - only structural flags (uppercase, mask, etc.) are reported. "
+			+ "i18n-prefixed patterns (e.g. 'i18n:my.key') are accepted without JVM-level validation. "
+			+ "Returns a structured result: valid/invalid, resolved data type, display format, edit format, active flags, and any error message.", type = "object")
+	public String validateFormat(
+			@ToolParam(name = "format", description = "The Servoy format property string to validate. "
+					+ "Supports pipe-style (e.g. 'dd/MM/yyyy', '0.##', '|U', 'dd/MM/yyyy|dd-MM-yyyy|mask') "
+					+ "and JSON style (e.g. '{\"displayFormat\":\"dd/MM/yyyy\",\"mask\":true}'). "
+					+ "Null or blank means no format (always valid).", required = true) String format,
+			@ToolParam(name = "dataType", description = "The column data type for which the format applies. "
+					+ "One of: TEXT, NUMBER, INTEGER, DATETIME, MEDIA (case-insensitive).", required = true) String dataType) {
+		FormatValidatorService.ValidationResult result = formatValidatorService.validateFormat(format, dataType);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append(result.valid() ? "Valid" : "Invalid").append(" format for ").append(result.dataType()).append("\n\n");
+
+		if (result.displayFormat() != null)
+			sb.append("- Display format: ").append(result.displayFormat()).append("\n");
+		if (result.editFormat() != null)
+			sb.append("- Edit format:    ").append(result.editFormat()).append("\n");
+		if (!result.flags().isEmpty())
+			sb.append("- Flags:          ").append(String.join(", ", result.flags())).append("\n");
+		if (result.error() != null)
+			sb.append("\nError: ").append(result.error()).append("\n");
+
+		return sb.toString();
+	}
+
+	@Tool(name = "validateFormElementFormat", description = "Validates format properties of elements on a Servoy form. "
+			+ "Resolves the data type automatically from the element's dataprovider binding (column type from the form's dataSource table). "
+			+ "Supports direct columns, related dataproviders (resolves through the relation chain), and form variables. "
+			+ "If elementName is omitted, validates ALL elements on the form that have a format property (batch mode). "
+			+ "Calculations are reported but skipped (use validateFormat with an explicit dataType instead). "
+			+ "Returns per-element results: element name, dataprovider, resolved type, valid/invalid, display/edit format, flags, and any errors.", type = "object")
+	public String validateFormElementFormat(
+			@ToolParam(name = "formName", description = "The name of the Servoy form to inspect.", required = true) String formName,
+			@ToolParam(name = "elementName", description = "The name of a specific element to validate. "
+					+ "If omitted, all elements with a format property are validated (batch mode).", required = false) String elementName,
+			@ToolParam(name = "solutionName", description = "The solution or module containing the form. "
+					+ "If omitted, searches the active solution and all its modules.", required = false) String solutionName) {
+		if (formName == null || formName.isBlank())
+			return "Error: formName parameter is required";
+
+		try {
+			Form form = resolveFormForSecurity(formName, solutionName);
+			if (form == null)
+				return "Error: Form '" + formName + "' not found"
+						+ (solutionName != null ? " in solution '" + solutionName + "'" : " in active solution or modules");
+
+			String dataSource = form.getDataSource();
+			ITable formTable = null;
+			if (dataSource != null) {
+				String[] dbServerTable = com.servoy.j2db.util.DataSourceUtils.getDBServernameTablename(dataSource);
+				if (dbServerTable != null && dbServerTable.length == 2) {
+					IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+							.getServer(dbServerTable[0], false, false);
+					if (server != null) {
+						formTable = server.getTable(dbServerTable[1]);
+					}
+				}
+			}
+
+			Solution solution = resolveFormSolution(form, solutionName);
+
+			StringBuilder result = new StringBuilder();
+			result.append("Form: ").append(formName);
+			if (dataSource != null) result.append(" (dataSource: ").append(dataSource).append(")");
+			result.append("\n\n");
+
+			int validated = 0;
+			int valid = 0;
+			int invalid = 0;
+			int skipped = 0;
+
+			java.util.Iterator<IPersist> children = form.getAllObjects();
+			while (children.hasNext()) {
+				IPersist child = children.next();
+
+				if (!(child instanceof com.servoy.j2db.persistence.ISupportDataProviderID)) continue;
+
+				String name = (child instanceof com.servoy.j2db.persistence.ISupportName named) ? named.getName() : null;
+				if (elementName != null && !elementName.equals(name)) continue;
+
+				String format = ((com.servoy.j2db.persistence.AbstractBase) child)
+						.getTypedProperty(com.servoy.j2db.persistence.StaticContentSpecLoader.PROPERTY_FORMAT);
+				if (format == null || format.isBlank()) {
+					if (elementName != null) {
+						return "Element '" + elementName + "' on form '" + formName + "' has no format property set.";
+					}
+					continue;
+				}
+
+				String dpId = ((com.servoy.j2db.persistence.ISupportDataProviderID) child).getDataProviderID();
+				String resolvedTypeName = null;
+
+				if (dpId == null || dpId.isBlank()) {
+					resolvedTypeName = null;
+				} else if (dpId.contains(".")) {
+					resolvedTypeName = resolveRelatedDataProviderType(dpId, solution, dataSource);
+				} else {
+					resolvedTypeName = resolveDirectDataProviderType(dpId, form, formTable);
+				}
+
+				if (resolvedTypeName == null) {
+					result.append("? ").append(name != null ? name : "(unnamed)")
+							.append(" (").append(dpId != null ? dpId : "no dataprovider").append(")")
+							.append(": cannot resolve type — use validateFormat with explicit dataType\n");
+					skipped++;
+					if (elementName != null) break;
+					continue;
+				}
+
+				FormatValidatorService.ValidationResult vr = formatValidatorService.validateFormat(format, resolvedTypeName);
+				validated++;
+				if (vr.valid()) {
+					valid++;
+					result.append("\u2713 ");
+				} else {
+					invalid++;
+					result.append("\u2717 ");
+				}
+
+				result.append(name != null ? name : "(unnamed)")
+						.append(" (").append(dpId).append(", ").append(resolvedTypeName).append("): ")
+						.append(format);
+
+				if (!vr.valid() && vr.error() != null) {
+					result.append(" \u2014 ").append(vr.error());
+				}
+				result.append("\n");
+
+				if (vr.valid() && (vr.displayFormat() != null || !vr.flags().isEmpty())) {
+					if (vr.displayFormat() != null)
+						result.append("  Display: ").append(vr.displayFormat()).append("\n");
+					if (vr.editFormat() != null)
+						result.append("  Edit:    ").append(vr.editFormat()).append("\n");
+					if (!vr.flags().isEmpty())
+						result.append("  Flags:   ").append(String.join(", ", vr.flags())).append("\n");
+				}
+
+				if (elementName != null) break;
+			}
+
+			if (elementName != null && validated == 0 && skipped == 0) {
+				return "Error: Element '" + elementName + "' not found on form '" + formName
+						+ "' or it does not support dataprovider binding.";
+			}
+
+			if (elementName == null) {
+				result.append("\nSummary: ").append(validated).append(" validated");
+				if (valid > 0) result.append(", ").append(valid).append(" valid");
+				if (invalid > 0) result.append(", ").append(invalid).append(" invalid");
+				if (skipped > 0) result.append(", ").append(skipped).append(" skipped (type unresolvable)");
+				if (validated == 0 && skipped == 0) result.append(" — no elements with format properties found");
+				result.append("\n");
+			}
+
+			return result.toString();
+		} catch (Exception e) {
+			ServoyLog.logError("Error validating form element format: " + formName, e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	private Solution resolveFormSolution(Form form, String solutionName) {
+		if (solutionName != null && !solutionName.trim().isEmpty()) {
+			ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			if (project != null) return project.getEditingSolution();
+		}
+		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		if (activeProject != null) return activeProject.getEditingSolution();
+		return null;
+	}
+
+	private String resolveDirectDataProviderType(String dpId, Form form, ITable formTable) {
+		if (formTable != null) {
+			Column column = formTable.getColumn(dpId);
+			if (column != null) {
+				return FormatValidatorService.columnTypeToName(Column.mapToDefaultType(column.getColumnType().getSqlType()));
+			}
+		}
+		com.servoy.j2db.persistence.ScriptVariable var = form.getScriptVariable(dpId);
+		if (var != null) {
+			return FormatValidatorService.columnTypeToName(var.getDataProviderType());
+		}
+		return null;
+	}
+
+	private String resolveRelatedDataProviderType(String dpId, Solution solution, String formDataSource) {
+		if (solution == null) return null;
+
+		String[] parts = dpId.split("\\.");
+		if (parts.length < 2) return null;
+
+		String currentDataSource = formDataSource;
+		for (int i = 0; i < parts.length - 1; i++) {
+			com.servoy.j2db.persistence.Relation relation = solution.getRelation(parts[i]);
+			if (relation == null) return null;
+			currentDataSource = relation.getForeignDataSource();
+			if (currentDataSource == null) return null;
+		}
+
+		String columnName = parts[parts.length - 1];
+		String[] dbServerTable = com.servoy.j2db.util.DataSourceUtils.getDBServernameTablename(currentDataSource);
+		if (dbServerTable == null || dbServerTable.length != 2) return null;
+
+		try {
+			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					.getServer(dbServerTable[0], false, false);
+			if (server == null) return null;
+			ITable table = server.getTable(dbServerTable[1]);
+			if (table == null) return null;
+			Column column = table.getColumn(columnName);
+			if (column == null) return null;
+			return FormatValidatorService.columnTypeToName(Column.mapToDefaultType(column.getColumnType().getSqlType()));
+		} catch (Exception e) {
+			return null;
 		}
 	}
 

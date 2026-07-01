@@ -34,6 +34,7 @@ import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
+import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
 
 /**
  * JUnit 4 test suite for all Servoy Developer MCP tests.
@@ -49,6 +50,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 	ServoyTestingServerTest.class,
 	FormSpecGeneratorTest.class,
 	FormSpecRunnerTest.class,
+	FormatValidatorServiceTest.class,
 	AnalyzeCodeToolTest.class,
 	GenerateTestCasesToolTest.class,
 	ServoyMediaServerTest.class,
