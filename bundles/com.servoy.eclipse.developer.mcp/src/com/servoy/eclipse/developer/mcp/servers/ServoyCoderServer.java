@@ -16,16 +16,19 @@
 */
 package com.servoy.eclipse.developer.mcp.servers;
 
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
 
+import org.eclipse.dltk.compiler.problem.DefaultProblem;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
+import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 
 /**
@@ -38,6 +41,15 @@ import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
  * {@code refactorMoveJavaType}, {@code refactorRenamePackage}, {@code organizeImports},
  * {@code organizeImportsInPackage}.
  * </p>
+ * <p>
+ * Post-write behaviour for {@code .js} files:
+ * <ul>
+ *   <li>SVY-21203: {@code createFile} rejects paths whose parent directory is named
+ *       {@code scopes} (case-insensitive) — Servoy scope files must live at the module root.</li>
+ *   <li>SVY-21113: all write tools validate the resulting JS content via
+ *       {@link JsCodeValidatorService} and append any syntax problems to the response.</li>
+ * </ul>
+ * </p>
  */
 @Creatable
 @McpServer(name = "servoy-coder")
@@ -47,6 +59,7 @@ public class ServoyCoderServer
 	private CodeEditingService codeEditingService;
 
 	private final ServoySolutionService solutionService = new ServoySolutionService();
+	private final JsCodeValidatorService jsValidator = new JsCodeValidatorService();
 
 	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
 	public ServoyCoderServer() { }
@@ -58,14 +71,19 @@ public class ServoyCoderServer
 	}
 
 	@Tool(name = "createFile",
-		description = "Create and open a new file in a specified project. Ensure the file doesn't already exist.",
+		description = "Create and open a new file in a specified project. Ensure the file doesn't already exist. "
+			+ "IMPORTANT for Servoy scope files: scope .js files must be placed directly at the solution/module root "
+			+ "(e.g. 'globals.js'), never inside a 'scopes/' subdirectory.",
 		type = "object")
 	public String createFile(
 		@ToolParam(name = "projectName", description = "The name of the project where the file should be created", required = true) String projectName,
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "content", description = "The content to write to the file", required = true) String content)
 	{
-		return codeEditingService.createFile(projectName, filePath, content);
+		String guard = guardScopePath(filePath);
+		if (guard != null) return guard;
+		String result = codeEditingService.createFile(projectName, filePath, content);
+		return appendJsValidation(result, filePath, content);
 	}
 
 	@Tool(name = "insertIntoFile",
@@ -79,7 +97,8 @@ public class ServoyCoderServer
 		@ToolParam(name = "line", description = "The line number before which to insert the text (1-based index). Use line=1 to insert at the beginning.", required = false) String line)
 	{
 		int lineNum = Optional.ofNullable(line).map(Integer::parseInt).orElse(1);
-		return codeEditingService.insertIntoFile(projectName, filePath, content, lineNum);
+		String result = codeEditingService.insertIntoFile(projectName, filePath, content, lineNum);
+		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));
 	}
 
 	@Tool(name = "replaceString",
@@ -95,7 +114,8 @@ public class ServoyCoderServer
 	{
 		Integer startLineNum = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(null);
 		Integer endLineNum = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(null);
-		return codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum);
+		String result = codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum);
+		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));
 	}
 
 	@Tool(name = "undoEdit",
@@ -193,7 +213,8 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "content", description = "The new content to write to the file", required = true) String content)
 	{
-		return codeEditingService.replaceFileContent(projectName, filePath, content);
+		String result = codeEditingService.replaceFileContent(projectName, filePath, content);
+		return appendJsValidation(result, filePath, content);
 	}
 
 	@Tool(name = "deleteLinesInFile",
@@ -207,7 +228,8 @@ public class ServoyCoderServer
 	{
 		int startLineNum = Integer.parseInt(startLine);
 		int endLineNum = Integer.parseInt(endLine);
-		return codeEditingService.deleteLinesInFile(projectName, filePath, startLineNum, endLineNum);
+		String result = codeEditingService.deleteLinesInFile(projectName, filePath, startLineNum, endLineNum);
+		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));
 	}
 
 	@Tool(name = "applyPatch",
@@ -220,6 +242,70 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "patch", description = "The unified diff content to apply. Should contain @@ hunk headers and lines prefixed with ' ' (context), '-' (remove), or '+' (add). File headers (--- and +++) are optional.", required = true) String patch)
 	{
-		return codeEditingService.applyPatch(projectName, filePath, patch);
+		String result = codeEditingService.applyPatch(projectName, filePath, patch);
+		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));
+	}
+
+	// --- Helpers ---
+
+	/**
+	 * Guards against creating a Servoy scope file inside a {@code scopes/} subdirectory.
+	 * <p>
+	 * In Servoy, scope {@code .js} files must always sit at the module/solution root.
+	 * There is no {@code scopes/} directory. This check catches common AI mistakes where
+	 * the agent creates e.g. {@code Scopes/globals.js} instead of {@code globals.js}.
+	 * </p>
+	 *
+	 * @param filePath the path supplied to {@code createFile}
+	 * @return an {@code Error:} message if the path is invalid, or {@code null} if acceptable
+	 */
+	static String guardScopePath(String filePath)
+	{
+		if (filePath == null) return null;
+		String normalized = filePath.replace('\\', '/').replaceFirst("^/+", "");
+		if (!normalized.toLowerCase().endsWith(".js")) return null;
+
+		int lastSlash = normalized.lastIndexOf('/');
+		if (lastSlash < 0) return null; // file is at root — correct
+
+		String parentPath = normalized.substring(0, lastSlash);
+		for (String segment : parentPath.split("/"))
+		{
+			if ("scopes".equalsIgnoreCase(segment))
+			{
+				String fileName = normalized.substring(lastSlash + 1);
+				return "Error: Servoy scope files must be placed directly at the solution/module root, "
+					+ "not inside a 'scopes/' subdirectory. "
+					+ "Use '" + fileName + "' (at the project root) instead of '" + normalized + "'.";
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Validates {@code content} as JavaScript (via DLTK) and appends any syntax problems
+	 * to {@code result}. The write is never blocked — warnings are informational so the
+	 * agent can self-correct.
+	 *
+	 * @param result   the tool response string produced by the write operation
+	 * @param filePath path of the file that was written (used to decide whether to validate)
+	 * @param content  the current full file content to validate; may be {@code null}
+	 * @return {@code result} unchanged if there are no problems or the file is not a
+	 *         {@code .js} file; otherwise {@code result} with problems appended
+	 */
+	private String appendJsValidation(String result, String filePath, String content)
+	{
+		if (result != null && result.startsWith("Error:")) return result;
+		if (filePath == null || content == null) return result;
+		if (!filePath.toLowerCase().endsWith(".js")) return result;
+
+		List<DefaultProblem> problems = jsValidator.validate(content);
+		if (problems.isEmpty()) return result;
+
+		StringBuilder sb = new StringBuilder(result != null ? result : "");
+		sb.append("\n\nJavaScript syntax issues detected:");
+		for (DefaultProblem p : problems)
+			sb.append("\n  Line ").append(p.getSourceLineNumber()).append(": ").append(p.getMessage());
+		return sb.toString();
 	}
 }

@@ -34,6 +34,7 @@ import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTe
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 
 /**
  * JUnit 4 test suite for all Servoy Developer MCP integration tests.
@@ -61,6 +62,7 @@ import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegration
 	ServoyIdeServerIntegrationTest.class,
 	ServoyWpmServerIntegrationTest.class,
 	ShowFormInBrowserIntegrationTest.class,
+	ServoyCoderServerTest.class,
 })
 public class AllDeveloperMcpIntegrationTests
 {

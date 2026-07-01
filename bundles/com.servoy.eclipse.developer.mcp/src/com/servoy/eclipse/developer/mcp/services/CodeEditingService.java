@@ -334,6 +334,26 @@ public class CodeEditingService
 		}
 	}
 
+	/**
+	 * Reads and returns the full text content of the specified file.
+	 *
+	 * @param projectName the Eclipse project name
+	 * @param filePath    path relative to the project root
+	 * @return file content as a string, or {@code null} if the file cannot be read
+	 */
+	public String readFileContent(String projectName, String filePath)
+	{
+		try
+		{
+			IFile file = resolveFile(projectName, filePath);
+			return readFileContent(file);
+		}
+		catch (Exception e)
+		{
+			return null;
+		}
+	}
+
 	public String replaceFileContent(String projectName, String filePath, String content)
 	{
 		Objects.requireNonNull(projectName, "projectName is required");

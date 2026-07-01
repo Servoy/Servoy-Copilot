@@ -18,6 +18,7 @@ package com.servoy.eclipse.developer.mcp.servers;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -27,7 +28,8 @@ import org.junit.Test;
  * JUnit 4 tests for {@link ServoyCoderServer}.
  * <p>
  * Tests that do not require a live Eclipse workspace:
- * null-input errors, annotation/registration checks.
+ * null-input errors, annotation/registration checks,
+ * scope path guard (SVY-21203), JS validation (SVY-21113).
  * </p>
  */
 public class ServoyCoderServerTest
@@ -53,9 +55,10 @@ public class ServoyCoderServerTest
 	@Test
 	public void testCreateFile_nullProject_throws()
 	{
+		// Use a root-level path so the scope guard does not fire first
 		try
 		{
-			server.createFile(null, "scopes/globals.js", "content");
+			server.createFile(null, "globals.js", "content");
 			fail("Should throw on null projectName");
 		}
 		catch (RuntimeException e)
@@ -90,5 +93,70 @@ public class ServoyCoderServerTest
 			}
 		}
 		assertTrue("ServoyCoderServer must be registered in McpServerBuiltins", found);
+	}
+
+	// --- SVY-21203: scope path guard ---
+
+	@Test
+	public void testGuardScopePath_lowercase_scopes_dir_blocked()
+	{
+		String result = ServoyCoderServer.guardScopePath("scopes/globals.js");
+		assertNotNull("Should block scopes/ subdirectory", result);
+		assertTrue("Error message should mention solution root", result.contains("solution"));
+		assertTrue("Error message should mention the correct file name", result.contains("globals.js"));
+	}
+
+	@Test
+	public void testGuardScopePath_uppercase_Scopes_dir_blocked()
+	{
+		String result = ServoyCoderServer.guardScopePath("Scopes/utils.js");
+		assertNotNull("Should block Scopes/ subdirectory (case-insensitive)", result);
+	}
+
+	@Test
+	public void testGuardScopePath_nested_scopes_dir_blocked()
+	{
+		String result = ServoyCoderServer.guardScopePath("module/scopes/utils.js");
+		assertNotNull("Should block nested scopes/ directory", result);
+	}
+
+	@Test
+	public void testGuardScopePath_rootLevel_allowed()
+	{
+		assertNull("Root-level .js should be allowed", ServoyCoderServer.guardScopePath("globals.js"));
+	}
+
+	@Test
+	public void testGuardScopePath_formsDir_allowed()
+	{
+		// forms/ is a different Servoy artifact — not blocked by scope guard
+		assertNull("forms/ is not a scopes directory", ServoyCoderServer.guardScopePath("forms/myForm.js"));
+	}
+
+	@Test
+	public void testGuardScopePath_nonJsFile_allowed()
+	{
+		assertNull("Non-.js files should not be blocked", ServoyCoderServer.guardScopePath("scopes/config.json"));
+	}
+
+	@Test
+	public void testGuardScopePath_null_allowed()
+	{
+		assertNull("null path should not throw", ServoyCoderServer.guardScopePath(null));
+	}
+
+	@Test
+	public void testGuardScopePath_windowsBackslash_blocked()
+	{
+		String result = ServoyCoderServer.guardScopePath("Scopes\\globals.js");
+		assertNotNull("Should normalise backslashes and block Scopes\\ directory", result);
+	}
+
+	@Test
+	public void testGuardScopePath_scopeNameContainsScopes_allowed()
+	{
+		// File named 'myscopes.js' at root should NOT be blocked — the word appears in the
+		// filename, not as a parent directory segment
+		assertNull("'myscopes.js' at root should not be blocked", ServoyCoderServer.guardScopePath("myscopes.js"));
 	}
 }
