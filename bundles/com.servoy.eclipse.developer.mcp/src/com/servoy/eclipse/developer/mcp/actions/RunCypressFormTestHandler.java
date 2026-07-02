@@ -20,6 +20,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.servoy.eclipse.core.resource.PersistEditorInput;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
+import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 
 public class RunCypressFormTestHandler extends AbstractHandler {
@@ -72,12 +73,16 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 
 	/**
 	 * Core test execution logic separated from Eclipse UI concerns.
-	 * Runs a single form test and returns the result string.
+	 * Runs the appropriate test type (form test or E2E test) and returns the result string.
 	 * Package-private for testability.
 	 */
 	public String runFormTestCore(String formName, FormSpecRunner runner) {
 		if (formName == null || formName.isBlank()) {
 			return "Error: No form name specified.";
+		}
+		TestType testType = discoveryService.getTestType(formName);
+		if (testType == TestType.E2E) {
+			return runner.runE2ESpec(formName, false);
 		}
 		return runner.runSpec(formName, false);
 	}

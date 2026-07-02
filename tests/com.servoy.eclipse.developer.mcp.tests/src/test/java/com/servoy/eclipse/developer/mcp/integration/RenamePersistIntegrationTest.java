@@ -365,22 +365,22 @@ public class RenamePersistIntegrationTest {
 
 		IProject project = activeProject.getProject();
 
-		IFolder mediasFolder = project.getFolder("medias");
-		if (!mediasFolder.exists())
-			mediasFolder.create(true, true, new NullProgressMonitor());
-		IFolder testsFolder = project.getFolder("medias/tests");
-		if (!testsFolder.exists())
-			testsFolder.create(true, true, new NullProgressMonitor());
-		IFile specCyFile = project.getFile("medias/tests/" + formName + ".spec.cy.js");
-		specCyFile.create(
-				new ByteArrayInputStream(("describe('" + formName + "', () => {});").getBytes(StandardCharsets.UTF_8)),
-				true, new NullProgressMonitor());
+		// SVY-21171: the .spec.cy.js now lives outside the solution project tree in the
+		// workspace-relative e2e-form dir, so create/assert it via java.nio.file paths
+		// resolved by the generator rather than as a project IFile.
+		FormSpecGenerator specGenerator = new FormSpecGenerator();
+		java.nio.file.Path oldSpecCyPath = specGenerator.getSpecFilePath(formName);
+		java.nio.file.Path newSpecCyPath = specGenerator.getSpecFilePath(newName);
+		java.nio.file.Files.createDirectories(oldSpecCyPath.getParent());
+		java.nio.file.Files.deleteIfExists(newSpecCyPath);
+		java.nio.file.Files.writeString(oldSpecCyPath, "describe('" + formName + "', () => {});",
+				StandardCharsets.UTF_8);
 
 		IFile specJsFile = project.getFile("forms/" + formName + ".spec.js");
 		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true,
 				new NullProgressMonitor());
 
-		assertTrue(".spec.cy.js should exist before rename", specCyFile.exists());
+		assertTrue(".spec.cy.js should exist before rename", java.nio.file.Files.exists(oldSpecCyPath));
 		assertTrue(".spec.js should exist before rename", specJsFile.exists());
 
 		String result = renameService.renameForm(formName, newName, activeProject);
@@ -389,10 +389,8 @@ public class RenamePersistIntegrationTest {
 
 		project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
 
-		IFile oldSpecCy = project.getFile("medias/tests/" + formName + ".spec.cy.js");
-		IFile newSpecCy = project.getFile("medias/tests/" + newName + ".spec.cy.js");
-		assertFalse("Old .spec.cy.js should not exist", oldSpecCy.exists());
-		assertTrue("New .spec.cy.js should exist", newSpecCy.exists());
+		assertFalse("Old .spec.cy.js should not exist", java.nio.file.Files.exists(oldSpecCyPath));
+		assertTrue("New .spec.cy.js should exist", java.nio.file.Files.exists(newSpecCyPath));
 
 		IFile oldSpecJs = project.getFile("forms/" + formName + ".spec.js");
 		IFile newSpecJs = project.getFile("forms/" + newName + ".spec.js");
@@ -786,7 +784,7 @@ public class RenamePersistIntegrationTest {
 			writeProjectFile(sol, "solution_settings.obj",
 					"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\",\nversion:\"1.0\"\n", monitor);
 			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/|**/*.spec.cy.js\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
+					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 					monitor);
 		}, new NullProgressMonitor());
 
