@@ -315,9 +315,9 @@ public class ServoyTestingServerTest {
 		assertTrue(tool.description().contains(".spec.cy.js"));
 		// SVY-21171: description must reference the new workspace-relative location
 		assertTrue("generateFormSpec description must reference the new e2e-form location",
-			tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/e2e-form"));
+				tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/e2e-form"));
 		assertTrue("generateFormSpec description must no longer reference medias/tests",
-			!tool.description().contains("medias/tests"));
+				!tool.description().contains("medias/tests"));
 	}
 
 	@Test
@@ -650,5 +650,60 @@ public class ServoyTestingServerTest {
 		String result = server.getNavigationPath("  ", null);
 		assertNotNull(result);
 		assertTrue("Should return error for blank targetForm: " + result, result.contains("Error"));
+	}
+
+	// -----------------------------------------------------------------------
+	// runTestMethod tool tests (SVY-21189)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRunTestMethod_isAnnotated() {
+		Method method = findToolMethod("runTestMethod");
+		assertNotNull("runTestMethod tool must exist on ServoyTestingServer", method);
+		Tool tool = method.getAnnotation(Tool.class);
+		assertNotNull("runTestMethod must have @Tool annotation", tool);
+		assertEquals("runTestMethod", tool.name());
+	}
+
+	@Test
+	public void testRunTestMethod_hasCorrectParams() {
+		Method method = findToolMethod("runTestMethod");
+		assertNotNull("runTestMethod tool must exist", method);
+		assertEquals("runTestMethod must have 3 parameters", 3, method.getParameterCount());
+		assertEquals("first param must be String", String.class, method.getParameterTypes()[0]);
+		assertEquals("second param must be String", String.class, method.getParameterTypes()[1]);
+		assertEquals("third param must be int", int.class, method.getParameterTypes()[2]);
+	}
+
+	@Test
+	public void testRunTestMethod_descriptionMentionsScope() {
+		Method method = findToolMethod("runTestMethod");
+		assertNotNull("runTestMethod tool must exist", method);
+		Tool tool = method.getAnnotation(Tool.class);
+		assertTrue("runTestMethod description must contain 'scopeOrAll'", tool.description().contains("scopeOrAll"));
+	}
+
+	@Test
+	public void testRunTestMethod_nullMethodName_returnsError() {
+		// ServoyTestingServer delegates to JSUnitRunnerService which validates first;
+		// with no-arg construction jsunitRunner is null so validation never runs and
+		// the catch block returns "Error: <npe-message>". Either way the result must
+		// start with "Error:" â the exact message is verified at integration-test
+		// level.
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.runTestMethod(null, "ALL", 30);
+		assertNotNull(result);
+		assertTrue("runTestMethod must return an error string for null testMethodName: " + result,
+				result.startsWith("Error:"));
+	}
+
+	@Test
+	public void testRunTestMethod_blankMethodName_returnsError() {
+		// Same reasoning as testRunTestMethod_nullMethodName_returnsError above.
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.runTestMethod("   ", "ALL", 30);
+		assertNotNull(result);
+		assertTrue("runTestMethod must return an error string for blank testMethodName: " + result,
+				result.startsWith("Error:"));
 	}
 }

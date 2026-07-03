@@ -132,6 +132,110 @@ public class JSUnitRunnerService
 		}
 	}
 
+	public String runTestMethod(String testMethodName, String scopeOrAll, int timeoutSeconds)
+	{
+		if (testMethodName == null || testMethodName.isBlank())
+			return "Error: testMethodName must not be empty.";
+
+		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		if (activeProject == null)
+			return "Error: No active Servoy project found. Please open a Servoy solution.";
+
+		Solution activeSolution = activeProject.getSolution();
+		if (activeSolution == null)
+			return "Error: No active Servoy solution found.";
+
+		try
+		{
+			TestTarget target = buildTestTarget(scopeOrAll, activeProject);
+			ITestRunSession session = runForTarget(target, timeoutSeconds);
+
+			if (session == null)
+				return "Error: Test run timed out after " + timeoutSeconds + " seconds. " +
+					"Ensure the Servoy Application Server is running and the solution starts in JSUnit mode.";
+
+			List<ITestCaseElement> allCases = new ArrayList<>();
+			Display.getDefault().syncExec(() -> collectTestCases(session.getChildren(), allCases));
+
+			String lowerMethod = testMethodName.toLowerCase();
+			List<ITestCaseElement> matches = allCases.stream()
+				.filter(t -> t.getTestName() != null && t.getTestName().toLowerCase().contains(lowerMethod))
+				.collect(java.util.stream.Collectors.toList());
+
+			if (matches.isEmpty())
+			{
+				String available = allCases.stream()
+					.map(ITestCaseElement::getTestName)
+					.collect(java.util.stream.Collectors.joining(", "));
+				return "Error: No test named '" + testMethodName + "' found in scope '" + scopeOrAll +
+					"'. Tests found: " + available;
+			}
+
+			String[] result = new String[1];
+			Display.getDefault().syncExec(() -> result[0] = formatSingleMethodResult(testMethodName, matches));
+			return result[0];
+		}
+		catch (CoreException e)
+		{
+			ServoyLog.logError("Error creating or launching JSUnit configuration", e);
+			return "Error launching JSUnit tests: " + e.getMessage();
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			return "Error: Test run was interrupted.";
+		}
+	}
+
+	private String formatSingleMethodResult(String methodName, List<ITestCaseElement> matches)
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append("**runTestMethod: ").append(methodName).append("**\n\n");
+
+		boolean multipleMatches = matches.size() > 1;
+
+		for (ITestCaseElement testCase : matches)
+		{
+			ITestElement.Result result = testCase.getTestResult(false);
+
+			String resultLabel;
+			if (result == ITestElement.Result.OK)
+				resultLabel = "PASS";
+			else if (result == ITestElement.Result.FAILURE)
+				resultLabel = "FAIL";
+			else if (result == ITestElement.Result.ERROR)
+				resultLabel = "ERROR";
+			else
+				resultLabel = "IGNORED";
+
+			if (multipleMatches)
+				sb.append(testCase.getTestName()).append(": ");
+
+			sb.append("Result: ").append(resultLabel).append("\n");
+
+			ITestElement.FailureTrace trace = testCase.getFailureTrace();
+			if (trace != null)
+			{
+				if (result == ITestElement.Result.FAILURE && trace.getExpected() != null)
+				{
+					sb.append("   Expected: ").append(trace.getExpected()).append("\n");
+					sb.append("   Actual:   ").append(trace.getActual()).append("\n");
+				}
+				String traceText = trace.getTrace();
+				if (traceText != null)
+				{
+					String[] lines = traceText.split("\n", 6);
+					for (int i = 0; i < Math.min(lines.length, 5); i++)
+					{
+						sb.append("   ").append(lines[i].trim()).append("\n");
+					}
+				}
+			}
+		}
+
+		return sb.toString();
+	}
+
 	private ITestRunSession runForTarget(TestTarget target, int timeoutSeconds) throws CoreException, InterruptedException
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
