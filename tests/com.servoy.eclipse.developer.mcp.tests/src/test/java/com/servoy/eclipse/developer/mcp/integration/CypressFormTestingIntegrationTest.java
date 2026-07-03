@@ -113,8 +113,8 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("Cypress spec file should exist after showFormInBrowser", Files.exists(cySpec));
 
 		IProject project = activeProject.getProject();
-		Path setupPath = project.getLocation().toFile().toPath().resolve("forms").resolve(TEST_FORM + ".spec.js");
-		assertTrue("Setup spec.js file should exist in forms/ directory", Files.exists(setupPath));
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup spec.js file should exist in e2e-form-spec/ directory", Files.exists(setupPath));
 	}
 
 	@Test
@@ -266,9 +266,8 @@ public class CypressFormTestingIntegrationTest {
 		pumpEvents(300);
 		String consoleContent = console.getDocument().get();
 		assertNotNull("Console should have content after showAndTest", consoleContent);
-		assertTrue("Console should contain showAndTest output: " + consoleContent,
-				consoleContent.contains("passed") || consoleContent.contains("failed")
-						|| consoleContent.contains("timed out"));
+		assertTrue("Console should contain showAndTest output: " + consoleContent, consoleContent.contains("passed")
+				|| consoleContent.contains("failed") || consoleContent.contains("timed out"));
 	}
 
 	// -----------------------------------------------------------------------
@@ -322,9 +321,9 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = activeProject.getProject().getLocation().toFile().toPath().resolve("forms")
-				.resolve(TEST_FORM + ".spec.js");
-		assertTrue("Setup .spec.js should be created in forms/", Files.exists(setupPath));
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
+				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup .spec.js should be created in e2e-form-spec/", Files.exists(setupPath));
 	}
 
 	@Test
@@ -379,8 +378,8 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = activeProject.getProject().getLocation().toFile().toPath().resolve("forms")
-				.resolve(TEST_FORM + ".spec.js");
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
+				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
 		String content = Files.readString(setupPath);
 
 		assertTrue("Setup must have @properties annotation", content.contains("@properties"));
@@ -401,8 +400,7 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("Cypress spec should be in jenkins-custom/e2e-test-scripts/cypress/e2e-form/ directory: " + path,
 				path.contains("jenkins-custom") && path.contains("e2e-test-scripts") && path.contains("cypress")
 						&& path.contains("e2e-form"));
-		assertTrue("Cypress spec must no longer live under medias/tests: " + path,
-				!path.contains("medias"));
+		assertTrue("Cypress spec must no longer live under medias/tests: " + path, !path.contains("medias"));
 	}
 
 	@Test
@@ -537,7 +535,8 @@ public class CypressFormTestingIntegrationTest {
 
 	private void ensureCypressTestTable() throws Exception {
 		IApplicationServerSingleton appServer = ApplicationServerRegistry.get();
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal)appServer.getServerManager();
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = (com.servoy.j2db.persistence.IServerManagerInternal) appServer
+				.getServerManager();
 
 		IServerInternal server = (IServerInternal) serverManager.getServer(CYPRESS_TEST_SERVER, true, true);
 		if (server == null) {
@@ -969,7 +968,7 @@ public class CypressFormTestingIntegrationTest {
 				Files.deleteIfExists(cySpec);
 
 			IProject project = activeProject.getProject();
-			Path setupSpec = project.getLocation().toFile().toPath().resolve("forms").resolve(formName + ".spec.js");
+			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(formName + ".spec.js");
 			Files.deleteIfExists(setupSpec);
 		} catch (Exception e) {
 			// ignore
@@ -1095,5 +1094,104 @@ public class CypressFormTestingIntegrationTest {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// screenshotForm marker validation PDE tests (SVY-21195)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testScreenshotForm_formWithMarkerErrors_returnsTextError() throws Exception {
+		String invalidFormName = "cypressInvalidMarkerForm";
+		ensureForm(invalidFormName);
+
+		IProject project = activeProject.getProject();
+		writeProjectFile(project, "forms/" + invalidFormName + ".js",
+				"!!! this is not valid JavaScript !!!\nfunction broken( {", new NullProgressMonitor());
+		org.eclipse.core.resources.IFile jsFile = project.getFile("forms/" + invalidFormName + ".js");
+		assertTrue("js file should exist after write", jsFile.exists());
+
+		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
+		pumpEvents(2000);
+
+		boolean hasErrorMarkers = false;
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
+				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
+					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+				hasErrorMarkers = true;
+				break;
+			}
+		}
+		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
+
+		String result = testingServer.screenshotForm(invalidFormName, 1);
+		assertNotNull("screenshotForm result should not be null", result);
+		assertTrue("Should return text error (not screenshot path) when form has markers: " + result,
+				result.contains("validation errors"));
+		assertTrue("Error should list specific marker messages: " + result, result.contains("[ERROR]"));
+		assertFalse("Should NOT return a .png path when form has errors: " + result, result.contains(".png"));
+	}
+
+	@Test
+	public void testScreenshotForm_formWithMarkerErrors_includesFormName() throws Exception {
+		String invalidFormName = "cypressInvalidMarkerForm2";
+		ensureForm(invalidFormName);
+
+		IProject project = activeProject.getProject();
+		writeProjectFile(project, "forms/" + invalidFormName + ".js",
+				"!!! this is not valid JavaScript !!!\nfunction broken( {", new NullProgressMonitor());
+		org.eclipse.core.resources.IFile jsFile = project.getFile("forms/" + invalidFormName + ".js");
+		assertTrue("js file should exist after write", jsFile.exists());
+
+		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
+		pumpEvents(2000);
+
+		boolean hasErrorMarkers = false;
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
+				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
+					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+				hasErrorMarkers = true;
+				break;
+			}
+		}
+		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
+
+		String result = testingServer.screenshotForm(invalidFormName, 1);
+		assertNotNull(result);
+		assertTrue("Error message should include form name: " + result, result.contains(invalidFormName));
+	}
+
+	@Test
+	public void testShowFormInBrowser_formWithJSMarkerErrors_returnsValidationError() throws Exception {
+		String invalidFormName = "cypressInvalidBrowserForm";
+		ensureForm(invalidFormName);
+
+		IProject project = activeProject.getProject();
+		writeProjectFile(project, "forms/" + invalidFormName + ".js",
+				"!!! this is not valid JavaScript !!!\nfunction broken( {", new NullProgressMonitor());
+		org.eclipse.core.resources.IFile jsFile = project.getFile("forms/" + invalidFormName + ".js");
+		assertTrue("js file should exist after write", jsFile.exists());
+
+		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
+		pumpEvents(2000);
+
+		boolean hasErrorMarkers = false;
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
+				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
+					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+				hasErrorMarkers = true;
+				break;
+			}
+		}
+		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
+
+		String result = testingServer.showFormInBrowser(invalidFormName, false);
+		assertNotNull("showFormInBrowser result should not be null", result);
+		assertTrue("Should return validation error, not 'Opened form': " + result,
+				result.contains("validation errors") || result.contains("compilation errors"));
+		assertTrue("Error should mention the form name: " + result, result.contains(invalidFormName));
 	}
 }

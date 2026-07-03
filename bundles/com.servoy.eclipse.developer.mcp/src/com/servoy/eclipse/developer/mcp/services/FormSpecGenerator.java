@@ -11,12 +11,10 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
  * Generates Cypress test spec files (.spec.cy.js) and Servoy setUp/tearDown
@@ -34,6 +32,7 @@ public class FormSpecGenerator {
 	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
 	private static final String SPEC_JS_EXTENSION = ".spec.js";
 	private static final String FORM_SPEC_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/e2e-form";
+	private static final String FORM_SETUP_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/e2e-form-spec";
 
 	private static final Pattern DATA_SOURCE_PATTERN = Pattern.compile("\"dataSource\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern ELEMENT_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
@@ -43,7 +42,7 @@ public class FormSpecGenerator {
 	/**
 	 * Generates spec files for the given form. Cypress spec:
 	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/{formName}.spec.cy.js
-	 * Servoy setUp/tearDown: {solutionProject}/forms/{formName}.spec.js
+	 * Servoy setUp/tearDown: {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form-spec/{formName}.spec.js
 	 */
 	public String generateSpec(String formName) {
 		try {
@@ -59,16 +58,17 @@ public class FormSpecGenerator {
 				return "Error: Form file not found: forms/" + formName + ".frm";
 			}
 
-			Path formsDir = frmFile.getLocation().toFile().toPath().getParent();
 			Path testsDir = resolveFormSpecDir();
+			Path setupDir = resolveFormSetupDir();
 			Files.createDirectories(testsDir);
+			Files.createDirectories(setupDir);
 
 			Path cySpecPath = testsDir.resolve(formName + SPEC_CY_EXTENSION);
-			Path setupSpecPath = formsDir.resolve(formName + SPEC_JS_EXTENSION);
+			Path setupSpecPath = setupDir.resolve(formName + SPEC_JS_EXTENSION);
 
 			if (Files.exists(cySpecPath) && Files.exists(setupSpecPath)) {
 				return "Spec files already exist: " + FORM_SPEC_RELATIVE_DIR + "/" + formName + SPEC_CY_EXTENSION
-						+ " and forms/" + formName + SPEC_JS_EXTENSION;
+						+ " and " + FORM_SETUP_RELATIVE_DIR + "/" + formName + SPEC_JS_EXTENSION;
 			}
 
 			String frmContent = new String(Files.readAllBytes(frmFile.getLocation().toFile().toPath()),
@@ -89,16 +89,9 @@ public class FormSpecGenerator {
 			if (!Files.exists(setupSpecPath)) {
 				String setupContent = generateSetupContent(metadata);
 				Files.writeString(setupSpecPath, setupContent, StandardCharsets.UTF_8);
-				result.append("Created: forms/").append(formName).append(SPEC_JS_EXTENSION)
-						.append(" (setUp/tearDown for data setup)");
+				result.append("Created: ").append(FORM_SETUP_RELATIVE_DIR).append("/").append(formName)
+						.append(SPEC_JS_EXTENSION).append(" (setUp/tearDown for data setup)");
 			}
-
-			// Only the .spec.js lives inside the solution project tree; the .spec.cy.js is
-			// written to
-			// the workspace-relative e2e-form directory (outside the project), so a refresh
-			// of the
-			// solution project is sufficient.
-			project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
 
 			return result.toString().trim();
 		} catch (Exception e) {
@@ -120,19 +113,22 @@ public class FormSpecGenerator {
 				.resolve("e2e-form");
 	}
 
+	private Path resolveFormSetupDir() {
+		Path workspaceRoot = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+				.toPath();
+		return workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+				.resolve("e2e-form-spec");
+	}
+
 	/**
 	 * Checks if both spec files already exist for the given form.
 	 */
 	public boolean specExists(String formName) {
 		try {
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
-					.getActiveProject();
-			if (activeProject == null)
-				return false;
 			Path testsDir = resolveFormSpecDir();
-			Path formsDir = activeProject.getProject().getLocation().toFile().toPath().resolve("forms");
+			Path setupDir = resolveFormSetupDir();
 			return Files.exists(testsDir.resolve(formName + SPEC_CY_EXTENSION))
-					&& Files.exists(formsDir.resolve(formName + SPEC_JS_EXTENSION));
+					&& Files.exists(setupDir.resolve(formName + SPEC_JS_EXTENSION));
 		} catch (Exception e) {
 			return false;
 		}
@@ -145,6 +141,18 @@ public class FormSpecGenerator {
 		try {
 			Path testsDir = resolveFormSpecDir();
 			return testsDir.resolve(formName + SPEC_CY_EXTENSION);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Returns the path to the setUp/tearDown spec.js file for a given form.
+	 */
+	public Path getSetupFilePath(String formName) {
+		try {
+			Path setupDir = resolveFormSetupDir();
+			return setupDir.resolve(formName + SPEC_JS_EXTENSION);
 		} catch (Exception e) {
 			return null;
 		}

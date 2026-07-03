@@ -20,17 +20,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IWorkspaceRunnable;
@@ -376,12 +369,14 @@ public class RenamePersistIntegrationTest {
 		java.nio.file.Files.writeString(oldSpecCyPath, "describe('" + formName + "', () => {});",
 				StandardCharsets.UTF_8);
 
-		IFile specJsFile = project.getFile("forms/" + formName + ".spec.js");
-		specJsFile.create(new ByteArrayInputStream(("function setUp() {}").getBytes(StandardCharsets.UTF_8)), true,
-				new NullProgressMonitor());
+		java.nio.file.Path oldSpecJsPath = specGenerator.getSetupFilePath(formName);
+		java.nio.file.Path newSpecJsPath = specGenerator.getSetupFilePath(newName);
+		java.nio.file.Files.createDirectories(oldSpecJsPath.getParent());
+		java.nio.file.Files.writeString(oldSpecJsPath, "function setUp() {}",
+				StandardCharsets.UTF_8);
 
 		assertTrue(".spec.cy.js should exist before rename", java.nio.file.Files.exists(oldSpecCyPath));
-		assertTrue(".spec.js should exist before rename", specJsFile.exists());
+		assertTrue(".spec.js should exist before rename", java.nio.file.Files.exists(oldSpecJsPath));
 
 		String result = renameService.renameForm(formName, newName, activeProject);
 		assertNotNull(result);
@@ -392,10 +387,8 @@ public class RenamePersistIntegrationTest {
 		assertFalse("Old .spec.cy.js should not exist", java.nio.file.Files.exists(oldSpecCyPath));
 		assertTrue("New .spec.cy.js should exist", java.nio.file.Files.exists(newSpecCyPath));
 
-		IFile oldSpecJs = project.getFile("forms/" + formName + ".spec.js");
-		IFile newSpecJs = project.getFile("forms/" + newName + ".spec.js");
-		assertFalse("Old .spec.js should not exist", oldSpecJs.exists());
-		assertTrue("New .spec.js should exist", newSpecJs.exists());
+		assertFalse("Old .spec.js should not exist", java.nio.file.Files.exists(oldSpecJsPath));
+		assertTrue("New .spec.js should exist", java.nio.file.Files.exists(newSpecJsPath));
 
 		Form renamedForm = activeProject.getEditingSolution().getForm(newName);
 		assertNotNull("Form should exist with new name", renamedForm);
