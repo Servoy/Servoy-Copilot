@@ -30,6 +30,7 @@ import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerLayer4Test;
 import com.servoy.eclipse.developer.mcp.integration.PersistDuplicateIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.RunTestMethodIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
@@ -58,6 +59,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 	JSUnitRunnerLayer4Test.class,
 	PersistDuplicateIntegrationTest.class,
 	RenamePersistIntegrationTest.class,
+	RunTestMethodIntegrationTest.class,
 	ServoyDevServerIntegrationTest.class,
 	ServoyIdeServerIntegrationTest.class,
 	ServoyWpmServerIntegrationTest.class,
