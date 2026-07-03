@@ -652,6 +652,7 @@ public class ServoyTestingServerTest {
 		assertTrue("Should return error for blank targetForm: " + result, result.contains("Error"));
 	}
 
+
 	// -----------------------------------------------------------------------
 	// runTestMethod tool tests (SVY-21189)
 	// -----------------------------------------------------------------------
@@ -685,11 +686,6 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testRunTestMethod_nullMethodName_returnsError() {
-		// ServoyTestingServer delegates to JSUnitRunnerService which validates first;
-		// with no-arg construction jsunitRunner is null so validation never runs and
-		// the catch block returns "Error: <npe-message>". Either way the result must
-		// start with "Error:" â the exact message is verified at integration-test
-		// level.
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.runTestMethod(null, "ALL", 30);
 		assertNotNull(result);
@@ -699,11 +695,41 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testRunTestMethod_blankMethodName_returnsError() {
-		// Same reasoning as testRunTestMethod_nullMethodName_returnsError above.
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.runTestMethod("   ", "ALL", 30);
 		assertNotNull(result);
 		assertTrue("runTestMethod must return an error string for blank testMethodName: " + result,
 				result.startsWith("Error:"));
+	}
+
+	// -----------------------------------------------------------------------
+	// screenshotForm description tests (SVY-21195)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testScreenshotForm_descriptionMentionsValidationErrors() {
+		Method m = findToolMethod("screenshotForm");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue("screenshotForm description should mention validation errors: " + tool.description(),
+				tool.description().contains("validation errors"));
+	}
+
+	@Test
+	public void testScreenshotForm_descriptionMentionsMarkers() {
+		Method m = findToolMethod("screenshotForm");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue("screenshotForm description should mention markers: " + tool.description(),
+				tool.description().contains("markers"));
+	}
+
+	@Test
+	public void testScreenshotForm_descriptionMentionsTextError() {
+		Method m = findToolMethod("screenshotForm");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue("screenshotForm description should mention returning text error: " + tool.description(),
+				tool.description().contains("text error"));
 	}
 }
