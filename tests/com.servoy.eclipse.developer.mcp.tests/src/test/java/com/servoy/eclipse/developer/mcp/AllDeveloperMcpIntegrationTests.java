@@ -22,50 +22,57 @@ import org.junit.runners.Suite.SuiteClasses;
 
 import com.servoy.eclipse.developer.mcp.integration.AddTestMethodIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CodeAnalysisIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ContextServerHistoryIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.CreateArtifactsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.CreateSolutionIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CreateTestFileIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CypressConsoleUtilIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CypressFormTestingIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.DatabaseToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.DocumentationToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerLayer4Test;
 import com.servoy.eclipse.developer.mcp.integration.PersistDuplicateIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RunTestMethodIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.SecurityToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyCoderServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyGitServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyI18nServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyMediaServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerWorkspaceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServerTest;
 
 /**
  * JUnit 4 test suite for all Servoy Developer MCP integration tests.
  * <p>
- * These tests require a running Servoy Application Server, a configured
- * Eclipse workspace with Servoy projects, and (for some tests) the NG client
- * runtime. They must be run as JUnit Plug-in Tests inside a PDE-launched
- * Eclipse instance, NOT as headless surefire tests.
+ * These tests require a running Servoy Application Server, a configured Eclipse
+ * workspace with Servoy projects, and (for some tests) the NG client runtime.
+ * They must be run as JUnit Plug-in Tests inside a PDE-launched Eclipse
+ * instance, NOT as headless surefire tests.
  * <p>
- * Run via: Run As - JUnit Plug-in Test (using DeveloperMcpIntegrationTests.launch)
+ * Run via: Run As - JUnit Plug-in Test (using
+ * DeveloperMcpIntegrationTests.launch)
  */
 @RunWith(Suite.class)
-@SuiteClasses({
-	AddTestMethodIntegrationTest.class,
-	CodeAnalysisIntegrationTest.class,
-	CreateTestFileIntegrationTest.class,
-	CypressConsoleUtilIntegrationTest.class,
-	CypressFormTestingIntegrationTest.class,
-	JSUnitRunnerIntegrationTest.class,
-	JSUnitRunnerGroupedTest.class,
-	JSUnitRunnerLayer4Test.class,
-	PersistDuplicateIntegrationTest.class,
-	RenamePersistIntegrationTest.class,
-	RunTestMethodIntegrationTest.class,
-	ServoyDevServerIntegrationTest.class,
-	ServoyIdeServerIntegrationTest.class,
-	ServoyWpmServerIntegrationTest.class,
-	ShowFormInBrowserIntegrationTest.class,
-	ServoyCoderServerTest.class,
-})
-public class AllDeveloperMcpIntegrationTests
-{
+@SuiteClasses({ AddTestMethodIntegrationTest.class, CodeAnalysisIntegrationTest.class,
+		ContextServerHistoryIntegrationTest.class, CreateArtifactsIntegrationTest.class,
+		CreateSolutionIntegrationTest.class, CreateTestFileIntegrationTest.class,
+		CypressConsoleUtilIntegrationTest.class, CypressFormTestingIntegrationTest.class,
+		DatabaseToolsIntegrationTest.class, DocumentationToolsIntegrationTest.class, JSUnitRunnerIntegrationTest.class,
+		JSUnitRunnerGroupedTest.class, JSUnitRunnerLayer4Test.class, PersistDuplicateIntegrationTest.class,
+		RenamePersistIntegrationTest.class, RunTestMethodIntegrationTest.class, SecurityToolsIntegrationTest.class,
+		ServoyCoderServerIntegrationTest.class, ServoyDevServerIntegrationTest.class,
+		ServoyGitServerIntegrationTest.class, ServoyI18nServerIntegrationTest.class,
+		ServoyIdeServerIntegrationTest.class, ServoyIdeServerWorkspaceIntegrationTest.class,
+		ServoyMediaServerIntegrationTest.class, ServoyWpmServerIntegrationTest.class,
+		ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
+		ServoyDevServerTest.class, McpServerFactoryTest.class, })
+public class AllDeveloperMcpIntegrationTests {
 }

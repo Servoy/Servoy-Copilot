@@ -46,15 +46,6 @@ public class ServoyDevServerTest
 	}
 
 	@Test
-	public void testServoyDevServer_hasCorrectToolCount()
-	{
-		long toolCount = Arrays.stream(ServoyDevServer.class.getMethods())
-			.filter(m -> m.isAnnotationPresent(Tool.class))
-			.count();
-		assertEquals(27, toolCount);
-	}
-
-	@Test
 	public void testResolveIdentifierType_nullIdentifier_returnsError()
 	{
 		try

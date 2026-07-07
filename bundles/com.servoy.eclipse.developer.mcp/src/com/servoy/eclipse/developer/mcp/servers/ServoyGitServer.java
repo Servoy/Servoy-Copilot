@@ -47,7 +47,7 @@ public class ServoyGitServer
 	public ServoyGitServer() { }
 
 	/** Testing constructor - initialises services directly without E4 DI. */
-	ServoyGitServer(GitService gitService)
+	public ServoyGitServer(GitService gitService)
 	{
 		this.gitService = gitService;
 	}

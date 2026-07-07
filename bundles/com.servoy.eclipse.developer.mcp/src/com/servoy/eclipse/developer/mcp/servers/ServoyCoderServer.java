@@ -65,7 +65,7 @@ public class ServoyCoderServer
 	public ServoyCoderServer() { }
 
 	/** Testing constructor - initialises services directly without E4 DI. */
-	ServoyCoderServer(CodeEditingService codeEditingService)
+	public ServoyCoderServer(CodeEditingService codeEditingService)
 	{
 		this.codeEditingService = codeEditingService;
 	}

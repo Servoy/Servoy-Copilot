@@ -69,7 +69,7 @@ public class ServoyContextServer {
 	}
 
 	/** Testing constructor - initialises services directly without E4 DI. */
-	ServoyContextServer(LocalHistoryService localHistoryService) {
+	public ServoyContextServer(LocalHistoryService localHistoryService) {
 		this.localHistoryService = localHistoryService;
 	}
 

@@ -107,34 +107,6 @@ public class CypressConsoleUtilTest {
 		}
 	}
 
-	@Nested
-	@DisplayName("isMatchingConsole")
-	class IsMatchingConsole {
-		@Test
-		@DisplayName("returns false for null console")
-		void returnsFalseForNull() {
-			assertFalse(CypressConsoleUtil.isMatchingConsole(null));
-		}
-
-		@Test
-		@DisplayName("returns true for MessageConsole with matching name")
-		void returnsTrueForMessageConsoleWithMatchingName() {
-			MessageConsole console = new MessageConsole("Cypress Form Tests", null);
-			assertTrue(CypressConsoleUtil.isMatchingConsole(console));
-		}
-
-		@Test
-		@DisplayName("returns false for MessageConsole with different name")
-		void returnsFalseForMessageConsoleWithDifferentName() {
-			MessageConsole console = new MessageConsole("Other Console", null);
-			assertFalse(CypressConsoleUtil.isMatchingConsole(console));
-		}
-
-		@Test
-		@DisplayName("name matching is case-sensitive")
-		void nameMatchingIsCaseSensitive() {
-			MessageConsole console = new MessageConsole("cypress form tests", null);
-			assertFalse(CypressConsoleUtil.isMatchingConsole(console));
-		}
-	}
+	// isMatchingConsole is tested in CypressConsoleUtilIntegrationTest
+	// because MessageConsole cannot be instantiated without a running ConsolePlugin.
 }

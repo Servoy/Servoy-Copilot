@@ -20,44 +20,78 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
 
+import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilterTest;
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCacheTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
 import com.servoy.eclipse.developer.mcp.servers.AnalyzeCodeToolTest;
 import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
+import com.servoy.eclipse.developer.mcp.servers.MemoryServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
+import com.servoy.eclipse.developer.mcp.servers.TimeServerTest;
+import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryServiceTest;
+import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
+import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
+import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
+import com.servoy.eclipse.developer.mcp.services.TestFileServiceReflectionTest;
 import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
-import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
 
 /**
- * JUnit 4 test suite for all Servoy Developer MCP tests.
- * Run via: Run As - JUnit Plugin Test
+ * JUnit 4 test suite for ALL plain JUnit tests in the Servoy Developer MCP
+ * test project. These tests do NOT require a running Eclipse workbench or
+ * Servoy app server — they are pure unit tests using reflection and mocking.
+ * <p>
+ * Run via: Run As &gt; JUnit Test (NOT JUnit Plug-in Test).
+ * <p>
+ * For integration tests requiring Eclipse + Servoy runtime, see
+ * {@link AllDeveloperMcpIntegrationTests}.
+ * <p>
+ * Note: The following test classes are excluded from this JUnit 4 suite:
+ * <ul>
+ * <li>JUnit 5 tests (run by package with JUnit 5 runner): actions.*, CypressTestDiscoveryServiceTest,
+ *     FormatValidatorServiceTest</li>
+ * <li>Need Eclipse platform (in AllDeveloperMcpIntegrationTests): ServoyDevServerTest, McpServerFactoryTest</li>
+ * <li>Package-private visibility (run individually): ServoyI18nServerTest,
+ *     FormNavigationGraphServiceTest, FormPreviewServiceTest, GitServiceDiffTest,
+ *     NavigationGraphTest, PersistDuplicateServiceTest</li>
+ * </ul>
  */
 @RunWith(Suite.class)
 @SuiteClasses({
+	// root package
+	McpServerBuiltinsTest.class,
+	ToolExecutorTest.class,
+	// auth
+	BearerTokenAuthenticationFilterTest.class,
+	// cache
 	ServoyResourceCacheTest.class,
-	ServoyContextServerTest.class,
-	ServoyCoderServerTest.class,
-	ServoyIdeServerTest.class,
-	ServoyGitServerTest.class,
-	ServoyTestingServerTest.class,
-	FormSpecGeneratorTest.class,
-	FormSpecRunnerTest.class,
-	FormatValidatorServiceTest.class,
+	// servers
 	AnalyzeCodeToolTest.class,
 	GenerateTestCasesToolTest.class,
+	MemoryServerTest.class,
+	ServoyCoderServerTest.class,
+	ServoyContextServerTest.class,
+	ServoyGitServerTest.class,
+	ServoyIdeServerTest.class,
 	ServoyMediaServerTest.class,
-	ShowFormInBrowserToolTest.class,
+	ServoyTestingServerTest.class,
 	ServoyWpmServerTest.class,
+	ShowFormInBrowserToolTest.class,
+	TimeServerTest.class,
+	// services
+	FormSpecGeneratorTest.class,
+	FormSpecRunnerTest.class,
+	PersistRenameServiceTest.class,
+	ResolvedElementsProcessorTest.class,
+	TestFileServiceReflectionTest.class,
 	WpmServiceTest.class,
 })
-public class AllDeveloperMcpTests
-{
+public class AllDeveloperMcpTests {
 }
