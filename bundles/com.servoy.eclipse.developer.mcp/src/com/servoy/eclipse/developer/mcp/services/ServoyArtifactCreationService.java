@@ -69,6 +69,7 @@ public class ServoyArtifactCreationService
 		boolean isResponsive = "responsive".equalsIgnoreCase(style);
 
 		Form form = project.getEditingSolution().createNewForm(validator, null, name, dataSource, true, size);
+		form.setNavigatorID(Form.NAVIGATOR_NONE);
 
 		if (!isResponsive)
 		{
