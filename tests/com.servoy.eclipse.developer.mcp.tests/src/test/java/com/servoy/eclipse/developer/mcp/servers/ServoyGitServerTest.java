@@ -234,8 +234,7 @@ public class ServoyGitServerTest
 		}
 		catch (RuntimeException e)
 		{
-			assertNotNull(e.getMessage());
-			assertTrue(e.getMessage().contains("not found"));
+			assertProjectError(e);
 		}
 	}
 
@@ -249,8 +248,7 @@ public class ServoyGitServerTest
 		}
 		catch (RuntimeException e)
 		{
-			assertNotNull(e.getMessage());
-			assertTrue(e.getMessage().contains("not found"));
+			assertProjectError(e);
 		}
 	}
 

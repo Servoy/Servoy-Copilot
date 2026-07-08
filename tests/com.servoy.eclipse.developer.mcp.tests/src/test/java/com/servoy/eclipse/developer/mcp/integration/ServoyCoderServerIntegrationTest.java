@@ -320,17 +320,25 @@ public class ServoyCoderServerIntegrationTest {
 
 	@Test
 	public void testUndoEdit_noBackup() {
+		// A freshly created file has no Local History, so undoEdit must report an error.
 		createTestFile("no_backup.txt", "original");
 
-		String result = coderServer.undoEdit(PROJECT_NAME, "no_backup.txt");
-
-		assertNotNull("Result should not be null", result);
+		try {
+			String result = coderServer.undoEdit(PROJECT_NAME, "no_backup.txt");
+			assertNotNull("Result should not be null", result);
+			assertTrue("Should report no edit history: " + result, result.contains("No edit history"));
+		} catch (RuntimeException e) {
+			assertTrue("Should report no edit history: " + e.getMessage(),
+					e.getMessage() != null && e.getMessage().contains("No edit history"));
+		}
 	}
 
 	@Test
 	public void testUndoEdit_afterEdit() throws Exception {
+		// Build Local History for the file: create with v1, then overwrite with v2 keeping
+		// history. This makes getHistory() return the v1 state so undoEdit can restore it.
 		createTestFile("undo_test.txt", "original content");
-		coderServer.replaceFileContent(PROJECT_NAME, "undo_test.txt", "modified content");
+		setContentsKeepingHistory("undo_test.txt", "modified content");
 
 		String content = readFile("undo_test.txt");
 		assertTrue("Should be modified before undo", content.contains("modified"));
@@ -338,6 +346,23 @@ public class ServoyCoderServerIntegrationTest {
 		String result = coderServer.undoEdit(PROJECT_NAME, "undo_test.txt");
 
 		assertNotNull("Undo result should not be null", result);
+		assertTrue("Undo should succeed: " + result, result.contains("Success"));
+
+		String restored = readFile("undo_test.txt");
+		assertTrue("Content should be restored to original: " + restored, restored.contains("original content"));
+	}
+
+	/**
+	 * Overwrites a file's contents while preserving the prior version in Eclipse Local History
+	 * (IResource.KEEP_HISTORY). This is what allows undoEdit's getHistory() call to find a
+	 * previous state to restore.
+	 */
+	private void setContentsKeepingHistory(String path, String content) throws Exception {
+		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
+			IFile file = project.getFile(path);
+			file.setContents(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
+					IResource.KEEP_HISTORY, monitor);
+		}, new NullProgressMonitor());
 	}
 
 	private void createTestFile(String path, String content) {

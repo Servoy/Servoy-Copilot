@@ -28,13 +28,13 @@ import com.servoy.eclipse.developer.mcp.servers.MemoryServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
-import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
 import com.servoy.eclipse.developer.mcp.servers.TimeServerTest;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryServiceTest;
+import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
@@ -79,13 +79,13 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 	ServoyCoderServerTest.class,
 	ServoyContextServerTest.class,
 	ServoyGitServerTest.class,
-	ServoyIdeServerTest.class,
 	ServoyMediaServerTest.class,
 	ServoyTestingServerTest.class,
 	ServoyWpmServerTest.class,
 	ShowFormInBrowserToolTest.class,
 	TimeServerTest.class,
 	// services
+	DocumentationValidatorServiceTest.class,
 	FormSpecGeneratorTest.class,
 	FormSpecRunnerTest.class,
 	PersistRenameServiceTest.class,

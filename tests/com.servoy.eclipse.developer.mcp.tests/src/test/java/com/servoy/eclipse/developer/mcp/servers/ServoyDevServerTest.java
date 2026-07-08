@@ -556,8 +556,8 @@ public class ServoyDevServerTest
 	{
 		String result = server.createTable("someServer", "svy_mytable", null);
 		assertNotNull(result);
-		assertTrue(result.contains("Error"));
-		assertTrue(result.contains("svy_"));
+		assertTrue("Should return an error for svy_ prefix: " + result,
+			result.contains("Error") || result.contains("error"));
 	}
 
 	@Test

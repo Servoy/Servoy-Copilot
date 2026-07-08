@@ -431,7 +431,7 @@ public class ServoyTestingServerTest {
 
 		assertEquals("first param type should be String", String.class, params[0].getType());
 		assertEquals("second param type should be String", String.class, params[1].getType());
-		assertEquals("third param type should be Map", java.util.Map.class, params[2].getType());
+		assertEquals("third param type should be String (columnValues JSON)", String.class, params[2].getType());
 	}
 
 	@Test
@@ -565,7 +565,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m);
 		String desc = m.getAnnotation(Tool.class).description();
-		assertTrue("Description should mention medias/e2e", desc.contains("medias/e2e"));
+		assertTrue("Description should mention the E2E test directory",
+				desc.contains("jenkins-custom/e2e-test-scripts/cypress/e2e/"));
 	}
 
 	@Test
@@ -590,11 +591,12 @@ public class ServoyTestingServerTest {
 	}
 
 	@Test
-	public void testGetFormNavigationGraph_hasOneParam() {
+	public void testGetFormNavigationGraph_hasTwoParams() {
 		Method m = findToolMethod("getFormNavigationGraph");
 		assertNotNull("getFormNavigationGraph tool not found", m);
-		assertEquals("Expected 1 parameter (optional formName)", 1, m.getParameterCount());
-		assertTrue("Parameter must have @ToolParam", m.getParameters()[0].isAnnotationPresent(ToolParam.class));
+		assertEquals("Expected 2 parameters (optional formName, summaryOnly)", 2, m.getParameterCount());
+		assertTrue("First parameter must have @ToolParam", m.getParameters()[0].isAnnotationPresent(ToolParam.class));
+		assertTrue("Second parameter must have @ToolParam", m.getParameters()[1].isAnnotationPresent(ToolParam.class));
 	}
 
 	@Test
