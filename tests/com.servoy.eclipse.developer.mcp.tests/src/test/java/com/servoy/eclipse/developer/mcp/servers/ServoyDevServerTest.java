@@ -720,4 +720,267 @@ public class ServoyDevServerTest
 			.filter(m -> toolName.equals(m.getAnnotation(Tool.class).name()))
 			.findFirst().orElse(null);
 	}
+
+	// -----------------------------------------------------------------------
+	// Menu management tool tests (SVY-21114)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testServoyDevServer_hasListMenusTool()
+	{
+		assertTrue("ServoyDevServer must have a 'listMenus' tool", hasToolNamed("listMenus"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasGetMenuStructureTool()
+	{
+		assertTrue("ServoyDevServer must have a 'getMenuStructure' tool", hasToolNamed("getMenuStructure"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasCreateMenuTool()
+	{
+		assertTrue("ServoyDevServer must have a 'createMenu' tool", hasToolNamed("createMenu"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasCreateMenuItemTool()
+	{
+		assertTrue("ServoyDevServer must have a 'createMenuItem' tool", hasToolNamed("createMenuItem"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasUpdateMenuTool()
+	{
+		assertTrue("ServoyDevServer must have an 'updateMenu' tool", hasToolNamed("updateMenu"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasUpdateMenuItemTool()
+	{
+		assertTrue("ServoyDevServer must have an 'updateMenuItem' tool", hasToolNamed("updateMenuItem"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasDeleteMenuTool()
+	{
+		assertTrue("ServoyDevServer must have a 'deleteMenu' tool", hasToolNamed("deleteMenu"));
+	}
+
+	@Test
+	public void testServoyDevServer_hasDeleteMenuItemTool()
+	{
+		assertTrue("ServoyDevServer must have a 'deleteMenuItem' tool", hasToolNamed("deleteMenuItem"));
+	}
+
+	@Test
+	public void testListMenus_hasOptionalScopeParam()
+	{
+		Method method = findToolMethod("listMenus");
+		assertNotNull(method);
+		assertEquals(1, method.getParameterCount());
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertEquals("scope", param.name());
+		assertEquals(false, param.required());
+	}
+
+	@Test
+	public void testGetMenuStructure_hasRequiredMenuNameParam()
+	{
+		Method method = findToolMethod("getMenuStructure");
+		assertNotNull(method);
+		assertEquals(1, method.getParameterCount());
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertEquals("menuName", param.name());
+		assertTrue(param.required());
+	}
+
+	@Test
+	public void testCreateMenu_hasThreeParams()
+	{
+		Method method = findToolMethod("createMenu");
+		assertNotNull(method);
+		assertEquals(3, method.getParameterCount());
+	}
+
+	@Test
+	public void testCreateMenuItem_hasEightParams()
+	{
+		Method method = findToolMethod("createMenuItem");
+		assertNotNull(method);
+		assertEquals(8, method.getParameterCount());
+	}
+
+	@Test
+	public void testUpdateMenu_hasThreeParams()
+	{
+		Method method = findToolMethod("updateMenu");
+		assertNotNull(method);
+		assertEquals(3, method.getParameterCount());
+	}
+
+	@Test
+	public void testUpdateMenuItem_hasSevenParams()
+	{
+		Method method = findToolMethod("updateMenuItem");
+		assertNotNull(method);
+		assertEquals(7, method.getParameterCount());
+	}
+
+	@Test
+	public void testDeleteMenu_hasOneParam()
+	{
+		Method method = findToolMethod("deleteMenu");
+		assertNotNull(method);
+		assertEquals(1, method.getParameterCount());
+		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(param);
+		assertEquals("name", param.name());
+		assertTrue(param.required());
+	}
+
+	@Test
+	public void testDeleteMenuItem_hasTwoParams()
+	{
+		Method method = findToolMethod("deleteMenuItem");
+		assertNotNull(method);
+		assertEquals(2, method.getParameterCount());
+	}
+
+	@Test
+	public void testCreateMenu_rejectsNullName()
+	{
+		try
+		{
+			String result = server.createMenu(null, null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testCreateMenu_rejectsBlankName()
+	{
+		try
+		{
+			String result = server.createMenu("  ", null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testGetMenuStructure_rejectsNullName()
+	{
+		try
+		{
+			String result = server.getMenuStructure(null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testDeleteMenu_rejectsNullName()
+	{
+		try
+		{
+			String result = server.deleteMenu(null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testCreateMenuItem_rejectsNullMenuName()
+	{
+		try
+		{
+			String result = server.createMenuItem(null, "item1", null, null, null, null, null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testCreateMenuItem_rejectsNullItemName()
+	{
+		try
+		{
+			String result = server.createMenuItem("mainMenu", null, null, null, null, null, null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testUpdateMenu_rejectsNullName()
+	{
+		try
+		{
+			String result = server.updateMenu(null, null, null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testDeleteMenuItem_rejectsNullMenuName()
+	{
+		try
+		{
+			String result = server.deleteMenuItem(null, "item1");
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
+
+	@Test
+	public void testDeleteMenuItem_rejectsNullItemName()
+	{
+		try
+		{
+			String result = server.deleteMenuItem("mainMenu", null);
+			assertNotNull(result);
+			assertTrue(result.contains("Error"));
+		}
+		catch (Throwable e)
+		{
+			assertNotNull("Expected workspace error in plain JUnit", e);
+		}
+	}
 }

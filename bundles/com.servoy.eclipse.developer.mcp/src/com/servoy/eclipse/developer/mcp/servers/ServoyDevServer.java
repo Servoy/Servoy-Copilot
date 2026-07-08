@@ -64,6 +64,7 @@ import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
+import com.servoy.eclipse.developer.mcp.services.MenuService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -112,6 +113,7 @@ public class ServoyDevServer {
 	private final ServoySolutionService solutionService = new ServoySolutionService();
 	private final ServoyArtifactCreationService artifactService = new ServoyArtifactCreationService();
 	private final FormatValidatorService formatValidatorService = new FormatValidatorService();
+	private final MenuService menuService = new MenuService();
 
 	public ServoyDevServer() {
 	}
@@ -2438,5 +2440,89 @@ public class ServoyDevServer {
 			}
 		}
 		return elementUID;
+	}
+
+	// -------------------------------------------------------------------------
+	// Menu management tools (SVY-21114)
+	// -------------------------------------------------------------------------
+
+	@Tool(name = "listMenus", description = "Lists all Servoy menus in the active solution and optionally its modules. "
+		+ "Returns menu names, style classes, and item counts.", type = "object")
+	public String listMenus(
+		@ToolParam(name = "scope", description = "Scope: 'current' for active solution only, 'all' (default) for solution + modules", required = false) String scope)
+	{
+		return menuService.listMenus(scope);
+	}
+
+	@Tool(name = "getMenuStructure", description = "Returns the full hierarchical structure of a Servoy menu including all nested menu items and their properties.", type = "object")
+	public String getMenuStructure(
+		@ToolParam(name = "menuName", description = "The name of the menu to inspect") String menuName)
+	{
+		return menuService.getMenuStructure(menuName);
+	}
+
+	@Tool(name = "createMenu", description = "Creates a new Servoy menu in the active solution. "
+		+ "Returns an error if a menu with the same name already exists.", type = "object")
+	public String createMenu(
+		@ToolParam(name = "name", description = "Menu name (must be unique)") String name,
+		@ToolParam(name = "styleClass", description = "CSS style class(es) for the menu", required = false) String styleClass,
+		@ToolParam(name = "encapsulation", description = "Encapsulation: 'public' (default) or 'module_private'", required = false) String encapsulation)
+	{
+		return menuService.createMenu(name, styleClass, encapsulation);
+	}
+
+	@Tool(name = "createMenuItem", description = "Creates a new menu item in an existing Servoy menu. "
+		+ "Can be nested under another menu item by specifying parentItemName.", type = "object")
+	public String createMenuItem(
+		@ToolParam(name = "menuName", description = "The name of the menu to add the item to") String menuName,
+		@ToolParam(name = "itemName", description = "Name for the new menu item (must be unique within the menu)") String itemName,
+		@ToolParam(name = "parentItemName", description = "Name of an existing menu item to nest under (for submenus)", required = false) String parentItemName,
+		@ToolParam(name = "text", description = "Display text for the menu item (supports i18n keys)", required = false) String text,
+		@ToolParam(name = "toolTipText", description = "Tooltip text", required = false) String toolTipText,
+		@ToolParam(name = "styleClass", description = "CSS style class(es)", required = false) String styleClass,
+		@ToolParam(name = "iconStyleClass", description = "Icon CSS class (e.g. 'fas fa-home')", required = false) String iconStyleClass,
+		@ToolParam(name = "enabled", description = "Whether the item is enabled (default: true)", required = false) String enabled)
+	{
+		return menuService.createMenuItem(menuName, itemName, parentItemName, text, toolTipText, styleClass, iconStyleClass, enabled);
+	}
+
+	@Tool(name = "updateMenu", description = "Updates properties of an existing Servoy menu (styleClass, encapsulation). "
+		+ "Use renamePersist to rename a menu.", type = "object")
+	public String updateMenu(
+		@ToolParam(name = "name", description = "The name of the menu to update") String name,
+		@ToolParam(name = "styleClass", description = "New CSS style class(es) (empty string to clear)", required = false) String styleClass,
+		@ToolParam(name = "encapsulation", description = "New encapsulation: 'public' or 'module_private'", required = false) String encapsulation)
+	{
+		return menuService.updateMenu(name, styleClass, encapsulation);
+	}
+
+	@Tool(name = "updateMenuItem", description = "Updates properties of an existing menu item (text, tooltip, styleClass, icon, enabled). "
+		+ "Use renamePersist to rename a menu item.", type = "object")
+	public String updateMenuItem(
+		@ToolParam(name = "menuName", description = "The name of the menu containing the item") String menuName,
+		@ToolParam(name = "itemName", description = "The name of the menu item to update") String itemName,
+		@ToolParam(name = "text", description = "New display text (empty string to clear)", required = false) String text,
+		@ToolParam(name = "toolTipText", description = "New tooltip text (empty string to clear)", required = false) String toolTipText,
+		@ToolParam(name = "styleClass", description = "New CSS style class(es) (empty string to clear)", required = false) String styleClass,
+		@ToolParam(name = "iconStyleClass", description = "New icon CSS class (empty string to clear)", required = false) String iconStyleClass,
+		@ToolParam(name = "enabled", description = "Whether the item is enabled ('true' or 'false')", required = false) String enabled)
+	{
+		return menuService.updateMenuItem(menuName, itemName, text, toolTipText, styleClass, iconStyleClass, enabled);
+	}
+
+	@Tool(name = "deleteMenu", description = "Deletes an existing Servoy menu and all its items from the active solution.", type = "object")
+	public String deleteMenu(
+		@ToolParam(name = "name", description = "The name of the menu to delete") String name)
+	{
+		return menuService.deleteMenu(name);
+	}
+
+	@Tool(name = "deleteMenuItem", description = "Deletes a menu item (and its sub-items) from a Servoy menu. "
+		+ "The item is found by name recursively within the menu.", type = "object")
+	public String deleteMenuItem(
+		@ToolParam(name = "menuName", description = "The name of the menu containing the item") String menuName,
+		@ToolParam(name = "itemName", description = "The name of the menu item to delete") String itemName)
+	{
+		return menuService.deleteMenuItem(menuName, itemName);
 	}
 }
