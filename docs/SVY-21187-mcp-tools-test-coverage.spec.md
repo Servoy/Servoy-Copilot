@@ -75,7 +75,7 @@ No integration test calls these (only unit-level checks exist):
 | `listE2ETests` | walks `jenkins-custom/e2e-test-scripts` via `ResourcesPlugin` workspace root | Plug-in | Cheap, deterministic — **worth adding** |
 | `testE2E` | Cypress headless run | Plug-in | Heavy but mirrors already-tested `testForm` (1 real run acceptable) |
 | `showAndTestE2E` | Cypress headed run | — | **Out of scope** — opens a visible browser |
-| `getNavigationPath` | multi-form nav graph | Plug-in (optional) | Unit-covered by `NavigationGraphTest`; an integration test with a real multi-form solution would harden it but is low priority |
+| `getNavigationPath` | multi-form nav graph | Plug-in | **Done** — `GetNavigationPathIntegrationTest` builds a real graph from a seeded `navigateToForm` edge and asserts the returned path JSON plus guard branches (null/blank target, unreachable target). Complements the unit-level `NavigationGraphTest`. |
 
 ### 3.4 Test-hygiene finding — orphaned unit test classes
 
@@ -92,6 +92,8 @@ Several committed **plain-JUnit** classes are **not referenced by either aggrega
 - `actions/*` (`CypressConsoleUtilTest`, `CypressEditorInputPropertyTesterTest`, `CypressTestAdapterFactoryTest`, `CypressTestPropertyTesterTest`, `RunAllCypressFormTestsHandlerTest`, `RunCypressFormTestHandlerTest`)
 
 These should be added to `AllDeveloperMcpTests` (or a dedicated actions suite) so they actually run. This is a correctness gap in the test harness, independent of new tests.
+
+**Resolution.** All listed classes are now wired into an aggregate suite. The JUnit-5 (Jupiter) classes — the 6 `services.*`, `ServoyI18nServerTest`, and the 6 `actions/*` — are collected by a new `AllDeveloperMcpJupiterUnitTests` platform suite (they use the Jupiter API and cannot be referenced from the JUnit-4 `@RunWith(Suite.class)` aggregate). **Exception:** `GitServiceDiffTest` is deliberately left out — it relies on the Jupiter `@TempDir` extension and the runtime resolved in this fragment is incompatible (`NoSuchMethodError: TempDir.deletionStrategy()`), which fails the class standalone or in a suite. That is a pre-existing environment/classpath issue independent of SVY-21187; it is left out until the `@TempDir` dependency mismatch is resolved.
 
 ## 4. Implementation Plan (remaining work, prioritized)
 
@@ -116,13 +118,22 @@ These should be added to `AllDeveloperMcpTests` (or a dedicated actions suite) s
    - `testE2E` — one real headless run on a known form asserting passed/failed present (mirror `testForm` pattern)
    - Add to `AllDeveloperMcpIntegrationTests`.
 
-4. **Wire orphaned unit tests into `AllDeveloperMcpTests`** (see 3.4). Verify each still passes via `eclipse-ide_runClassTests`.
+4. **Wire orphaned unit tests into an aggregate suite** (see 3.4). Verify each still passes via `eclipse-ide_runClassTests`.
+
+5. **`GetNavigationPathIntegrationTest`** (JUnit Plug-in) — seed a form script with a `navigateToForm(forms.X)` edge, then:
+   - happy path: `getNavigationPath("X", "sourceForm")` returns JSON with a `steps` array referencing both forms
+   - guards: null target, blank target, unreachable target (→ "No navigation path found")
+   - Add to `AllDeveloperMcpIntegrationTests`.
+
+6. **`ScriptContextServiceIntegrationTest`** and **`FormNavigationGraphServiceIntegrationTest`** (JUnit Plug-in) — close the coverage gaps on the `resolveIdentifierType` tool (DLTK type resolution: `ScriptContextService` 2% → ~38%) and the `getFormNavigationGraph`/`getNavigationPath` script-analysis path (`FormNavigationGraphService.analyzeScriptFile` 0% → ~70%). Both add a solution-loaded + workspace-job drain in `setUp` to avoid the async `EclipseMessages` I18N-writer job racing on a not-yet-loaded solution.
 
 ## 5. Acceptance Criteria
 
 - [ ] `MenuToolsIntegrationTest` covers all 8 menu tools (create/list/structure/update/delete for menu + item, plus error paths) and is in the integration suite.
 - [ ] `ServoyIdeServerReadIntegrationTest` covers `getSource`, `getFileOutline`, `readFunction`, `readFileRanges`, `readFileContext`, `searchAndReplace`, `openProject`, `getConsoleOutput` and is in the integration suite.
 - [ ] `E2EToolsIntegrationTest` covers `listE2ETests` (both branches) and one `testE2E` run and is in the integration suite.
+- [x] `GetNavigationPathIntegrationTest` covers the `getNavigationPath` happy path (seeded edge → path JSON) plus null/blank/unreachable guards and is in the integration suite.
+- [x] `ScriptContextServiceIntegrationTest` and `FormNavigationGraphServiceIntegrationTest` close the `resolveIdentifierType` and script-analysis coverage gaps and are in the integration suite.
 - [ ] All orphaned unit test classes listed in 3.4 are referenced by an aggregate suite and pass.
 - [ ] New plain JUnit tests pass with `eclipse-ide_runClassTests`; new plug-in tests pass with `eclipse-pde_runJUnitPluginTestClass`.
 - [ ] Zero compilation errors introduced; no Spotbugs high/critical issues in new code.
@@ -138,8 +149,8 @@ These should be added to `AllDeveloperMcpTests` (or a dedicated actions suite) s
 
 ## 7. Open Questions
 
-| Question | Assumption |
+| Question | Resolution |
 |---|---|
-| Should `testE2E` do a real Cypress run in CI, or only assert wiring? | Assume one real headless run, mirroring the accepted `testForm` integration test. Revisit if CI runtime is a concern. |
-| Should orphaned unit tests go into the existing `AllDeveloperMcpTests` or a new `actions`/`services` suite? | Assume add to `AllDeveloperMcpTests`; split only if it grows unwieldy. |
-| Is a `getNavigationPath` integration test (real multi-form solution) wanted now? | Assume deferred — unit coverage is adequate; low priority. |
+| Should `testE2E` do a real Cypress run in CI, or only assert wiring? | **Resolved — wiring only.** `E2EToolsIntegrationTest` asserts the guard path (missing spec → clear error) and that `testE2E` flips `servoy.ngclient.testingMode` before delegating. A live headless run needs a running NG client + installed Cypress binary and is non-deterministic in the runner, so it is intentionally out of scope. |
+| Should orphaned unit tests go into the existing `AllDeveloperMcpTests` or a new `actions`/`services` suite? | **Resolved — new Jupiter suite.** The Jupiter-API classes are collected by `AllDeveloperMcpJupiterUnitTests` (they cannot live in the JUnit-4 `@RunWith(Suite.class)` aggregate). `GitServiceDiffTest` stays out due to the `@TempDir` runtime mismatch (see 3.4). |
+| Is a `getNavigationPath` integration test (real multi-form solution) wanted now? | **Resolved — added.** `GetNavigationPathIntegrationTest` builds a real graph from a seeded `navigateToForm` edge and asserts the path JSON plus null/blank/unreachable guards. |
