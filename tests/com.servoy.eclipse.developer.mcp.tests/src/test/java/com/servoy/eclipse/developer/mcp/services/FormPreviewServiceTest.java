@@ -17,7 +17,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("FormPreviewService")
-class FormPreviewServiceTest {
+public class FormPreviewServiceTest {
 	private FormPreviewService service;
 
 	@BeforeEach

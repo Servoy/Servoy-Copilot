@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * diff pattern independently of workspace project resolution.
  */
 @DisplayName("GitService getDiff pattern")
-class GitServiceDiffTest
+public class GitServiceDiffTest
 {
 	@TempDir
 	Path tempDir;

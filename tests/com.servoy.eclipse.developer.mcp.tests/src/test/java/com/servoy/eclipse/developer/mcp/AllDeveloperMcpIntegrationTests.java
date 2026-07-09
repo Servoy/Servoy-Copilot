@@ -31,18 +31,23 @@ import com.servoy.eclipse.developer.mcp.integration.CypressConsoleUtilIntegratio
 import com.servoy.eclipse.developer.mcp.integration.CypressFormTestingIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DatabaseToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DocumentationToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.E2EToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.FormNavigationGraphServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerLayer4Test;
+import com.servoy.eclipse.developer.mcp.integration.MenuToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.PersistDuplicateIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RunTestMethodIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ScriptContextServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.SecurityToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyCoderServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyDevServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyGitServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyI18nServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerReadIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyMediaServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerWorkspaceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoySolutionServiceIntegrationTest;
@@ -80,6 +85,6 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyWpmServerIntegrationTest.class,
 		ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class,
-		ValidationToolsIntegrationTest.class, })
+		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, E2EToolsIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, })
 public class AllDeveloperMcpIntegrationTests {
 }

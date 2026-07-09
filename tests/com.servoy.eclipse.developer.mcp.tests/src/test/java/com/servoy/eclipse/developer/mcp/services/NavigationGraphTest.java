@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 @DisplayName("NavigationGraph")
-class NavigationGraphTest {
+public class NavigationGraphTest {
 	private NavigationGraph graph;
 
 	@BeforeEach

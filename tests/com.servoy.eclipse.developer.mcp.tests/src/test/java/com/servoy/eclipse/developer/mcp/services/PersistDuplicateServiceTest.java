@@ -17,7 +17,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("PersistDuplicateService")
-class PersistDuplicateServiceTest {
+public class PersistDuplicateServiceTest {
 	private PersistDuplicateService service;
 
 	@BeforeEach
