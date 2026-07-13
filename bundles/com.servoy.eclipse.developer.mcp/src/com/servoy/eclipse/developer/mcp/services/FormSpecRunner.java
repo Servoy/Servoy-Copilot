@@ -312,7 +312,8 @@ public class FormSpecRunner
 	}
 
 	/**
-	 * Runs the Cypress E2E spec for the given form from jenkins-custom/e2e-test-scripts/cypress/e2e/.
+	 * Runs the Cypress E2E spec for the given form from jenkins-custom/e2e-test-scripts/cypress/e2e/&lt;solutionName&gt;/.
+	 * Falls back to a recursive search across all solution subdirectories.
 	 *
 	 * @param targetForm the form name whose .cy.js to run (e.g. 'order_detail' → 'order_detail.cy.js')
 	 * @param headless true for headless (default), false for headed (debugging)
@@ -323,7 +324,15 @@ public class FormSpecRunner
 		try
 		{
 			Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
-			Path e2eDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e");
+			Path e2eBaseDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e");
+
+			// resolve active solution name to look in solution-specific subdirectory first
+			com.servoy.eclipse.model.nature.ServoyProject servoyProject = com.servoy.eclipse.core.ServoyModelManager
+					.getServoyModelManager().getServoyModel().getActiveProject();
+			String solutionName = (servoyProject != null && servoyProject.getProject() != null)
+					? servoyProject.getProject().getName()
+					: null;
+			Path e2eDir = (solutionName != null) ? e2eBaseDir.resolve(solutionName) : e2eBaseDir;
 			// prefer cypress.config.ts (TypeScript project), fall back to cypress.config.js
 			Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
 			Path configFile = Files.exists(scriptsRoot.resolve("cypress.config.ts"))
@@ -331,10 +340,10 @@ public class FormSpecRunner
 				: scriptsRoot.resolve("cypress.config.js");
 
 			// find spec file:
-			// 1. exact match (supports relative paths like "applications/environment/queryPerformance.cy.ts")
-			// 2. <targetForm>.cy.js in root
-			// 3. <targetForm>.cy.ts in root
-			// 4. recursive search for <targetForm>.cy.js or <targetForm>.cy.ts anywhere under e2eDir
+			// 1. exact match in solution subdir (supports relative paths like "applications/environment/queryPerformance.cy.ts")
+			// 2. <targetForm>.cy.js in solution subdir
+			// 3. <targetForm>.cy.ts in solution subdir
+			// 4. recursive search under e2eBaseDir (all solutions)
 			Path specFilePath = e2eDir.resolve(targetForm);
 			if (!Files.exists(specFilePath))
 			{
@@ -344,11 +353,11 @@ public class FormSpecRunner
 			{
 				specFilePath = e2eDir.resolve(targetForm + ".cy.ts");
 			}
-			if (!Files.exists(specFilePath) && Files.exists(e2eDir))
+			if (!Files.exists(specFilePath) && Files.exists(e2eBaseDir))
 			{
 				// recursive walk: find first file whose base name (without .cy.js/.cy.ts) matches targetForm
 				String baseName = targetForm.replaceAll("\\.cy\\.(js|ts)$", "");
-				try (java.util.stream.Stream<Path> walk = Files.walk(e2eDir))
+				try (java.util.stream.Stream<Path> walk = Files.walk(e2eBaseDir))
 				{
 					specFilePath = walk
 						.filter(p -> {
@@ -362,7 +371,7 @@ public class FormSpecRunner
 			if (!Files.exists(specFilePath))
 			{
 				return "Error: E2E spec file not found for '" + targetForm + "'. " +
-					"Searched recursively under " + e2eDir + " for '" + targetForm + ".cy.js' or '" + targetForm + ".cy.ts'. " +
+					"Searched recursively under " + e2eBaseDir + " for '" + targetForm + ".cy.js' or '" + targetForm + ".cy.ts'. " +
 					"Use generateCypressE2ETest to create a new one, or pass the relative path (e.g. 'applications/environment/queryPerformance.cy.ts').";
 			}
 			if (!Files.exists(configFile))

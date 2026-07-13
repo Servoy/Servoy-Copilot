@@ -374,6 +374,25 @@ public class CodeEditingService
 		{
 			throw new RuntimeException(e);
 		}
+		catch (RuntimeException e)
+		{
+			// Fallback: if project doesn't exist or file not in project, try workspace-root-level write
+			java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			java.nio.file.Path fallbackFile = workspaceRoot.resolve(projectName).resolve(filePath);
+			if (java.nio.file.Files.exists(fallbackFile.getParent()))
+			{
+				try
+				{
+					java.nio.file.Files.writeString(fallbackFile, content, StandardCharsets.UTF_8);
+					return "Success: Content of file '" + filePath + "' replaced in workspace directory '" + projectName + "'.";
+				}
+				catch (java.io.IOException ioe)
+				{
+					throw new RuntimeException("Error writing to workspace file: " + ioe.getMessage(), ioe);
+				}
+			}
+			throw e;
+		}
 	}
 
 	public String deleteLinesInFile(String projectName, String filePath, int startLine, int endLine)

@@ -111,14 +111,32 @@ public class WorkspaceService
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
+		{
+			// Fallback: resolve as a workspace-root-level directory (e.g. jenkins-custom)
+			java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			java.nio.file.Path fallbackFile = workspaceRoot.resolve(projectName).resolve(resourcePath);
+			if (java.nio.file.Files.exists(fallbackFile) && java.nio.file.Files.isRegularFile(fallbackFile))
+			{
+				return readWorkspaceRootFile(projectName, resourcePath, fallbackFile, showLineNumbers, startLine, endLine);
+			}
 			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+		}
 		if (!project.isOpen())
 			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
 		if (!file.exists())
+		{
+			// Fallback: try workspace-root-level resolution for paths like jenkins-custom/...
+			java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			java.nio.file.Path fallbackFile = workspaceRoot.resolve(projectName).resolve(resourcePath);
+			if (java.nio.file.Files.exists(fallbackFile) && java.nio.file.Files.isRegularFile(fallbackFile))
+			{
+				return readWorkspaceRootFile(projectName, resourcePath, fallbackFile, showLineNumbers, startLine, endLine);
+			}
 			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+		}
 
 		try
 		{
@@ -160,6 +178,49 @@ public class WorkspaceService
 	}
 
 	// --- fileSearch ---
+
+	/**
+	 * Reads a file from the workspace root directory (not inside any Eclipse project).
+	 * Used as fallback for directories like jenkins-custom that live at workspace level.
+	 */
+	private String readWorkspaceRootFile(String dirName, String resourcePath, java.nio.file.Path filePath,
+		boolean showLineNumbers, int startLine, int endLine)
+	{
+		try
+		{
+			List<String> lines = java.nio.file.Files.readAllLines(filePath, java.nio.charset.StandardCharsets.UTF_8);
+			int totalLines = lines.size();
+			int effectiveStart = (startLine > 0) ? Math.min(startLine, totalLines) : 1;
+			int effectiveEnd = (endLine > 0) ? Math.min(endLine, totalLines) : Math.min(effectiveStart + MAX_LINES_DEFAULT - 1, totalLines);
+
+			StringBuilder response = new StringBuilder();
+			response.append("# Content of ").append(resourcePath).append(" in ").append(dirName);
+			response.append(" (lines ").append(effectiveStart).append("-").append(effectiveEnd)
+				.append(" of ").append(totalLines).append(")");
+			if (effectiveEnd < totalLines && endLine <= 0)
+				response.append(" [truncated at ").append(MAX_LINES_DEFAULT).append(" lines - use startLine/endLine for more]");
+			response.append("\n\n```\n");
+
+			int width = String.valueOf(totalLines).length();
+			for (int i = effectiveStart - 1; i < effectiveEnd; i++)
+			{
+				if (showLineNumbers)
+					response.append(String.format("%" + width + "d\t%s\n", i + 1, lines.get(i)));
+				else
+					response.append(lines.get(i)).append("\n");
+			}
+			response.append("\n```\n");
+
+			String content = response.toString();
+			String uri = "workspace:///" + dirName + "/" + resourcePath;
+			ServoyResourceCache.getInstance().put(uri, filePath.getFileName().toString(), "WORKSPACE_FILE", content);
+			return content;
+		}
+		catch (IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
 
 	// --- getFileInfo ---
 

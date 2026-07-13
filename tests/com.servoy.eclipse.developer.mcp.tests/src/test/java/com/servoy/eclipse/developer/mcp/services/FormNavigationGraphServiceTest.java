@@ -694,12 +694,12 @@ public class FormNavigationGraphServiceTest {
 		}
 
 		@Test
-		@DisplayName("URL is correctly constructed as relative solutionName/solution/solutionName/index.html")
+		@DisplayName("URL is correctly constructed as /solution/solutionName/index.html?svy_testmode=true")
 		void urlIsCorrectlyConstructed() {
 			String content = service.generateCypressTestContent("mySolution", "http://localhost:8080", "main_form",
 					"target_form", null, java.util.List.of());
-			assertTrue(content.contains("mySolution/solution/mySolution/index.html"),
-					"Expected relative constructed URL in output (baseUrl lives in cypress.config.js)");
+			assertTrue(content.contains("/solution/mySolution/index.html?svy_testmode=true"),
+					"Expected relative constructed URL with svy_testmode=true in output (baseUrl lives in cypress.config.js)");
 		}
 
 		@Test
