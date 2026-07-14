@@ -57,8 +57,8 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * spec.
  * <p>
  * This test owns the {@code cypress/e2e} sibling directory (multi-form E2E
- * specs). The form-testing suite uses the separate {@code cypress/e2e-form} and
- * {@code cypress/e2e-form-spec} directories, so cleaning up {@code cypress/e2e}
+ * specs). The form-testing suite uses the separate {@code cypress/cy-form} and
+ * {@code cypress/cy-form-spec} directories, so cleaning up {@code cypress/e2e}
  * here does not disturb other suites.
  */
 public class E2EToolsIntegrationTest {

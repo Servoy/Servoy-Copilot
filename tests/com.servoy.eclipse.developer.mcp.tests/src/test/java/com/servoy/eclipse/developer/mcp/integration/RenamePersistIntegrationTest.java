@@ -359,7 +359,7 @@ public class RenamePersistIntegrationTest {
 		IProject project = activeProject.getProject();
 
 		// SVY-21171: the .spec.cy.js now lives outside the solution project tree in the
-		// workspace-relative e2e-form dir, so create/assert it via java.nio.file paths
+		// workspace-relative cy-form dir, so create/assert it via java.nio.file paths
 		// resolved by the generator rather than as a project IFile.
 		FormSpecGenerator specGenerator = new FormSpecGenerator();
 		java.nio.file.Path oldSpecCyPath = specGenerator.getSpecFilePath(formName);

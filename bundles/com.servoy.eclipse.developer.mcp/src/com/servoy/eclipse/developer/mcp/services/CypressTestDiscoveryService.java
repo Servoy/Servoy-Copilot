@@ -12,12 +12,12 @@ import org.eclipse.core.resources.ResourcesPlugin;
 /**
  * Discovers Cypress test files for Servoy forms in both locations:
  * <ul>
- * <li>Form tests: {@code {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/*.spec.cy.js}</li>
+ * <li>Form tests: {@code {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form/*.spec.cy.js}</li>
  * <li>E2E tests: {@code {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e/*.cy.js} (or .cy.ts)</li>
  * </ul>
  *
  * Note: discovery is workspace-wide, not per-solution. All solutions in the
- * workspace share the single e2e-form and e2e directories.
+ * workspace share the single cy-form and e2e directories.
  */
 public class CypressTestDiscoveryService {
 	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
@@ -50,7 +50,7 @@ public class CypressTestDiscoveryService {
 	}
 
 	/**
-	 * Checks for a form-level spec test in cypress/e2e-form/.
+	 * Checks for a form-level spec test in cypress/cy-form/.
 	 */
 	public boolean hasFormTest(String formName) {
 		Path testsDir = specGenerator.getFormSpecDir();
@@ -140,7 +140,7 @@ public class CypressTestDiscoveryService {
 	public enum TestType {
 		/** No test exists */
 		NONE,
-		/** Form-level spec test in cypress/e2e-form/ */
+		/** Form-level spec test in cypress/cy-form/ */
 		FORM,
 		/** E2E navigation test in cypress/e2e/ */
 		E2E

@@ -57,7 +57,7 @@ public class FormSpecRunner
 			Path specFilePath = specGenerator.getSpecFilePath(formName);
 			if (specFilePath == null || !Files.exists(specFilePath))
 			{
-				return "Error: Spec file not found: jenkins-custom/e2e-test-scripts/cypress/e2e-form/" + formName +
+				return "Error: Spec file not found: jenkins-custom/e2e-test-scripts/cypress/cy-form/" + formName +
 					".spec.cy.js. Use showFormInBrowser first to auto-generate it.";
 			}
 

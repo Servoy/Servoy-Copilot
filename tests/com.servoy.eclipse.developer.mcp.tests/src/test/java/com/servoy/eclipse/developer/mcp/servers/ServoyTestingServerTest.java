@@ -314,8 +314,8 @@ public class ServoyTestingServerTest {
 		Tool tool = m.getAnnotation(Tool.class);
 		assertTrue(tool.description().contains(".spec.cy.js"));
 		// SVY-21171: description must reference the new workspace-relative location
-		assertTrue("generateFormSpec description must reference the new e2e-form location",
-				tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/e2e-form"));
+		assertTrue("generateFormSpec description must reference the new cy-form location",
+				tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/cy-form"));
 		assertTrue("generateFormSpec description must no longer reference medias/tests",
 				!tool.description().contains("medias/tests"));
 	}

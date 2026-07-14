@@ -22,7 +22,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  * (processed by DLTK for code completion) written next to the .frm file in the
  * solution's forms/ directory. The .spec.cy.js Cypress artifact is written to
  * the workspace-relative directory
- * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/ so it is never
+ * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form/ so it is never
  * bundled into a deployed/exported solution (which includes everything under
  * medias/).
  */
@@ -31,8 +31,8 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 public class FormSpecGenerator {
 	private static final String SPEC_CY_EXTENSION = ".spec.cy.js";
 	private static final String SPEC_JS_EXTENSION = ".spec.js";
-	private static final String FORM_SPEC_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/e2e-form";
-	private static final String FORM_SETUP_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/e2e-form-spec";
+	private static final String FORM_SPEC_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/cy-form";
+	private static final String FORM_SETUP_RELATIVE_DIR = "jenkins-custom/e2e-test-scripts/cypress/cy-form-spec";
 
 	private static final Pattern DATA_SOURCE_PATTERN = Pattern.compile("\"dataSource\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern ELEMENT_NAME_PATTERN = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
@@ -41,8 +41,8 @@ public class FormSpecGenerator {
 
 	/**
 	 * Generates spec files for the given form. Cypress spec:
-	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form/{formName}.spec.cy.js
-	 * Servoy setUp/tearDown: {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form-spec/{formName}.spec.js
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form/{formName}.spec.cy.js
+	 * Servoy setUp/tearDown: {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form-spec/{formName}.spec.js
 	 */
 	public String generateSpec(String formName) {
 		try {
@@ -101,7 +101,7 @@ public class FormSpecGenerator {
 
 	/**
 	 * Resolves the workspace-relative Cypress form-spec directory:
-	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form The directory
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form The directory
 	 * lives outside any solution project so the specs are never bundled into a
 	 * deployed/exported solution. The workspace root is the same anchor used by
 	 * FormSpecRunner.runE2ESpec and ServoyTestingServer.generateCypressE2ETest.
@@ -110,14 +110,14 @@ public class FormSpecGenerator {
 		Path workspaceRoot = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
 				.toPath();
 		return workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
-				.resolve("e2e-form");
+				.resolve("cy-form");
 	}
 
 	private Path resolveFormSetupDir() {
 		Path workspaceRoot = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
 				.toPath();
 		return workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
-				.resolve("e2e-form-spec");
+				.resolve("cy-form-spec");
 	}
 
 	/**
@@ -160,7 +160,7 @@ public class FormSpecGenerator {
 
 	/**
 	 * Returns the workspace-relative Cypress form-spec directory:
-	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/e2e-form
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form
 	 */
 	public Path getFormSpecDir() {
 		try {

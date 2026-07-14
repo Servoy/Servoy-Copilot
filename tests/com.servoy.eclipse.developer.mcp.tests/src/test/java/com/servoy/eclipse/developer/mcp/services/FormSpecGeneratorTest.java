@@ -372,7 +372,7 @@ public class FormSpecGeneratorTest
 	public void testFormSpecGenerator_doesNotHaveGetFormsDirMethod()
 	{
 		// SVY-21171: getFormsDir() was renamed to getFormSpecDir() when the Cypress
-		// form specs moved out of medias/tests to the workspace-relative e2e-form dir.
+		// form specs moved out of medias/tests to the workspace-relative cy-form dir.
 		boolean found = false;
 		for (Method m : FormSpecGenerator.class.getDeclaredMethods())
 		{

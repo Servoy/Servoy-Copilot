@@ -113,8 +113,8 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("Cypress spec file should exist after showFormInBrowser", Files.exists(cySpec));
 
 		IProject project = activeProject.getProject();
-		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
-		assertTrue("Setup spec.js file should exist in e2e-form-spec/ directory", Files.exists(setupPath));
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup spec.js file should exist in cy-form-spec/ directory", Files.exists(setupPath));
 	}
 
 	@Test
@@ -322,8 +322,8 @@ public class CypressFormTestingIntegrationTest {
 		specGenerator.generateSpec(TEST_FORM);
 
 		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
-				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
-		assertTrue("Setup .spec.js should be created in e2e-form-spec/", Files.exists(setupPath));
+				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
+		assertTrue("Setup .spec.js should be created in cy-form-spec/", Files.exists(setupPath));
 	}
 
 	@Test
@@ -379,7 +379,7 @@ public class CypressFormTestingIntegrationTest {
 		specGenerator.generateSpec(TEST_FORM);
 
 		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
-				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(TEST_FORM + ".spec.js");
+				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
 		String content = Files.readString(setupPath);
 
 		assertTrue("Setup must have @properties annotation", content.contains("@properties"));
@@ -397,9 +397,9 @@ public class CypressFormTestingIntegrationTest {
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		assertNotNull(cySpec);
 		String path = cySpec.toString().replace('\\', '/');
-		assertTrue("Cypress spec should be in jenkins-custom/e2e-test-scripts/cypress/e2e-form/ directory: " + path,
+		assertTrue("Cypress spec should be in jenkins-custom/e2e-test-scripts/cypress/cy-form/ directory: " + path,
 				path.contains("jenkins-custom") && path.contains("e2e-test-scripts") && path.contains("cypress")
-						&& path.contains("e2e-form"));
+						&& path.contains("cy-form"));
 		assertTrue("Cypress spec must no longer live under medias/tests: " + path, !path.contains("medias"));
 	}
 
@@ -968,7 +968,7 @@ public class CypressFormTestingIntegrationTest {
 				Files.deleteIfExists(cySpec);
 
 			IProject project = activeProject.getProject();
-			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e-form-spec").resolve(formName + ".spec.js");
+			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(formName + ".spec.js");
 			Files.deleteIfExists(setupSpec);
 		} catch (Exception e) {
 			// ignore
