@@ -123,7 +123,7 @@ public class RenamePersistIntegrationTest {
 		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
 		assertNotNull("Form creation should succeed", activeProject.getEditingSolution().getForm(formName));
 
-		String result = devServer.renamePersist("form", formName, newName, null);
+		String result = devServer.renameFile(formName, newName);
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success", result.contains("successfully") || result.contains("Renamed"));
@@ -175,7 +175,7 @@ public class RenamePersistIntegrationTest {
 		assertNotNull("Relation creation should succeed", rel);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel }, true);
 
-		String result = devServer.renamePersist("relation", relName, newRelName, null);
+		String result = devServer.renameFile(relName, newRelName);
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success: " + result,
@@ -226,7 +226,7 @@ public class RenamePersistIntegrationTest {
 		assertNotNull("ValueList creation should succeed", vl);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { vl }, true);
 
-		String result = devServer.renamePersist("valuelist", vlName, newVlName, null);
+		String result = devServer.renameFile(vlName, newVlName);
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success: " + result,
@@ -302,7 +302,7 @@ public class RenamePersistIntegrationTest {
 		media.setPermMediaData(new byte[] { 0x00 });
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { media }, true);
 
-		String result = devServer.renamePersist("media", mediaName, newMediaName, null);
+		String result = devServer.renameFile(mediaName, newMediaName);
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success: " + result,
@@ -372,8 +372,7 @@ public class RenamePersistIntegrationTest {
 		java.nio.file.Path oldSpecJsPath = specGenerator.getSetupFilePath(formName);
 		java.nio.file.Path newSpecJsPath = specGenerator.getSetupFilePath(newName);
 		java.nio.file.Files.createDirectories(oldSpecJsPath.getParent());
-		java.nio.file.Files.writeString(oldSpecJsPath, "function setUp() {}",
-				StandardCharsets.UTF_8);
+		java.nio.file.Files.writeString(oldSpecJsPath, "function setUp() {}", StandardCharsets.UTF_8);
 
 		assertTrue(".spec.cy.js should exist before rename", java.nio.file.Files.exists(oldSpecCyPath));
 		assertTrue(".spec.js should exist before rename", java.nio.file.Files.exists(oldSpecJsPath));
@@ -503,7 +502,7 @@ public class RenamePersistIntegrationTest {
 		assertNotNull("MenuItem creation should succeed", menuItem);
 		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { menu, menuItem }, true);
 
-		String result = devServer.renamePersist("menuitem", itemName, newItemName, null);
+		String result = devServer.renameFile(itemName, newItemName);
 
 		assertNotNull(result);
 		assertTrue("Tool should indicate success: " + result,
@@ -533,21 +532,21 @@ public class RenamePersistIntegrationTest {
 	}
 
 	// -----------------------------------------------------------------------
-	// renamePersist tool dispatch tests (via ServoyDevServer)
+	// renameFile tool dispatch tests (via ServoyDevServer)
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testRenamePersist_unsupportedType_returnsError() {
-		String result = devServer.renamePersist("unknown_type", "old", "new", null);
+	public void testRenameFile_unknownName_returnsError() {
+		String result = devServer.renameFile("nonExistentArtifact_XYZ_unknown", "newName");
 
 		assertNotNull(result);
-		assertTrue("Should start with Error for unsupported type", result.startsWith("Error"));
-		assertTrue("Should mention Unsupported", result.contains("Unsupported"));
+		assertTrue("Should start with Error for unknown name", result.startsWith("Error"));
+		assertTrue("Should mention not found", result.contains("not found") || result.contains("No artifact"));
 	}
 
 	@Test
-	public void testRenamePersist_sameName_returnsError() {
-		String result = devServer.renamePersist("form", "myForm", "myForm", null);
+	public void testRenameFile_sameName_returnsError() {
+		String result = devServer.renameFile("myForm", "myForm");
 
 		assertNotNull(result);
 		assertTrue("Should start with Error for same name", result.startsWith("Error"));
@@ -555,8 +554,8 @@ public class RenamePersistIntegrationTest {
 	}
 
 	@Test
-	public void testRenamePersist_nullOldName_returnsError() {
-		String result = devServer.renamePersist("form", null, "newName", null);
+	public void testRenameFile_nullOldName_returnsError() {
+		String result = devServer.renameFile(null, "newName");
 
 		assertNotNull(result);
 		assertTrue("Should start with Error for null oldName", result.startsWith("Error"));
@@ -564,12 +563,21 @@ public class RenamePersistIntegrationTest {
 	}
 
 	@Test
-	public void testRenamePersist_nullNewName_returnsError() {
-		String result = devServer.renamePersist("form", "oldName", null, null);
+	public void testRenameFile_nullNewName_returnsError() {
+		String result = devServer.renameFile("oldName", null);
 
 		assertNotNull(result);
 		assertTrue("Should start with Error for null newName", result.startsWith("Error"));
 		assertTrue("Should mention required or newName", result.contains("required") || result.contains("newName"));
+	}
+
+	@Test
+	public void testRenameFile_newNameWithPathSeparator_returnsError() {
+		String result = devServer.renameFile("someForm", "bad/name");
+
+		assertNotNull(result);
+		assertTrue("Should start with Error for path in newName", result.startsWith("Error"));
+		assertTrue("Should mention bare name or path", result.contains("bare") || result.contains("path"));
 	}
 
 	@Test
@@ -725,6 +733,86 @@ public class RenamePersistIntegrationTest {
 		} catch (Exception e) {
 			// best effort
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// New SVY-21179 integration tests
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRenameForm_toExistingFormName_returnsError() throws Exception {
+		String formName1 = "dupForm1_" + System.currentTimeMillis();
+		String formName2 = "dupForm2_" + System.currentTimeMillis();
+
+		ServoyArtifactCreationService creationService = new ServoyArtifactCreationService();
+		creationService.createForm(formName1, "css", 640, 480, null, null, null);
+		creationService.createForm(formName2, "css", 640, 480, null, null, null);
+		assertNotNull("Form1 should exist", activeProject.getEditingSolution().getForm(formName1));
+		assertNotNull("Form2 should exist", activeProject.getEditingSolution().getForm(formName2));
+
+		String result = renameService.renameByName(formName1, formName2);
+
+		assertNotNull(result);
+		assertTrue("Should return error when renaming to existing name: " + result, result.startsWith("Error"));
+	}
+
+	@Test
+	public void testRenameRelation_toExistingRelationName_returnsError() throws Exception {
+		String relName1 = "dupRel1_" + System.currentTimeMillis();
+		String relName2 = "dupRel2_" + System.currentTimeMillis();
+
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		com.servoy.j2db.persistence.Relation rel1 = solution.createNewRelation(validator, relName1, "db:/mem/t1",
+				"db:/mem/t2", 1);
+		com.servoy.j2db.persistence.Relation rel2 = solution.createNewRelation(validator, relName2, "db:/mem/t1",
+				"db:/mem/t2", 1);
+		assertNotNull("Relation1 should exist", rel1);
+		assertNotNull("Relation2 should exist", rel2);
+		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { rel1, rel2 }, true);
+
+		String result = renameService.renameByName(relName1, relName2);
+
+		assertNotNull(result);
+		assertTrue("Should return error when renaming to existing relation name: " + result,
+				result.startsWith("Error"));
+	}
+
+	@Test
+	public void testRenameFile_rawFile_success() throws Exception {
+		String fileName = "rawTestFile_" + System.currentTimeMillis() + ".json";
+		String newFileName = "rawTestFileRenamed_" + System.currentTimeMillis() + ".json";
+
+		org.eclipse.core.resources.IFile rawFile = activeProject.getProject().getFile(fileName);
+		rawFile.create(new java.io.ByteArrayInputStream("{\"test\":true}".getBytes(StandardCharsets.UTF_8)), true,
+				new NullProgressMonitor());
+		assertTrue("Raw file should exist before rename", rawFile.exists());
+
+		String result = renameService.renameByName(fileName, newFileName);
+
+		assertNotNull(result);
+		assertTrue("Should succeed renaming raw file: " + result,
+				result.contains("successfully") || result.contains("Renamed"));
+		assertFalse("Old file should not exist", activeProject.getProject().getFile(fileName).exists());
+		assertTrue("New file should exist", activeProject.getProject().getFile(newFileName).exists());
+	}
+
+	@Test
+	public void testRenameFile_workspaceRelativePath_success() throws Exception {
+		String formName = "wsRelForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		assertNotNull("Form should exist", activeProject.getEditingSolution().getForm(formName));
+
+		String wsRelPath = activeProject.getProject().getName() + "/forms/" + formName + ".frm";
+		String result = renameService.renameByName(wsRelPath, newName);
+
+		assertNotNull(result);
+		assertTrue("Should succeed with workspace-relative path: " + result,
+				result.contains("successfully") || result.contains("Renamed"));
+		assertNotNull("Form should exist with new name", activeProject.getEditingSolution().getForm(newName));
+		assertNull("Form should not exist with old name", activeProject.getEditingSolution().getForm(formName));
 	}
 
 	// -----------------------------------------------------------------------

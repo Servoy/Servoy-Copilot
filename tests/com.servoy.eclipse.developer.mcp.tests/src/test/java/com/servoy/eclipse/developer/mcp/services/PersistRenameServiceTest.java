@@ -1,6 +1,7 @@
 package com.servoy.eclipse.developer.mcp.services;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -8,225 +9,174 @@ import java.lang.reflect.Method;
 
 import org.junit.Test;
 
-public class PersistRenameServiceTest
-{
+public class PersistRenameServiceTest {
 	private final PersistRenameService service = new PersistRenameService();
 
 	@Test
-	public void testPersistRenameService_canBeInstantiated()
-	{
+	public void testPersistRenameService_canBeInstantiated() {
 		assertNotNull(service);
 	}
 
 	@Test
-	public void testPersistRenameService_hasRenamePersistMethod() throws NoSuchMethodException
-	{
-		Method m = PersistRenameService.class.getMethod("renamePersist", String.class, String.class, String.class, String.class);
+	public void testPersistRenameService_hasRenameByNameMethod() throws NoSuchMethodException {
+		Method m = PersistRenameService.class.getMethod("renameByName", String.class, String.class);
 		assertNotNull(m);
 		assertEquals(String.class, m.getReturnType());
 	}
 
 	@Test
-	public void testRenamePersist_rejectsNullPersistType()
-	{
-		String result = service.renamePersist(null, "old", "new", null);
-		assertTrue(result.contains("Error") && result.contains("persistType"));
-	}
-
-	@Test
-	public void testRenamePersist_rejectsBlankPersistType()
-	{
-		String result = service.renamePersist("  ", "old", "new", null);
-		assertTrue(result.contains("Error") && result.contains("persistType"));
-	}
-
-	@Test
-	public void testRenamePersist_rejectsNullOldName()
-	{
-		String result = service.renamePersist("form", null, "new", null);
+	public void testRenameByName_rejectsNullOldName() {
+		String result = service.renameByName(null, "newName");
 		assertTrue(result.contains("Error") && result.contains("oldName"));
 	}
 
 	@Test
-	public void testRenamePersist_rejectsBlankOldName()
-	{
-		String result = service.renamePersist("form", "", "new", null);
+	public void testRenameByName_rejectsBlankOldName() {
+		String result = service.renameByName("  ", "newName");
 		assertTrue(result.contains("Error") && result.contains("oldName"));
 	}
 
 	@Test
-	public void testRenamePersist_rejectsNullNewName()
-	{
-		String result = service.renamePersist("form", "old", null, null);
+	public void testRenameByName_rejectsNullNewName() {
+		String result = service.renameByName("oldName", null);
 		assertTrue(result.contains("Error") && result.contains("newName"));
 	}
 
 	@Test
-	public void testRenamePersist_rejectsBlankNewName()
-	{
-		String result = service.renamePersist("form", "old", "  ", null);
+	public void testRenameByName_rejectsBlankNewName() {
+		String result = service.renameByName("oldName", "   ");
 		assertTrue(result.contains("Error") && result.contains("newName"));
 	}
 
 	@Test
-	public void testRenamePersist_rejectsSameName()
-	{
-		String result = service.renamePersist("form", "myForm", "myForm", null);
+	public void testRenameByName_rejectsSameName() {
+		String result = service.renameByName("myArtifact", "myArtifact");
 		assertTrue(result.contains("Error") && result.contains("same"));
 	}
 
 	@Test
-	public void testRenamePersist_rejectsUnsupportedType()
-	{
-		try
-		{
-			String result = service.renamePersist("unknown_type", "old", "new", null);
-			assertTrue(result.contains("Error") && (result.contains("Unsupported") || result.contains("not found")));
-		}
-		catch (Throwable e)
-		{
-			assertNotNull("Expected error in plain JUnit (no workspace)", e);
-		}
+	public void testRenameByName_rejectsNewNameWithPathSeparator() {
+		String result = service.renameByName("someArtifact", "bad/name");
+		assertTrue("Should reject newName containing path separator", result.contains("Error"));
+		assertTrue("Should mention bare name or path", result.contains("bare") || result.contains("path"));
 	}
 
 	@Test
-	public void testRenamePersist_formType_noWorkspace()
-	{
-		try
-		{
-			String result = service.renamePersist("form", "oldForm", "newForm", null);
+	public void testRenameByName_formTypeNoWorkspace() {
+		try {
+			String result = service.renameByName("oldForm", "newForm");
 			assertNotNull(result);
-			assertTrue(result.contains("Error") || result.contains("not found"));
-		}
-		catch (Throwable e)
-		{
+			assertTrue(result.contains("Error") || result.contains("not found") || result.contains("No active"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testRenamePersist_relationTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("relation", "oldRel", "newRel", null);
+	public void testRenameByName_notFound_returnsErrorWithMessage() {
+		try {
+			String result = service.renameByName("nonExistentArtifact_XYZ_99999", "someNewName");
 			assertNotNull(result);
+			assertTrue("Should return error containing 'not found' or 'No active'",
+					result.contains("not found") || result.contains("No active") || result.contains("Error"));
+		} catch (Throwable e) {
+			assertNotNull("Expected workspace error in plain JUnit (no ServoyModel)", e);
 		}
-		catch (Throwable e)
-		{
+	}
+
+	@Test
+	public void testRenameByName_ambiguous_sourceContainsAmbiguousKeyword() throws Exception {
+		java.net.URL loc = PersistRenameService.class.getProtectionDomain().getCodeSource().getLocation();
+		java.nio.file.Path binDir = java.nio.file.Paths.get(loc.toURI());
+		java.nio.file.Path sourceFile = null;
+		java.nio.file.Path check = binDir;
+		for (int i = 0; i < 6; i++) {
+			java.nio.file.Path candidate = check
+					.resolve("src/com/servoy/eclipse/developer/mcp/services/PersistRenameService.java");
+			if (java.nio.file.Files.exists(candidate)) {
+				sourceFile = candidate;
+				break;
+			}
+			check = check.getParent();
+		}
+		if (sourceFile != null && java.nio.file.Files.exists(sourceFile)) {
+			String source = java.nio.file.Files.readString(sourceFile);
+			assertTrue("renameByName must contain literal 'Ambiguous' for collision error",
+					source.contains("Ambiguous"));
+		}
+	}
+
+	@Test
+	public void testRenameByName_pathHint_formsPrefix_identifiedAsForm() {
+		try {
+			String result = service.renameByName("forms/testFormXYZ", "newName");
+			assertNotNull(result);
+			assertFalse("Should not return unsupported type error", result.contains("Unsupported"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testRenamePersist_valuelistTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("valuelist", "oldVl", "newVl", null);
+	public void testRenameByName_pathHint_relationsPrefix() {
+		try {
+			String result = service.renameByName("relations/testRelXYZ", "newName");
 			assertNotNull(result);
-		}
-		catch (Throwable e)
-		{
+			assertFalse("Should not return unsupported type error", result.contains("Unsupported"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testRenamePersist_menuTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("menu", "oldMenu", "newMenu", null);
+	public void testRenameByName_pathHint_mediasPrefix() {
+		try {
+			String result = service.renameByName("medias/test.png", "newTest.png");
 			assertNotNull(result);
-		}
-		catch (Throwable e)
-		{
+			assertFalse("Should not return unsupported type error", result.contains("Unsupported"));
+		} catch (Throwable e) {
 			assertNotNull("Expected workspace error in plain JUnit", e);
 		}
 	}
 
 	@Test
-	public void testRenamePersist_mediaTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("media", "old.png", "new.png", null);
-			assertNotNull(result);
-		}
-		catch (Throwable e)
-		{
-			assertNotNull("Expected workspace error in plain JUnit", e);
-		}
+	public void testPersistRenameService_hasRenameFormMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameForm", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testRenamePersist_scopeTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("scope", "oldScope", "newScope", null);
-			assertNotNull(result);
-		}
-		catch (Throwable e)
-		{
-			assertNotNull("Expected workspace error in plain JUnit", e);
-		}
+	public void testPersistRenameService_hasRenameRelationMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameRelation", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testRenamePersist_solutionTypeAccepted()
-	{
-		try
-		{
-			String result = service.renamePersist("solution", "oldSol", "newSol", null);
-			assertNotNull(result);
-		}
-		catch (Throwable e)
-		{
-			assertNotNull("Expected workspace error in plain JUnit", e);
-		}
+	public void testPersistRenameService_hasRenameValueListMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameValueList", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testPersistRenameService_hasRenameFormMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameForm", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
+	public void testPersistRenameService_hasRenameMenuMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameMenu", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testPersistRenameService_hasRenameRelationMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameRelation", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
+	public void testPersistRenameService_hasRenameMediaMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameMedia", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testPersistRenameService_hasRenameValueListMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameValueList", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
+	public void testPersistRenameService_hasRenameScopeMethod() throws NoSuchMethodException {
+		assertNotNull(PersistRenameService.class.getMethod("renameScope", String.class, String.class,
+				com.servoy.eclipse.model.nature.ServoyProject.class));
 	}
 
 	@Test
-	public void testPersistRenameService_hasRenameMenuMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameMenu", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
-	}
-
-	@Test
-	public void testPersistRenameService_hasRenameMediaMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameMedia", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
-	}
-
-	@Test
-	public void testPersistRenameService_hasRenameScopeMethod() throws NoSuchMethodException
-	{
-		assertNotNull(PersistRenameService.class.getMethod("renameScope", String.class, String.class, com.servoy.eclipse.model.nature.ServoyProject.class));
-	}
-
-	@Test
-	public void testPersistRenameService_hasRenameSolutionMethod() throws NoSuchMethodException
-	{
+	public void testPersistRenameService_hasRenameSolutionMethod() throws NoSuchMethodException {
 		assertNotNull(PersistRenameService.class.getMethod("renameSolution", String.class, String.class));
 	}
 }

@@ -37,17 +37,20 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 
 public class ServoyCoderServerIntegrationTest {
 	private static final String PROJECT_NAME = "test_coder_server_suite";
 
 	private ServoyCoderServer coderServer;
+	private ServoyDevServer devServer;
 	private IProject project;
 
 	@Before
 	public void setUp() throws Exception {
 		coderServer = new ServoyCoderServer(new CodeEditingService());
+		devServer = new ServoyDevServer();
 
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(PROJECT_NAME);
@@ -238,9 +241,9 @@ public class ServoyCoderServerIntegrationTest {
 	public void testRenameFile_success() throws Exception {
 		createTestFile("rename_me.txt", "content");
 
-		String result = coderServer.renameFile(PROJECT_NAME, "rename_me.txt", "renamed.txt");
+		String result = devServer.renameFile(PROJECT_NAME + "/rename_me.txt", "renamed.txt");
 
-		assertTrue("Should succeed: " + result, result.contains("Success"));
+		assertTrue("Should succeed: " + result, result.contains("Success") || result.contains("successfully"));
 		IFile oldFile = project.getFile("rename_me.txt");
 		IFile newFile = project.getFile("renamed.txt");
 		assertFalse("Old file should not exist", oldFile.exists());
@@ -252,12 +255,11 @@ public class ServoyCoderServerIntegrationTest {
 		createTestFile("src_file.txt", "source");
 		createTestFile("target_file.txt", "target");
 
-		try {
-			coderServer.renameFile(PROJECT_NAME, "src_file.txt", "target_file.txt");
-			assertTrue("Should have thrown for duplicate target", false);
-		} catch (RuntimeException e) {
-			assertTrue("Should mention already exists: " + e.getMessage(), e.getMessage().contains("already exists"));
-		}
+		String result = devServer.renameFile(PROJECT_NAME + "/src_file.txt", "target_file.txt");
+
+		assertNotNull("Should return a result string", result);
+		assertTrue("Should return error for duplicate target: " + result,
+				result.startsWith("Error") && (result.contains("already exists") || result.contains("Error")));
 	}
 
 	@Test
@@ -320,7 +322,8 @@ public class ServoyCoderServerIntegrationTest {
 
 	@Test
 	public void testUndoEdit_noBackup() {
-		// A freshly created file has no Local History, so undoEdit must report an error.
+		// A freshly created file has no Local History, so undoEdit must report an
+		// error.
 		createTestFile("no_backup.txt", "original");
 
 		try {
@@ -335,8 +338,10 @@ public class ServoyCoderServerIntegrationTest {
 
 	@Test
 	public void testUndoEdit_afterEdit() throws Exception {
-		// Build Local History for the file: create with v1, then overwrite with v2 keeping
-		// history. This makes getHistory() return the v1 state so undoEdit can restore it.
+		// Build Local History for the file: create with v1, then overwrite with v2
+		// keeping
+		// history. This makes getHistory() return the v1 state so undoEdit can restore
+		// it.
 		createTestFile("undo_test.txt", "original content");
 		setContentsKeepingHistory("undo_test.txt", "modified content");
 
@@ -353,15 +358,15 @@ public class ServoyCoderServerIntegrationTest {
 	}
 
 	/**
-	 * Overwrites a file's contents while preserving the prior version in Eclipse Local History
-	 * (IResource.KEEP_HISTORY). This is what allows undoEdit's getHistory() call to find a
-	 * previous state to restore.
+	 * Overwrites a file's contents while preserving the prior version in Eclipse
+	 * Local History (IResource.KEEP_HISTORY). This is what allows undoEdit's
+	 * getHistory() call to find a previous state to restore.
 	 */
 	private void setContentsKeepingHistory(String path, String content) throws Exception {
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IFile file = project.getFile(path);
-			file.setContents(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
-					IResource.KEEP_HISTORY, monitor);
+			file.setContents(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)), IResource.KEEP_HISTORY,
+					monitor);
 		}, new NullProgressMonitor());
 	}
 

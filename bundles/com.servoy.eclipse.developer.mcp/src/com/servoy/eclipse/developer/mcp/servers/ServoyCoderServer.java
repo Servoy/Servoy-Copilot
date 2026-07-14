@@ -138,17 +138,6 @@ public class ServoyCoderServer
 		return codeEditingService.createDirectories(projectName, directoryPath);
 	}
 
-	@Tool(name = "renameFile",
-		description = "Renames a file in the specified project.",
-		type = "object")
-	public String renameFile(
-		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
-		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
-		@ToolParam(name = "newFileName", description = "The new name for the file", required = true) String newFileName)
-	{
-		return codeEditingService.renameFile(projectName, filePath, newFileName);
-	}
-
 	@Tool(name = "moveResource",
 		description = "Moves a file or folder to a different location within the project.",
 		type = "object")

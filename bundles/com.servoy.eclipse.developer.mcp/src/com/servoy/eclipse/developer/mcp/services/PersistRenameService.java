@@ -94,7 +94,8 @@ public class PersistRenameService {
 		try {
 			FormSpecGenerator specGenerator = new FormSpecGenerator();
 
-			// Rename .spec.js (setUp/tearDown) — lives in cy-form-spec/ outside the project
+			// Rename .spec.js (setUp/tearDown) — lives in e2e-form-spec/ outside the
+			// project
 			java.nio.file.Path oldSpecJs = specGenerator.getSetupFilePath(oldFormName);
 			java.nio.file.Path newSpecJs = specGenerator.getSetupFilePath(newFormName);
 			if (oldSpecJs != null && newSpecJs != null && java.nio.file.Files.exists(oldSpecJs)
@@ -106,7 +107,7 @@ public class PersistRenameService {
 				java.nio.file.Files.move(oldSpecJs, newSpecJs);
 			}
 
-			// Rename .spec.cy.js — lives in cy-form/ outside the project
+			// Rename .spec.cy.js — lives in e2e-form/ outside the project
 			java.nio.file.Path oldSpecCy = specGenerator.getSpecFilePath(oldFormName);
 			java.nio.file.Path newSpecCy = specGenerator.getSpecFilePath(newFormName);
 			if (oldSpecCy != null && newSpecCy != null && java.nio.file.Files.exists(oldSpecCy)
@@ -394,4 +395,361 @@ public class PersistRenameService {
 		}
 		return model.getActiveProject();
 	}
+
+	/**
+	 * Renames a Servoy artifact or raw workspace file identified by
+	 * {@code oldName}.
+	 * <p>
+	 * {@code oldName} may be a simple artifact name, a workspace-relative path
+	 * (e.g. {@code "mySolution/forms/myForm.frm"}), a solution-relative path (e.g.
+	 * {@code "forms/myForm"}), or an absolute filesystem path inside the workspace.
+	 * {@code newName} must be a bare filename with no path separators.
+	 * </p>
+	 *
+	 * @return a success or error message string; never throws
+	 */
+	public String renameByName(String oldName, String newName) {
+		// Step 0 — Input validation
+		if (oldName == null || oldName.isBlank())
+			return "Error: oldName is required.";
+		if (newName == null || newName.isBlank())
+			return "Error: newName is required.";
+		if (oldName.trim().equals(newName.trim()))
+			return "Error: oldName and newName are the same.";
+		if (newName.contains("/") || newName.contains("\\"))
+			return "Error: newName must be a bare name, not a path.";
+
+		boolean hasPathSeparator = oldName.contains("/") || oldName.contains("\\");
+		boolean isAbsolute = false;
+		try {
+			isAbsolute = java.nio.file.Paths.get(oldName).isAbsolute();
+		} catch (Exception ignored) {
+		}
+
+		if (hasPathSeparator || isAbsolute) {
+			// PATH TRACK
+			return renameByPath(oldName, newName);
+		} else {
+			// NAME TRACK
+			return renameBySimpleName(oldName, newName);
+		}
+	}
+
+	private String renameByPath(String oldName, String newName) {
+		org.eclipse.core.resources.IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+		IFile file = null;
+
+		// 1. Absolute filesystem path -> IFile via location URI
+		try {
+			if (java.nio.file.Paths.get(oldName).isAbsolute()) {
+				IFile[] files = root.findFilesForLocationURI(java.nio.file.Paths.get(oldName).toUri());
+				if (files.length > 0)
+					file = files[0];
+			}
+		} catch (Exception ignored) {
+		}
+
+		// 2. Workspace-relative path (e.g. "mySolution/forms/myForm.frm")
+		if (file == null) {
+			try {
+				IFile candidate = root.getFile(org.eclipse.core.runtime.IPath.fromPortableString(oldName));
+				if (candidate.exists())
+					file = candidate;
+			} catch (Exception ignored) {
+			}
+		}
+
+		// 3. Project-relative path against active project
+		if (file == null) {
+			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			ServoyProject active = model.getActiveProject();
+			if (active != null) {
+				// Try exact path first
+				IFile candidate = active.getProject().getFile(oldName);
+				if (candidate.exists()) {
+					file = candidate;
+				} else {
+					// Probe known Servoy extensions when no extension was given
+					// e.g. "forms/myForm" -> try "forms/myForm.frm" then "forms/myForm.js"
+					String lowerPath = oldName.toLowerCase();
+					String[] probeExtensions = null;
+					if (lowerPath.startsWith("forms/") || lowerPath.startsWith("forms\\")) {
+						probeExtensions = new String[] { ".frm", ".js" };
+					} else if (lowerPath.startsWith("relations/") || lowerPath.startsWith("relations\\")) {
+						probeExtensions = new String[] { ".rel" };
+					} else if (lowerPath.startsWith("valuelists/") || lowerPath.startsWith("valuelists\\")) {
+						probeExtensions = new String[] { ".val" };
+					}
+					if (probeExtensions != null) {
+						for (String ext : probeExtensions) {
+							IFile probed = active.getProject().getFile(oldName + ext);
+							if (probed.exists()) {
+								file = probed;
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (file == null) {
+			return "Error: File or artifact '" + oldName + "' not found. "
+					+ "Provide a workspace-relative path (e.g. 'mySolution/forms/myForm.frm') or an absolute path inside the workspace.";
+		}
+
+		// Security check: file must belong to active solution or one of its modules.
+		// If the project is not a Servoy project at all, skip the Servoy security check
+		// and treat it as a raw file rename (same behaviour as the old
+		// ServoyCoderServer.renameFile).
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		String fileProjectName = file.getProject().getName();
+		ServoyProject fileServoyProject = model.getServoyProject(fileProjectName);
+
+		if (fileServoyProject == null) {
+			// Not a Servoy project â raw file rename, no solution-boundary restriction
+			return rawFileRename(file, newName);
+		}
+
+		boolean allowed = false;
+		ServoyProject activeProj = model.getActiveProject();
+		if (activeProj != null) {
+			if (activeProj.getProject().getName().equals(fileProjectName))
+				allowed = true;
+			if (!allowed && activeProj.getModules() != null) {
+				for (com.servoy.j2db.persistence.Solution mod : activeProj.getModules()) {
+					ServoyProject modProject = model.getServoyProject(mod.getName());
+					if (modProject != null && modProject.getProject().getName().equals(fileProjectName)) {
+						allowed = true;
+						break;
+					}
+				}
+			}
+		}
+		if (!allowed) {
+			return "Error: Path is outside the active solution. Only files within the active solution or its modules may be renamed.";
+		}
+
+		// Derive artifact type from project-relative path and dispatch
+		String projectRelPath = file.getProjectRelativePath().toPortableString();
+		ServoyProject fileProject = fileServoyProject;
+
+		try {
+			if (projectRelPath.startsWith("forms/")) {
+				String artifactName = file.getName().replaceAll("\\.(frm|js)$", "");
+				return renameForm(artifactName, newName, fileProject);
+			} else if (projectRelPath.startsWith("relations/")) {
+				String artifactName = file.getName().replaceAll("\\.rel$", "");
+				return renameRelation(artifactName, newName, fileProject);
+			} else if (projectRelPath.startsWith("valuelists/")) {
+				String artifactName = file.getName().replaceAll("\\.val$", "");
+				return renameValueList(artifactName, newName, fileProject);
+			} else if (projectRelPath.startsWith("medias/")) {
+				return renameMedia(file.getName(), newName, fileProject);
+			} else if (!projectRelPath.contains("/") && projectRelPath.endsWith(".js")) {
+				String artifactName = file.getName().replaceAll("\\.js$", "");
+				return renameScope(artifactName, newName, fileProject);
+			} else {
+				return rawFileRename(file, newName);
+			}
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	private String renameBySimpleName(String oldName, String newName) {
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		ServoyProject activeProject = model.getActiveProject();
+		if (activeProject == null) {
+			return "Error: No active solution found.";
+		}
+
+		// Build flattened project list: active solution + all modules.
+		// NOTE: ServoyProject.getModules() already includes the solution itself as the
+		// first element, so we must NOT add activeProject separately to avoid
+		// duplicates.
+		java.util.List<ServoyProject> flatProjects = new java.util.ArrayList<>();
+		com.servoy.j2db.persistence.Solution[] modules = activeProject.getModules();
+		if (modules != null) {
+			for (com.servoy.j2db.persistence.Solution mod : modules) {
+				ServoyProject modProject = model.getServoyProject(mod.getName());
+				if (modProject != null && !flatProjects.contains(modProject))
+					flatProjects.add(modProject);
+			}
+		}
+		if (flatProjects.isEmpty()) {
+			flatProjects.add(activeProject);
+		}
+
+		// Collect all matches across flattened solution
+		// Each entry: [type, name, projectName, extra] where extra may be menu name for
+		// menuitem
+		java.util.List<String[]> matches = new java.util.ArrayList<>();
+
+		// Check solution type first
+		if (model.getServoyProject(oldName) != null) {
+			matches.add(new String[] { "solution", oldName, oldName, null });
+		}
+
+		for (ServoyProject project : flatProjects) {
+			Solution solution = null;
+			try {
+				solution = project.getEditingSolution();
+			} catch (Exception ignored) {
+			}
+			if (solution == null)
+				continue;
+
+			String projName = project.getProject().getName();
+
+			// form
+			if (solution.getForm(oldName) != null)
+				matches.add(new String[] { "form", oldName, projName, null });
+
+			// relation
+			if (solution.getRelation(oldName) != null)
+				matches.add(new String[] { "relation", oldName, projName, null });
+
+			// valuelist
+			if (solution.getValueList(oldName) != null)
+				matches.add(new String[] { "valuelist", oldName, projName, null });
+
+			// menu
+			java.util.Iterator<Menu> menuIter = solution.getMenus(false);
+			while (menuIter.hasNext()) {
+				Menu m = menuIter.next();
+				if (oldName.equals(m.getName()))
+					matches.add(new String[] { "menu", oldName, projName, null });
+			}
+
+			// menuitem (recursive search across all menus)
+			java.util.Iterator<Menu> menuIter2 = solution.getMenus(false);
+			while (menuIter2.hasNext()) {
+				Menu menu = menuIter2.next();
+				MenuItem found = findMenuItemRecursive(menu, oldName);
+				if (found != null)
+					matches.add(new String[] { "menuitem", oldName, projName, menu.getName() });
+			}
+
+			// media
+			java.util.Iterator<Media> mediaIter = solution.getMedias(false);
+			while (mediaIter.hasNext()) {
+				Media m = mediaIter.next();
+				if (oldName.equals(m.getName()))
+					matches.add(new String[] { "media", oldName, projName, null });
+			}
+
+			// scope: .js file at project root
+			IFile scopeFile = project.getProject().getFile(oldName + ".js");
+			if (scopeFile.exists())
+				matches.add(new String[] { "scope", oldName, projName, null });
+		}
+
+		if (matches.size() == 1) {
+			// Exactly one match — perform rename
+			String[] match = matches.get(0);
+			String type = match[0];
+			String projName = match[2];
+
+			try {
+				switch (type) {
+				case "solution":
+					return renameSolution(oldName, newName);
+				case "form": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameForm(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "relation": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameRelation(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "valuelist": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameValueList(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "menu": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameMenu(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "menuitem": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameMenuItem(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "media": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameMedia(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				case "scope": {
+					ServoyProject proj = findProjectByName(flatProjects, projName);
+					return proj != null ? renameScope(oldName, newName, proj)
+							: "Error: Project '" + projName + "' not found.";
+				}
+				default:
+					return "Error: Unknown type '" + type + "'.";
+				}
+			} catch (Exception e) {
+				return "Error: " + e.getMessage();
+			}
+		} else if (matches.size() > 1) {
+			// Ambiguous — build disambiguation error
+			StringBuilder sb = new StringBuilder();
+			sb.append("Error: Ambiguous name '").append(oldName).append("' — found in multiple locations:\n");
+			for (String[] match : matches) {
+				String type = match[0];
+				String projName = match[2];
+				String extra = match[3];
+				if ("menuitem".equals(type) && extra != null) {
+					sb.append("  - menuitem '").append(oldName).append("' in menu '").append(extra)
+							.append("' (solution '").append(projName).append("')\n");
+				} else {
+					sb.append("  - ").append(type).append(" '").append(oldName).append("' in '").append(projName)
+							.append("'\n");
+				}
+			}
+			sb.append("Provide a path hint (e.g. '").append(activeProject.getProject().getName()).append("/forms/")
+					.append(oldName).append("') to disambiguate.");
+			return sb.toString();
+		} else {
+			// 0 matches in model — raw file fallback
+			IFile rawFile = null;
+			org.eclipse.core.resources.IResource member = activeProject.getProject().findMember(oldName);
+			if (member instanceof IFile) {
+				rawFile = (IFile) member;
+			}
+			if (rawFile != null) {
+				return rawFileRename(rawFile, newName);
+			}
+			return "Error: No artifact or file named '" + oldName + "' found in the active solution or project.";
+		}
+	}
+
+	private ServoyProject findProjectByName(java.util.List<ServoyProject> projects, String name) {
+		for (ServoyProject p : projects) {
+			if (p.getProject().getName().equals(name))
+				return p;
+		}
+		return null;
+	}
+
+	private String rawFileRename(IFile file, String newName) {
+		try {
+			org.eclipse.core.resources.IContainer parent = file.getParent();
+			org.eclipse.core.runtime.IPath newPath = parent.getFullPath().append(newName);
+			IFile newFile = ResourcesPlugin.getWorkspace().getRoot().getFile(newPath);
+			if (newFile.exists())
+				return "Error: A file named '" + newName + "' already exists in the same location.";
+			file.move(newPath, org.eclipse.core.resources.IResource.FORCE, new NullProgressMonitor());
+			parent.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_ONE, null);
+			return "Renamed file '" + file.getName() + "' to '" + newName + "' successfully.";
+		} catch (CoreException e) {
+			return "Error renaming file: " + e.getMessage();
+		}
+	}
+
 }
