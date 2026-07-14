@@ -65,11 +65,11 @@ pipeline {
         success {
             // Trigger beide downstream installer-jobs met de specifieke verplichte parameter-goals
             build job: 'make_installer_eclipse', 
-                  parameters: [string(name: 'goals', value: 'clean install -Ponly_product -U')], 
+                  parameters: [string(name: 'goals', value: 'clean install -Ponly_product -U -Dservoy.ai.repo.url=file:///data/www/latest/servoy_ai/')], 
                   wait: false
                   
             build job: 'release/make_installer_eclipse', 
-                  parameters: [string(name: 'goals', value: 'clean install -Ponly_product -U')], 
+                  parameters: [string(name: 'goals', value: 'clean install -Ponly_product -U -Dservoy.ai.repo.url=file:///data/www/latest/servoy_ai/')], 
                   wait: false
         }
         
