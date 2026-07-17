@@ -19,9 +19,12 @@ import org.eclipse.ui.console.MessageConsoleStream;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.servoy.eclipse.core.resource.PersistEditorInput;
+import com.servoy.eclipse.developer.mcp.actions.CypressTestResult.TestStatus;
+import com.servoy.eclipse.developer.mcp.actions.CypressTestResult.TestType;
+import com.servoy.eclipse.developer.mcp.services.CypressOutputParser;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
-import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
+import com.servoy.eclipse.developer.mcp.views.CypressTestResultsView;
 
 public class RunCypressFormTestHandler extends AbstractHandler {
 	private final CypressTestDiscoveryService discoveryService = new CypressTestDiscoveryService();
@@ -39,6 +42,15 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 		}
 
 		String targetFormName = formName;
+		com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType discoveredType = discoveryService
+				.getTestType(targetFormName);
+		TestType sessionType = (discoveredType == com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType.E2E)
+				? TestType.E2E
+				: TestType.FORM;
+
+		CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
+		sessionManager.startSession(java.util.List.of(targetFormName), sessionType);
+		CypressTestResultsView.reveal();
 
 		Job job = new Job("Running Cypress Form Test: " + targetFormName) {
 			@Override
@@ -51,7 +63,16 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 
 					enableTestingMode();
 
+					sessionManager.markRunning(targetFormName, sessionType);
+
+					long startTime = System.currentTimeMillis();
 					String result = runFormTestCore(targetFormName, new FormSpecRunner());
+					long durationMs = System.currentTimeMillis() - startTime;
+
+					TestStatus status = CypressOutputParser.determineStatus(result);
+					String errorSummary = CypressOutputParser.extractErrorSummary(result, status);
+					sessionManager.updateResult(targetFormName, new CypressTestResult(targetFormName, sessionType,
+							status, errorSummary, result, durationMs));
 
 					try (MessageConsoleStream stream = console.newMessageStream()) {
 						stream.println(result);
@@ -72,32 +93,31 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 	}
 
 	/**
-	 * Core test execution logic separated from Eclipse UI concerns.
-	 * Runs the appropriate test type (form test or E2E test) and returns the result string.
+	 * Core test execution logic separated from Eclipse UI concerns. Runs the
+	 * appropriate test type (form test or E2E test) and returns the result string.
 	 * Package-private for testability.
 	 */
 	public String runFormTestCore(String formName, FormSpecRunner runner) {
 		if (formName == null || formName.isBlank()) {
 			return "Error: No form name specified.";
 		}
-		TestType testType = discoveryService.getTestType(formName);
-		if (testType == TestType.E2E) {
+		com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType testType = discoveryService
+				.getTestType(formName);
+		if (testType == com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType.E2E) {
 			return runner.runE2ESpec(formName, false);
 		}
 		return runner.runSpec(formName, false);
 	}
 
 	/**
-	 * Enables Servoy NG client testing mode.
-	 * Package-private for testability.
+	 * Enables Servoy NG client testing mode. Package-private for testability.
 	 */
 	public void enableTestingMode() {
 		com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 	}
 
 	/**
-	 * Returns the discovery service instance.
-	 * Package-private for testability.
+	 * Returns the discovery service instance. Package-private for testability.
 	 */
 	CypressTestDiscoveryService getDiscoveryService() {
 		return discoveryService;

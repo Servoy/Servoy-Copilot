@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +35,149 @@ public class FormSpecRunner
 	private static final int DEFAULT_TIMEOUT_SECONDS = 60;
 
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
+	private volatile Process activeProcess;
+
+	/** Guards one-time cleanup of leftover preserved artifacts from previous Developer sessions. */
+	private static volatile boolean preservedArtifactsCleaned = false;
+
+	/**
+	 * Cancels the currently running Cypress process, if any.
+	 */
+	public void cancel() {
+		Process p = activeProcess;
+		if (p != null && p.isAlive()) {
+			p.destroyForcibly();
+		}
+	}
+
+	/**
+	 * Copies Cypress-generated videos and screenshots referenced in the output to a stable
+	 * per-run folder (cypress/preserved-artifacts/&lt;testName&gt;-&lt;timestamp&gt;/) so they
+	 * survive the next run wiping the results/videos/screenshots folders. Rewrites the paths
+	 * in the returned output to point at the preserved copies.
+	 */
+	/** Marker prefixes appended to the output so the parser can locate preserved media reliably. */
+	public static final String PRESERVED_VIDEO_MARKER = "[Preserved Video] ";
+	public static final String PRESERVED_SCREENSHOT_MARKER = "[Preserved Screenshot] ";
+
+	private String preserveArtifacts(String rawOutput, String testName) {
+		try {
+			Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			Path cypressDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress");
+			Path preservedRoot = cypressDir.resolve("preserved-artifacts");
+			// One-time cleanup of leftover artifacts from previous Developer sessions
+			cleanPreservedArtifactsOnce(preservedRoot);
+			String safeName = testName.replaceAll("[^a-zA-Z0-9._-]", "_");
+			// Keep the folder name short; use a truncated safe name to avoid Windows MAX_PATH issues.
+			String shortName = safeName.length() > 40 ? safeName.substring(0, 40) : safeName;
+			Path destDir = preservedRoot.resolve(shortName + "-" + System.currentTimeMillis());
+
+			StringBuilder markers = new StringBuilder();
+
+			// Cypress stores media under cypress/videos and cypress/screenshots. Scan those
+			// folders on disk (rather than parsing wrapped console text) for files whose spec
+			// name matches this test, so we reliably pick up the current run's artifacts.
+			String baseName = testName.replaceAll("\\.cy\\.(js|ts)$", "");
+
+			// Video: cypress/videos/<spec>.mp4 (spec name usually "<base>.cy.ts" or "<base>.cy.js")
+			Path videosDir = cypressDir.resolve("videos");
+			Path video = findMatchingFile(videosDir, baseName, ".mp4");
+			if (video != null) {
+				Files.createDirectories(destDir);
+				// Use a short, fixed filename so the full path stays under Windows MAX_PATH (260)
+				// and can be opened by browsers via file:// URLs.
+				Path dest = destDir.resolve("video.mp4");
+				Files.copy(video, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				markers.append("\n").append(PRESERVED_VIDEO_MARKER).append(dest.toString());
+			}
+
+			// Screenshots: cypress/screenshots/<spec>/*.png (one subfolder per spec file)
+			Path screenshotsDir = cypressDir.resolve("screenshots");
+			Path shot = findScreenshot(screenshotsDir, baseName);
+			if (shot != null) {
+				Files.createDirectories(destDir);
+				// Short, fixed filename (see video comment above).
+				Path dest = destDir.resolve("screenshot.png");
+				Files.copy(shot, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				markers.append("\n").append(PRESERVED_SCREENSHOT_MARKER).append(dest.toString());
+			}
+
+			return markers.length() > 0 ? rawOutput + markers : rawOutput;
+		} catch (Exception e) {
+			// Non-fatal - return the original output if preservation fails
+			return rawOutput;
+		}
+	}
+
+	/**
+	 * Finds a file directly under {@code dir} whose name starts with {@code baseName} and ends
+	 * with {@code extension}, or null if the directory is missing / nothing matches.
+	 */
+	private Path findMatchingFile(Path dir, String baseName, String extension) {
+		if (!Files.isDirectory(dir)) {
+			return null;
+		}
+		try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+			return walk.filter(Files::isRegularFile).filter(p -> {
+				String name = p.getFileName().toString();
+				return name.startsWith(baseName) && name.endsWith(extension);
+			}).findFirst().orElse(null);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Finds a screenshot .png for the given spec. Cypress nests screenshots under a per-spec
+	 * folder (cypress/screenshots/&lt;base&gt;.cy.ts/...), so we search recursively for the
+	 * first .png whose path contains the spec base name. Prefers a "(failed)" screenshot.
+	 */
+	private Path findScreenshot(Path screenshotsDir, String baseName) {
+		if (!Files.isDirectory(screenshotsDir)) {
+			return null;
+		}
+		try (java.util.stream.Stream<Path> walk = Files.walk(screenshotsDir)) {
+			java.util.List<Path> pngs = walk.filter(Files::isRegularFile)
+					.filter(p -> p.getFileName().toString().endsWith(".png"))
+					.filter(p -> p.toString().contains(baseName)).toList();
+			// Prefer a screenshot marked "(failed)" if present
+			return pngs.stream().filter(p -> p.getFileName().toString().contains("(failed)")).findFirst()
+					.orElse(pngs.stream().findFirst().orElse(null));
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Deletes preserved-artifacts left over from a previous Developer session. Runs once per
+	 * JVM lifetime so artifacts created during the current session are kept (they should live
+	 * until Developer is closed), while stale ones from prior sessions are cleaned up.
+	 */
+	private static synchronized void cleanPreservedArtifactsOnce(Path preservedRoot) {
+		if (preservedArtifactsCleaned) {
+			return;
+		}
+		preservedArtifactsCleaned = true;
+		try {
+			if (Files.exists(preservedRoot)) {
+				try (java.util.stream.Stream<Path> walk = Files.walk(preservedRoot)) {
+					walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+						try {
+							if (!p.equals(preservedRoot)) {
+								Files.deleteIfExists(p);
+							}
+						} catch (Exception ignored) {
+							// ignore individual failures
+						}
+					});
+				}
+			}
+		} catch (Exception ignored) {
+			// non-fatal
+		}
+	}
+
+
 
 	/**
 	 * Runs the Cypress spec for the given form using 'npx cypress run'.
@@ -71,14 +213,23 @@ public class FormSpecRunner
 			Path configFile = Files.exists(scriptsRoot.resolve("cypress.config.ts"))
 				? scriptsRoot.resolve("cypress.config.ts")
 				: scriptsRoot.resolve("cypress.config.js");
+			if (!Files.exists(configFile))
+			{
+				int port = ApplicationServerRegistry.get().getWebServerPort();
+				ensureCypressConfig(scriptsRoot, "http://localhost:" + port);
+				configFile = scriptsRoot.resolve("cypress.config.js");
+			}
+
+			// Install project-local Cypress if the repo manages its own but hasn't been bootstrapped
+			String localInstallError = ensureProjectCypressInstalled(scriptsRoot);
+			if (localInstallError != null)
+			{
+				return localInstallError;
+			}
 
 			List<String> command = new ArrayList<>();
 			Path scriptsNodeModulesBin = scriptsRoot.resolve("node_modules").resolve(".bin");
-			String localCypressCmd = scriptsNodeModulesBin.resolve("cypress.cmd").toFile().exists()
-				? scriptsNodeModulesBin.resolve("cypress.cmd").toString()
-				: scriptsNodeModulesBin.resolve("cypress").toFile().exists()
-					? scriptsNodeModulesBin.resolve("cypress").toString()
-					: null;
+			String localCypressCmd = resolveLocalCypressCmd(scriptsNodeModulesBin);
 
 			File nodePath = getNodePath();
 
@@ -117,6 +268,9 @@ public class FormSpecRunner
 				command.add("--config-file");
 				command.add(configFile.toString());
 			}
+			// Force video + screenshots on for this run only (does not modify the config file)
+			command.add("--config");
+			command.add("video=true,screenshotOnRunFailure=true");
 			if (!headless)
 			{
 				command.add("--headed");
@@ -135,6 +289,7 @@ public class FormSpecRunner
 			if (nodePath != null) prependPath = nodePath.getParent() + File.pathSeparator + prependPath;
 			pb.environment().put("PATH", prependPath + File.pathSeparator + (existingPath != null ? existingPath : ""));
 			Process process = pb.start();
+			activeProcess = process;
 
 			StringBuilder output = new StringBuilder();
 			try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)))
@@ -147,6 +302,7 @@ public class FormSpecRunner
 			}
 
 			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+			activeProcess = null;
 			if (!finished)
 			{
 				process.destroyForcibly();
@@ -161,6 +317,7 @@ public class FormSpecRunner
 			}
 			else
 			{
+				rawOutput = preserveArtifacts(rawOutput, formName);
 				return "**Form Spec Results: " + formName + "**\n\nSome tests failed:\n\n" + rawOutput;
 			}
 		}
@@ -184,12 +341,12 @@ public class FormSpecRunner
 				"  e2e: {\n" +
 				"    baseUrl: '" + baseUrl + "',\n" +
 				"    supportFile: false,\n" +
-				"    specPattern: '**/*.spec.cy.js',\n" +
+				"    specPattern: '**/*.cy.{js,ts}',\n" +
 				"    testIsolation: true,\n" +
 				"    defaultCommandTimeout: 10000,\n" +
 				"    pageLoadTimeout: 30000,\n" +
-				"    video: false,\n" +
-				"    screenshotOnRunFailure: false,\n" +
+				"    video: true,\n" +
+				"    screenshotOnRunFailure: true,\n" +
 				"  },\n" +
 				"});\n";
 			Files.writeString(configFile, config, StandardCharsets.UTF_8);
@@ -376,21 +533,30 @@ public class FormSpecRunner
 			}
 			if (!Files.exists(configFile))
 			{
+				int port = ApplicationServerRegistry.get().getWebServerPort();
+				ensureCypressConfig(scriptsRoot, "http://localhost:" + port);
+				configFile = scriptsRoot.resolve("cypress.config.js");
+			}
+			if (!Files.exists(configFile))
+			{
 				return "Error: cypress.config.ts/js not found at " + scriptsRoot + ". Use generateCypressE2ETest first to scaffold the E2E test structure.";
 			}
 
 			// scriptsRoot already resolved above (for configFile detection)
 			Path scriptsDir = scriptsRoot;
 
-			// Prefer the project-local Cypress binary (node_modules/.bin/cypress) if present â
-			// this is the case for e2e-test-scripts repos that already have Cypress installed.
-			// Fall back to the internal .metadata-bundled installation only if not found.
-			Path scriptsNodeModulesBin = scriptsDir.resolve("node_modules").resolve(".bin");
-			String localCypressCmd = scriptsNodeModulesBin.resolve("cypress.cmd").toFile().exists()
-				? scriptsNodeModulesBin.resolve("cypress.cmd").toString()
-				: scriptsNodeModulesBin.resolve("cypress").toFile().exists()
-					? scriptsNodeModulesBin.resolve("cypress").toString()
-					: null;
+				// Prefer the project-local Cypress binary (node_modules/.bin/cypress) if present â
+				// this is the case for e2e-test-scripts repos that already have Cypress installed.
+				// If the project has a package.json listing Cypress but node_modules is missing,
+				// run npm install so the local binary becomes available before we try to use it.
+				// Fall back to the internal .metadata-bundled installation only if not found.
+				String localInstallError = ensureProjectCypressInstalled(scriptsDir);
+				if (localInstallError != null)
+				{
+					return localInstallError;
+				}
+				Path scriptsNodeModulesBin = scriptsDir.resolve("node_modules").resolve(".bin");
+				String localCypressCmd = resolveLocalCypressCmd(scriptsNodeModulesBin);
 
 			List<String> command = new ArrayList<>();
 			if (localCypressCmd != null)
@@ -428,6 +594,9 @@ public class FormSpecRunner
 			command.add(specFilePath.toString());
 			command.add("--config-file");
 			command.add(configFile.toString());
+			// Force video + screenshots on for this run only (does not modify the config file)
+			command.add("--config");
+			command.add("video=true,screenshotOnRunFailure=true");
 			if (!headless)
 			{
 				command.add("--headed");
@@ -448,6 +617,7 @@ public class FormSpecRunner
 			if (sysNode != null) prependPath = sysNode.getParent() + File.pathSeparator + prependPath;
 			pb.environment().put("PATH", prependPath + File.pathSeparator + (existingPath != null ? existingPath : ""));
 			Process process = pb.start();
+			activeProcess = process;
 
 			StringBuilder output = new StringBuilder();
 			try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)))
@@ -460,6 +630,7 @@ public class FormSpecRunner
 			}
 
 			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+			activeProcess = null;
 			if (!finished)
 			{
 				process.destroyForcibly();
@@ -474,12 +645,102 @@ public class FormSpecRunner
 			}
 			else
 			{
+				// Preserve videos/screenshots before the next run wipes them
+				rawOutput = preserveArtifacts(rawOutput, targetForm);
 				return "**E2E Spec Results: " + targetForm + "**\n\nSome tests failed:\n\n" + rawOutput;
 			}
 		}
 		catch (Exception e)
 		{
 			return "Error running E2E spec: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * Returns the path to the project-local Cypress launcher (node_modules/.bin/cypress[.cmd]),
+	 * or null if neither exists.
+	 */
+	private String resolveLocalCypressCmd(Path nodeModulesBin)
+	{
+		if (nodeModulesBin.resolve("cypress.cmd").toFile().exists())
+		{
+			return nodeModulesBin.resolve("cypress.cmd").toString();
+		}
+		if (nodeModulesBin.resolve("cypress").toFile().exists())
+		{
+			return nodeModulesBin.resolve("cypress").toString();
+		}
+		return null;
+	}
+
+	/**
+	 * If the e2e-test-scripts project has a package.json (i.e. it manages its own Cypress) but
+	 * the Cypress binary is not present under node_modules/.bin, run "npm install" in that
+	 * directory so the local Cypress becomes available. This mirrors how a developer would
+	 * bootstrap the repo. Returns an error string if the install fails, otherwise null.
+	 * Does nothing (returns null) if there is no package.json or Cypress is already installed,
+	 * letting the caller fall back to the bundled Cypress.
+	 */
+	private String ensureProjectCypressInstalled(Path scriptsDir)
+	{
+		try
+		{
+			Path packageJson = scriptsDir.resolve("package.json");
+			if (!Files.exists(packageJson))
+			{
+				// No project-managed Cypress - caller will use bundled install
+				return null;
+			}
+			Path nodeModulesBin = scriptsDir.resolve("node_modules").resolve(".bin");
+			if (resolveLocalCypressCmd(nodeModulesBin) != null)
+			{
+				// Already installed
+				return null;
+			}
+			// package.json exists but Cypress binary missing - the repo needs its deps installed
+			File nodePath = getNodePath();
+			if (nodePath == null)
+			{
+				// Can't install; let caller fall back to bundled Cypress
+				return null;
+			}
+			String npmPath = nodePath.getParent() + File.separator + "npm.cmd";
+			if (!new File(npmPath).exists())
+			{
+				npmPath = nodePath.getParent() + File.separator + "npm";
+			}
+			System.out.println("[Servoy MCP] Cypress not installed in " + scriptsDir
+				+ " - running npm install (this may take a few minutes)...");
+			ProcessBuilder pb = new ProcessBuilder(npmPath, "install");
+			pb.directory(scriptsDir.toFile());
+			pb.redirectErrorStream(true);
+			String existingPath = System.getenv("PATH");
+			pb.environment().put("PATH",
+				nodePath.getParent() + File.pathSeparator + (existingPath != null ? existingPath : ""));
+			Process p = pb.start();
+			StringBuilder npmOutput = new StringBuilder();
+			try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)))
+			{
+				String line;
+				while ((line = reader.readLine()) != null)
+				{
+					npmOutput.append(line).append("\n");
+				}
+			}
+			p.waitFor(300, TimeUnit.SECONDS);
+			if (p.exitValue() != 0)
+			{
+				System.err.println("[Servoy MCP] npm install FAILED in " + scriptsDir + ". Output:\n" + npmOutput);
+				return "Error: npm install failed in e2e-test-scripts directory.\n" + npmOutput;
+			}
+			System.out.println("[Servoy MCP] Project Cypress installed successfully.");
+			return null;
+		}
+		catch (Exception e)
+		{
+			// Non-fatal - let caller fall back to bundled Cypress
+			System.err.println("[Servoy MCP] Error ensuring project Cypress install: " + e.getMessage());
+			return null;
 		}
 	}
 

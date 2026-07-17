@@ -19,7 +19,12 @@ import org.eclipse.ui.console.MessageConsole;
 import org.eclipse.ui.console.MessageConsoleStream;
 import org.eclipse.ui.handlers.HandlerUtil;
 
+import com.servoy.eclipse.developer.mcp.actions.CypressTestResult.TestStatus;
+import com.servoy.eclipse.developer.mcp.actions.CypressTestResult.TestType;
+import com.servoy.eclipse.developer.mcp.services.CypressOutputParser;
+import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
+import com.servoy.eclipse.developer.mcp.views.CypressTestResultsView;
 
 public class RunAllCypressFormTestsHandler extends AbstractHandler {
 
@@ -67,6 +72,12 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 
 				monitor.beginTask("Running Cypress form tests", testForms.size());
 
+				com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
+
+				CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
+				sessionManager.startSession(testForms, TestType.FORM);
+				CypressTestResultsView.reveal();
+
 				MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
 				console.clearConsole();
 				CypressConsoleUtil.showConsole(console);
@@ -105,18 +116,88 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 		return null;
 	}
 
+	public void runAllFormTests() {
+		runFormTests(null);
+	}
+
 	/**
-	 * Core test execution logic separated from Eclipse UI concerns.
-	 * Iterates through test forms, runs each spec, and counts pass/fail results.
+	 * Runs the given form tests, or discovers all form tests if {@code explicitForms} is null.
+	 */
+	public void runFormTests(List<String> explicitForms) {
+		Job job = new Job("Running Cypress Form Tests") {
+			@Override
+			protected IStatus run(IProgressMonitor monitor) {
+				List<String> testForms = explicitForms != null ? explicitForms
+						: new CypressTestDiscoveryService().discoverAllTestForms();
+				if (testForms.isEmpty()) {
+					Display.getDefault().asyncExec(() -> MessageDialog.openInformation(null, "Cypress Form Tests",
+							"No Cypress form tests found."));
+					return Status.OK_STATUS;
+				}
+
+				monitor.beginTask("Running Cypress form tests", testForms.size());
+
+				com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
+
+				CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
+				sessionManager.startSession(testForms, TestType.FORM);
+				CypressTestResultsView.reveal();
+
+				MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
+				console.clearConsole();
+				CypressConsoleUtil.showConsole(console);
+
+				FormSpecRunner runner = new FormSpecRunner();
+				sessionManager.setActiveRunner(runner);
+
+				try (MessageConsoleStream stream = console.newMessageStream()) {
+					stream.println("Running " + testForms.size() + " Cypress form test(s)...\n");
+
+					TestRunResult result = runTestsCore(testForms, runner, monitor);
+
+					for (String line : result.results) {
+						stream.println(line);
+						stream.println("---\n");
+					}
+
+					if (result.cancelled) {
+						stream.println("\nTest run cancelled.");
+						return Status.CANCEL_STATUS;
+					}
+
+					stream.println("\n=== Aggregate Results ===");
+					stream.println(formatAggregateResult(result));
+				} catch (Exception e) {
+					Display.getDefault().asyncExec(() -> MessageDialog.openError(null, "Cypress Form Tests",
+							"Error running tests: " + e.getMessage()));
+				} finally {
+					sessionManager.setActiveRunner(null);
+					monitor.done();
+				}
+				return Status.OK_STATUS;
+			}
+		};
+		job.setUser(true);
+		job.schedule();
+	}
+
+	/**
+	 * Core test execution logic separated from Eclipse UI concerns. Iterates
+	 * through test forms, runs each spec, and counts pass/fail results.
 	 * Package-private for testability.
 	 */
 	public TestRunResult runTestsCore(List<String> testForms, FormSpecRunner runner, IProgressMonitor monitor) {
 		int passed = 0;
 		int failed = 0;
 		List<String> results = new ArrayList<>();
+		CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
 
 		for (String formName : testForms) {
 			if (monitor != null && monitor.isCanceled()) {
+				return new TestRunResult(passed, failed, testForms.size(), true, results);
+			}
+
+			if (!sessionManager.isRunning()) {
 				return new TestRunResult(passed, failed, testForms.size(), true, results);
 			}
 
@@ -124,8 +205,20 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 				monitor.subTask("Testing: " + formName);
 			}
 
+			sessionManager.markRunning(formName, TestType.FORM);
+
+			long startTime = System.currentTimeMillis();
 			String result = runner.runSpec(formName, true);
+			long durationMs = System.currentTimeMillis() - startTime;
+
 			results.add(result);
+
+			TestStatus status = CypressOutputParser.determineStatus(result);
+			String errorSummary = CypressOutputParser.extractErrorSummary(result, status);
+			String videoPath = CypressOutputParser.extractVideoPath(result);
+			String screenshotPath = CypressOutputParser.extractScreenshotPath(result);
+			sessionManager.updateResult(formName, new CypressTestResult(formName, TestType.FORM, status, errorSummary,
+					result, durationMs, videoPath, screenshotPath));
 
 			if (isTestPassed(result)) {
 				passed++;
@@ -142,16 +235,15 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	}
 
 	/**
-	 * Determines whether a test result indicates success.
-	 * Package-private for testability.
+	 * Determines whether a test result indicates success. Package-private for
+	 * testability.
 	 */
 	public static boolean isTestPassed(String result) {
 		return result != null && result.contains("All tests passed");
 	}
 
 	/**
-	 * Formats the aggregate result summary line.
-	 * Package-private for testability.
+	 * Formats the aggregate result summary line. Package-private for testability.
 	 */
 	public static String formatAggregateResult(TestRunResult result) {
 		return "Total: " + result.total + " | Passed: " + result.passed + " | Failed: " + result.failed;
