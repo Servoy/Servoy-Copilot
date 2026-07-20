@@ -46,8 +46,27 @@ pipeline {
             }
         }
         
+        stage('Integration Tests') {
+            steps {
+                wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
+                    configFileProvider([
+                        configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
+                        configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
+                    ]) {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests -am'
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
         stage('Deploy Plugin Site') {
-            // Deze stap wordt automatisch alleen uitgevoerd als de vorige stages succesvol waren
             steps {
                 sh '''
                 rm -rf /data/www/latest/servoy_ai/
