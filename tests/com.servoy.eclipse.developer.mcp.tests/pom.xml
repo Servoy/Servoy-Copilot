@@ -50,17 +50,7 @@
 							<useUIThread>false</useUIThread>
 							<product>com.servoy.eclipse.core.ide</product>
 							<application>org.eclipse.ui.ide.workbench</application>
-							<argLine>
-								-Xms256m -Xmx2048m -ea
-								--add-exports=java.base/sun.security.x509=ALL-UNNAMED
-								-Dorg.osgi.framework.system.packages.extra=sun.security.x509
-								-Dservoy.ngclient.titanium.build.disabled=true
-								-Dservoy.cloud.skipCheckout=true
-								-Dservoy.application_server.dir="${project.basedir}/testresources"
-								-Dproperty-file="${project.basedir}/testresources/servoy.properties"
-								-Dchromium.integration.eclipse.disable=true
-								-Dorg.eclipse.ui.testing=true
-							</argLine>
+							<argLine>-Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.ngclient.titanium.build.disabled=true -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir="${project.basedir}/testresources" -Dproperty-file="${project.basedir}/testresources/servoy.properties" -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
 							<dependencies>
 								<dependency>
 									<type>eclipse-plugin</type>
