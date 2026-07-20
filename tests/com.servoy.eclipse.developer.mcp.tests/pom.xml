@@ -31,6 +31,12 @@
 					<application>org.eclipse.pde.junit.runtime.coretestapplication</application>
 					<testClass>com.servoy.eclipse.developer.mcp.AllDeveloperMcpTests</testClass>
 					<argLine>-Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
+					<dependencies>
+						<dependency>
+							<type>eclipse-plugin</type>
+							<artifactId>com.servoy.eclipse.extension.compatibility</artifactId>
+						</dependency>
+					</dependencies>
 				</configuration>
 			</plugin>
 		</plugins>
