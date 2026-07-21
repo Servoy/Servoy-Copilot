@@ -288,15 +288,15 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 	 * </ul>
 	 */
 	private void ensureActiveServoyProject() throws Exception {
-		// First, ensure the minimal test Servoy projects exist in the PDE test
-		// workspace.
-		ensureServoyProjectsInWorkspace();
-
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
 		// Fast path: test_pilot_suite is already the active project.
 		if (isPilotActive(model))
 			return;
+
+		// First, ensure the minimal test Servoy projects exist in the PDE test
+		// workspace.
+		ensureServoyProjectsInWorkspace();
 
 		// Refresh so that projects created by ensureServoyProjectsInWorkspace() are
 		// visible.
@@ -424,16 +424,5 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
 					monitor);
 		}, new NullProgressMonitor());
-
-		// Pump SWT events for 1 s so workspace jobs triggered by project creation can
-		// deliver any UI-thread callbacks before the ServoyModel refresh.
-		Display display = Display.getDefault();
-		long settleEnd = System.currentTimeMillis() + 1000;
-		if (display.getThread() == Thread.currentThread()) {
-			while (System.currentTimeMillis() < settleEnd)
-				display.readAndDispatch();
-		} else {
-			Thread.sleep(1000);
-		}
 	}
 }
