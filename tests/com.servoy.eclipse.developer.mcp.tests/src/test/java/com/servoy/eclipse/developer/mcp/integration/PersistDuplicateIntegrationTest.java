@@ -454,8 +454,6 @@ public class PersistDuplicateIntegrationTest {
 					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 					monitor);
 		}, new NullProgressMonitor());
-
-		pumpEvents(1000);
 	}
 
 	private void ensureActiveProject() throws Exception {
