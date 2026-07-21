@@ -554,10 +554,10 @@ public class ServoyTestingServerTest {
 	}
 
 	@Test
-	public void testGenerateCypressE2ETest_hasFiveParams() {
+	public void testGenerateCypressE2ETest_hasNineParams() {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull("generateCypressE2ETest tool not found", m);
-		assertEquals("Expected 5 parameters", 5, m.getParameterCount());
+		assertEquals("Expected 9 parameters", 9, m.getParameterCount());
 	}
 
 	@Test

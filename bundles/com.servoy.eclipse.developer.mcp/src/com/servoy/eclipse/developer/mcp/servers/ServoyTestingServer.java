@@ -21,6 +21,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.services.CypressLoginSupport;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
@@ -45,6 +46,7 @@ public class ServoyTestingServer {
 	private final FormSpecRunner specRunner = new FormSpecRunner();
 	private final FormNavigationGraphService navigationService = new FormNavigationGraphService();
 	private final ServoySolutionService solutionService = new ServoySolutionService();
+	private final CypressLoginSupport loginSupport = new CypressLoginSupport();
 
 	public ServoyTestingServer() {
 	}
@@ -54,19 +56,22 @@ public class ServoyTestingServer {
 	}
 
 	/**
-	 * Scans the cypress/support/ directory for custom commands and helper functions.
-	 * Reads all .js and .ts files (excluding e2e.js which is just an import) and returns
-	 * their content so the AI can use existing helpers in generated tests.
+	 * Scans the cypress/support/ directory (recursively) for custom commands and
+	 * helper functions. Reads all .js and .ts files (excluding e2e.js/e2e.ts which
+	 * are just imports) and returns their content so the AI can use existing helpers
+	 * in generated tests.
 	 */
 	private String discoverCypressHelpers(java.nio.file.Path supportDir) {
 		if (!java.nio.file.Files.exists(supportDir) || !java.nio.file.Files.isDirectory(supportDir)) {
 			return null;
 		}
-		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(supportDir)) {
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(supportDir)) {
 			StringBuilder sb = new StringBuilder();
 			files.filter(p -> {
+				if (!java.nio.file.Files.isRegularFile(p)) return false;
 				String name = p.getFileName().toString();
-				return (name.endsWith(".js") || name.endsWith(".ts")) && !name.equals("e2e.js") && !name.equals("e2e.ts");
+				return (name.endsWith(".js") || name.endsWith(".ts")) && !name.equals("e2e.js")
+						&& !name.equals("e2e.ts");
 			}).sorted().forEach(p -> {
 				try {
 					String fileContent = java.nio.file.Files.readString(p, java.nio.charset.StandardCharsets.UTF_8);
@@ -74,7 +79,9 @@ public class ServoyTestingServer {
 					if (fileContent.lines().allMatch(line -> line.isBlank() || line.trim().startsWith("//"))) {
 						return;
 					}
-					sb.append("// --- ").append(p.getFileName()).append(" ---\n");
+					// Show relative path from supportDir for clarity
+					String relativeName = supportDir.relativize(p).toString().replace('\\', '/');
+					sb.append("// --- ").append(relativeName).append(" ---\n");
 					sb.append(fileContent).append("\n\n");
 				} catch (java.io.IOException e) {
 					// skip unreadable files
@@ -704,13 +711,20 @@ public class ServoyTestingServer {
 			+ "Also creates cypress.config.js in jenkins-custom/e2e-test-scripts/ if it does not exist yet. "
 			+ "The file contains a describe block, a beforeEach that visits the app, and an it block with the navigation steps already filled in from the graph. "
 			+ "A TODO comment marks where scenario-specific assertions should be added. "
+			+ "If the solution requires authentication and login credentials are not provided, "
+			+ "returns a message asking for loginUrl, testUsername, testPassword, and loginSuccessSelector. "
+			+ "When credentials are provided, generates a reusable cy.login() command and stores credentials in a gitignored cypress.env.json. "
 			+ "Use getNavigationPath first to understand the path, then call this tool to scaffold the test file.", type = "object")
 	public String generateCypressE2ETest(
 			@ToolParam(description = "The target form to reach and test (e.g. 'dialogform1').") String targetForm,
 			@ToolParam(description = "Plain-English description of what the test should verify. Embedded as a comment in the generated file.") String scenario,
 			@ToolParam(description = "Optional: form to start navigation from. Defaults to the solution main form.") String fromForm,
 			@ToolParam(description = "Optional: output file name (e.g. 'dialog_flow.cy.js'). Defaults to '<targetForm>.cy.js'.") String outputFileName,
-			@ToolParam(description = "Optional: base URL of the running Servoy app (e.g. 'http://localhost:8183'). Defaults to the server's actual port.") String baseUrl) {
+			@ToolParam(description = "Optional: base URL of the running Servoy app (e.g. 'http://localhost:8183'). Defaults to the server's actual port.") String baseUrl,
+			@ToolParam(description = "Optional: URL where the login form is located. Required when the solution needs authentication.") String loginUrl,
+			@ToolParam(description = "Optional: test user username for login. Required when the solution needs authentication.") String testUsername,
+			@ToolParam(description = "Optional: test user password for login. Required when the solution needs authentication. Never echoed in output.") String testPassword,
+			@ToolParam(description = "Optional: CSS selector that proves login succeeded (e.g. '#main-menu'). Required when the solution needs authentication.") String loginSuccessSelector) {
 		try {
 			com.servoy.eclipse.model.nature.ServoyProject servoyProject = com.servoy.eclipse.core.ServoyModelManager
 					.getServoyModelManager().getServoyModel().getActiveProject();
@@ -718,6 +732,15 @@ public class ServoyTestingServer {
 				return "Error: No active Servoy project found.";
 			}
 			String solutionName = servoyProject.getProject().getName();
+
+			// detect auth requirement
+			CypressLoginSupport.AuthRequirement authReq = loginSupport.detectAuth(servoyProject);
+			boolean hasLoginCreds = testUsername != null && !testUsername.isBlank() && testPassword != null
+					&& !testPassword.isBlank();
+
+			if (authReq.required() && !hasLoginCreds) {
+				return loginSupport.buildAuthRequiredMessage(authReq);
+			}
 
 			// resolve start form
 			String startForm = (fromForm != null && !fromForm.isBlank()) ? fromForm
@@ -746,8 +769,12 @@ public class ServoyTestingServer {
 			String content = navigationService.generateCypressTestContent(solutionName, resolvedBaseUrl, startForm,
 					targetForm, scenario, path);
 
-			// resolve workspace root â jenkins-custom lives directly in the Eclipse
-			// workspace directory
+			// if auth required, inject cy.login() into beforeEach
+			if (authReq.required() && hasLoginCreds) {
+				content = injectLoginIntoBeforeEach(content);
+			}
+
+			// resolve workspace root
 			java.nio.file.Path workspaceRoot = java.nio.file.Paths.get(
 					org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toOSString());
 			java.nio.file.Path e2eDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts")
@@ -768,8 +795,7 @@ public class ServoyTestingServer {
 						+ "  viewportHeight: 1080,\n" + "  chromeWebSecurity: false,\n" + "  e2e: {\n"
 						+ "    baseUrl: '" + resolvedBaseUrl + "',\n"
 						+ "    specPattern: '**/*.{cy.js,spec.js,test.js}',\n" + "    setupNodeEvents(on, config) {\n"
-						+ "      // implement node event listeners here\n" + "    },\n"
-						+ "  },\n" + "};\n";
+						+ "      // implement node event listeners here\n" + "    },\n" + "  },\n" + "};\n";
 				java.nio.file.Files.writeString(configFile, configContent, java.nio.charset.StandardCharsets.UTF_8);
 			}
 
@@ -786,6 +812,18 @@ public class ServoyTestingServer {
 			if (!java.nio.file.Files.exists(e2eJsFile)) {
 				java.nio.file.Files.writeString(e2eJsFile, "import './commands';\n",
 						java.nio.charset.StandardCharsets.UTF_8);
+			}
+
+			// generate login helper, env file, and .gitignore entry when auth is required
+			if (authReq.required() && hasLoginCreds) {
+				String resolvedLoginUrl = (loginUrl != null && !loginUrl.isBlank()) ? loginUrl : resolvedBaseUrl + "/";
+				String resolvedSelector = (loginSuccessSelector != null && !loginSuccessSelector.isBlank())
+						? loginSuccessSelector
+						: "body";
+				loginSupport.writeLoginCommand(supportDir);
+				loginSupport.writeCypressEnvJson(scriptsDir, resolvedLoginUrl, testUsername, testPassword,
+						resolvedSelector);
+				loginSupport.ensureGitignoreEntry(scriptsDir);
 			}
 
 			String relativePath = workspaceRoot.relativize(testFilePath).toString().replace('\\', '/');
@@ -808,4 +846,15 @@ public class ServoyTestingServer {
 			return "Error: " + e.getMessage();
 		}
 	}
+
+	private String injectLoginIntoBeforeEach(String content) {
+		String beforeEachVisit = "  beforeEach(() => {\n    cy.visit('";
+		int idx = content.indexOf(beforeEachVisit);
+		if (idx < 0) {
+			return content;
+		}
+		String loginCall = "  beforeEach(() => {\n    cy.login();\n    cy.visit('";
+		return content.substring(0, idx) + loginCall + content.substring(idx + beforeEachVisit.length());
+	}
+
 }
