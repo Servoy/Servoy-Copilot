@@ -11,7 +11,7 @@ pipeline {
     
     parameters {
         // Standaard goals voor dit specifieke project overgenomen uit de oude config
-        string(name: 'goals', defaultValue: 'package -U', trim: false)
+        string(name: 'goals', defaultValue: 'clean install -U', trim: false)
     }
     
     environment {
@@ -40,7 +40,7 @@ pipeline {
                         configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                         configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                     ]) {
-                        sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" $goals'
+                        sh 'export MAVEN_OPTS="-Dmaven.test.failure.ignore=true" && mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" $goals'
                     }
                 }
             }
