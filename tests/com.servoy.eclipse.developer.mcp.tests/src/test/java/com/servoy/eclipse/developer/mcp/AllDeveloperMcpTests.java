@@ -66,7 +66,6 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 @RunWith(Suite.class)
 @SuiteClasses({
 	// root package
-	McpServerBuiltinsTest.class,
 	ToolExecutorTest.class,
 	// auth
 	BearerTokenAuthenticationFilterTest.class,
