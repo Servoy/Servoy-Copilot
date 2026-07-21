@@ -326,7 +326,7 @@ public class CreateTestFileIntegrationTest
 			IProject project = servoyProject.getProject();
 			java.io.File f = new java.io.File(project.getLocation().toFile(), fileName);
 			if (f.exists()) f.delete();
-			project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+			project.refreshLocal(IResource.DEPTH_ONE, new NullProgressMonitor());
 		}
 		catch (Exception ignored)
 		{
