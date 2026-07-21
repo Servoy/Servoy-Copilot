@@ -270,18 +270,28 @@ public class ResolvedElementsProcessorTest
 	@Test
 	public void testProcessForeignElements_RParameterizedTypeDeclaration() throws Exception
 	{
-		org.eclipse.dltk.javascript.typeinfo.model.GenericType genericType =
-			org.eclipse.dltk.javascript.typeinfo.model.TypeInfoModelFactory.eINSTANCE.createGenericType();
-		genericType.setName("Array");
-
-		List<IRType> typeArgs = List.of(new StubIRType("String"));
-
-		Class< ? > clazz = Class.forName("org.eclipse.dltk.javascript.internal.core.RParameterizedTypeDeclaration");
-		java.lang.reflect.Constructor< ? > ctor = clazz.getDeclaredConstructors()[0];
-		IRTypeDeclaration decl = (IRTypeDeclaration)ctor.newInstance(null, genericType, typeArgs);
-
 		SelectionResult result = new SelectionResult();
-		result.foreignElements.add(decl);
+		StubIRTypeDeclaration typeDecl = new StubIRTypeDeclaration("Array<String>")
+		{
+			@Override
+			public boolean isParameterized()
+			{
+				return true;
+			}
+
+			@Override
+			public boolean isGeneric()
+			{
+				return true;
+			}
+
+			@Override
+			public List<IRType> getActualTypeArguments()
+			{
+				return List.of(new StubIRType("String"));
+			}
+		};
+		result.foreignElements.add(typeDecl);
 
 		processor.processForeignElements(resolvedElements, result);
 
