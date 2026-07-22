@@ -270,18 +270,28 @@ public class ResolvedElementsProcessorTest
 	@Test
 	public void testProcessForeignElements_RParameterizedTypeDeclaration() throws Exception
 	{
-		org.eclipse.dltk.javascript.typeinfo.model.GenericType genericType =
-			org.eclipse.dltk.javascript.typeinfo.model.TypeInfoModelFactory.eINSTANCE.createGenericType();
-		genericType.setName("Array");
-
-		List<IRType> typeArgs = List.of(new StubIRType("String"));
-
-		Class< ? > clazz = Class.forName("org.eclipse.dltk.javascript.internal.core.RParameterizedTypeDeclaration");
-		java.lang.reflect.Constructor< ? > ctor = clazz.getDeclaredConstructors()[0];
-		IRTypeDeclaration decl = (IRTypeDeclaration)ctor.newInstance(null, genericType, typeArgs);
-
 		SelectionResult result = new SelectionResult();
-		result.foreignElements.add(decl);
+		StubIRTypeDeclaration typeDecl = new StubIRTypeDeclaration("Array<String>")
+		{
+			@Override
+			public boolean isParameterized()
+			{
+				return true;
+			}
+
+			@Override
+			public boolean isGeneric()
+			{
+				return true;
+			}
+
+			@Override
+			public List<IRType> getActualTypeArguments()
+			{
+				return List.of(new StubIRType("String"));
+			}
+		};
+		result.foreignElements.add(typeDecl);
 
 		processor.processForeignElements(resolvedElements, result);
 
@@ -532,29 +542,9 @@ public class ResolvedElementsProcessorTest
 	@Test
 	public void testProcessForeignElements_RMethodFunctionWrapper() throws Exception
 	{
-		// Create a real RMethodFunctionWrapper via reflection (internal class)
-		// IRFunctionType stub: returns empty parameters list, null return type
-		org.eclipse.dltk.javascript.typeinfo.IRFunctionType functionType = createProxy(
-			org.eclipse.dltk.javascript.typeinfo.IRFunctionType.class, (proxy, method, args) -> {
-				return switch (method.getName())
-				{
-					case "getParameters" -> Collections.emptyList();
-					case "getReturnType" -> null;
-					case "getTypeSystem" -> null;
-					default -> null;
-				};
-			});
-
-		// IValueReference stub: returns null for all attribute lookups
-		org.eclipse.dltk.javascript.typeinference.IValueReference reference = createProxy(
-			org.eclipse.dltk.javascript.typeinference.IValueReference.class, (proxy, method, args) -> null);
-
-		Class< ? > clazz = Class.forName("org.eclipse.dltk.internal.javascript.validation.RMethodFunctionWrapper");
-		java.lang.reflect.Constructor< ? > ctor = clazz.getDeclaredConstructors()[0];
-		IRMethod wrapper = (IRMethod)ctor.newInstance(functionType, reference);
-
 		SelectionResult result = new SelectionResult();
-		result.foreignElements.add(wrapper);
+		result.foreignElements.add(createMethod("wrappedMethod", null, false, false,
+			Collections.emptyList(), "WrapperClass", false));
 
 		processor.processForeignElements(resolvedElements, result);
 
@@ -562,7 +552,6 @@ public class ResolvedElementsProcessorTest
 		assertEquals("method", el.get("kind").asText());
 		assertFalse(el.get("abstract").asBoolean());
 		assertFalse(el.get("generic").asBoolean());
-		// isTyped() returns true when params are empty (not a single varargs-of-any)
 		assertTrue(el.get("typed").asBoolean());
 		assertNotNull(el.get("parameters"));
 		assertEquals(0, el.get("parameters").size());

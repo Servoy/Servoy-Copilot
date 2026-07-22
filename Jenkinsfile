@@ -54,7 +54,7 @@ pipeline {
                         configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                     ]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests -am'
+                            sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests,tests/com.servoy.eclipse.servoypilot.assistenttests -am'
                         }
                     }
                 }

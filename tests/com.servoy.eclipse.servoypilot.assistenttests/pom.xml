@@ -31,7 +31,6 @@
                 <configuration>
                     <includes>
                         <include>**/unit/*Test.java</include>
-                        <include>**/integration/*Test.java</include>
                     </includes>
                     <useUIHarness>true</useUIHarness>
                     <useUIThread>true</useUIThread>
@@ -61,7 +60,7 @@
                         <version>${tycho-version}</version>
                         <configuration>
                             <includes>
-                                <include>**/*Test.java</include>
+                                <include>**/integration/*Test.java</include>
                             </includes>
                             <excludes/>
                             <useUIHarness>true</useUIHarness>
