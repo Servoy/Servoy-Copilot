@@ -539,4 +539,74 @@ public class GitService
 		}
 	}
 
+	private static final String DEFAULT_GITIGNORE = ".metadata/\n.equo/\n.angular/\n*.log\n.DS_Store\nThumbs.db\nnode_modules/\n.opencode/\nAGENTS.md\nopencode.json\n";
+
+	public String initRepository(String projectName)
+	{
+		try
+		{
+			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+			if (!project.exists())
+			{
+				return "Error: Project not found: " + projectName;
+			}
+
+			java.io.File workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile();
+			java.io.File gitDir = new java.io.File(workspaceRoot, ".git");
+
+			if (gitDir.exists())
+			{
+				RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+				if (mapping != null)
+				{
+					return "Git repository already exists at workspace root. Project '" + projectName + "' is already connected.";
+				}
+				try (Repository repo = org.eclipse.jgit.storage.file.FileRepositoryBuilder.create(gitDir))
+				{
+					org.eclipse.egit.core.op.ConnectProviderOperation connectOp = new org.eclipse.egit.core.op.ConnectProviderOperation(project, repo.getDirectory());
+					connectOp.execute(new org.eclipse.core.runtime.NullProgressMonitor());
+				}
+				return "Git repository already exists at workspace root. Connected project '" + projectName + "'.";
+			}
+
+			try (Git git = Git.init().setDirectory(workspaceRoot).call())
+			{
+				Repository repo = git.getRepository();
+
+				java.io.File gitignoreFile = new java.io.File(workspaceRoot, ".gitignore");
+				if (!gitignoreFile.exists())
+				{
+					Files.write(gitignoreFile.toPath(), DEFAULT_GITIGNORE.getBytes(StandardCharsets.UTF_8));
+				}
+
+				IProject[] allProjects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+				for (IProject p : allProjects)
+				{
+					if (p.isOpen())
+					{
+						try
+						{
+							org.eclipse.egit.core.op.ConnectProviderOperation connectOp = new org.eclipse.egit.core.op.ConnectProviderOperation(p, repo.getDirectory());
+							connectOp.execute(new org.eclipse.core.runtime.NullProgressMonitor());
+						}
+						catch (Exception e)
+						{
+							// non-fatal: skip projects that fail to connect
+						}
+					}
+				}
+
+				git.add().addFilepattern(".").call();
+				git.commit().setMessage("Initial commit").call();
+
+				return "Initialized Git repository at workspace root. Connected all projects. Created .gitignore and initial commit.";
+			}
+		}
+		catch (Exception e)
+		{
+			return "Error initializing Git repository: " + e.getMessage();
+		}
+	}
+
+
 }
