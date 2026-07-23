@@ -282,17 +282,16 @@ public class CypressFormTestingIntegrationTest {
 
 		specRunner.runSpec(TEST_FORM, true);
 
-		Path cypressDir = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().getParent()
-				.resolve(".metadata").resolve(".plugins").resolve("com.servoy.eclipse.developer.mcp")
-				.resolve("cypress");
-		Path configFile = cypressDir.resolve("cypress.config.js");
+		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+		Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
+		Path configFile = scriptsRoot.resolve("cypress.config.js");
 
 		assertTrue("cypress.config.js should be generated", Files.exists(configFile));
 
 		String content = Files.readString(configFile);
 		assertTrue("Config should have baseUrl", content.contains("baseUrl"));
 		assertTrue("Config should have specPattern", content.contains("specPattern"));
-		assertTrue("Config should disable video", content.contains("video: false"));
+		assertTrue("Config should have video setting", content.contains("video: true"));
 	}
 
 	// -----------------------------------------------------------------------
