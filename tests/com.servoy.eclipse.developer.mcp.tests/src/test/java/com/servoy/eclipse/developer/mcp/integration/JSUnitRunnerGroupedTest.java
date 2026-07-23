@@ -145,34 +145,6 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			classSetUpDone = true;
 			ensureGroupedProjectsInWorkspace();
 			ensureGroupedProjectActive();
-
-			// Diagnostic: dump all markers on test projects to understand why
-			// the Servoy JSUnit launcher fails to start in CI (SVY-21241)
-			for (String projName : new String[] { "test_grouped_suite", "test_grouped_module", "servoy_resources" })
-			{
-				org.eclipse.core.resources.IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projName);
-				if (p.exists() && p.isOpen())
-				{
-					try
-					{
-						org.eclipse.core.resources.IMarker[] markers = p.findMarkers(null, true, org.eclipse.core.resources.IResource.DEPTH_INFINITE);
-						System.err.println("[DIAG-MARKERS] Project " + projName + ": " + markers.length + " markers");
-						for (org.eclipse.core.resources.IMarker m : markers)
-						{
-							int sev = m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY, -1);
-							String sevStr = sev == org.eclipse.core.resources.IMarker.SEVERITY_ERROR ? "ERROR"
-								: sev == org.eclipse.core.resources.IMarker.SEVERITY_WARNING ? "WARN" : "INFO";
-							System.err.println("[DIAG-MARKERS]   " + sevStr + " " + m.getType()
-								+ " | " + m.getAttribute(org.eclipse.core.resources.IMarker.MESSAGE, ""));
-						}
-					}
-					catch (org.eclipse.core.runtime.CoreException e)
-					{
-						System.err.println("[DIAG-MARKERS] Error reading markers for " + projName + ": " + e.getMessage());
-					}
-				}
-			}
-
 			cachedModulesResult = runOnBackgroundThread(() -> runner.runTests("MODULES", TIMEOUT_SECONDS));
 			cachedFormsResult = runOnBackgroundThread(() -> runner.runTests("FORMS", TIMEOUT_SECONDS));
 		}
