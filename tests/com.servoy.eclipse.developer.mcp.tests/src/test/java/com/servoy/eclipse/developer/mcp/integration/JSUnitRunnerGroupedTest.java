@@ -143,38 +143,38 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		if (!classSetUpDone)
 		{
 			classSetUpDone = true;
-
-			// Diagnostic logging for CI investigation (SVY-21241)
-			System.err.println("[DIAG] AppServer exists: " + com.servoy.j2db.server.shared.ApplicationServerRegistry.exists());
-			System.err.println("[DIAG] AppServer instance: " + com.servoy.j2db.server.shared.ApplicationServerRegistry.get());
-			if (com.servoy.j2db.server.shared.ApplicationServerRegistry.exists())
-			{
-				System.err.println("[DIAG] Web port: " + com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getWebServerPort());
-			}
-
 			ensureGroupedProjectsInWorkspace();
 			ensureGroupedProjectActive();
 
-			com.servoy.eclipse.model.nature.ServoyProject ap = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
-			System.err.println("[DIAG] Active project after activation: " + (ap != null ? ap.getProject().getName() : "null"));
-			if (ap != null && ap.getSolution() != null)
+			// Diagnostic: dump all markers on test projects to understand why
+			// the Servoy JSUnit launcher fails to start in CI (SVY-21241)
+			for (String projName : new String[] { "test_grouped_suite", "test_grouped_module", "servoy_resources" })
 			{
-				java.util.Iterator<com.servoy.j2db.persistence.Form> fi = ap.getSolution().getForms(null, true);
-				int formCount = 0;
-				while (fi != null && fi.hasNext()) { fi.next(); formCount++; }
-				System.err.println("[DIAG] Forms in active solution: " + formCount);
-				com.servoy.j2db.FlattenedSolution fs = ap.getEditingFlattenedSolution();
-				System.err.println("[DIAG] FlattenedSolution modules: " +
-					(fs != null && fs.getModules() != null ? fs.getModules().length : "null"));
+				org.eclipse.core.resources.IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(projName);
+				if (p.exists() && p.isOpen())
+				{
+					try
+					{
+						org.eclipse.core.resources.IMarker[] markers = p.findMarkers(null, true, org.eclipse.core.resources.IResource.DEPTH_INFINITE);
+						System.err.println("[DIAG-MARKERS] Project " + projName + ": " + markers.length + " markers");
+						for (org.eclipse.core.resources.IMarker m : markers)
+						{
+							int sev = m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY, -1);
+							String sevStr = sev == org.eclipse.core.resources.IMarker.SEVERITY_ERROR ? "ERROR"
+								: sev == org.eclipse.core.resources.IMarker.SEVERITY_WARNING ? "WARN" : "INFO";
+							System.err.println("[DIAG-MARKERS]   " + sevStr + " " + m.getType()
+								+ " | " + m.getAttribute(org.eclipse.core.resources.IMarker.MESSAGE, ""));
+						}
+					}
+					catch (org.eclipse.core.runtime.CoreException e)
+					{
+						System.err.println("[DIAG-MARKERS] Error reading markers for " + projName + ": " + e.getMessage());
+					}
+				}
 			}
 
 			cachedModulesResult = runOnBackgroundThread(() -> runner.runTests("MODULES", TIMEOUT_SECONDS));
 			cachedFormsResult = runOnBackgroundThread(() -> runner.runTests("FORMS", TIMEOUT_SECONDS));
-
-			System.err.println("[DIAG] MODULES result (first 500): " +
-				(cachedModulesResult != null ? cachedModulesResult.substring(0, Math.min(500, cachedModulesResult.length())) : "null"));
-			System.err.println("[DIAG] FORMS result (first 500): " +
-				(cachedFormsResult != null ? cachedFormsResult.substring(0, Math.min(500, cachedFormsResult.length())) : "null"));
 		}
 
 		modulesResult = cachedModulesResult;
