@@ -442,8 +442,12 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 		}, new NullProgressMonitor());
 
-		// Give workspace and Servoy builder jobs time to settle.
-		Thread.sleep(2000);
+		// Wait for workspace auto-build (DLTK indexing) to complete before running tests.
+		ResourcesPlugin.getWorkspace().build(
+			org.eclipse.core.resources.IncrementalProjectBuilder.INCREMENTAL_BUILD,
+			new NullProgressMonitor());
+		org.eclipse.core.runtime.jobs.Job.getJobManager().join(
+			ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
 	}
 
 	/**
