@@ -1,197 +1,228 @@
 package com.servoy.eclipse.developer.mcp.services;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
-@DisplayName("FormPreviewService")
 public class FormPreviewServiceTest {
 	private FormPreviewService service;
+	private Path tempDir;
 
-	@BeforeEach
-	void setUp() {
+	@Before
+	public void setUp() throws Exception {
 		service = new FormPreviewService();
+		tempDir = Files.createTempDirectory("formPreviewTest");
 	}
 
-	@Nested
-	@DisplayName("screenshotForm - input validation")
-	class ScreenshotFormInputValidation {
-		@ParameterizedTest
-		@NullAndEmptySource
-		@ValueSource(strings = { "   ", "\t" })
-		@DisplayName("returns error for null, empty, or blank form name")
-		void returnsErrorForInvalidFormName(String formName) {
-			String result = service.screenshotForm(formName, 5);
-			assertAll(() -> assertNotNull(result),
-					() -> assertTrue(result.startsWith("Error:"), "Should start with 'Error:': " + result),
-					() -> assertTrue(result.contains("null or empty"), "Should mention null or empty: " + result));
-		}
-
-	}
-
-	@Nested
-	@DisplayName("checkFormMarkers - method structure")
-	class CheckFormMarkersStructure {
-		@Test
-		@DisplayName("checkFormMarkers method exists and is private")
-		void methodExistsAndIsPrivate() throws NoSuchMethodException {
-			Method m = FormPreviewService.class.getDeclaredMethod("checkFormMarkers",
-					com.servoy.eclipse.model.nature.ServoyProject.class, String.class);
-			assertNotNull(m);
-			assertTrue(java.lang.reflect.Modifier.isPrivate(m.getModifiers()));
-		}
-
-		@Test
-		@DisplayName("checkFormMarkers returns String (null means no errors)")
-		void methodReturnsString() throws NoSuchMethodException {
-			Method m = FormPreviewService.class.getDeclaredMethod("checkFormMarkers",
-					com.servoy.eclipse.model.nature.ServoyProject.class, String.class);
-			assertTrue(String.class.equals(m.getReturnType()));
+	@After
+	public void tearDown() throws Exception {
+		if (tempDir != null && Files.exists(tempDir)) {
+			Files.walk(tempDir).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.deleteIfExists(p);
+				} catch (Exception e) {
+					/* ignore */ }
+			});
 		}
 	}
 
-	@Nested
-	@DisplayName("collectErrorMarkers - method structure")
-	class CollectErrorMarkersStructure {
-		@Test
-		@DisplayName("collectErrorMarkers method exists with correct signature")
-		void methodExistsWithCorrectSignature() throws NoSuchMethodException {
-			Method m = FormPreviewService.class.getDeclaredMethod("collectErrorMarkers",
-					org.eclipse.core.resources.IResource.class, int.class, List.class);
-			assertNotNull(m);
-			assertTrue(java.lang.reflect.Modifier.isPrivate(m.getModifiers()));
-		}
+	// --- Input validation ---
+
+	@Test
+	public void testScreenshotForm_nullFormName_returnsError() {
+		String result = service.screenshotForm(null, 5);
+		assertNotNull(result);
+		assertTrue("Should start with 'Error:'", result.startsWith("Error:"));
+		assertTrue("Should mention null or empty", result.contains("null or empty"));
 	}
 
-	@Nested
-	@DisplayName("error message format")
-	class ErrorMessageFormat {
-		@Test
-		@DisplayName("collectErrorMarkers formats error with line number correctly")
-		void collectErrorMarkersFormatsWithLineNumber() throws Exception {
-			Method m = FormPreviewService.class.getDeclaredMethod("collectErrorMarkers",
-					org.eclipse.core.resources.IResource.class, int.class, List.class);
-			m.setAccessible(true);
+	@Test
+	public void testScreenshotForm_emptyFormName_returnsError() {
+		String result = service.screenshotForm("", 5);
+		assertNotNull(result);
+		assertTrue("Should start with 'Error:'", result.startsWith("Error:"));
+		assertTrue("Should mention null or empty", result.contains("null or empty"));
+	}
 
-			org.eclipse.core.resources.IMarker marker = (org.eclipse.core.resources.IMarker) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IMarker.class }, (proxy, method, args) -> {
-								if (method.getName().equals("getAttribute") && args.length == 2
-										&& args[0] instanceof String) {
-									String attr = (String) args[0];
-									if (org.eclipse.core.resources.IMarker.SEVERITY.equals(attr))
-										return org.eclipse.core.resources.IMarker.SEVERITY_ERROR;
-									if (org.eclipse.core.resources.IMarker.LINE_NUMBER.equals(attr))
-										return 42;
-									if (org.eclipse.core.resources.IMarker.MESSAGE.equals(attr))
-										return "Test error message";
-								}
-								return null;
-							});
+	@Test
+	public void testScreenshotForm_blankFormName_returnsError() {
+		String result = service.screenshotForm("   ", 5);
+		assertNotNull(result);
+		assertTrue("Should start with 'Error:'", result.startsWith("Error:"));
+		assertTrue("Should mention null or empty", result.contains("null or empty"));
+	}
 
-			org.eclipse.core.resources.IResource resource = (org.eclipse.core.resources.IResource) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IResource.class }, (proxy, method, args) -> {
-								if (method.getName().equals("findMarkers")) {
-									return new org.eclipse.core.resources.IMarker[] { marker };
-								}
-								return null;
-							});
+	// --- No Playwright code remains (AC2, AC9) ---
 
-			List<String> errors = new ArrayList<>();
-			m.invoke(service, resource, org.eclipse.core.resources.IResource.DEPTH_INFINITE, errors);
+	@Test
+	public void testNoPlaywrightFields() {
+		List<String> playwrightFields = Arrays.stream(FormPreviewService.class.getDeclaredFields()).map(Field::getName)
+				.filter(name -> name.toLowerCase().contains("playwright")).collect(Collectors.toList());
+		assertTrue("No fields should reference Playwright but found: " + playwrightFields, playwrightFields.isEmpty());
+	}
 
-			assertTrue(errors.size() == 1, "Should collect exactly one error");
-			assertTrue(errors.get(0).equals("- [ERROR] Test error message (line 42)"),
-					"Format should be '- [ERROR] <message> (line <n>)' but was: " + errors.get(0));
+	@Test
+	public void testNoPlaywrightMethods() {
+		List<String> playwrightMethods = Arrays.stream(FormPreviewService.class.getDeclaredMethods())
+				.map(Method::getName).filter(name -> name.toLowerCase().contains("playwright"))
+				.collect(Collectors.toList());
+		assertTrue("No methods should reference Playwright but found: " + playwrightMethods,
+				playwrightMethods.isEmpty());
+	}
+
+	@Test
+	public void testNoPlaywrightInnerClasses() {
+		List<String> playwrightClasses = Arrays.stream(FormPreviewService.class.getDeclaredClasses())
+				.map(Class::getSimpleName).filter(name -> name.toLowerCase().contains("playwright"))
+				.collect(Collectors.toList());
+		assertTrue("No inner classes should reference Playwright but found: " + playwrightClasses,
+				playwrightClasses.isEmpty());
+	}
+
+	@Test
+	public void testNoPlaywrightDirOrInstallMethods() {
+		Method[] methods = FormPreviewService.class.getDeclaredMethods();
+		boolean hasGetPlaywrightDir = Arrays.stream(methods).anyMatch(m -> m.getName().equals("getPlaywrightDir"));
+		boolean hasEnsurePlaywright = Arrays.stream(methods)
+				.anyMatch(m -> m.getName().equals("ensurePlaywrightInstalled"));
+		assertTrue("getPlaywrightDir should not exist", !hasGetPlaywrightDir);
+		assertTrue("ensurePlaywrightInstalled should not exist", !hasEnsurePlaywright);
+	}
+
+	@Test
+	public void testNoPlaywrightDirConstant() {
+		List<String> constants = Arrays.stream(FormPreviewService.class.getDeclaredFields()).map(Field::getName)
+				.filter(name -> name.contains("PLAYWRIGHT")).collect(Collectors.toList());
+		assertTrue("PLAYWRIGHT_DIR constant should not exist but found: " + constants, constants.isEmpty());
+	}
+
+	// --- Shared Cypress installation (AC10) ---
+
+	@Test
+	public void testReferencesFormSpecRunnerInBytecode() throws Exception {
+		String classResource = FormPreviewService.class.getName().replace('.', '/') + ".class";
+		byte[] classBytes;
+		try (var is = FormPreviewService.class.getClassLoader().getResourceAsStream(classResource)) {
+			assertNotNull("Should be able to load FormPreviewService class bytes", is);
+			classBytes = is.readAllBytes();
 		}
+		String constantPool = new String(classBytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+		assertTrue("FormPreviewService bytecode should reference FormSpecRunner",
+				constantPool.contains("FormSpecRunner"));
+	}
 
-		@Test
-		@DisplayName("collectErrorMarkers formats error without line number correctly")
-		void collectErrorMarkersFormatsWithoutLineNumber() throws Exception {
-			Method m = FormPreviewService.class.getDeclaredMethod("collectErrorMarkers",
-					org.eclipse.core.resources.IResource.class, int.class, List.class);
-			m.setAccessible(true);
+	// --- RuntimeErrorCapture usage (AC8) ---
 
-			org.eclipse.core.resources.IMarker marker = (org.eclipse.core.resources.IMarker) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IMarker.class }, (proxy, method, args) -> {
-								if (method.getName().equals("getAttribute") && args.length == 2
-										&& args[0] instanceof String) {
-									String attr = (String) args[0];
-									if (org.eclipse.core.resources.IMarker.SEVERITY.equals(attr))
-										return org.eclipse.core.resources.IMarker.SEVERITY_ERROR;
-									if (org.eclipse.core.resources.IMarker.LINE_NUMBER.equals(attr))
-										return -1;
-									if (org.eclipse.core.resources.IMarker.MESSAGE.equals(attr))
-										return "Another error";
-								}
-								return null;
-							});
-
-			org.eclipse.core.resources.IResource resource = (org.eclipse.core.resources.IResource) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IResource.class }, (proxy, method, args) -> {
-								if (method.getName().equals("findMarkers")) {
-									return new org.eclipse.core.resources.IMarker[] { marker };
-								}
-								return null;
-							});
-
-			List<String> errors = new ArrayList<>();
-			m.invoke(service, resource, org.eclipse.core.resources.IResource.DEPTH_INFINITE, errors);
-
-			assertTrue(errors.size() == 1, "Should collect exactly one error");
-			assertTrue(errors.get(0).equals("- [ERROR] Another error"),
-					"Format should be '- [ERROR] <message>' but was: " + errors.get(0));
+	@Test
+	public void testReferencesRuntimeErrorCaptureInBytecode() throws Exception {
+		String classResource = FormPreviewService.class.getName().replace('.', '/') + ".class";
+		byte[] classBytes;
+		try (var is = FormPreviewService.class.getClassLoader().getResourceAsStream(classResource)) {
+			assertNotNull("Should be able to load FormPreviewService class bytes", is);
+			classBytes = is.readAllBytes();
 		}
+		String constantPool = new String(classBytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+		assertTrue("FormPreviewService bytecode should reference RuntimeErrorCapture",
+				constantPool.contains("RuntimeErrorCapture"));
+	}
 
-		@Test
-		@DisplayName("collectErrorMarkers skips non-error markers")
-		void collectErrorMarkersSkipsWarnings() throws Exception {
-			Method m = FormPreviewService.class.getDeclaredMethod("collectErrorMarkers",
-					org.eclipse.core.resources.IResource.class, int.class, List.class);
-			m.setAccessible(true);
+	@Test
+	public void testRuntimeErrorCaptureIsAutoCloseable() {
+		assertTrue("RuntimeErrorCapture must implement AutoCloseable",
+				AutoCloseable.class.isAssignableFrom(RuntimeErrorCapture.class));
+	}
 
-			org.eclipse.core.resources.IMarker warningMarker = (org.eclipse.core.resources.IMarker) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IMarker.class }, (proxy, method, args) -> {
-								if (method.getName().equals("getAttribute") && args.length == 2
-										&& args[0] instanceof String) {
-									String attr = (String) args[0];
-									if (org.eclipse.core.resources.IMarker.SEVERITY.equals(attr))
-										return org.eclipse.core.resources.IMarker.SEVERITY_WARNING;
-									if (org.eclipse.core.resources.IMarker.MESSAGE.equals(attr))
-										return "Warning message";
-								}
-								return null;
-							});
+	// --- findScreenshotFile ---
 
-			org.eclipse.core.resources.IResource resource = (org.eclipse.core.resources.IResource) java.lang.reflect.Proxy
-					.newProxyInstance(getClass().getClassLoader(),
-							new Class<?>[] { org.eclipse.core.resources.IResource.class }, (proxy, method, args) -> {
-								if (method.getName().equals("findMarkers")) {
-									return new org.eclipse.core.resources.IMarker[] { warningMarker };
-								}
-								return null;
-							});
+	@Test
+	public void testFindScreenshotFile_findsPngMatchingFormName() throws Exception {
+		Path pngFile = tempDir.resolve("myForm.png");
+		Files.writeString(pngFile, "fake png");
 
-			List<String> errors = new ArrayList<>();
-			m.invoke(service, resource, org.eclipse.core.resources.IResource.DEPTH_INFINITE, errors);
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		m.setAccessible(true);
+		Path result = (Path) m.invoke(service, tempDir, "myForm");
 
-			assertTrue(errors.isEmpty(), "Should not collect warning markers");
-		}
+		assertNotNull("Should find the screenshot file", result);
+		assertTrue("Should end with .png", result.toString().endsWith(".png"));
+		assertTrue("Should contain form name", result.getFileName().toString().contains("myForm"));
+	}
+
+	@Test
+	public void testFindScreenshotFile_findsPngInSubdirectory() throws Exception {
+		Path subDir = tempDir.resolve("_screenshot_testForm.cy.js");
+		Files.createDirectories(subDir);
+		Path pngFile = subDir.resolve("testForm.png");
+		Files.writeString(pngFile, "fake png");
+
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		m.setAccessible(true);
+		Path result = (Path) m.invoke(service, tempDir, "testForm");
+
+		assertNotNull("Should find screenshot in subdirectory", result);
+		assertTrue("Should end with .png", result.toString().endsWith(".png"));
+	}
+
+	@Test
+	public void testFindScreenshotFile_returnsNullWhenNoMatch() throws Exception {
+		Files.writeString(tempDir.resolve("otherForm.png"), "fake png");
+
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		m.setAccessible(true);
+		Path result = (Path) m.invoke(service, tempDir, "myForm");
+
+		assertNull("Should return null when no matching screenshot exists", result);
+	}
+
+	@Test
+	public void testFindScreenshotFile_returnsNullForEmptyDir() throws Exception {
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		m.setAccessible(true);
+		Path result = (Path) m.invoke(service, tempDir, "anyForm");
+
+		assertNull("Should return null for empty directory", result);
+	}
+
+	@Test
+	public void testFindScreenshotFile_ignoresNonPngFiles() throws Exception {
+		Files.writeString(tempDir.resolve("myForm.jpg"), "fake jpg");
+		Files.writeString(tempDir.resolve("myForm.txt"), "fake txt");
+
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		m.setAccessible(true);
+		Path result = (Path) m.invoke(service, tempDir, "myForm");
+
+		assertNull("Should ignore non-png files", result);
+	}
+
+	// --- screenshotForm method structure (AC1) ---
+
+	@Test
+	public void testScreenshotFormMethodExists() throws NoSuchMethodException {
+		Method m = FormPreviewService.class.getDeclaredMethod("screenshotForm", String.class, int.class);
+		assertNotNull(m);
+		assertEquals(String.class, m.getReturnType());
+	}
+
+	@Test
+	public void testFindScreenshotFileIsPrivate() throws NoSuchMethodException {
+		Method m = FormPreviewService.class.getDeclaredMethod("findScreenshotFile", Path.class, String.class);
+		assertNotNull(m);
+		assertTrue("findScreenshotFile should be private", Modifier.isPrivate(m.getModifiers()));
 	}
 }
