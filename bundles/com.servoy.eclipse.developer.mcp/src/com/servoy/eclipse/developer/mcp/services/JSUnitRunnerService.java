@@ -240,6 +240,10 @@ public class JSUnitRunnerService
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
 
+		// Diagnostic logging for CI investigation (SVY-21241)
+		System.err.println("[DIAG-RUNNER] Target: " + target);
+		System.err.println("[DIAG-RUNNER] LaunchConfig name: " + config.getName() + " type: " + config.getType().getName());
+
 		Set<ITestRunSession> sessionsBefore = new HashSet<>();
 		Display.getDefault().syncExec(() -> {
 			for (Object s : DLTKTestingPlugin.getModel().getTestRunSessions())
@@ -249,10 +253,35 @@ public class JSUnitRunnerService
 			}
 		});
 
+		System.err.println("[DIAG-RUNNER] Sessions before launch: " + sessionsBefore.size());
+
 		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
+
+		System.err.println("[DIAG-RUNNER] Launch created, terminated=" + launch.isTerminated()
+			+ " processes=" + (launch.getProcesses() != null ? launch.getProcesses().length : 0));
+
 		try
 		{
-			return waitForSession(sessionsBefore, timeoutSeconds * 1000L);
+			ITestRunSession session = waitForSession(sessionsBefore, timeoutSeconds * 1000L);
+
+			System.err.println("[DIAG-RUNNER] Session result: " + (session != null ? "found" : "null"));
+			if (session != null)
+			{
+				System.err.println("[DIAG-RUNNER] Session state: " + session.getProgressState()
+					+ " children: " + (session.getChildren() != null ? session.getChildren().length : -1));
+			}
+			// Log launch process exit codes
+			if (launch.getProcesses() != null)
+			{
+				for (org.eclipse.debug.core.model.IProcess p : launch.getProcesses())
+				{
+					System.err.println("[DIAG-RUNNER] Process label: " + p.getLabel()
+						+ " terminated: " + p.isTerminated()
+						+ " exitValue: " + (p.isTerminated() ? p.getExitValue() : "N/A"));
+				}
+			}
+
+			return session;
 		}
 		finally
 		{
