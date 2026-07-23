@@ -358,14 +358,14 @@ public class FormSpecRunner
 		}
 	}
 
-	private Path getCypressDir()
+	Path getCypressDir()
 	{
 		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
 		Path metadataPlugins = workspaceRoot.getParent().resolve(".metadata").resolve(".plugins");
 		return metadataPlugins.resolve(MCP_PLUGIN_DIR).resolve(CYPRESS_DIR);
 	}
 
-	private File getNodePath()
+	File getNodePath()
 	{
 		try
 		{
@@ -661,7 +661,7 @@ public class FormSpecRunner
 	 * Returns the path to the project-local Cypress launcher (node_modules/.bin/cypress[.cmd]),
 	 * or null if neither exists.
 	 */
-	private String resolveLocalCypressCmd(Path nodeModulesBin)
+	String resolveLocalCypressCmd(Path nodeModulesBin)
 	{
 		if (nodeModulesBin.resolve("cypress.cmd").toFile().exists())
 		{
@@ -748,7 +748,7 @@ public class FormSpecRunner
 	/**
 	 * Ensures Cypress is installed locally in the .metadata plugins directory.
 	 */
-	private String ensureCypressInstalled(Path cypressDir)
+	String ensureCypressInstalled(Path cypressDir)
 	{
 		try
 		{

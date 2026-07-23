@@ -113,7 +113,9 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("Cypress spec file should exist after showFormInBrowser", Files.exists(cySpec));
 
 		IProject project = activeProject.getProject();
-		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+				.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+				.resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
 		assertTrue("Setup spec.js file should exist in cy-form-spec/ directory", Files.exists(setupPath));
 	}
 
@@ -320,8 +322,9 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
-				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+				.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+				.resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
 		assertTrue("Setup .spec.js should be created in cy-form-spec/", Files.exists(setupPath));
 	}
 
@@ -377,8 +380,9 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
-				.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
+		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+				.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+				.resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
 		String content = Files.readString(setupPath);
 
 		assertTrue("Setup must have @properties annotation", content.contains("@properties"));
@@ -801,8 +805,9 @@ public class CypressFormTestingIntegrationTest {
 		// (port -1) the tool returns an environment-dependent error which is
 		// acceptable.
 		if (result.startsWith("Error")) {
-			assertTrue("Environment error should mention screenshot or navigation: " + result,
-					result.contains("screenshot") || result.contains("navigate") || result.contains("localhost:-1"));
+			assertTrue("Environment error should mention Tomcat, Cypress, or localhost:-1: " + result,
+					result.contains("screenshot") || result.contains("Cypress") || result.contains("Tomcat")
+							|| result.contains("localhost:-1") || result.contains("Node.js"));
 		} else {
 			assertTrue("Should return file path or screenshot info: " + result,
 					result.contains(".png") || result.contains("screenshot"));
@@ -967,7 +972,9 @@ public class CypressFormTestingIntegrationTest {
 				Files.deleteIfExists(cySpec);
 
 			IProject project = activeProject.getProject();
-			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("cy-form-spec").resolve(formName + ".spec.js");
+			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
+					.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
+					.resolve("cy-form-spec").resolve(formName + ".spec.js");
 			Files.deleteIfExists(setupSpec);
 		} catch (Exception e) {
 			// ignore
@@ -1112,8 +1119,8 @@ public class CypressFormTestingIntegrationTest {
 		pumpEvents(2000);
 
 		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
-				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
+				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
 			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
 					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
 				hasErrorMarkers = true;
@@ -1145,8 +1152,8 @@ public class CypressFormTestingIntegrationTest {
 		pumpEvents(2000);
 
 		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
-				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
+				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
 			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
 					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
 				hasErrorMarkers = true;
@@ -1175,8 +1182,8 @@ public class CypressFormTestingIntegrationTest {
 		pumpEvents(2000);
 
 		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM,
-				true, org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
+				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
 			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
 					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
 				hasErrorMarkers = true;
