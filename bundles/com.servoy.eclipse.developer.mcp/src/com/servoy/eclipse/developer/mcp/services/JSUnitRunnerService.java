@@ -239,15 +239,11 @@ public class JSUnitRunnerService
 	private ITestRunSession runForTarget(TestTarget target, int timeoutSeconds) throws CoreException, InterruptedException
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
-		System.out.println("[DIAG-RUNNER] runForTarget: config=" + config.getName() + " timeout=" + timeoutSeconds + "s");
 
 		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
-		System.out.println("[DIAG-RUNNER] launch created, terminated=" + launch.isTerminated());
 		try
 		{
-			ITestRunSession result = waitForSessionByLaunch(launch, timeoutSeconds * 1000L);
-			System.out.println("[DIAG-RUNNER] waitForSessionByLaunch returned: " + (result == null ? "null" : result.getTestRunName() + " children=" + (result.getChildren() == null ? "null" : result.getChildren().length)));
-			return result;
+			return waitForSessionByLaunch(launch, timeoutSeconds * 1000L);
 		}
 		finally
 		{
@@ -340,10 +336,6 @@ public class JSUnitRunnerService
 		long effectiveTimeout = Math.max(timeoutMs, 30_000L);
 		long deadline = System.currentTimeMillis() + effectiveTimeout;
 
-		System.out.println("[DIAG-WAITSESSION] waiting for session of launch=" + launch + " (timeout=" + effectiveTimeout + "ms)");
-
-		int pollCount = 0;
-
 		// A freshly-created DLTK session reports progressState=COMPLETED with 0 children (an empty
 		// run is "100% done"). The actual runJUnitClass for this launch happens ~15-20s later under
 		// a cold headless start, only then bridging results into the session. So we must NOT treat
@@ -352,7 +344,6 @@ public class JSUnitRunnerService
 		{
 			ITestRunSession[] found = new ITestRunSession[1];
 			int[] childCount = new int[1];
-			boolean[] completed = new boolean[1];
 
 			Display.getDefault().syncExec(() -> {
 				ITestRunSession session = DLTKTestingPlugin.getModel().getTestRunSession(launch);
@@ -361,22 +352,12 @@ public class JSUnitRunnerService
 					found[0] = session;
 					ITestElement[] children = session.getChildren();
 					childCount[0] = children == null ? 0 : children.length;
-					completed[0] = ITestElement.ProgressState.COMPLETED.equals(session.getProgressState());
 				}
 			});
-
-			pollCount++;
-			if (pollCount <= 3 || pollCount % 10 == 0 || (found[0] != null && childCount[0] > 0))
-			{
-				System.out.println("[DIAG-WAITSESSION] poll#" + pollCount + " session=" +
-					(found[0] == null ? "null" : found[0].getTestRunName()) + " children=" + childCount[0] +
-					" completed=" + completed[0]);
-			}
 
 			// Results have been bridged into the session.
 			if (found[0] != null && childCount[0] > 0)
 			{
-				System.out.println("[DIAG-WAITSESSION] returning session with " + childCount[0] + " children");
 				return found[0];
 			}
 
@@ -385,9 +366,6 @@ public class JSUnitRunnerService
 
 		ITestRunSession[] fallback = new ITestRunSession[1];
 		Display.getDefault().syncExec(() -> fallback[0] = DLTKTestingPlugin.getModel().getTestRunSession(launch));
-		System.out.println("[DIAG-WAITSESSION] TIMEOUT after " + pollCount + " polls, returning=" +
-			(fallback[0] == null ? "null" : fallback[0].getTestRunName() + " children=" +
-				(fallback[0].getChildren() == null ? "null" : fallback[0].getChildren().length)));
 		return fallback[0];
 	}
 

@@ -124,7 +124,6 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 			ensureLayer4ProjectsInWorkspace();
 			ensureLayer4ProjectActive();
 			cachedAllResult = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
-			System.out.println("[DIAG-LAYER4] cachedAllResult=" + cachedAllResult);
 		}
 
 		allResult = cachedAllResult;

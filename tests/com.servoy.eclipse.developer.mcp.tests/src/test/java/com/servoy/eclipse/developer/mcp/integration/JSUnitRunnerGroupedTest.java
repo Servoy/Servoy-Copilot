@@ -146,9 +146,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			ensureGroupedProjectsInWorkspace();
 			ensureGroupedProjectActive();
 			cachedModulesResult = runOnBackgroundThread(() -> runner.runTests("MODULES", TIMEOUT_SECONDS));
-			System.out.println("[DIAG-GROUPED] cachedModulesResult=" + cachedModulesResult);
 			cachedFormsResult = runOnBackgroundThread(() -> runner.runTests("FORMS", TIMEOUT_SECONDS));
-			System.out.println("[DIAG-GROUPED] cachedFormsResult=" + cachedFormsResult);
 		}
 
 		modulesResult = cachedModulesResult;
