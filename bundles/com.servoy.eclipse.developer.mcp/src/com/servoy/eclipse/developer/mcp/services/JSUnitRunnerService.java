@@ -241,22 +241,12 @@ public class JSUnitRunnerService
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
 		System.out.println("[DIAG-RUNNER] runForTarget: config=" + config.getName() + " timeout=" + timeoutSeconds + "s");
 
-		Set<ITestRunSession> sessionsBefore = new HashSet<>();
-		Display.getDefault().syncExec(() -> {
-			for (Object s : DLTKTestingPlugin.getModel().getTestRunSessions())
-			{
-				if (s instanceof ITestRunSession ts)
-					sessionsBefore.add(ts);
-			}
-		});
-		System.out.println("[DIAG-RUNNER] sessionsBefore count=" + sessionsBefore.size());
-
 		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
 		System.out.println("[DIAG-RUNNER] launch created, terminated=" + launch.isTerminated());
 		try
 		{
-			ITestRunSession result = waitForSession(sessionsBefore, timeoutSeconds * 1000L);
-			System.out.println("[DIAG-RUNNER] waitForSession returned: " + (result == null ? "null" : result.getTestRunName() + " children=" + (result.getChildren() == null ? "null" : result.getChildren().length)));
+			ITestRunSession result = waitForSessionByLaunch(launch, timeoutSeconds * 1000L);
+			System.out.println("[DIAG-RUNNER] waitForSessionByLaunch returned: " + (result == null ? "null" : result.getTestRunName() + " children=" + (result.getChildren() == null ? "null" : result.getChildren().length)));
 			return result;
 		}
 		finally
@@ -332,83 +322,84 @@ public class JSUnitRunnerService
 		return new TestTarget(new Pair<>(activeSolution, scopeName));
 	}
 
-	private ITestRunSession waitForSession(Set<ITestRunSession> sessionsBefore, long timeoutMs) throws InterruptedException
+	/**
+	 * Waits for the DLTK test run session associated with the given launch to be populated with
+	 * results (children). Correlates by the launch object itself via
+	 * {@code DLTKTestingModel.getTestRunSession(ILaunch)}, so it is robust against interleaved
+	 * runs of other launches.
+	 * <p>
+	 * The smart client startup (start client + wait for solution to load + runJUnitClass) can take
+	 * significantly longer than a single test's timeout under a cold headless launch, so this waits
+	 * up to a generous ceiling for the session to appear and get populated.
+	 */
+	private ITestRunSession waitForSessionByLaunch(ILaunch launch, long timeoutMs) throws InterruptedException
 	{
-		long deadline = System.currentTimeMillis() + timeoutMs;
+		// Correlate session by launch object; robust against interleaved runs.
+		// Use the caller-provided timeout (with a modest floor). The caller is responsible for
+		// passing a value large enough to cover a cold smart-client startup + solution load.
+		long effectiveTimeout = Math.max(timeoutMs, 30_000L);
+		long deadline = System.currentTimeMillis() + effectiveTimeout;
 
-		ITestRunSession[] terminalSession = new ITestRunSession[1];
-		long[] terminalFoundAt = new long[] { -1 };
-		final long CHILDREN_WAIT_MS = 30_000;
+		System.out.println("[DIAG-WAITSESSION] waiting for session of launch=" + launch + " (timeout=" + effectiveTimeout + "ms)");
+
 		int pollCount = 0;
+		long sessionFirstSeenAt = -1;
+		final long POST_COMPLETE_GRACE_MS = 5_000;
 
 		while (System.currentTimeMillis() < deadline)
 		{
 			ITestRunSession[] found = new ITestRunSession[1];
-			int[] totalSessions = new int[1];
-			int[] newSessions = new int[1];
-			StringBuilder[] diagInfo = { new StringBuilder() };
+			int[] childCount = new int[1];
+			boolean[] completed = new boolean[1];
 
 			Display.getDefault().syncExec(() -> {
-				for (Object entry : DLTKTestingPlugin.getModel().getTestRunSessions())
+				ITestRunSession session = DLTKTestingPlugin.getModel().getTestRunSession(launch);
+				if (session != null)
 				{
-					if (entry instanceof ITestRunSession candidate)
-					{
-						totalSessions[0]++;
-						if (!sessionsBefore.contains(candidate))
-						{
-							newSessions[0]++;
-							diagInfo[0].append("  new session: name=").append(candidate.getTestRunName())
-								.append(" progress=").append(candidate.getProgressState())
-								.append(" children=").append(candidate.getChildren() == null ? "null" : candidate.getChildren().length)
-								.append("\n");
-							if (!ITestElement.ProgressState.NOT_STARTED.equals(candidate.getProgressState()) &&
-								!ITestElement.ProgressState.RUNNING.equals(candidate.getProgressState()))
-							{
-								found[0] = candidate;
-							}
-						}
-					}
+					found[0] = session;
+					ITestElement[] children = session.getChildren();
+					childCount[0] = children == null ? 0 : children.length;
+					completed[0] = ITestElement.ProgressState.COMPLETED.equals(session.getProgressState());
 				}
 			});
 
+			if (found[0] != null && sessionFirstSeenAt < 0)
+				sessionFirstSeenAt = System.currentTimeMillis();
+
 			pollCount++;
-			if (pollCount <= 3 || (pollCount % 20 == 0) || found[0] != null)
+			if (pollCount <= 3 || pollCount % 10 == 0 || (found[0] != null && childCount[0] > 0))
 			{
-				System.out.println("[DIAG-WAITSESSION] poll#" + pollCount + " total=" + totalSessions[0] + " new=" + newSessions[0] + " foundTerminal=" + (found[0] != null));
-				if (diagInfo[0].length() > 0)
-					System.out.print(diagInfo[0]);
+				System.out.println("[DIAG-WAITSESSION] poll#" + pollCount + " session=" +
+					(found[0] == null ? "null" : found[0].getTestRunName()) + " children=" + childCount[0] +
+					" completed=" + completed[0]);
 			}
 
-			if (found[0] != null)
+			// Best case: results have arrived.
+			if (found[0] != null && childCount[0] > 0)
 			{
-				if (terminalSession[0] == null)
-				{
-					terminalSession[0] = found[0];
-					terminalFoundAt[0] = System.currentTimeMillis();
-				}
+				System.out.println("[DIAG-WAITSESSION] returning session with " + childCount[0] + " children");
+				return found[0];
+			}
 
-				ITestElement[] fc = found[0].getChildren();
-				int childCount = fc == null ? -1 : fc.length;
-				long waitedMs = System.currentTimeMillis() - terminalFoundAt[0];
-
-				if (childCount > 0)
-				{
-					System.out.println("[DIAG-WAITSESSION] returning session with " + childCount + " children after " + waitedMs + "ms");
-					return found[0];
-				}
-
-				if (waitedMs >= CHILDREN_WAIT_MS)
-				{
-					System.out.println("[DIAG-WAITSESSION] CHILDREN_WAIT_MS expired, returning session with " + childCount + " children");
-					return found[0];
-				}
+			// Session completed but still no children: give the notifier a brief grace period to
+			// finish bridging results, then return whatever we have (may be an empty completed run).
+			if (found[0] != null && completed[0] && sessionFirstSeenAt > 0 &&
+				(System.currentTimeMillis() - sessionFirstSeenAt) >= POST_COMPLETE_GRACE_MS)
+			{
+				System.out.println("[DIAG-WAITSESSION] session completed with " + childCount[0] +
+					" children after grace period; returning it");
+				return found[0];
 			}
 
 			Thread.sleep(POLL_INTERVAL_MS);
 		}
 
-		System.out.println("[DIAG-WAITSESSION] TIMEOUT after " + pollCount + " polls, terminalSession=" + (terminalSession[0] == null ? "null" : terminalSession[0].getTestRunName()));
-		return terminalSession[0];
+		ITestRunSession[] fallback = new ITestRunSession[1];
+		Display.getDefault().syncExec(() -> fallback[0] = DLTKTestingPlugin.getModel().getTestRunSession(launch));
+		System.out.println("[DIAG-WAITSESSION] TIMEOUT after " + pollCount + " polls, returning=" +
+			(fallback[0] == null ? "null" : fallback[0].getTestRunName() + " children=" +
+				(fallback[0].getChildren() == null ? "null" : fallback[0].getChildren().length)));
+		return fallback[0];
 	}
 
 	private String formatGroupedResults(String groupType, List<String> names, List<ITestRunSession> sessions)

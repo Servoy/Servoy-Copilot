@@ -37,8 +37,12 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * </ul>
  */
 public abstract class ServoyRunnerTestBase {
-	/** Timeout in seconds for each JSUnit headless client run. */
-	protected static final int TIMEOUT_SECONDS = 20;
+	/**
+	 * Timeout in seconds for each JSUnit headless client run. Must be large enough to cover a
+	 * cold smart-client startup (start client + wait for solution load + runJUnitClass) under a
+	 * headless Tycho launch, which is significantly slower than a warm IDE launch.
+	 */
+	protected static final int TIMEOUT_SECONDS = 60;
 
 	/**
 	 * How long (ms) to poll for the Servoy ApplicationServer singleton on the first
