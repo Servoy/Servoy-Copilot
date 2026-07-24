@@ -239,6 +239,7 @@ public class JSUnitRunnerService
 	private ITestRunSession runForTarget(TestTarget target, int timeoutSeconds) throws CoreException, InterruptedException
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
+		System.out.println("[DIAG-RUNNER] runForTarget: config=" + config.getName() + " timeout=" + timeoutSeconds + "s");
 
 		Set<ITestRunSession> sessionsBefore = new HashSet<>();
 		Display.getDefault().syncExec(() -> {
@@ -248,11 +249,15 @@ public class JSUnitRunnerService
 					sessionsBefore.add(ts);
 			}
 		});
+		System.out.println("[DIAG-RUNNER] sessionsBefore count=" + sessionsBefore.size());
 
 		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
+		System.out.println("[DIAG-RUNNER] launch created, terminated=" + launch.isTerminated());
 		try
 		{
-			return waitForSession(sessionsBefore, timeoutSeconds * 1000L);
+			ITestRunSession result = waitForSession(sessionsBefore, timeoutSeconds * 1000L);
+			System.out.println("[DIAG-RUNNER] waitForSession returned: " + (result == null ? "null" : result.getTestRunName() + " children=" + (result.getChildren() == null ? "null" : result.getChildren().length)));
+			return result;
 		}
 		finally
 		{
@@ -334,26 +339,45 @@ public class JSUnitRunnerService
 		ITestRunSession[] terminalSession = new ITestRunSession[1];
 		long[] terminalFoundAt = new long[] { -1 };
 		final long CHILDREN_WAIT_MS = 30_000;
+		int pollCount = 0;
 
 		while (System.currentTimeMillis() < deadline)
 		{
 			ITestRunSession[] found = new ITestRunSession[1];
+			int[] totalSessions = new int[1];
+			int[] newSessions = new int[1];
+			StringBuilder[] diagInfo = { new StringBuilder() };
 
 			Display.getDefault().syncExec(() -> {
 				for (Object entry : DLTKTestingPlugin.getModel().getTestRunSessions())
 				{
 					if (entry instanceof ITestRunSession candidate)
 					{
-						if (!sessionsBefore.contains(candidate) &&
-							!ITestElement.ProgressState.NOT_STARTED.equals(candidate.getProgressState()) &&
-							!ITestElement.ProgressState.RUNNING.equals(candidate.getProgressState()))
+						totalSessions[0]++;
+						if (!sessionsBefore.contains(candidate))
 						{
-							found[0] = candidate;
-							break;
+							newSessions[0]++;
+							diagInfo[0].append("  new session: name=").append(candidate.getTestRunName())
+								.append(" progress=").append(candidate.getProgressState())
+								.append(" children=").append(candidate.getChildren() == null ? "null" : candidate.getChildren().length)
+								.append("\n");
+							if (!ITestElement.ProgressState.NOT_STARTED.equals(candidate.getProgressState()) &&
+								!ITestElement.ProgressState.RUNNING.equals(candidate.getProgressState()))
+							{
+								found[0] = candidate;
+							}
 						}
 					}
 				}
 			});
+
+			pollCount++;
+			if (pollCount <= 3 || (pollCount % 20 == 0) || found[0] != null)
+			{
+				System.out.println("[DIAG-WAITSESSION] poll#" + pollCount + " total=" + totalSessions[0] + " new=" + newSessions[0] + " foundTerminal=" + (found[0] != null));
+				if (diagInfo[0].length() > 0)
+					System.out.print(diagInfo[0]);
+			}
 
 			if (found[0] != null)
 			{
@@ -368,15 +392,22 @@ public class JSUnitRunnerService
 				long waitedMs = System.currentTimeMillis() - terminalFoundAt[0];
 
 				if (childCount > 0)
+				{
+					System.out.println("[DIAG-WAITSESSION] returning session with " + childCount + " children after " + waitedMs + "ms");
 					return found[0];
+				}
 
 				if (waitedMs >= CHILDREN_WAIT_MS)
+				{
+					System.out.println("[DIAG-WAITSESSION] CHILDREN_WAIT_MS expired, returning session with " + childCount + " children");
 					return found[0];
+				}
 			}
 
 			Thread.sleep(POLL_INTERVAL_MS);
 		}
 
+		System.out.println("[DIAG-WAITSESSION] TIMEOUT after " + pollCount + " polls, terminalSession=" + (terminalSession[0] == null ? "null" : terminalSession[0].getTestRunName()));
 		return terminalSession[0];
 	}
 
