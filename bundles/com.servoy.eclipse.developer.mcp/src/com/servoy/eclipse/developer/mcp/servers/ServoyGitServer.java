@@ -166,4 +166,11 @@ public class ServoyGitServer
 	{
 		return gitService.stagePatch(projectName, patch);
 	}
+
+	@Tool(name = "gitInit", description = "Initializes a Git repository in the workspace root directory and connects all workspace projects to it. Creates a default .gitignore and an initial commit. If a repository already exists, connects the specified project to it.", type = "object")
+	public String gitInit(
+		@ToolParam(name = "projectName", description = "Any Eclipse project name in the workspace (used to identify the workspace)", required = true) String projectName)
+	{
+		return gitService.initRepository(projectName);
+	}
 }

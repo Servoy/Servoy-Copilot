@@ -65,6 +65,7 @@ import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.developer.mcp.services.MenuService;
+import com.servoy.eclipse.developer.mcp.services.GitService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -114,6 +115,7 @@ public class ServoyDevServer {
 	private final ServoyArtifactCreationService artifactService = new ServoyArtifactCreationService();
 	private final FormatValidatorService formatValidatorService = new FormatValidatorService();
 	private final MenuService menuService = new MenuService();
+	private final GitService gitService = new GitService();
 
 	public ServoyDevServer() {
 	}
@@ -784,6 +786,13 @@ public class ServoyDevServer {
 			createEclipseProjects(solutionName);
 			createSolutionArtifacts(solutionName, type, doAddTheme);
 
+			String gitResult = null;
+			try {
+				gitResult = gitService.initRepository(solutionName);
+			} catch (Exception gitEx) {
+				ServoyLog.logError("Git init after createSolution failed", gitEx);
+			}
+
 			StringBuilder result = new StringBuilder();
 
 			String parentSolution = addToSolution;
@@ -809,6 +818,9 @@ public class ServoyDevServer {
 			} else {
 				result.insert(0, "Created solution '" + solutionName + "' (type: " + getSolutionTypeName(type)
 						+ ", not activated). ");
+			}
+			if (gitResult != null) {
+				result.append(" ").append(gitResult);
 			}
 			return result.toString().trim();
 		} catch (Exception e) {
