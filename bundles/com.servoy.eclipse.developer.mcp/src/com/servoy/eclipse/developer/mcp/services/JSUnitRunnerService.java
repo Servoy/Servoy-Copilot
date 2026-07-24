@@ -343,9 +343,11 @@ public class JSUnitRunnerService
 		System.out.println("[DIAG-WAITSESSION] waiting for session of launch=" + launch + " (timeout=" + effectiveTimeout + "ms)");
 
 		int pollCount = 0;
-		long sessionFirstSeenAt = -1;
-		final long POST_COMPLETE_GRACE_MS = 5_000;
 
+		// A freshly-created DLTK session reports progressState=COMPLETED with 0 children (an empty
+		// run is "100% done"). The actual runJUnitClass for this launch happens ~15-20s later under
+		// a cold headless start, only then bridging results into the session. So we must NOT treat
+		// "completed + 0 children" as done -- we wait specifically for children to appear.
 		while (System.currentTimeMillis() < deadline)
 		{
 			ITestRunSession[] found = new ITestRunSession[1];
@@ -363,9 +365,6 @@ public class JSUnitRunnerService
 				}
 			});
 
-			if (found[0] != null && sessionFirstSeenAt < 0)
-				sessionFirstSeenAt = System.currentTimeMillis();
-
 			pollCount++;
 			if (pollCount <= 3 || pollCount % 10 == 0 || (found[0] != null && childCount[0] > 0))
 			{
@@ -374,20 +373,10 @@ public class JSUnitRunnerService
 					" completed=" + completed[0]);
 			}
 
-			// Best case: results have arrived.
+			// Results have been bridged into the session.
 			if (found[0] != null && childCount[0] > 0)
 			{
 				System.out.println("[DIAG-WAITSESSION] returning session with " + childCount[0] + " children");
-				return found[0];
-			}
-
-			// Session completed but still no children: give the notifier a brief grace period to
-			// finish bridging results, then return whatever we have (may be an empty completed run).
-			if (found[0] != null && completed[0] && sessionFirstSeenAt > 0 &&
-				(System.currentTimeMillis() - sessionFirstSeenAt) >= POST_COMPLETE_GRACE_MS)
-			{
-				System.out.println("[DIAG-WAITSESSION] session completed with " + childCount[0] +
-					" children after grace period; returning it");
 				return found[0];
 			}
 
