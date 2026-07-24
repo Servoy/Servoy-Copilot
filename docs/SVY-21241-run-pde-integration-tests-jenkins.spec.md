@@ -229,13 +229,41 @@ Initial approach: use `catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE
 
 ## 5. Acceptance criteria
 
-- [ ] `mvn package -U` (default goals) continues to build successfully without running integration tests
-- [ ] `mvn verify -Pintegration` runs `AllDeveloperMcpIntegrationTests` inside a full Eclipse workbench via tycho-surefire
-- [ ] Jenkins pipeline has a visible "Integration Tests" stage that executes the PDE integration tests
-- [ ] Test results (pass/fail) are reported in Jenkins UI via JUnit XML
-- [ ] Integration test failures mark the build as UNSTABLE (not FAILURE) during initial adoption
-- [ ] The existing "Build with Tycho 5" stage and "Deploy Plugin Site" stage are unaffected
-- [ ] Plain unit tests (`AllDeveloperMcpTests`, `AllDeveloperMcpJupiterUnitTests`) still run during normal `package` phase
+- [x] `mvn package -U` (default goals) continues to build successfully without running integration tests
+- [x] `mvn verify -Pintegration` runs `AllDeveloperMcpIntegrationTests` inside a full Eclipse workbench via tycho-surefire
+- [x] Jenkins pipeline has a visible "Integration Tests" stage that executes the PDE integration tests
+- [x] Test results (pass/fail) are reported in Jenkins UI via JUnit XML
+- [x] Integration test failures mark the build as UNSTABLE (not FAILURE) during initial adoption
+- [x] The existing "Build with Tycho 5" stage and "Deploy Plugin Site" stage are unaffected
+- [x] Plain unit tests (`AllDeveloperMcpTests`, `AllDeveloperMcpJupiterUnitTests`) still run during normal `package` phase
+- [x] JSUnit runner integration tests (`JSUnitRunnerIntegrationTest`, `JSUnitRunnerGroupedTest`, `JSUnitRunnerLayer4Test`, `RunTestMethodIntegrationTest`) produce populated results headlessly under Tycho, matching IDE behaviour
+
+## 5b. Implementation outcome — JSUnit headless test-result bridging
+
+The infrastructure work above (tycho-surefire integration profile + Jenkins stage) landed successfully, but the JSUnit *runner* integration tests initially failed under headless Tycho while passing from the IDE launcher. Every run showed the same symptom: the test method was discovered (`scope=globals methods=1`) and executed (`runJUnitClass completed`, JUnit `runCount` correct), yet the result the MCP layer read back was empty (`| **0** | **0** | **0** | **0** | / All 0 test(s) passed!`).
+
+### Root cause
+
+`JSUnitRunnerService` reads results from the **DLTK** `ITestRunSession`. That session is populated asynchronously via `ScriptUnitTestRunNotifier`, which bridges JUnit `TestListener` events into the session obtained by `DLTKTestingPlugin.getModel().getTestRunSession(target.launch)`. Two headless-only timing issues broke the read:
+
+1. **Wrong session correlation.** The wait logic looked for "a new DLTK session not seen before". Under Tycho the smart-client startup is asynchronous and slow, and stale/interleaved sessions from earlier launches confused this heuristic — the code frequently latched onto the wrong (empty) session.
+2. **Premature "completed" + too-short timeout.** A freshly-created DLTK session reports `progressState=COMPLETED` with `0` children (an empty 0-test run is "100% done"). Combined with a 20s per-run timeout, the wait returned this empty session *before* the real `runJUnitClass` (which only fires ~15-20s into a cold headless client start) had bridged any results.
+
+The servoy-eclipse layer (`SolutionJSUnitSuiteCodeBuilder`, `RunClientTests`, `ScriptUnitTestRunNotifier`, `TestClientTestSuite`) was confirmed correct — discovery uses the Servoy persist model (not the DLTK indexer), and the notifier bridge works once given the right launch. No production fix was needed there; only temporary diagnostics were added and later reverted.
+
+### Fix (in `JSUnitRunnerService` + `ServoyRunnerTestBase`)
+
+- **Correlate the session by our own `ILaunch`.** `runForTarget` keeps the `ILaunch` returned by `config.launch(RUN_MODE, null)` and `waitForSessionByLaunch` looks it up directly via `DLTKTestingPlugin.getModel().getTestRunSession(launch)` — the same object the notifier binds to. This is immune to interleaved runs from other launches.
+- **Wait for results, not for "completed".** The wait polls specifically for `getChildren().length > 0` (results actually bridged in) rather than treating the premature `COMPLETED`/0-children state as done.
+- **Headless-appropriate timeout.** `TIMEOUT_SECONDS` raised `20 -> 60` so a cold smart-client startup (start client + wait for solution load + `runJUnitClass`, ~26s+) completes before the wait gives up. The `runOnBackgroundThread` deadline (`TIMEOUT_SECONDS + 30 = 90s`) stays comfortably above the 60s session wait.
+
+### Jenkins pipeline fix
+
+The `post { success }` block triggered downstream jobs `make_installer_eclipse` / `release/make_installer_eclipse` that do not exist on this Jenkins instance, causing `hudson.AbortException: No item named make_installer_eclipse found` to mark an otherwise-green build (all tests passing, p2 site deployed) as FAILURE. The trigger was removed.
+
+### Result
+
+All integration tests pass headlessly (`BUILD SUCCESS`, ~21 min) and the pipeline no longer fails on the missing downstream job. The unrelated `IllegalStateException: Streams are already closed` from `RunNPMCommand` during shutdown is cosmetic and does not affect the build result.
 
 ## 6. Out of scope
 
@@ -249,8 +277,14 @@ Initial approach: use `catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE
 
 | Question | Owner | Status |
 |----------|-------|--------|
-| Do any integration tests require a live PostgreSQL database on the Jenkins agent? If so, is one available? | DevOps | open |
+| Do any integration tests require a live PostgreSQL database on the Jenkins agent? If so, is one available? | DevOps | resolved — tests use in-memory HSQLDB from `testresources/servoy.properties`; no external DB needed |
 | Should the `AllDeveloperMcpJupiterUnitTests` suite also run in the default phase, or only JUnit 4 tests? | Diana | open |
-| Should integration test failure block the p2 site deployment (hard FAILURE) or allow it (UNSTABLE)? | Team | open — spec assumes UNSTABLE initially |
-| Is `com.servoy.eclipse.core.ide` product available in the target platform during headless build, or does it need to be resolved from the workspace? | Build | open |
-| Does the Jenkins agent have sufficient heap (2 GB+) for the integration test JVM? | DevOps | open |
+| Should integration test failure block the p2 site deployment (hard FAILURE) or allow it (UNSTABLE)? | Team | resolved — UNSTABLE via `catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE')` |
+| Is `com.servoy.eclipse.core.ide` product available in the target platform during headless build, or does it need to be resolved from the workspace? | Build | resolved — resolves from target platform; integration profile launches it successfully |
+| Does the Jenkins agent have sufficient heap (2 GB+) for the integration test JVM? | DevOps | resolved — `-Xmx2048m` in integration argLine works on the agent |
+
+## 8. Follow-ups
+
+- The `IllegalStateException: Streams are already closed` from `RunNPMCommand.writeConsole` during workbench shutdown is a cosmetic console-stream race, unrelated to the tests. Track separately if it becomes noisy.
+- Grouped runs (`MODULES`/`FORMS`) invoke `runForTarget` once per module/form sequentially; with the 60s per-run ceiling and the 90s background-thread deadline, this is only safe for the current single-module/single-form fixtures. If fixtures grow, the wait/deadline budget needs revisiting.
+- The temporary `[DIAG-*]` diagnostics added across both repos during investigation have been reverted (Servoy-Copilot `b03c73e`, servoy-eclipse `2735576`).
