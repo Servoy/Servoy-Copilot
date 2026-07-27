@@ -38,6 +38,7 @@ import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorServiceTe
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
+import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageServiceTest;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
 import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
 import com.servoy.eclipse.developer.mcp.services.TestFileServiceReflectionTest;
@@ -87,6 +88,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 	DocumentationValidatorServiceTest.class,
 	FormSpecGeneratorTest.class,
 	FormSpecRunnerTest.class,
+	JSUnitCoverageServiceTest.class,
 	PersistRenameServiceTest.class,
 	ResolvedElementsProcessorTest.class,
 	TestFileServiceReflectionTest.class,

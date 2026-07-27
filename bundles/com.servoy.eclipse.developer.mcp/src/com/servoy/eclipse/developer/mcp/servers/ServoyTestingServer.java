@@ -24,6 +24,7 @@ import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.services.CypressLoginSupport;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
+import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
 import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
 import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
@@ -41,6 +42,7 @@ import com.servoy.j2db.util.Settings;
 @McpServer(name = "servoy-test")
 public class ServoyTestingServer {
 	private final JSUnitRunnerService jsunitRunner = new JSUnitRunnerService();
+	private final JSUnitCoverageService coverageService = new JSUnitCoverageService();
 	private final FormPreviewService formPreview = new FormPreviewService();
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
 	private final FormSpecRunner specRunner = new FormSpecRunner();
@@ -119,6 +121,33 @@ public class ServoyTestingServer {
 			return jsunitRunner.runTestMethod(testMethodName, scopeOrAll, timeoutSeconds);
 		} catch (Exception e) {
 			ServoyLog.logError("Error running test method via JSUnit", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "getJSUnitCoverageReport", description = "Reads the latest JSUnit test coverage JSON report and returns a markdown summary of "
+			+ "covered and uncovered lines per scope and function. Run JSUnit tests first (in debug mode) to generate the report. "
+			+ "Use this before asking for test suggestions to understand the current coverage state.", type = "object")
+	public String getJSUnitCoverageReport(
+			@ToolParam(description = "Absolute path to the coverage JSON file. If omitted, uses ${workspace}/jsunit-coverage.json.") String coveragePath) {
+		try {
+			return coverageService.getCoverageReport(coveragePath);
+		} catch (Exception e) {
+			ServoyLog.logError("Error reading JSUnit coverage report", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "suggestTestsFromCoverage", description = "Reads the latest JSUnit coverage report and returns concrete suggestions for additional "
+			+ "test cases targeting the least-covered functions. Does NOT write any test files. "
+			+ "Run JSUnit tests first (in debug mode) to generate the report.", type = "object")
+	public String suggestTestsFromCoverage(
+			@ToolParam(description = "Absolute path to the coverage JSON file. If omitted, uses ${workspace}/jsunit-coverage.json.") String coveragePath,
+			@ToolParam(description = "Maximum number of functions to report on, sorted by uncovered line count descending. Default: 20.", type = "integer") int maxFunctions) {
+		try {
+			return coverageService.suggestTests(coveragePath, maxFunctions);
+		} catch (Exception e) {
+			ServoyLog.logError("Error generating JSUnit test suggestions from coverage", e);
 			return "Error: " + e.getMessage();
 		}
 	}
