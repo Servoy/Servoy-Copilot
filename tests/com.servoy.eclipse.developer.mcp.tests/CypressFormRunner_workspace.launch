@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<launchConfiguration type="org.eclipse.pde.ui.JunitLaunchConfig">
+<launchConfiguration type="org.eclipse.pde.ui.RuntimeWorkbench">
     <booleanAttribute key="append.args" value="true"/>
+    <stringAttribute key="application" value="com.servoy.eclipse.developer.mcp.cypressFormTestRunner"/>
     <booleanAttribute key="askclear" value="false"/>
     <booleanAttribute key="automaticAdd" value="true"/>
     <booleanAttribute key="automaticIncludeRequirements" value="true"/>
@@ -8,11 +9,14 @@
     <stringAttribute key="bootstrap" value=""/>
     <stringAttribute key="checked" value="[NONE]"/>
     <booleanAttribute key="clearConfig" value="true"/>
-    <booleanAttribute key="clearws" value="true"/>
+    <booleanAttribute key="clearws" value="false"/>
     <booleanAttribute key="clearwslog" value="false"/>
-    <stringAttribute key="configLocation" value="${workspace_loc}/.metadata/.plugins/org.eclipse.pde.core/AllDeveloperMcpIntegrationTests"/>
+    <stringAttribute key="configLocation" value="${workspace_loc}/.metadata/.plugins/org.eclipse.pde.core/CypressFormRunner_workspace"/>
     <booleanAttribute key="default" value="false"/>
     <setAttribute key="deselected_workspace_bundles">
+        <setEntry value="12grid"/>
+        <setEntry value="bootstrapcomponents"/>
+        <setEntry value="bootstrapextracomponents"/>
         <setEntry value="com.servoy.eclipse.firststeps"/>
         <setEntry value="com.servoy.eclipse.jre.linux.x86_64"/>
         <setEntry value="com.servoy.eclipse.jre.macosx.aarch64"/>
@@ -25,27 +29,21 @@
         <setEntry value="servoy_ngclient.tests"/>
     </setAttribute>
     <booleanAttribute key="includeOptional" value="true"/>
-    <stringAttribute key="location" value="${workspace_loc}/../junit-workspace-integration"/>
+    <stringAttribute key="location" value="E:\ServoyInstalls\Svy2026_09_09iunie2026\workspace"/>
     <booleanAttribute key="org.eclipse.debug.core.ATTR_FORCE_SYSTEM_CONSOLE_ENCODING" value="false"/>
     <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
-        <listEntry value="/com.servoy.eclipse.developer.mcp.tests/src/test/java/com/servoy/eclipse/developer/mcp/AllDeveloperMcpIntegrationTests.java"/>
+        <listEntry value="/com.servoy.eclipse.developer.mcp/src/com/servoy/eclipse/developer/mcp/headless/CypressFormTestRunner.java"/>
     </listAttribute>
     <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_TYPES">
         <listEntry value="1"/>
     </listAttribute>
-    <stringAttribute key="org.eclipse.jdt.junit.CONTAINER" value=""/>
-    <booleanAttribute key="org.eclipse.jdt.junit.KEEPRUNNING_ATTR" value="false"/>
-    <stringAttribute key="org.eclipse.jdt.junit.TESTNAME" value=""/>
-    <stringAttribute key="org.eclipse.jdt.junit.TEST_KIND" value="org.eclipse.jdt.junit.loader.junit4"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_ATTR_USE_ARGFILE" value="false"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_SHOW_CODEDETAILS_IN_EXCEPTION_MESSAGES" value="true"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_USE_START_ON_FIRST_THREAD" value="true"/>
     <stringAttribute key="org.eclipse.jdt.launching.JRE_CONTAINER" value="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-21"/>
-    <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="com.servoy.eclipse.developer.mcp.AllDeveloperMcpIntegrationTests"/>
-    <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="-os ${target.os} -ws ${target.ws} -arch ${target.arch} -nl ${target.nl}"/>
-    <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="com.servoy.eclipse.developer.mcp.tests"/>
+    <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="-os ${target.os} -ws ${target.ws} -arch ${target.arch} -nl ${target.nl} -s cypresse2eflow -o E:\ServoyInstalls\Svy2026_09_09iunie2026\workspace\test-results -as E:\ServoyInstalls\Svy2026_09_09iunie2026\application_server -timeout 120 -verbose"/>
     <stringAttribute key="org.eclipse.jdt.launching.SOURCE_PATH_PROVIDER" value="org.eclipse.pde.ui.workbenchClasspathProvider"/>
-    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.ngclient.titanium.build.disabled=true -Dservoy.cloud.skipCheckout=true  -Dservoy.application_server.dir=&quot;${workspace_loc:com.servoy.eclipse.developer.mcp.tests/testresources}&quot; -Dproperty-file=&quot;${workspace_loc:com.servoy.eclipse.developer.mcp.tests/testresources}/servoy.properties&quot; -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true"/>
+    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Djava.awt.headless=true -Dchromium.integration.eclipse.disable=true"/>
     <stringAttribute key="pde.version" value="3.3"/>
     <stringAttribute key="product" value="com.servoy.eclipse.core.ide"/>
     <booleanAttribute key="run_in_ui_thread" value="false"/>
@@ -101,17 +99,11 @@
         <setEntry value="javax.mail@default:default"/>
         <setEntry value="javax.persistence-api@default:default"/>
         <setEntry value="javax.transaction@default:default"/>
-        <setEntry value="junit-jupiter-api*5.14.4@default:default"/>
         <setEntry value="junit-jupiter-api*6.1.2@default:default"/>
-        <setEntry value="junit-jupiter-engine*5.14.4@default:default"/>
         <setEntry value="junit-jupiter-engine*6.1.2@default:default"/>
-        <setEntry value="junit-jupiter-params*5.14.4@default:default"/>
         <setEntry value="junit-jupiter-params*6.1.2@default:default"/>
-        <setEntry value="junit-platform-commons*1.14.4@default:default"/>
         <setEntry value="junit-platform-commons*6.1.2@default:default"/>
-        <setEntry value="junit-platform-engine*1.14.4@default:default"/>
         <setEntry value="junit-platform-engine*6.1.2@default:default"/>
-        <setEntry value="junit-platform-launcher*1.14.4@default:default"/>
         <setEntry value="junit-platform-launcher*6.1.2@default:default"/>
         <setEntry value="junit-platform-suite-api*6.1.2@default:default"/>
         <setEntry value="junit-platform-suite-engine*6.1.2@default:default"/>
@@ -268,7 +260,6 @@
         <setEntry value="org.eclipse.jdt.debug@default:default"/>
         <setEntry value="org.eclipse.jdt.junit.core@default:default"/>
         <setEntry value="org.eclipse.jdt.junit.runtime@default:default"/>
-        <setEntry value="org.eclipse.jdt.junit4.runtime@default:default"/>
         <setEntry value="org.eclipse.jdt.junit@default:default"/>
         <setEntry value="org.eclipse.jdt.launching@default:default"/>
         <setEntry value="org.eclipse.jdt.ui@default:default"/>
@@ -304,7 +295,6 @@
         <setEntry value="org.eclipse.osgi.compatibility.state@default:false"/>
         <setEntry value="org.eclipse.osgi.util@default:default"/>
         <setEntry value="org.eclipse.osgi@1:true"/>
-        <setEntry value="org.eclipse.pde.junit.runtime@default:default"/>
         <setEntry value="org.eclipse.search.core@default:default"/>
         <setEntry value="org.eclipse.search@default:default"/>
         <setEntry value="org.eclipse.swt.svg@default:false"/>
@@ -407,9 +397,6 @@
         <setEntry value="xstream@default:default"/>
     </setAttribute>
     <setAttribute key="selected_workspace_bundles">
-        <setEntry value="12grid@default:default"/>
-        <setEntry value="bootstrapcomponents@default:default"/>
-        <setEntry value="bootstrapextracomponents@default:default"/>
         <setEntry value="com.servoy.eclipse.cloud@default:default"/>
         <setEntry value="com.servoy.eclipse.core@default:default"/>
         <setEntry value="com.servoy.eclipse.debug@default:default"/>
@@ -495,5 +482,5 @@
     <booleanAttribute key="useCustomFeatures" value="false"/>
     <booleanAttribute key="useDefaultConfig" value="true"/>
     <booleanAttribute key="useDefaultConfigArea" value="false"/>
-    <booleanAttribute key="useProduct" value="true"/>
+    <booleanAttribute key="useProduct" value="false"/>
 </launchConfiguration>

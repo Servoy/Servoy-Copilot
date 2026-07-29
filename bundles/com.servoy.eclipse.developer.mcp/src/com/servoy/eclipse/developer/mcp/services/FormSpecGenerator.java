@@ -13,7 +13,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
-import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyProject;
 
 /**
@@ -46,8 +46,7 @@ public class FormSpecGenerator {
 	 */
 	public String generateSpec(String formName) {
 		try {
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
-					.getActiveProject();
+			ServoyProject activeProject = ServoyModelFinder.getServoyModel().getActiveProject();
 			if (activeProject == null) {
 				return "Error: No active Servoy project.";
 			}

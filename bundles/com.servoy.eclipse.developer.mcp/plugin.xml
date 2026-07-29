@@ -6,6 +6,12 @@
       <startup class="com.servoy.eclipse.developer.mcp.McpStartup"/>
    </extension>
 
+   <extension point="org.eclipse.core.runtime.applications" id="cypressFormTestRunner">
+      <application>
+         <run class="com.servoy.eclipse.developer.mcp.headless.CypressFormTestRunner"/>
+      </application>
+   </extension>
+
    <extension point="com.servoy.eclipse.opencode.mcpEndpoint">
       <endpoint class="com.servoy.eclipse.developer.mcp.McpEndpointProvider"/>
    </extension>

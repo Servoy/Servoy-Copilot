@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
-import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.IServerInternal;
@@ -188,9 +188,25 @@ public class FormSpecRunner
 	 */
 	public String runSpec(String formName, boolean headless)
 	{
+		return runSpec(formName, headless, DEFAULT_TIMEOUT_SECONDS, null);
+	}
+
+	/**
+	 * Runs the Cypress spec for the given form using 'npx cypress run', with an explicit
+	 * per-test timeout and optional extra Cypress arguments. Used by the headless CI runner.
+	 *
+	 * @param formName the form whose .spec.cy.js to run
+	 * @param headless true for headless (default), false for headed (debugging)
+	 * @param timeoutSeconds per-test timeout in seconds; values &lt;= 0 fall back to the default
+	 * @param extraCypressArgs optional space-separated extra arguments appended to the Cypress command (may be null)
+	 * @return test results output
+	 */
+	public String runSpec(String formName, boolean headless, int timeoutSeconds, String extraCypressArgs)
+	{
+		int effectiveTimeout = timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
 		try
 		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			ServoyProject activeProject = ServoyModelFinder.getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "Error: No active Servoy project.";
@@ -276,6 +292,14 @@ public class FormSpecRunner
 				command.add("--headed");
 			}
 
+				if (extraCypressArgs != null && !extraCypressArgs.isBlank())
+				{
+					for (String extra : extraCypressArgs.trim().split("\\s+"))
+					{
+						command.add(extra);
+					}
+				}
+
 			ProcessBuilder pb = new ProcessBuilder(command);
 			pb.directory(scriptsRoot.toFile());
 			pb.redirectErrorStream(true);
@@ -301,12 +325,12 @@ public class FormSpecRunner
 				}
 			}
 
-			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+			boolean finished = process.waitFor(effectiveTimeout, TimeUnit.SECONDS);
 			activeProcess = null;
 			if (!finished)
 			{
 				process.destroyForcibly();
-				return "Error: Cypress test timed out after " + DEFAULT_TIMEOUT_SECONDS + " seconds.";
+				return "Error: Cypress test timed out after " + effectiveTimeout + " seconds.";
 			}
 
 			String rawOutput = output.toString();
@@ -485,8 +509,8 @@ public class FormSpecRunner
 			Path e2eBaseDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress").resolve("e2e");
 
 			// resolve active solution name to look in solution-specific subdirectory first
-			com.servoy.eclipse.model.nature.ServoyProject servoyProject = com.servoy.eclipse.core.ServoyModelManager
-					.getServoyModelManager().getServoyModel().getActiveProject();
+			com.servoy.eclipse.model.nature.ServoyProject servoyProject = com.servoy.eclipse.model.ServoyModelFinder
+					.getServoyModel().getActiveProject();
 			String solutionName = (servoyProject != null && servoyProject.getProject() != null)
 					? servoyProject.getProject().getName()
 					: null;

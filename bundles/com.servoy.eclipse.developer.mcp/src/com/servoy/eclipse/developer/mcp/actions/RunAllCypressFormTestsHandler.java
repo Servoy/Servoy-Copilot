@@ -28,6 +28,19 @@ import com.servoy.eclipse.developer.mcp.views.CypressTestResultsView;
 
 public class RunAllCypressFormTestsHandler extends AbstractHandler {
 
+	/** Session manager used to report run progress; injectable for tests. */
+	private CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
+
+	/**
+	 * Sets the session manager used to report progress and to check whether the run
+	 * is still active. Package-private so tests can inject a double and exercise
+	 * {@link #runTestsCore} in isolation, without depending on the global
+	 * singleton's session state.
+	 */
+	void setSessionManager(CypressTestSessionManager sessionManager) {
+		this.sessionManager = sessionManager;
+	}
+
 	/**
 	 * Holds the aggregate results of running multiple Cypress form tests.
 	 */
@@ -74,7 +87,6 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 
 				com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 
-				CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
 				sessionManager.startSession(testForms, TestType.FORM);
 				CypressTestResultsView.reveal();
 
@@ -121,7 +133,8 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 	}
 
 	/**
-	 * Runs the given form tests, or discovers all form tests if {@code explicitForms} is null.
+	 * Runs the given form tests, or discovers all form tests if
+	 * {@code explicitForms} is null.
 	 */
 	public void runFormTests(List<String> explicitForms) {
 		Job job = new Job("Running Cypress Form Tests") {
@@ -139,7 +152,6 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 
 				com.servoy.j2db.util.Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 
-				CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
 				sessionManager.startSession(testForms, TestType.FORM);
 				CypressTestResultsView.reveal();
 
@@ -190,7 +202,6 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 		int passed = 0;
 		int failed = 0;
 		List<String> results = new ArrayList<>();
-		CypressTestSessionManager sessionManager = CypressTestSessionManager.getInstance();
 
 		for (String formName : testForms) {
 			if (monitor != null && monitor.isCanceled()) {

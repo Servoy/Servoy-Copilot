@@ -67,6 +67,15 @@ public final class CypressTestSessionManager {
 		return INSTANCE;
 	}
 
+	/**
+	 * Creates a fresh, isolated session manager instance. Package-private for
+	 * tests that need to exercise session-dependent logic without mutating the
+	 * global singleton's state.
+	 */
+	static CypressTestSessionManager createForTesting() {
+		return new CypressTestSessionManager();
+	}
+
 	public synchronized void startSession(List<String> testNames, TestType type) {
 		// Stop any currently running session first
 		if (running) {

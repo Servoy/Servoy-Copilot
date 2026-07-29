@@ -83,8 +83,8 @@ public class RunAllCypressFormTestsHandlerTest {
 		@Test
 		@DisplayName("has runTestsCore method")
 		void hasRunTestsCoreMethod() throws NoSuchMethodException {
-			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("runTestsCore",
-					List.class, FormSpecRunner.class, IProgressMonitor.class);
+			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("runTestsCore", List.class,
+					FormSpecRunner.class, IProgressMonitor.class);
 			assertNotNull(m);
 		}
 
@@ -99,7 +99,8 @@ public class RunAllCypressFormTestsHandlerTest {
 		@Test
 		@DisplayName("has formatAggregateResult static method")
 		void hasFormatAggregateResultMethod() throws NoSuchMethodException {
-			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("formatAggregateResult", TestRunResult.class);
+			Method m = RunAllCypressFormTestsHandler.class.getDeclaredMethod("formatAggregateResult",
+					TestRunResult.class);
 			assertNotNull(m);
 			assertTrue(Modifier.isStatic(m.getModifiers()));
 		}
@@ -143,7 +144,8 @@ public class RunAllCypressFormTestsHandlerTest {
 		@Test
 		@DisplayName("returns true when result contains 'All tests passed' anywhere")
 		void returnsTrueForPassingResultAnywhere() {
-			assertTrue(RunAllCypressFormTestsHandler.isTestPassed("**Form Spec Results: myForm**\n\nAll tests passed!\n\nsome output"));
+			assertTrue(RunAllCypressFormTestsHandler
+					.isTestPassed("**Form Spec Results: myForm**\n\nAll tests passed!\n\nsome output"));
 		}
 
 		@Test
@@ -254,6 +256,23 @@ public class RunAllCypressFormTestsHandlerTest {
 	@DisplayName("runTestsCore")
 	class RunTestsCore {
 
+		private CypressTestSessionManager sessionManager;
+
+		@BeforeEach
+		void injectIsolatedSession() {
+			// runTestsCore checks sessionManager.isRunning() so the Stop button can
+			// abort mid-run. Inject an isolated session manager (not the global
+			// singleton) and start a session so the core loop is exercised.
+			sessionManager = CypressTestSessionManager.createForTesting();
+			handler.setSessionManager(sessionManager);
+		}
+
+		/** Starts a session for the given forms, then runs the core loop. */
+		private TestRunResult run(List<String> forms, FormSpecRunner runner, IProgressMonitor monitor) {
+			sessionManager.startSession(forms, CypressTestResult.TestType.FORM);
+			return handler.runTestsCore(forms, runner, monitor);
+		}
+
 		private FormSpecRunner createMockRunner(String passPrefix) {
 			return new FormSpecRunner() {
 				@Override
@@ -272,15 +291,11 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("passFormA", "passFormB", "passFormC");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(3, result.passed),
-				() -> assertEquals(0, result.failed),
-				() -> assertEquals(3, result.total),
-				() -> assertFalse(result.cancelled),
-				() -> assertEquals(3, result.results.size())
-			);
+			assertAll(() -> assertEquals(3, result.passed), () -> assertEquals(0, result.failed),
+					() -> assertEquals(3, result.total), () -> assertFalse(result.cancelled),
+					() -> assertEquals(3, result.results.size()));
 		}
 
 		@Test
@@ -289,14 +304,10 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("failFormA", "failFormB");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(0, result.passed),
-				() -> assertEquals(2, result.failed),
-				() -> assertEquals(2, result.total),
-				() -> assertFalse(result.cancelled)
-			);
+			assertAll(() -> assertEquals(0, result.passed), () -> assertEquals(2, result.failed),
+					() -> assertEquals(2, result.total), () -> assertFalse(result.cancelled));
 		}
 
 		@Test
@@ -305,14 +316,10 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("passFormA", "failFormB", "passFormC", "failFormD", "failFormE");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(2, result.passed),
-				() -> assertEquals(3, result.failed),
-				() -> assertEquals(5, result.total),
-				() -> assertFalse(result.cancelled)
-			);
+			assertAll(() -> assertEquals(2, result.passed), () -> assertEquals(3, result.failed),
+					() -> assertEquals(5, result.total), () -> assertFalse(result.cancelled));
 		}
 
 		@Test
@@ -321,15 +328,11 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of();
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(0, result.passed),
-				() -> assertEquals(0, result.failed),
-				() -> assertEquals(0, result.total),
-				() -> assertFalse(result.cancelled),
-				() -> assertTrue(result.results.isEmpty())
-			);
+			assertAll(() -> assertEquals(0, result.passed), () -> assertEquals(0, result.failed),
+					() -> assertEquals(0, result.total), () -> assertFalse(result.cancelled),
+					() -> assertTrue(result.results.isEmpty()));
 		}
 
 		@Test
@@ -338,13 +341,11 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("passA", "failB", "passC");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertTrue(result.results.get(0).contains("All tests passed")),
-				() -> assertTrue(result.results.get(1).contains("FAILED")),
-				() -> assertTrue(result.results.get(2).contains("All tests passed"))
-			);
+			assertAll(() -> assertTrue(result.results.get(0).contains("All tests passed")),
+					() -> assertTrue(result.results.get(1).contains("FAILED")),
+					() -> assertTrue(result.results.get(2).contains("All tests passed")));
 		}
 
 		@Test
@@ -353,13 +354,10 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("passA", "failB");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, null);
+			TestRunResult result = run(forms, mockRunner, null);
 
-			assertAll(
-				() -> assertEquals(1, result.passed),
-				() -> assertEquals(1, result.failed),
-				() -> assertFalse(result.cancelled)
-			);
+			assertAll(() -> assertEquals(1, result.passed), () -> assertEquals(1, result.failed),
+					() -> assertFalse(result.cancelled));
 		}
 
 		@Test
@@ -378,7 +376,7 @@ public class RunAllCypressFormTestsHandlerTest {
 				}
 			};
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, cancellingMonitor);
+			TestRunResult result = run(forms, mockRunner, cancellingMonitor);
 
 			assertTrue(result.cancelled);
 			assertTrue(result.results.size() < forms.size());
@@ -390,14 +388,10 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("passOnly");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(1, result.passed),
-				() -> assertEquals(0, result.failed),
-				() -> assertEquals(1, result.total),
-				() -> assertFalse(result.cancelled)
-			);
+			assertAll(() -> assertEquals(1, result.passed), () -> assertEquals(0, result.failed),
+					() -> assertEquals(1, result.total), () -> assertFalse(result.cancelled));
 		}
 
 		@Test
@@ -406,14 +400,10 @@ public class RunAllCypressFormTestsHandlerTest {
 			FormSpecRunner mockRunner = createMockRunner("pass");
 			List<String> forms = List.of("failOnly");
 
-			TestRunResult result = handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			TestRunResult result = run(forms, mockRunner, new NullProgressMonitor());
 
-			assertAll(
-				() -> assertEquals(0, result.passed),
-				() -> assertEquals(1, result.failed),
-				() -> assertEquals(1, result.total),
-				() -> assertFalse(result.cancelled)
-			);
+			assertAll(() -> assertEquals(0, result.passed), () -> assertEquals(1, result.failed),
+					() -> assertEquals(1, result.total), () -> assertFalse(result.cancelled));
 		}
 
 		@Test
@@ -428,7 +418,7 @@ public class RunAllCypressFormTestsHandlerTest {
 				}
 			};
 
-			handler.runTestsCore(List.of("form1"), mockRunner, new NullProgressMonitor());
+			run(List.of("form1"), mockRunner, new NullProgressMonitor());
 
 			assertTrue(capturedHeadless[0]);
 		}
@@ -446,7 +436,7 @@ public class RunAllCypressFormTestsHandlerTest {
 			};
 
 			List<String> forms = List.of("loginForm", "dashboardForm", "settingsForm");
-			handler.runTestsCore(forms, mockRunner, new NullProgressMonitor());
+			run(forms, mockRunner, new NullProgressMonitor());
 
 			assertEquals(forms, capturedNames);
 		}

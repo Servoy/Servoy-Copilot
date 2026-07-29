@@ -26,6 +26,8 @@ import com.servoy.eclipse.developer.mcp.actions.CypressTestAdapterFactoryTest;
 import com.servoy.eclipse.developer.mcp.actions.CypressTestPropertyTesterTest;
 import com.servoy.eclipse.developer.mcp.actions.RunAllCypressFormTestsHandlerTest;
 import com.servoy.eclipse.developer.mcp.actions.RunCypressFormTestHandlerTest;
+import com.servoy.eclipse.developer.mcp.headless.CypressFormTestArgumentChestTest;
+import com.servoy.eclipse.developer.mcp.headless.JUnitXmlReporterTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphServiceTest;
@@ -49,6 +51,8 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
  * FormPreviewServiceTest, NavigationGraphTest,
  * PersistDuplicateServiceTest</li>
  * <li>{@code servers.*}: ServoyI18nServerTest</li>
+ * <li>{@code headless.*}: CypressFormTestArgumentChestTest,
+ * JUnitXmlReporterTest</li>
  * <li>{@code actions.*}: CypressConsoleUtilTest,
  * CypressEditorInputPropertyTesterTest, CypressTestAdapterFactoryTest,
  * CypressTestPropertyTesterTest, RunAllCypressFormTestsHandlerTest,
@@ -81,6 +85,9 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 		PersistDuplicateServiceTest.class,
 		// servers
 		ServoyI18nServerTest.class,
+		// headless
+		CypressFormTestArgumentChestTest.class,
+		JUnitXmlReporterTest.class,
 		// actions
 		CypressConsoleUtilTest.class,
 		CypressEditorInputPropertyTesterTest.class,
