@@ -282,7 +282,7 @@ public class CypressFormTestingIntegrationTest {
 		if (!specGenerator.specExists(TEST_FORM))
 			specGenerator.generateSpec(TEST_FORM);
 
-		specRunner.runSpec(TEST_FORM, true);
+		specRunner.runFormCypressTests(TEST_FORM, true);
 
 		Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
 		Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
@@ -413,11 +413,11 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(TEST_FORM);
 
-		String result = specRunner.runSpec(TEST_FORM, true);
+		String result = specRunner.runFormCypressTests(TEST_FORM, true);
 
-		assertNotNull("runSpec result should not be null", result);
+		assertNotNull("runFormCypressTests result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
-		assertTrue("runSpec should return pass/fail or timed out",
+		assertTrue("runFormCypressTests should return pass/fail or timed out",
 				result.contains("passed") || result.contains("failed") || result.contains("timed out"));
 	}
 
@@ -450,7 +450,7 @@ public class CypressFormTestingIntegrationTest {
 		Files.writeString(testsDir.resolve(BUTTON_LABEL_FORM + ".spec.cy.js"), cySpec,
 				java.nio.charset.StandardCharsets.UTF_8);
 
-		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
+		String result = specRunner.runFormCypressTests(BUTTON_LABEL_FORM, true);
 
 		assertNotNull("Cypress button/label test result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
@@ -465,7 +465,7 @@ public class CypressFormTestingIntegrationTest {
 
 		specGenerator.generateSpec(BUTTON_LABEL_FORM);
 
-		String result = specRunner.runSpec(BUTTON_LABEL_FORM, true);
+		String result = specRunner.runFormCypressTests(BUTTON_LABEL_FORM, true);
 
 		assertNotNull("Generated spec run result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));

@@ -42,9 +42,9 @@ public class RunSingleTestHandler {
 					long startTime = System.currentTimeMillis();
 					String result;
 					if (testType == TestType.E2E) {
-						result = runner.runE2ESpec(testName, true);
+						result = runner.runE2ECypressTests(testName, true);
 					} else {
-						result = runner.runSpec(testName, true);
+						result = runner.runFormCypressTests(testName, true);
 					}
 					long durationMs = System.currentTimeMillis() - startTime;
 

@@ -186,9 +186,9 @@ public class FormSpecRunner
 	 * @param headless true for headless (default), false for headed (debugging)
 	 * @return test results output
 	 */
-	public String runSpec(String formName, boolean headless)
+	public String runFormCypressTests(String formName, boolean headless)
 	{
-		return runSpec(formName, headless, DEFAULT_TIMEOUT_SECONDS, null);
+		return runFormCypressTests(formName, headless, DEFAULT_TIMEOUT_SECONDS, null);
 	}
 
 	/**
@@ -201,7 +201,7 @@ public class FormSpecRunner
 	 * @param extraCypressArgs optional space-separated extra arguments appended to the Cypress command (may be null)
 	 * @return test results output
 	 */
-	public String runSpec(String formName, boolean headless, int timeoutSeconds, String extraCypressArgs)
+	public String runFormCypressTests(String formName, boolean headless, int timeoutSeconds, String extraCypressArgs)
 	{
 		int effectiveTimeout = timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
 		try
@@ -222,7 +222,7 @@ public class FormSpecRunner
 			// The form spec lives under the e2e-test-scripts project tree, so Cypress MUST
 			// be run with that folder as its project root (a spec outside the project root
 			// is reported as "no spec files were found"). Reuse the same project-local
-			// Cypress install + config that runE2ESpec uses, rather than the bundled
+			// Cypress install + config that runE2ECypressTests uses, rather than the bundled
 			// .metadata Cypress whose root is elsewhere.
 			Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
 			Path scriptsRoot = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
@@ -497,11 +497,11 @@ public class FormSpecRunner
 	 * Runs the Cypress E2E spec for the given form from jenkins-custom/e2e-test-scripts/cypress/e2e/&lt;solutionName&gt;/.
 	 * Falls back to a recursive search across all solution subdirectories.
 	 *
-	 * @param targetForm the form name whose .cy.js to run (e.g. 'order_detail' → 'order_detail.cy.js')
+	 * @param targetForm the form name whose .cy.js or .cy.ts to run (e.g. 'order_detail' → 'order_detail.cy.ts')
 	 * @param headless true for headless (default), false for headed (debugging)
 	 * @return test results output
 	 */
-	public String runE2ESpec(String targetForm, boolean headless)
+	public String runE2ECypressTests(String targetForm, boolean headless)
 	{
 		try
 		{

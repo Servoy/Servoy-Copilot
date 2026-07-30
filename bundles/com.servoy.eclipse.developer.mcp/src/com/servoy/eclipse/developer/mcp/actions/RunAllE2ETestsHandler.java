@@ -82,7 +82,7 @@ public class RunAllE2ETestsHandler {
 						sessionManager.markRunning(testName, TestType.E2E);
 
 						long startTime = System.currentTimeMillis();
-						String result = runner.runE2ESpec(testName, true);
+						String result = runner.runE2ECypressTests(testName, true);
 						long durationMs = System.currentTimeMillis() - startTime;
 
 						TestStatus status = CypressOutputParser.determineStatus(result);

@@ -276,7 +276,7 @@ public class RunAllCypressFormTestsHandlerTest {
 		private FormSpecRunner createMockRunner(String passPrefix) {
 			return new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					if (formName.startsWith(passPrefix)) {
 						return "All tests passed for " + formName;
 					}
@@ -412,7 +412,7 @@ public class RunAllCypressFormTestsHandlerTest {
 			final boolean[] capturedHeadless = { false };
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					capturedHeadless[0] = headless;
 					return "All tests passed";
 				}
@@ -429,7 +429,7 @@ public class RunAllCypressFormTestsHandlerTest {
 			final java.util.List<String> capturedNames = new java.util.ArrayList<>();
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					capturedNames.add(formName);
 					return "All tests passed";
 				}

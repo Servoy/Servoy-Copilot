@@ -19,27 +19,27 @@ public class FormSpecRunnerTest
 	}
 
 	@Test
-	public void testFormSpecRunner_hasRunSpecMethod() throws NoSuchMethodException
+	public void testFormSpecRunner_hasRunFormCypressTestsMethod() throws NoSuchMethodException
 	{
-		assertNotNull("FormSpecRunner must have runSpec(String, boolean) method",
-			FormSpecRunner.class.getMethod("runSpec", String.class, boolean.class));
+		assertNotNull("FormSpecRunner must have runFormCypressTests(String, boolean) method",
+			FormSpecRunner.class.getMethod("runFormCypressTests", String.class, boolean.class));
 	}
 
 	@Test
-	public void testFormSpecRunner_runSpecReturnType() throws NoSuchMethodException
+	public void testFormSpecRunner_runFormCypressTestsReturnType() throws NoSuchMethodException
 	{
-		assertTrue("runSpec must return String",
-			FormSpecRunner.class.getMethod("runSpec", String.class, boolean.class)
+		assertTrue("runFormCypressTests must return String",
+			FormSpecRunner.class.getMethod("runFormCypressTests", String.class, boolean.class)
 				.getReturnType() == String.class);
 	}
 
 	@Test
-	public void testFormSpecRunner_runSpec_noActiveProject()
+	public void testFormSpecRunner_runFormCypressTests_noActiveProject()
 	{
 		FormSpecRunner runner = new FormSpecRunner();
 		try
 		{
-			String result = runner.runSpec("nonExistentForm", true);
+			String result = runner.runFormCypressTests("nonExistentForm", true);
 			assertNotNull(result);
 			assertTrue("Should return error when no active project",
 				result.contains("Error"));
@@ -51,9 +51,9 @@ public class FormSpecRunnerTest
 	}
 
 	@Test
-	public void testFormSpecRunner_runSpec_headlessParam() throws NoSuchMethodException
+	public void testFormSpecRunner_runFormCypressTests_headlessParam() throws NoSuchMethodException
 	{
-		Method m = FormSpecRunner.class.getMethod("runSpec", String.class, boolean.class);
+		Method m = FormSpecRunner.class.getMethod("runFormCypressTests", String.class, boolean.class);
 		assertEquals("Second param should be boolean for headless",
 			boolean.class, m.getParameterTypes()[1]);
 	}
@@ -127,5 +127,60 @@ public class FormSpecRunnerTest
 	{
 		FormSpecRunner runner = new FormSpecRunner();
 		assertNotNull("FormSpecRunner should be instantiable", runner);
+	}
+
+	@Test
+	public void testFormSpecRunner_hasRunE2ECypressTestsMethod() throws NoSuchMethodException
+	{
+		assertNotNull("FormSpecRunner must have runE2ECypressTests(String, boolean) method",
+			FormSpecRunner.class.getMethod("runE2ECypressTests", String.class, boolean.class));
+	}
+
+	@Test
+	public void testFormSpecRunner_runE2ECypressTestsReturnType() throws NoSuchMethodException
+	{
+		assertTrue("runE2ECypressTests must return String",
+			FormSpecRunner.class.getMethod("runE2ECypressTests", String.class, boolean.class)
+				.getReturnType() == String.class);
+	}
+
+	@Test
+	public void testFormSpecRunner_runE2ECypressTestsHasHeadlessParam() throws NoSuchMethodException
+	{
+		Method m = FormSpecRunner.class.getMethod("runE2ECypressTests", String.class, boolean.class);
+		assertEquals("Second param should be boolean for headless",
+			boolean.class, m.getParameterTypes()[1]);
+	}
+
+	@Test
+	public void testFormSpecRunner_doesNotHaveRunSpecMethod()
+	{
+		Method[] methods = FormSpecRunner.class.getDeclaredMethods();
+		boolean found = false;
+		for (Method m : methods)
+		{
+			if ("runSpec".equals(m.getName()))
+			{
+				found = true;
+				break;
+			}
+		}
+		assertTrue("FormSpecRunner must NOT have runSpec method (renamed to runFormCypressTests)", !found);
+	}
+
+	@Test
+	public void testFormSpecRunner_doesNotHaveRunE2ESpecMethod()
+	{
+		Method[] methods = FormSpecRunner.class.getDeclaredMethods();
+		boolean found = false;
+		for (Method m : methods)
+		{
+			if ("runE2ESpec".equals(m.getName()))
+			{
+				found = true;
+				break;
+			}
+		}
+		assertTrue("FormSpecRunner must NOT have runE2ESpec method (renamed to runE2ECypressTests)", !found);
 	}
 }

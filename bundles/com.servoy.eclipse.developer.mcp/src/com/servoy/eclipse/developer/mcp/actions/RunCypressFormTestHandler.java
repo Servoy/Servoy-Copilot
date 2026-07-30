@@ -104,9 +104,9 @@ public class RunCypressFormTestHandler extends AbstractHandler {
 		com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType testType = discoveryService
 				.getTestType(formName);
 		if (testType == com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryService.TestType.E2E) {
-			return runner.runE2ESpec(formName, false);
+			return runner.runE2ECypressTests(formName, false);
 		}
-		return runner.runSpec(formName, false);
+		return runner.runFormCypressTests(formName, false);
 	}
 
 	/**

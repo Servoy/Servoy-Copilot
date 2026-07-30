@@ -42,7 +42,8 @@ public class FormSpecGenerator {
 	/**
 	 * Generates spec files for the given form. Cypress spec:
 	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form/{formName}.spec.cy.js
-	 * Servoy setUp/tearDown: {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form-spec/{formName}.spec.js
+	 * Servoy setUp/tearDown:
+	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form-spec/{formName}.spec.js
 	 */
 	public String generateSpec(String formName) {
 		try {
@@ -103,7 +104,8 @@ public class FormSpecGenerator {
 	 * {workspace}/jenkins-custom/e2e-test-scripts/cypress/cy-form The directory
 	 * lives outside any solution project so the specs are never bundled into a
 	 * deployed/exported solution. The workspace root is the same anchor used by
-	 * FormSpecRunner.runE2ESpec and ServoyTestingServer.generateCypressE2ETest.
+	 * FormSpecRunner.runE2ECypressTests and
+	 * ServoyTestingServer.generateCypressE2ETest.
 	 */
 	private Path resolveFormSpecDir() {
 		Path workspaceRoot = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()

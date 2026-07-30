@@ -164,7 +164,7 @@ public class RunCypressFormTestHandlerTest {
 		void returnsErrorForNullFormName() {
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					return "All tests passed";
 				}
 			};
@@ -179,7 +179,7 @@ public class RunCypressFormTestHandlerTest {
 		void returnsErrorForBlankFormName() {
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					return "All tests passed";
 				}
 			};
@@ -190,13 +190,13 @@ public class RunCypressFormTestHandlerTest {
 		}
 
 		@Test
-		@DisplayName("delegates to runner.runSpec with headless=false")
+		@DisplayName("delegates to runner.runFormCypressTests with headless=false")
 		void delegatesToRunnerWithHeadlessFalse() {
 			final boolean[] capturedHeadless = { true };
 			final String[] capturedFormName = { null };
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					capturedFormName[0] = formName;
 					capturedHeadless[0] = headless;
 					return "All tests passed for " + formName;
@@ -217,7 +217,7 @@ public class RunCypressFormTestHandlerTest {
 		void returnsRunnerResultDirectly() {
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					return "FAILED: " + formName + " had 3 errors";
 				}
 			};
@@ -233,7 +233,7 @@ public class RunCypressFormTestHandlerTest {
 			final String[] captured = { null };
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					captured[0] = formName;
 					return "done";
 				}
@@ -249,7 +249,7 @@ public class RunCypressFormTestHandlerTest {
 		void handlesRunnerReturningError() {
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					return "Error: No active Servoy project.";
 				}
 			};
@@ -264,7 +264,7 @@ public class RunCypressFormTestHandlerTest {
 		void handlesRunnerReturningEmpty() {
 			FormSpecRunner mockRunner = new FormSpecRunner() {
 				@Override
-				public String runSpec(String formName, boolean headless) {
+				public String runFormCypressTests(String formName, boolean headless) {
 					return "";
 				}
 			};

@@ -57,7 +57,8 @@ public class HeadlessFormTestExecutor {
 
 			output.accept("Running: " + formName);
 			long startTime = System.currentTimeMillis();
-			String testOutput = specRunner.runSpec(formName, true, arguments.getTimeout(), arguments.getCypressArgs());
+			String testOutput = specRunner.runFormCypressTests(formName, true, arguments.getTimeout(),
+					arguments.getCypressArgs());
 			long durationMs = System.currentTimeMillis() - startTime;
 
 			boolean error = isTestError(testOutput);

@@ -247,7 +247,7 @@ public class ShowFormInBrowserIntegrationTest {
 				java.nio.charset.StandardCharsets.UTF_8);
 
 		com.servoy.eclipse.developer.mcp.services.FormSpecRunner specRunner = new com.servoy.eclipse.developer.mcp.services.FormSpecRunner();
-		String result = specRunner.runSpec(FORM_BUTTON_LABEL, true);
+		String result = specRunner.runFormCypressTests(FORM_BUTTON_LABEL, true);
 
 		assertNotNull("Cypress result should not be null", result);
 		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));

@@ -734,4 +734,116 @@ public class ServoyTestingServerTest {
 		assertTrue("screenshotForm description should mention returning text error: " + tool.description(),
 				tool.description().contains("text error"));
 	}
+
+	// -----------------------------------------------------------------------
+	// testE2E and showAndTestE2E tool tests (SVY-21102)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testServoyTestingServer_hasTestE2ETool() {
+		assertTrue("ServoyTestingServer must have a 'testE2E' tool", hasToolNamed("testE2E"));
+	}
+
+	@Test
+	public void testServoyTestingServer_hasShowAndTestE2ETool() {
+		assertTrue("ServoyTestingServer must have a 'showAndTestE2E' tool", hasToolNamed("showAndTestE2E"));
+	}
+
+	@Test
+	public void testTestE2E_hasOneParam() {
+		Method m = findToolMethod("testE2E");
+		assertNotNull("testE2E tool not found", m);
+		assertEquals("testE2E must have 1 parameter", 1, m.getParameterCount());
+		assertNotNull("testE2E parameter must have @ToolParam",
+				m.getParameters()[0].getAnnotation(ToolParam.class));
+	}
+
+	@Test
+	public void testShowAndTestE2E_hasOneParam() {
+		Method m = findToolMethod("showAndTestE2E");
+		assertNotNull("showAndTestE2E tool not found", m);
+		assertEquals("showAndTestE2E must have 1 parameter", 1, m.getParameterCount());
+		assertNotNull("showAndTestE2E parameter must have @ToolParam",
+				m.getParameters()[0].getAnnotation(ToolParam.class));
+	}
+
+	// -----------------------------------------------------------------------
+	// generateCypressE2ETest .cy.ts extension tests (SVY-21102)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testGenerateCypressE2ETest_outputFileNameParamMentionsCyTs() {
+		Method m = findToolMethod("generateCypressE2ETest");
+		assertNotNull("generateCypressE2ETest tool not found", m);
+		// outputFileName is the 4th parameter (index 3): targetForm, scenario, fromForm, outputFileName, ...
+		ToolParam param = m.getParameters()[3].getAnnotation(ToolParam.class);
+		assertNotNull("outputFileName parameter must have @ToolParam", param);
+		assertTrue("outputFileName @ToolParam description must mention .cy.ts: " + param.description(),
+				param.description().contains(".cy.ts"));
+	}
+
+	@Test
+	public void testGenerateCypressE2ETest_descriptionMentionsCyTs() {
+		Method m = findToolMethod("generateCypressE2ETest");
+		assertNotNull("generateCypressE2ETest tool not found", m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue("generateCypressE2ETest @Tool description must mention cy.ts: " + desc,
+				desc.contains("cy.ts") || desc.contains(".cy.ts"));
+	}
+
+	// --- SVY-21102: behavioral tests for resolveE2EFileName and specPattern ---
+
+	@Test
+	public void testResolveE2EFileName_nullOutputFileName_defaultsToCyTs() {
+		String result = ServoyTestingServer.resolveE2EFileName(null, "myForm");
+		assertEquals("myForm.cy.ts", result);
+	}
+
+	@Test
+	public void testResolveE2EFileName_blankOutputFileName_defaultsToCyTs() {
+		String result = ServoyTestingServer.resolveE2EFileName("  ", "orderForm");
+		assertEquals("orderForm.cy.ts", result);
+	}
+
+	@Test
+	public void testResolveE2EFileName_explicitCyTs_passesThrough() {
+		String result = ServoyTestingServer.resolveE2EFileName("custom_flow.cy.ts", "myForm");
+		assertEquals("custom_flow.cy.ts", result);
+	}
+
+	@Test
+	public void testResolveE2EFileName_explicitCyJs_passesThrough() {
+		String result = ServoyTestingServer.resolveE2EFileName("legacy_flow.cy.js", "myForm");
+		assertEquals("legacy_flow.cy.js", result);
+	}
+
+	@Test
+	public void testResolveE2EFileName_plainJsExtension_normalizedToCyTs() {
+		String result = ServoyTestingServer.resolveE2EFileName("flow.js", "myForm");
+		assertEquals("flow.cy.ts", result);
+	}
+
+	@Test
+	public void testResolveE2EFileName_plainTsExtension_normalizedToCyTs() {
+		String result = ServoyTestingServer.resolveE2EFileName("flow.ts", "myForm");
+		assertEquals("flow.cy.ts", result);
+	}
+
+	@Test
+	public void testCypressE2ESpecPattern_containsCyTs() {
+		assertTrue("CYPRESS_E2E_SPEC_PATTERN must include cy.ts",
+				ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.ts"));
+	}
+
+	@Test
+	public void testCypressE2ESpecPattern_containsSpecCyJs() {
+		assertTrue("CYPRESS_E2E_SPEC_PATTERN must include spec.cy.js for form specs",
+				ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("spec.cy.js"));
+	}
+
+	@Test
+	public void testCypressE2ESpecPattern_containsCyJs() {
+		assertTrue("CYPRESS_E2E_SPEC_PATTERN must include cy.js for backward compatibility",
+				ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.js"));
+	}
 }

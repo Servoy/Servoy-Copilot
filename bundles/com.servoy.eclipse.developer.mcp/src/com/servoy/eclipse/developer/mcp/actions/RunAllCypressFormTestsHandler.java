@@ -219,7 +219,7 @@ public class RunAllCypressFormTestsHandler extends AbstractHandler {
 			sessionManager.markRunning(formName, TestType.FORM);
 
 			long startTime = System.currentTimeMillis();
-			String result = runner.runSpec(formName, true);
+			String result = runner.runFormCypressTests(formName, true);
 			long durationMs = System.currentTimeMillis() - startTime;
 
 			results.add(result);

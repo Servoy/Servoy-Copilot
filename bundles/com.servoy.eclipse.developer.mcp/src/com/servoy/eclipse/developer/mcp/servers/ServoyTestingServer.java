@@ -60,8 +60,8 @@ public class ServoyTestingServer {
 	/**
 	 * Scans the cypress/support/ directory (recursively) for custom commands and
 	 * helper functions. Reads all .js and .ts files (excluding e2e.js/e2e.ts which
-	 * are just imports) and returns their content so the AI can use existing helpers
-	 * in generated tests.
+	 * are just imports) and returns their content so the AI can use existing
+	 * helpers in generated tests.
 	 */
 	private String discoverCypressHelpers(java.nio.file.Path supportDir) {
 		if (!java.nio.file.Files.exists(supportDir) || !java.nio.file.Files.isDirectory(supportDir)) {
@@ -70,7 +70,8 @@ public class ServoyTestingServer {
 		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(supportDir)) {
 			StringBuilder sb = new StringBuilder();
 			files.filter(p -> {
-				if (!java.nio.file.Files.isRegularFile(p)) return false;
+				if (!java.nio.file.Files.isRegularFile(p))
+					return false;
 				String name = p.getFileName().toString();
 				return (name.endsWith(".js") || name.endsWith(".ts")) && !name.equals("e2e.js")
 						&& !name.equals("e2e.ts");
@@ -221,7 +222,7 @@ public class ServoyTestingServer {
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
-			String result = specRunner.runSpec(formName, true);
+			String result = specRunner.runFormCypressTests(formName, true);
 			writeToConsole(result);
 			return result;
 		} catch (Exception e) {
@@ -243,7 +244,7 @@ public class ServoyTestingServer {
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
-			String result = specRunner.runSpec(formName, false);
+			String result = specRunner.runFormCypressTests(formName, false);
 			writeToConsole(result);
 			return result;
 		} catch (Exception e) {
@@ -311,7 +312,7 @@ public class ServoyTestingServer {
 			@ToolParam(description = "The form name to test (e.g. 'order_detail'). Looks for <formName>.cy.js in the E2E directory.") String targetForm) {
 		try {
 			ensureTestingMode();
-			String result = specRunner.runE2ESpec(targetForm, true);
+			String result = specRunner.runE2ECypressTests(targetForm, true);
 			writeToConsole(result);
 			return result;
 		} catch (Exception e) {
@@ -329,7 +330,7 @@ public class ServoyTestingServer {
 			@ToolParam(description = "The form name to test (e.g. 'order_detail'). Looks for <formName>.cy.js in the E2E directory.") String targetForm) {
 		try {
 			ensureTestingMode();
-			String result = specRunner.runE2ESpec(targetForm, false);
+			String result = specRunner.runE2ECypressTests(targetForm, false);
 			writeToConsole(result);
 			return result;
 		} catch (Exception e) {
@@ -735,7 +736,7 @@ public class ServoyTestingServer {
 	@Tool(name = "generateCypressE2ETest", description = "Generates a Cypress E2E (end-to-end) navigation test file for a multi-form workflow. "
 			+ "USE THIS only for E2E/integration tests that navigate across multiple forms. "
 			+ "Do NOT use this for single-form testing — use generateFormSpec instead. "
-			+ "Writes the .cy.js file to jenkins-custom/e2e-test-scripts/cypress/e2e/<solutionName>/ in the Servoy workspace, "
+			+ "Writes the .cy.ts file to jenkins-custom/e2e-test-scripts/cypress/e2e/<solutionName>/ in the Servoy workspace, "
 			+ "which is the standard Servoy Cloud E2E test directory structure. "
 			+ "Also creates cypress.config.js in jenkins-custom/e2e-test-scripts/ if it does not exist yet. "
 			+ "The file contains a describe block, a beforeEach that visits the app, and an it block with the navigation steps already filled in from the graph. "
@@ -748,7 +749,7 @@ public class ServoyTestingServer {
 			@ToolParam(description = "The target form to reach and test (e.g. 'dialogform1').") String targetForm,
 			@ToolParam(description = "Plain-English description of what the test should verify. Embedded as a comment in the generated file.") String scenario,
 			@ToolParam(description = "Optional: form to start navigation from. Defaults to the solution main form.") String fromForm,
-			@ToolParam(description = "Optional: output file name (e.g. 'dialog_flow.cy.js'). Defaults to '<targetForm>.cy.js'.") String outputFileName,
+			@ToolParam(description = "Optional: output file name (e.g. 'dialog_flow.cy.ts'). Defaults to '<targetForm>.cy.ts'.") String outputFileName,
 			@ToolParam(description = "Optional: base URL of the running Servoy app (e.g. 'http://localhost:8183'). Defaults to the server's actual port.") String baseUrl,
 			@ToolParam(description = "Optional: URL where the login form is located. Required when the solution needs authentication.") String loginUrl,
 			@ToolParam(description = "Optional: test user username for login. Required when the solution needs authentication.") String testUsername,
@@ -788,9 +789,9 @@ public class ServoyTestingServer {
 
 			// resolve file name
 			String fileName = (outputFileName != null && !outputFileName.isBlank()) ? outputFileName
-					: targetForm + ".cy.js";
+					: targetForm + ".cy.ts";
 			if (!fileName.endsWith(".cy.js") && !fileName.endsWith(".cy.ts"))
-				fileName = fileName.replaceAll("\\.js$|\\.ts$", "") + ".cy.js";
+				fileName = fileName.replaceAll("\\.js$|\\.ts$", "") + ".cy.ts";
 
 			// get navigation path and generate content
 			NavigationGraph graph = navigationService.buildFullGraph();
@@ -822,8 +823,8 @@ public class ServoyTestingServer {
 						+ "  screenshotsFolder: 'cypress/screenshots',\n" + "  videosFolder: 'cypress/videos',\n"
 						+ "  fixturesFolder: 'cypress/fixtures',\n" + "  viewportWidth: 1920,\n"
 						+ "  viewportHeight: 1080,\n" + "  chromeWebSecurity: false,\n" + "  e2e: {\n"
-						+ "    baseUrl: '" + resolvedBaseUrl + "',\n"
-						+ "    specPattern: '**/*.{cy.js,spec.js,test.js}',\n" + "    setupNodeEvents(on, config) {\n"
+						+ "    baseUrl: '" + resolvedBaseUrl + "',\n" + "    specPattern: '" + CYPRESS_E2E_SPEC_PATTERN
+						+ "',\n" + "    setupNodeEvents(on, config) {\n"
 						+ "      // implement node event listeners here\n" + "    },\n" + "  },\n" + "};\n";
 				java.nio.file.Files.writeString(configFile, configContent, java.nio.charset.StandardCharsets.UTF_8);
 			}
@@ -875,6 +876,24 @@ public class ServoyTestingServer {
 			return "Error: " + e.getMessage();
 		}
 	}
+
+	/**
+	 * Resolves the E2E test file name from the optional caller-supplied name and
+	 * the target form. Package-private for unit testing.
+	 */
+	static String resolveE2EFileName(String outputFileName, String targetForm) {
+		String fileName = (outputFileName != null && !outputFileName.isBlank()) ? outputFileName
+				: targetForm + ".cy.ts";
+		if (!fileName.endsWith(".cy.js") && !fileName.endsWith(".cy.ts"))
+			fileName = fileName.replaceAll("\\.js$|\\.ts$", "") + ".cy.ts";
+		return fileName;
+	}
+
+	/**
+	 * The specPattern written into the scaffolded cypress.config.js.
+	 * Package-private for unit testing.
+	 */
+	static final String CYPRESS_E2E_SPEC_PATTERN = "**/*.{cy.js,cy.ts,spec.cy.js,spec.js,spec.ts,test.js,test.ts}";
 
 	private String injectLoginIntoBeforeEach(String content) {
 		String beforeEachVisit = "  beforeEach(() => {\n    cy.visit('";
