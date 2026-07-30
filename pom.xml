@@ -14,8 +14,17 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
+        <servoy.url>https://build.servoy.com/latest/servoy_lts_2026/update_site/</servoy.url>
     </properties>
 
+    <repositories>
+         <repository>
+            <id>servoy</id>
+            <url>${servoy.url}</url>
+            <layout>p2</layout>
+        </repository>
+    </repositories>
+    
     <build>
         <plugins>
             <plugin>

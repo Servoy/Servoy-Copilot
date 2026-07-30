@@ -11,7 +11,7 @@ pipeline {
     
     parameters {
         // Standaard goals voor dit specifieke project overgenomen uit de oude config
-        string(name: 'goals', defaultValue: 'clean install -U', trim: false)
+        string(name: 'goals', defaultValue: 'clean install -Dtycho.localArtifacts=ignore -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/', trim: false)
     }
     
     environment {
