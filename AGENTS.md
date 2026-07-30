@@ -103,10 +103,10 @@ These tests use no live Eclipse workspace or OSGi container — pure Java, refle
 | `c.s.e.d.mcp.cache` | `ServoyResourceCacheTest` |
 | `c.s.e.d.mcp.guard` | `ServoyFileGuardTest` |
 | `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `GenerateTestCasesToolTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyDevServerTest`, `ServoyGitServerTest`, `ServoyIdeServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest` |
-| `c.s.e.d.mcp.services` | `FormSpecGeneratorTest`, `FormSpecRunnerTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `TestFileServiceReflectionTest` |
+| `c.s.e.d.mcp.services` | `FormSpecGeneratorTest`, `FormSpecRunnerTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `TestFileServiceReflectionTest`, `RunCypressFormTestsLauncherTest` |
 | `c.s.e.d.mcp.integration` | `ServoyDevServerIntegrationTest` (despite package name, this is a pure unit test) |
 
-Total: **22 plain JUnit tests**
+Total: **23 plain JUnit tests**
 
 #### Plugin tests (run with `eclipse-pde_runJUnitPluginTestClass`)
 

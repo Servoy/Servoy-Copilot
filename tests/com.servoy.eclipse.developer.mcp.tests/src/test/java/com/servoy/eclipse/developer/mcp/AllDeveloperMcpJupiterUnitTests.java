@@ -28,6 +28,7 @@ import com.servoy.eclipse.developer.mcp.actions.RunAllCypressFormTestsHandlerTes
 import com.servoy.eclipse.developer.mcp.actions.RunCypressFormTestHandlerTest;
 import com.servoy.eclipse.developer.mcp.headless.CypressFormTestArgumentChestTest;
 import com.servoy.eclipse.developer.mcp.headless.JUnitXmlReporterTest;
+import com.servoy.eclipse.developer.mcp.services.RunCypressFormTestsLauncherTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
 import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphServiceTest;
@@ -88,6 +89,7 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 		// headless
 		CypressFormTestArgumentChestTest.class,
 		JUnitXmlReporterTest.class,
+		RunCypressFormTestsLauncherTest.class,
 		// actions
 		CypressConsoleUtilTest.class,
 		CypressEditorInputPropertyTesterTest.class,
