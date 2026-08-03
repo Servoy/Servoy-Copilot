@@ -63,7 +63,22 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 			throws ServletException, IOException {
 		if (!authenticate(request, response))
 			return;
-		delegate.service(request, response);
+		try {
+			delegate.service(request, response);
+		} catch (Exception e) {
+			if (!response.isCommitted()) {
+				String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+				ServoyLog.logError("MCP request processing error: " + msg, e);
+				String escaped = new String(
+						com.fasterxml.jackson.core.io.JsonStringEncoder.getInstance().quoteAsString(msg));
+				response.setStatus(HttpServletResponse.SC_OK);
+				response.setContentType("application/json");
+				response.getWriter()
+						.write("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,"
+								+ "\"message\":\"JSON parsing failed: " + escaped + ". "
+								+ "Please ensure the request body is valid JSON.\"},\"id\":null}");
+			}
+		}
 	}
 
 	@Override
@@ -74,8 +89,7 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 		chain.doFilter(request, response);
 	}
 
-	private boolean authenticate(HttpServletRequest request, HttpServletResponse response)
-			throws IOException {
+	private boolean authenticate(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		// Servoy internal developers (@servoy.com) bypass token auth entirely
 		if (isServoyInternalUser())
 			return true;
@@ -84,8 +98,7 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 
 		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
 			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: expected 'Bearer <token>', got: "
-					+
-					(authHeader == null ? "<no Authorization header>" : "'" + authHeader.split(" ")[0] + " ...'"),
+					+ (authHeader == null ? "<no Authorization header>" : "'" + authHeader.split(" ")[0] + " ...'"),
 					null);
 			sendUnauthorized(response, "Missing or invalid Authorization header");
 			return false;
@@ -93,8 +106,8 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 
 		String token = authHeader.substring(7);
 		if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token)) {
-			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: token mismatch" +
-					" (received length=" + token.length() + ", expected length="
+			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: token mismatch"
+					+ " (received length=" + token.length() + ", expected length="
 					+ (expectedToken == null ? "null" : expectedToken.length()) + ")", null);
 			sendUnauthorized(response, "Invalid token");
 			return false;
@@ -105,9 +118,8 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 
 	private static boolean isServoyInternalUser() {
 		try {
-			org.eclipse.equinox.security.storage.ISecurePreferences node =
-				org.eclipse.equinox.security.storage.SecurePreferencesFactory.getDefault()
-					.node(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
+			org.eclipse.equinox.security.storage.ISecurePreferences node = org.eclipse.equinox.security.storage.SecurePreferencesFactory
+					.getDefault().node(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
 			String username = node.get(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_USERNAME, null);
 			return username != null && username.toLowerCase().endsWith("@servoy.com"); //$NON-NLS-1$
 		} catch (Exception e) {

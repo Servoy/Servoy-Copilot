@@ -77,6 +77,15 @@ public class McpServerFactory
 		McpSchema.ServerCapabilities capabilities = createCapabilities();
 		List<SyncToolSpecification> toolSpecs = createToolSpecifications(serverImpl, excludedTools);
 
+		// Missing-required-param validation is handled by validateRequiredParams() at
+		// handler level to produce recoverable tool errors instead of protocol-level
+		// exceptions. The jsonMapper/jsonSchemaValidator below are still supplied
+		// explicitly (rather than relying on McpJsonDefaults' OSGi ServiceLoader/DS
+		// lookup) because mcp-json-jackson2 is embedded on this bundle's
+		// Bundle-ClassPath rather than wired in as a real OSGi bundle, so its
+		// Service-Component declarations are never processed and the ServiceLoader
+		// lookup fails with a ServiceConfigurationError.
+		// @formatter:off
 		McpSyncServer server = McpServer.sync(transportProvider)
 			.serverInfo(info)
 			.capabilities(capabilities)
@@ -84,6 +93,7 @@ public class McpServerFactory
 			.jsonMapper(new io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier().get())
 			.jsonSchemaValidator(new io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier().get())
 			.build();
+		// @formatter:on
 
 		registerCancelledNotificationHandler(transportProvider);
 
@@ -153,16 +163,56 @@ public class McpServerFactory
 
 		if (tools.isEmpty())
 		{
-			Platform.getLog(McpServerFactory.class).warn("No @Tool methods found on " + serverImpl.getClass().getName());
+			org.osgi.framework.Bundle bundle = FrameworkUtil.getBundle(McpServerFactory.class);
+			if (bundle != null)
+			{
+				Platform.getLog(McpServerFactory.class).warn("No @Tool methods found on " + serverImpl.getClass().getName());
+			}
 		}
 
 		return tools.stream()
 			.filter(tool -> !excluded.contains(tool.name()))
 			.map(tool -> McpServerFeatures.SyncToolSpecification.builder()
 				.tool(tool)
-				.callHandler((exchange, request) -> executeCallTool(executor, tool, request.arguments()))
+				.callHandler((exchange, request) -> {
+					Map<String, Object> args = request.arguments();
+					String validationError = validateRequiredParams(tool, args);
+					if (validationError != null)
+					{
+						var content = new McpSchema.TextContent("Error: " + validationError);
+						return McpSchema.CallToolResult.builder().addContent(content).isError(true).build();
+					}
+					return executeCallTool(executor, tool, args);
+				})
 				.build())
 			.collect(Collectors.toList());
+	}
+
+	static String validateRequiredParams(Tool tool, Map<String, Object> args)
+	{
+		var schema = tool.inputSchema();
+		if (schema == null || schema.required() == null || schema.required().isEmpty())
+		{
+			return null;
+		}
+
+		var missing = new ArrayList<String>();
+		for (String param : schema.required())
+		{
+			if (args == null || !args.containsKey(param) || args.get(param) == null)
+			{
+				missing.add(param);
+			}
+		}
+
+		if (missing.isEmpty())
+		{
+			return null;
+		}
+
+		var received = (args != null) ? args.keySet().stream().sorted().collect(Collectors.toList()) : List.of();
+		return "Missing required parameter(s) for tool '" + tool.name() + "': " + missing + ". " + "Received parameters: " + received + ". " +
+			"Please re-call the tool with all required parameters.";
 	}
 
 	private List<Tool> extractAnnotatedTools(Method... methods)

@@ -67,8 +67,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
  * They must be run as JUnit Plug-in Tests inside a PDE-launched Eclipse
  * instance, NOT as headless surefire tests.
  * <p>
- * Run via: Run As - JUnit Plug-in Test (using
- * DeveloperMcpIntegrationTests.launch)
+ * Run via: Run As - JUnit Plug-in Test (using AllDeveloperMcpIntegrationTests.launch)
  */
 @RunWith(Suite.class)
 @SuiteClasses({ AddTestMethodIntegrationTest.class, CodeAnalysisIntegrationTest.class,

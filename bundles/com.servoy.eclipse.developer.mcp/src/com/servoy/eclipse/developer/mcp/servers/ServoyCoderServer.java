@@ -19,8 +19,6 @@ package com.servoy.eclipse.developer.mcp.servers;
 import java.util.List;
 import java.util.Optional;
 
-import jakarta.inject.Inject;
-
 import org.eclipse.dltk.compiler.problem.DefaultProblem;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
@@ -30,6 +28,8 @@ import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
+
+import jakarta.inject.Inject;
 
 /**
  * MCP server providing generic file-editing tools for the Servoy Developer MCP endpoint.
@@ -62,7 +62,9 @@ public class ServoyCoderServer
 	private final JsCodeValidatorService jsValidator = new JsCodeValidatorService();
 
 	/** Default constructor - required by E4 DI (ContextInjectionFactory.make). */
-	public ServoyCoderServer() { }
+	public ServoyCoderServer()
+	{
+	}
 
 	/** Testing constructor - initialises services directly without E4 DI. */
 	public ServoyCoderServer(CodeEditingService codeEditingService)
@@ -194,9 +196,9 @@ public class ServoyCoderServer
 		return file.substring(0, file.length() - ext.length());
 	}
 
-	@Tool(name = "replaceFileContent",
-		description = "Replaces the entire content of a file with new content.",
-		type = "object")
+	@Tool(name = "replaceFileContent", description = "Replaces the entire content of a file with new content. " +
+		"WARNING: use this for small files. For files longer than ~100 lines " +
+		"that have a relatively small number of changes, it is recommended to use applyPatch or replaceString to avoid context-length issues.", type = "object")
 	public String replaceFileContent(
 		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,

@@ -42,7 +42,7 @@ public abstract class ServoyRunnerTestBase {
 	 * cold smart-client startup (start client + wait for solution load + runJUnitClass) under a
 	 * headless Tycho launch, which is significantly slower than a warm IDE launch.
 	 */
-	protected static final int TIMEOUT_SECONDS = 60;
+	protected static final int TIMEOUT_SECONDS = 120;
 
 	/**
 	 * How long (ms) to poll for the Servoy ApplicationServer singleton on the first
