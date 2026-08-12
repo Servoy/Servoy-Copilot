@@ -63,8 +63,8 @@ public class FormSpecGenerator {
 			Files.createDirectories(testsDir);
 			Files.createDirectories(setupDir);
 
-			Path cySpecPath = testsDir.resolve(formName + SPEC_CY_EXTENSION);
-			Path setupSpecPath = setupDir.resolve(formName + SPEC_JS_EXTENSION);
+			Path cySpecPath = testsDir.resolve(activeProject.getSolution().getName() + "." + formName + SPEC_CY_EXTENSION);
+			Path setupSpecPath = setupDir.resolve(activeProject.getSolution().getName() + "." + formName + SPEC_JS_EXTENSION);
 
 			if (Files.exists(cySpecPath) && Files.exists(setupSpecPath)) {
 				return "Spec files already exist: " + FORM_SPEC_RELATIVE_DIR + "/" + formName + SPEC_CY_EXTENSION
@@ -136,12 +136,39 @@ public class FormSpecGenerator {
 	}
 
 	/**
+	 * Checks if both spec files already exist for the given form with solution prefix.
+	 */
+	public boolean specExists(String formName, String solutionName) {
+		try {
+			Path testsDir = resolveFormSpecDir();
+			Path setupDir = resolveFormSetupDir();
+			return Files.exists(testsDir.resolve(solutionName + "." + formName + SPEC_CY_EXTENSION))
+					&& Files.exists(setupDir.resolve(solutionName + "." + formName + SPEC_JS_EXTENSION));
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+
+	/**
 	 * Returns the path to the Cypress spec file for a given form.
 	 */
 	public Path getSpecFilePath(String formName) {
 		try {
 			Path testsDir = resolveFormSpecDir();
 			return testsDir.resolve(formName + SPEC_CY_EXTENSION);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Returns the path to the Cypress spec file for a given form with solution prefix.
+	 */
+	public Path getSpecFilePath(String formName, String solutionName) {
+		try {
+			Path testsDir = resolveFormSpecDir();
+			return testsDir.resolve(solutionName + "." + formName + SPEC_CY_EXTENSION);
 		} catch (Exception e) {
 			return null;
 		}
@@ -158,6 +185,51 @@ public class FormSpecGenerator {
 			return null;
 		}
 	}
+
+	/**
+	 * Returns the path to the setUp/tearDown spec.js file for a given form with solution prefix.
+	 */
+	public Path getSetupFilePath(String formName, String solutionName) {
+		try {
+			Path setupDir = resolveFormSetupDir();
+			return setupDir.resolve(solutionName + "." + formName + SPEC_JS_EXTENSION);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Finds the existing spec file for a form, checking solution-prefixed path first, then legacy.
+	 */
+	public Path findExistingSpecFile(String formName, String solutionName) {
+		try {
+			Path testsDir = resolveFormSpecDir();
+			Path prefixed = testsDir.resolve(solutionName + "." + formName + SPEC_CY_EXTENSION);
+			if (Files.exists(prefixed)) return prefixed;
+			Path legacy = testsDir.resolve(formName + SPEC_CY_EXTENSION);
+			if (Files.exists(legacy)) return legacy;
+			return null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Finds the existing setup file for a form, checking solution-prefixed path first, then legacy.
+	 */
+	public Path findExistingSetupFile(String formName, String solutionName) {
+		try {
+			Path setupDir = resolveFormSetupDir();
+			Path prefixed = setupDir.resolve(solutionName + "." + formName + SPEC_JS_EXTENSION);
+			if (Files.exists(prefixed)) return prefixed;
+			Path legacy = setupDir.resolve(formName + SPEC_JS_EXTENSION);
+			if (Files.exists(legacy)) return legacy;
+			return null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
 
 	/**
 	 * Returns the workspace-relative Cypress form-spec directory:

@@ -61,8 +61,19 @@ public class CypressTestDiscoveryService {
 		if (testsDir == null || !Files.isDirectory(testsDir)) {
 			return false;
 		}
-		return Files.exists(testsDir.resolve(formName + SPEC_CY_EXTENSION));
+		// Check legacy naming
+		if (Files.exists(testsDir.resolve(formName + SPEC_CY_EXTENSION))) {
+			return true;
+		}
+		// Check solution-prefixed naming (*.formName.spec.cy.js)
+		try {
+			return Files.list(testsDir)
+				.anyMatch(p -> p.getFileName().toString().endsWith("." + formName + SPEC_CY_EXTENSION));
+		} catch (Exception e) {
+			return false;
+		}
 	}
+
 
 	/**
 	 * Checks for an E2E test in cypress/e2e/ (supports .cy.js and .cy.ts).

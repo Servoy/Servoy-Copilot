@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -17,9 +18,17 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ngclient.ui.Activator;
+import com.servoy.j2db.dataprocessing.IDataServerInternal;
 import com.servoy.j2db.persistence.IServerInternal;
+import com.servoy.j2db.server.dataprocessing.ClientHost;
+import com.servoy.j2db.server.dataprocessing.ClientProxy;
+import com.servoy.j2db.server.main.ApplicationServer;
+import com.servoy.j2db.server.ngclient.NGClient;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.server.shared.IClientInternal;
+import com.servoy.j2db.server.shared.IClientManagerInternal;
 
 /**
  * Runs Cypress test specs (.spec.cy.js) against Servoy forms using npx cypress run.
@@ -33,6 +42,7 @@ public class FormSpecRunner
 	private static final String MCP_PLUGIN_DIR = "com.servoy.eclipse.developer.mcp";
 	private static final String CYPRESS_DIR = "cypress";
 	private static final int DEFAULT_TIMEOUT_SECONDS = 60;
+	private static final String FORMPREVIEW_USER_UID = "formpreview_user";
 
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
 	private volatile Process activeProcess;
@@ -212,12 +222,15 @@ public class FormSpecRunner
 				return "Error: No active Servoy project.";
 			}
 
-			Path specFilePath = specGenerator.getSpecFilePath(formName);
-			if (specFilePath == null || !Files.exists(specFilePath))
+			String solutionName = activeProject.getSolution().getName();
+			Path specFilePath = specGenerator.findExistingSpecFile(formName, solutionName);
+			if (specFilePath == null)
 			{
 				return "Error: Spec file not found: jenkins-custom/e2e-test-scripts/cypress/cy-form/" + formName +
 					".spec.cy.js. Use showFormInBrowser first to auto-generate it.";
 			}
+
+			shutdownFormPreviewClients();
 
 			// The form spec lives under the e2e-test-scripts project tree, so Cypress MUST
 			// be run with that folder as its project root (a spec outside the project root
@@ -315,39 +328,76 @@ public class FormSpecRunner
 			Process process = pb.start();
 			activeProcess = process;
 
-			StringBuilder output = new StringBuilder();
-			try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)))
+			try
 			{
-				String line;
-				while ((line = reader.readLine()) != null)
+				StringBuilder output = new StringBuilder();
+				try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)))
 				{
-					output.append(line).append("\n");
+					String line;
+					while ((line = reader.readLine()) != null)
+					{
+						output.append(line).append("\n");
+					}
+				}
+
+				boolean finished = process.waitFor(effectiveTimeout, TimeUnit.SECONDS);
+				activeProcess = null;
+				if (!finished)
+				{
+					process.destroyForcibly();
+					return "Error: Cypress test timed out after " + effectiveTimeout + " seconds.";
+				}
+
+				String rawOutput = output.toString();
+
+				if (process.exitValue() == 0)
+				{
+					return "**Form Spec Results: " + formName + "**\n\nAll tests passed!\n\n" + rawOutput;
+				}
+				else
+				{
+					rawOutput = preserveArtifacts(rawOutput, formName);
+					return "**Form Spec Results: " + formName + "**\n\nSome tests failed:\n\n" + rawOutput;
 				}
 			}
-
-			boolean finished = process.waitFor(effectiveTimeout, TimeUnit.SECONDS);
-			activeProcess = null;
-			if (!finished)
+			finally
 			{
-				process.destroyForcibly();
-				return "Error: Cypress test timed out after " + effectiveTimeout + " seconds.";
-			}
-
-			String rawOutput = output.toString();
-
-			if (process.exitValue() == 0)
-			{
-				return "**Form Spec Results: " + formName + "**\n\nAll tests passed!\n\n" + rawOutput;
-			}
-			else
-			{
-				rawOutput = preserveArtifacts(rawOutput, formName);
-				return "**Form Spec Results: " + formName + "**\n\nSome tests failed:\n\n" + rawOutput;
+				shutdownFormPreviewClients();
 			}
 		}
 		catch (Exception e)
 		{
 			return "Error running spec: " + e.getMessage();
+		}
+	}
+
+	private void shutdownFormPreviewClients()
+	{
+		try
+		{
+			if (!ApplicationServerRegistry.exists()) return;
+			ApplicationServer as = (ApplicationServer)ApplicationServerRegistry.get();
+			ClientHost clientHost = as.getClientHost();
+			if (clientHost == null) return;
+			Map<String, ClientProxy> clients = clientHost.getClients();
+			IClientManagerInternal clientManager =
+				((IDataServerInternal)as.getDataServer()).getClientManager();
+			List<ClientProxy> snapshot = new ArrayList<>(clients.values());
+			for (ClientProxy cp : snapshot)
+			{
+				if (FORMPREVIEW_USER_UID.equals(cp.getClientInfo().getUserUid()))
+				{
+					IClientInternal client = clientManager.getClient(cp.getClientInfo().getClientId());
+					if (client instanceof NGClient)
+					{
+						((NGClient)client).shutDown(true);
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error shutting down formpreview clients", e);
 		}
 	}
 
