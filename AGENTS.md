@@ -106,7 +106,20 @@ These tests use no live Eclipse workspace or OSGi container — pure Java, refle
 | `c.s.e.d.mcp.services` | `FormSpecGeneratorTest`, `FormSpecRunnerTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `TestFileServiceReflectionTest`, `RunCypressFormTestsLauncherTest` |
 | `c.s.e.d.mcp.integration` | `ServoyDevServerIntegrationTest` (despite package name, this is a pure unit test) |
 
-Total: **23 plain JUnit tests**
+| `c.s.e.d.mcp.servers` | `McpToolParamValidationTest` |
+
+Total: **24 plain JUnit tests**
+
+#### Troubleshooting: JUnit 6 `NoSuchMethodError` (e.g. `Namespace.getParts()`)
+
+If a JUnit 6 (Jupiter) test fails at runtime with:
+```
+java.lang.NoSuchMethodError: 'java.util.List org.junit.jupiter.api.extension.ExtensionContext$Namespace.getParts()'
+```
+
+**Root cause:** The `org.eclipse.dltk.javascript.rhino` workspace project bundles an older `junit-jupiter-api-5.x.jar` in its `test-libs/` folder. When PDE builds the flat classpath for a plain JUnit launch, it includes all workspace project dependencies — including rhino's test-libs. The older 5.x API jar appears earlier on the classpath than the target platform's 6.x jar, causing version conflicts.
+
+**Fix:** Open `org.eclipse.dltk.javascript.rhino` → Java Build Path → Libraries tab → remove or uncheck the `test-libs/junit-jupiter-api-*.jar`, `test-libs/junit-4.*.jar`, and `test-libs/hamcrest-*.jar` entries. Alternatively, remove the `test-libs` folder from rhino's `.classpath` entirely. The test sources can also be removed from the Source tab if rhino tests are not being developed.
 
 #### Plugin tests (run with `eclipse-pde_runJUnitPluginTestClass`)
 
