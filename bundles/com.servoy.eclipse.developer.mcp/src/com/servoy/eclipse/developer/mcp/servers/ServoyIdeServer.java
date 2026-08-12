@@ -111,8 +111,8 @@ public class ServoyIdeServer {
 			+ "For large projects, use scopePath to limit to a subdirectory and/or maxDepth to limit tree depth.", type = "object")
 	public String getProjectLayout(
 			@ToolParam(name = "projectName", description = "The name of the project to analyze", required = true) String projectName,
-			@ToolParam(name = "scopePath", description = "Optional path relative to the project root to limit the listing (e.g., 'src/main/java/com/example'). If omitted, shows the entire project.", required = false) String scopePath,
-			@ToolParam(name = "maxDepth", description = "Optional maximum depth of the directory tree to display (e.g., '3' for 3 levels deep). If omitted, shows all levels.", required = false) String maxDepth) {
+			@ToolParam(name = "scopePath", description = "Path relative to the project root to limit the listing (e.g., 'src/main/java/com/example'). If omitted, shows the entire project.", required = false) String scopePath,
+			@ToolParam(name = "maxDepth", description = "Maximum depth of the directory tree to display (e.g., '3' for 3 levels deep). If omitted, shows all levels.", required = false) String maxDepth) {
 		int depth = Optional.ofNullable(maxDepth).map(Integer::parseInt).orElse(-1);
 		return projectService.getProjectLayout(projectName, scopePath, depth);
 	}
@@ -129,8 +129,8 @@ public class ServoyIdeServer {
 			@ToolParam(name = "projectName", description = "The name of the project containing the resource", required = true) String projectName,
 			@ToolParam(name = "resourcePath", description = "The path to the resource relative to the project root", required = true) String resourcePath,
 			@ToolParam(name = "showLineNumbers", description = "If 'true', prepends line numbers to each line. Default: 'false'", required = false) String showLineNumbers,
-			@ToolParam(name = "startLine", description = "Optional 1-based start line to read from. If omitted, reads from the beginning.", required = false) String startLine,
-			@ToolParam(name = "endLine", description = "Optional 1-based end line to read to (inclusive). If omitted, reads to the end.", required = false) String endLine) {
+			@ToolParam(name = "startLine", description = "1-based start line to read from. If omitted, reads from the beginning.", required = false) String startLine,
+			@ToolParam(name = "endLine", description = "1-based end line to read to (inclusive). If omitted, reads to the end.", required = false) String endLine) {
 		boolean lineNumbers = Optional.ofNullable(showLineNumbers).map(Boolean::parseBoolean).orElse(false);
 		int start = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(0);
 		int end = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(0);
@@ -255,7 +255,7 @@ public class ServoyIdeServer {
 	@Tool(name = "fileSearch", description = "Searches for a plain substring in workspace files using Eclipse's text search engine.", type = "object")
 	public String fileSearch(
 			@ToolParam(name = "containingText", description = "Text that must be contained in a line (plain substring, not regex)", required = true) String containingText,
-			@ToolParam(name = "fileNamePatterns", description = "Optional comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
+			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
 		String[] patterns = parsePatterns(fileNamePatterns);
 		List<SearchResult> results = workspaceService.fileSearch(containingText, patterns);
 		return formatSearchResults(results);
@@ -264,7 +264,7 @@ public class ServoyIdeServer {
 	@Tool(name = "fileSearchRegExp", description = "Searches workspace files using a Java regular expression via Eclipse's text search engine.", type = "object")
 	public String fileSearchRegExp(
 			@ToolParam(name = "pattern", description = "Java regular expression", required = true) String pattern,
-			@ToolParam(name = "fileNamePatterns", description = "Optional comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
+			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
 		String[] patterns = parsePatterns(fileNamePatterns);
 		List<SearchResult> results = workspaceService.fileSearchRegExp(pattern, patterns);
 		return formatSearchResults(results);
@@ -275,7 +275,7 @@ public class ServoyIdeServer {
 	public String searchAndReplace(
 			@ToolParam(name = "containingText", description = "Plain text to find (not regex)", required = true) String containingText,
 			@ToolParam(name = "replacementText", description = "Replacement text (can be empty)", required = true) String replacementText,
-			@ToolParam(name = "fileNamePatterns", description = "Optional comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
+			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
 		String[] patterns = parsePatterns(fileNamePatterns);
 		List<SearchAndReplaceResult> results = workspaceService.searchAndReplace(containingText, replacementText,
 				patterns);
@@ -341,7 +341,7 @@ public class ServoyIdeServer {
 			@ToolParam(name = "projectName", description = "The name of the specific project to check (optional, leave empty for all projects)", required = false) String projectName,
 			@ToolParam(name = "severity", description = "Filter by severity level: 'ERROR', 'WARNING', 'INFO', or 'ALL' (default)", required = false) String severity,
 			@ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults,
-			@ToolParam(name = "filePattern", description = "Optional glob pattern to filter by file name (e.g. '*.js', '*.frm'). If omitted, all files are included.", required = false) String filePattern) {
+			@ToolParam(name = "filePattern", description = "Glob pattern to filter by file name (e.g. '*.js', '*.frm'). If omitted, all files are included.", required = false) String filePattern) {
 		int max = Optional.ofNullable(maxResults).map(Integer::parseInt).orElse(50);
 		return ideStateService.getCompilationErrors(projectName, severity, max, filePattern);
 	}

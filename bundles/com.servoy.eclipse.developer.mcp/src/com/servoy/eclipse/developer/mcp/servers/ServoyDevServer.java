@@ -329,7 +329,7 @@ public class ServoyDevServer {
 	@Tool(name = "syncDbiWithDatabase", description = "Synchronizes the database schema with .dbi file definitions for a given server. Creates tables that exist in .dbi files but not in the DB, reports tables that exist in the DB but have no .dbi file, and for existing tables syncs columns (add/remove/update) to match the .dbi definitions. Call after git pulls or .dbi file changes to keep the database in sync.", type = "object")
 	public String syncDbiWithDatabase(
 			@ToolParam(name = "serverName", description = "Name of the database server to synchronize.", required = true) String serverName,
-			@ToolParam(name = "tableName", description = "Optional table name to sync only a specific table. If not specified, syncs all tables.", required = false) String tableName) {
+			@ToolParam(name = "tableName", description = "Table name to sync only a specific table. If not specified, syncs all tables.", required = false) String tableName) {
 		if (serverName == null || serverName.isBlank()) {
 			return "{\"errors\":[\"serverName is required\"]}";
 		}
@@ -1033,7 +1033,7 @@ public class ServoyDevServer {
 			+ "Truncates at 50 members - use memberFilter regex to narrow results: 'get.*' for getters, 'show.*|hide.*' for show/hide.", type = "object")
 	public String getAvailableMembersForType(
 			@ToolParam(name = "typeName", description = "Servoy API type name (e.g. 'application', 'databaseManager', 'JSFoundSet', 'controller')", required = true) String typeName,
-			@ToolParam(name = "memberFilter", description = "Optional regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter) {
+			@ToolParam(name = "memberFilter", description = "Regex filter for member names. Examples: 'get.*', 'is.*', 'show.*|hide.*'. Default: all members.", required = false) String memberFilter) {
 		if (typeName == null || typeName.trim().isEmpty())
 			return "Error: typeName parameter is required";
 
@@ -2150,7 +2150,7 @@ public class ServoyDevServer {
 	public String createUser(
 			@ToolParam(name = "userName", description = "The user name") String userName,
 			@ToolParam(name = "password", description = "Plain text password (will be hashed internally)") String password,
-			@ToolParam(name = "userUID", description = "Optional user UUID. If not provided, one will be auto-generated.", required = false) String userUID) {
+			@ToolParam(name = "userUID", description = "User UUID. If not provided, one will be auto-generated.", required = false) String userUID) {
 		try {
 			if (userName == null || userName.trim().isEmpty()) return "Error: userName is required";
 			if (password == null || password.isEmpty()) return "Error: password is required";

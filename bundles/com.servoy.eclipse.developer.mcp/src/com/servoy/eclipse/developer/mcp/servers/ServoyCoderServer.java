@@ -111,8 +111,8 @@ public class ServoyCoderServer
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
 		@ToolParam(name = "oldString", description = "The text to replace (must match exactly, including whitespace and indentation)", required = true) String oldString,
 		@ToolParam(name = "newString", description = "The new text to insert in place of the old text", required = true) String newString,
-		@ToolParam(name = "startLine", description = "Optional line number to start searching from (1-based index)", required = false) String startLine,
-		@ToolParam(name = "endLine", description = "Optional line number to end searching at (1-based index)", required = false) String endLine)
+		@ToolParam(name = "startLine", description = "Line number to start searching from (1-based index)", required = false) String startLine,
+		@ToolParam(name = "endLine", description = "Line number to end searching at (1-based index)", required = false) String endLine)
 	{
 		Integer startLineNum = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(null);
 		Integer endLineNum = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(null);
@@ -231,7 +231,7 @@ public class ServoyCoderServer
 	public String applyPatch(
 		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
-		@ToolParam(name = "patch", description = "The unified diff content to apply. Should contain @@ hunk headers and lines prefixed with ' ' (context), '-' (remove), or '+' (add). File headers (--- and +++) are optional.", required = true) String patch)
+		@ToolParam(name = "patch", description = "The unified diff content to apply. Should contain @@ hunk headers and lines prefixed with ' ' (context), '-' (remove), or '+' (add). File headers (--- and +++) may be omitted.", required = true) String patch)
 	{
 		String result = codeEditingService.applyPatch(projectName, filePath, patch);
 		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));

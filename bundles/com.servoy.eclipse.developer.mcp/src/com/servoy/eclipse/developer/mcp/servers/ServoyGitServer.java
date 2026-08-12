@@ -106,7 +106,7 @@ public class ServoyGitServer
 	public String gitCreateBranch(
 		@ToolParam(name = "projectName", description = "The Eclipse project name", required = true) String projectName,
 		@ToolParam(name = "branchName", description = "Name of the new branch to create", required = true) String branchName,
-		@ToolParam(name = "startPoint", description = "Optional start point (branch name, tag, or commit SHA). Defaults to HEAD.", required = false) String startPoint)
+		@ToolParam(name = "startPoint", description = "Start point (branch name, tag, or commit SHA). Defaults to HEAD.", required = false) String startPoint)
 	{
 		return gitService.createBranch(projectName, branchName, startPoint);
 	}
@@ -140,7 +140,7 @@ public class ServoyGitServer
 	@Tool(name = "gitStash", description = "Stashes the current working directory and index changes, reverting the working tree to HEAD.", type = "object")
 	public String gitStash(
 		@ToolParam(name = "projectName", description = "The Eclipse project name", required = true) String projectName,
-		@ToolParam(name = "message", description = "Optional message to describe the stash", required = false) String message)
+		@ToolParam(name = "message", description = "Message to describe the stash", required = false) String message)
 	{
 		return gitService.stash(projectName, message);
 	}

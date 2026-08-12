@@ -61,6 +61,12 @@ Work through every changed file:
 - [ ] Extension point contributions in `plugin.xml` are correct
 - [ ] No use of internal Eclipse packages without good reason
 
+**MCP tool annotations (`@Tool` / `@ToolParam`)**
+- [ ] Every `@ToolParam` has an explicit `name` attribute (never rely on compiled parameter names)
+- [ ] Every optional parameter has `required = false` (default is `true`)
+- [ ] No description starts with "Optional:" — optionality is expressed via `required = false`, not description text
+- [ ] Description text explains what the parameter does and default/fallback behaviour when omitted
+
 ### 6. Output
 
 Your response **must begin** with exactly one of:
