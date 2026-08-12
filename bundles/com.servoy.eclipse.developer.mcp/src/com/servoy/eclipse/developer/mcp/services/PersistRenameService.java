@@ -93,12 +93,11 @@ public class PersistRenameService {
 	private void renameFormSpecFiles(String oldFormName, String newFormName, ServoyProject project) {
 		try {
 			FormSpecGenerator specGenerator = new FormSpecGenerator();
-			String solutionName = project.getSolution().getName();
 
-			// Rename .spec.js (setUp/tearDown) â lives in e2e-form-spec/ outside the
+			// Rename .spec.js (setUp/tearDown) — lives in e2e-form-spec/ outside the
 			// project
-			java.nio.file.Path oldSpecJs = specGenerator.findExistingSetupFile(oldFormName, solutionName);
-			java.nio.file.Path newSpecJs = specGenerator.getSetupFilePath(newFormName, solutionName);
+			java.nio.file.Path oldSpecJs = specGenerator.getSetupFilePath(oldFormName);
+			java.nio.file.Path newSpecJs = specGenerator.getSetupFilePath(newFormName);
 			if (oldSpecJs != null && newSpecJs != null && java.nio.file.Files.exists(oldSpecJs)
 					&& !java.nio.file.Files.exists(newSpecJs)) {
 				java.nio.file.Path newSpecParent = newSpecJs.getParent();
@@ -108,9 +107,9 @@ public class PersistRenameService {
 				java.nio.file.Files.move(oldSpecJs, newSpecJs);
 			}
 
-			// Rename .spec.cy.js â lives in e2e-form/ outside the project
-			java.nio.file.Path oldSpecCy = specGenerator.findExistingSpecFile(oldFormName, solutionName);
-			java.nio.file.Path newSpecCy = specGenerator.getSpecFilePath(newFormName, solutionName);
+			// Rename .spec.cy.js — lives in e2e-form/ outside the project
+			java.nio.file.Path oldSpecCy = specGenerator.getSpecFilePath(oldFormName);
+			java.nio.file.Path newSpecCy = specGenerator.getSpecFilePath(newFormName);
 			if (oldSpecCy != null && newSpecCy != null && java.nio.file.Files.exists(oldSpecCy)
 					&& !java.nio.file.Files.exists(newSpecCy)) {
 				java.nio.file.Path newSpecParent = newSpecCy.getParent();
