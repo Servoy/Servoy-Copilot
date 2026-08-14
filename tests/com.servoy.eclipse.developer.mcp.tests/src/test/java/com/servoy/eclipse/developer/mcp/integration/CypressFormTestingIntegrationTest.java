@@ -37,10 +37,10 @@ import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
-import com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil;
+import com.servoy.eclipse.cypress.actions.CypressConsoleUtil;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
-import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
-import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.Form;

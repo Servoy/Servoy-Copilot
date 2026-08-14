@@ -33,11 +33,8 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
 import com.servoy.eclipse.developer.mcp.servers.TimeServerTest;
-import com.servoy.eclipse.developer.mcp.services.CypressTestDiscoveryServiceTest;
 import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
-import com.servoy.eclipse.developer.mcp.services.FormSpecGeneratorTest;
-import com.servoy.eclipse.developer.mcp.services.FormSpecRunnerTest;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageServiceTest;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
 import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
@@ -86,8 +83,6 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 	TimeServerTest.class,
 	// services
 	DocumentationValidatorServiceTest.class,
-	FormSpecGeneratorTest.class,
-	FormSpecRunnerTest.class,
 	JSUnitCoverageServiceTest.class,
 	PersistRenameServiceTest.class,
 	ResolvedElementsProcessorTest.class,

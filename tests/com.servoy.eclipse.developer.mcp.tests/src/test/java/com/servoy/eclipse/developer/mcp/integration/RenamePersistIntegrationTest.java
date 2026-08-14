@@ -36,7 +36,7 @@ import org.junit.Test;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
-import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameService;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;

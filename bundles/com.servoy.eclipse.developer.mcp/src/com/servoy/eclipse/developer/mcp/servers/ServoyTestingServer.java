@@ -21,12 +21,12 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
-import com.servoy.eclipse.developer.mcp.services.CypressLoginSupport;
+import com.servoy.eclipse.cypress.services.CypressLoginSupport;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
-import com.servoy.eclipse.developer.mcp.services.FormSpecGenerator;
-import com.servoy.eclipse.developer.mcp.services.FormSpecRunner;
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
@@ -642,10 +642,10 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			org.eclipse.ui.console.MessageConsole console = com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil
+			org.eclipse.ui.console.MessageConsole console = com.servoy.eclipse.cypress.actions.CypressConsoleUtil
 				.findOrCreateConsole();
 			console.clearConsole();
-			com.servoy.eclipse.developer.mcp.actions.CypressConsoleUtil.showConsole(console);
+			com.servoy.eclipse.cypress.actions.CypressConsoleUtil.showConsole(console);
 			try (org.eclipse.ui.console.MessageConsoleStream stream = console.newMessageStream())
 			{
 				stream.println(message);

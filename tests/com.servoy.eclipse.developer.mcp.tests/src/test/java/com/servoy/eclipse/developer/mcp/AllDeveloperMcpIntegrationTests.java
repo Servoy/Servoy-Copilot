@@ -27,11 +27,8 @@ import com.servoy.eclipse.developer.mcp.integration.ContextServerHistoryIntegrat
 import com.servoy.eclipse.developer.mcp.integration.CreateArtifactsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CreateSolutionIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CreateTestFileIntegrationTest;
-import com.servoy.eclipse.developer.mcp.integration.CypressConsoleUtilIntegrationTest;
-import com.servoy.eclipse.developer.mcp.integration.CypressFormTestingIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DatabaseToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DocumentationToolsIntegrationTest;
-import com.servoy.eclipse.developer.mcp.integration.E2EToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.FormNavigationGraphServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.GetNavigationPathIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
@@ -74,7 +71,6 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		CodeContextServiceIntegrationTest.class, ContextServerHistoryIntegrationTest.class,
 		CreateArtifactsIntegrationTest.class,
 		CreateSolutionIntegrationTest.class, CreateTestFileIntegrationTest.class,
-		CypressConsoleUtilIntegrationTest.class, CypressFormTestingIntegrationTest.class,
 		DatabaseToolsIntegrationTest.class, DocumentationToolsIntegrationTest.class, JSUnitRunnerIntegrationTest.class,
 		JSUnitRunnerGroupedTest.class, JSUnitRunnerLayer4Test.class, PersistDuplicateIntegrationTest.class,
 		RenamePersistIntegrationTest.class, RunTestMethodIntegrationTest.class, SecurityToolsIntegrationTest.class,
@@ -85,6 +81,6 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyWpmServerIntegrationTest.class,
 		ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class, McpServerBuiltinsTest.class,
-		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, E2EToolsIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, GetNavigationPathIntegrationTest.class, })
+		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, GetNavigationPathIntegrationTest.class, })
 public class AllDeveloperMcpIntegrationTests {
 }

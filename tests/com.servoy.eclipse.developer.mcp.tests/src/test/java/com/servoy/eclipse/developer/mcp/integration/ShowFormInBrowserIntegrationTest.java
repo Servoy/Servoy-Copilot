@@ -225,7 +225,7 @@ public class ShowFormInBrowserIntegrationTest {
 		Form form = ensureFormWithButtonAndLabel();
 		assertNotNull("Form should be created", form);
 
-		java.nio.file.Path testsDir = new com.servoy.eclipse.developer.mcp.services.FormSpecGenerator().getFormSpecDir();
+		java.nio.file.Path testsDir = new com.servoy.eclipse.cypress.services.FormSpecGenerator().getFormSpecDir();
 		java.nio.file.Files.createDirectories(testsDir);
 
 		String cySpec = "describe('" + FORM_BUTTON_LABEL + " - elements present', () => {\n\n"
@@ -246,7 +246,7 @@ public class ShowFormInBrowserIntegrationTest {
 		java.nio.file.Files.writeString(testsDir.resolve(FORM_BUTTON_LABEL + ".spec.cy.js"), cySpec,
 				java.nio.charset.StandardCharsets.UTF_8);
 
-		com.servoy.eclipse.developer.mcp.services.FormSpecRunner specRunner = new com.servoy.eclipse.developer.mcp.services.FormSpecRunner();
+		com.servoy.eclipse.cypress.services.FormSpecRunner specRunner = new com.servoy.eclipse.cypress.services.FormSpecRunner();
 		String result = specRunner.runFormCypressTests(FORM_BUTTON_LABEL, true);
 
 		assertNotNull("Cypress result should not be null", result);
