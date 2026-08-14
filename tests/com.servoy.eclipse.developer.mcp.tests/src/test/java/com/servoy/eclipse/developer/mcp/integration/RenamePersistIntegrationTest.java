@@ -363,14 +363,15 @@ public class RenamePersistIntegrationTest {
 		// resolved by the generator rather than as a project IFile.
 		FormSpecGenerator specGenerator = new FormSpecGenerator();
 		java.nio.file.Path oldSpecCyPath = specGenerator.getSpecFilePath(formName);
-		java.nio.file.Path newSpecCyPath = specGenerator.getSpecFilePath(newName);
+		String solutionName = activeProject.getSolution().getName();
+		java.nio.file.Path newSpecCyPath = specGenerator.getSpecFilePath(newName, solutionName);
 		java.nio.file.Files.createDirectories(oldSpecCyPath.getParent());
 		java.nio.file.Files.deleteIfExists(newSpecCyPath);
 		java.nio.file.Files.writeString(oldSpecCyPath, "describe('" + formName + "', () => {});",
 				StandardCharsets.UTF_8);
 
 		java.nio.file.Path oldSpecJsPath = specGenerator.getSetupFilePath(formName);
-		java.nio.file.Path newSpecJsPath = specGenerator.getSetupFilePath(newName);
+		java.nio.file.Path newSpecJsPath = specGenerator.getSetupFilePath(newName, solutionName);
 		java.nio.file.Files.createDirectories(oldSpecJsPath.getParent());
 		java.nio.file.Files.writeString(oldSpecJsPath, "function setUp() {}", StandardCharsets.UTF_8);
 
