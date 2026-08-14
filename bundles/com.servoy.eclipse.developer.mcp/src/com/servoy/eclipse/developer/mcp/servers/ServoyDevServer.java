@@ -1587,6 +1587,8 @@ public class ServoyDevServer {
 			+ "Supports CSS-position and responsive layouts. "
 			+ "Optionally sets dataSource, parent form (inheritance), and event handlers. "
 			+ "Event handlers are auto-created as methods if they don't exist. "
+			+ "When 'columns' is provided (use '*' for all columns or a comma-separated list), "
+			+ "the form is created with label+field pairs for each column in a single call — no separate applyPatch needed. "
 			+ "Returns an error if a form with the same name already exists.", type = "object")
 	public String createForm(
 			@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
@@ -1595,8 +1597,19 @@ public class ServoyDevServer {
 			@ToolParam(name = "height", description = "Form height in pixels (default: 480)", required = false) String height,
 			@ToolParam(name = "dataSource", description = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
 			@ToolParam(name = "extendsForm", description = "Parent form name for inheritance", required = false) String extendsForm,
-			@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events) {
+			@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events,
+			@ToolParam(name = "columns", description = "Columns to generate label+field pairs for. Use '*' for all columns from the dataSource table, or a comma-separated list of column names. If omitted, the form is created empty (legacy behavior).", required = false) String columns) {
 		try {
+			if (columns != null && !columns.isBlank()) {
+				java.util.List<String> columnList = null;
+				if (!"*".equals(columns.trim())) {
+					columnList = new java.util.ArrayList<>();
+					for (String col : columns.split(",")) {
+						if (!col.trim().isEmpty()) columnList.add(col.trim());
+					}
+				}
+				return artifactService.createFormWithFields(name, dataSource, style != null ? style : "responsive", columnList);
+			}
 			int w = width != null ? Integer.parseInt(width) : 640;
 			int h = height != null ? Integer.parseInt(height) : 480;
 			Map<String, String> eventMap = null;
@@ -1615,7 +1628,6 @@ public class ServoyDevServer {
 			return "Error: " + e.getMessage();
 		}
 	}
-
 	@Tool(name = "createRelation", description = "Creates a new Servoy relation in the active solution. "
 			+ "Requires primary and foreign dataSources. "
 			+ "Optionally maps columns and sets join type. "
