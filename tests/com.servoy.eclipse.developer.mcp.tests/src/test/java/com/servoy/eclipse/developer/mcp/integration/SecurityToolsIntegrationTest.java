@@ -65,7 +65,7 @@ public class SecurityToolsIntegrationTest {
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);
 
-		String formResult = devServer.createForm(TEST_FORM, null, "800", "600", null, null, null);
+		String formResult = devServer.createForm(TEST_FORM, null, "800", "600", null, null, null, null);
 		assertTrue("Form creation should succeed or already exist: " + formResult,
 				!formResult.startsWith("Error") || formResult.contains("already exists"));
 	}

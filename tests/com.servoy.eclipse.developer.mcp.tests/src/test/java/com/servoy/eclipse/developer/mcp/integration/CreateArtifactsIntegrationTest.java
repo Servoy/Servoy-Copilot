@@ -70,7 +70,7 @@ public class CreateArtifactsIntegrationTest {
 	public void testCreateForm_success() {
 		String formName = "testForm_" + System.currentTimeMillis();
 
-		String result = devServer.createForm(formName, "css", "640", "480", null, null, null);
+		String result = devServer.createForm(formName, "css", "640", "480", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue("Should indicate success: " + result,
@@ -84,7 +84,7 @@ public class CreateArtifactsIntegrationTest {
 	public void testCreateForm_responsive() {
 		String formName = "testFormResp_" + System.currentTimeMillis();
 
-		String result = devServer.createForm(formName, "responsive", "800", "600", null, null, null);
+		String result = devServer.createForm(formName, "responsive", "800", "600", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue("Should indicate success: " + result,
@@ -98,8 +98,8 @@ public class CreateArtifactsIntegrationTest {
 	public void testCreateForm_duplicate_returnsError() {
 		String formName = "testFormDup_" + System.currentTimeMillis();
 
-		devServer.createForm(formName, "css", "640", "480", null, null, null);
-		String result = devServer.createForm(formName, "css", "640", "480", null, null, null);
+		devServer.createForm(formName, "css", "640", "480", null, null, null, null);
+		String result = devServer.createForm(formName, "css", "640", "480", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue("Should return error for duplicate: " + result,
@@ -111,7 +111,7 @@ public class CreateArtifactsIntegrationTest {
 		String formName = "testFormEvents_" + System.currentTimeMillis();
 
 		String result = devServer.createForm(formName, "css", "640", "480", null, null,
-				"onLoad:initForm,onShow:refreshData");
+				"onLoad:initForm,onShow:refreshData", null);
 
 		assertNotNull(result);
 		assertTrue("Should indicate success: " + result,
@@ -123,7 +123,7 @@ public class CreateArtifactsIntegrationTest {
 
 	@Test
 	public void testCreateForm_nullName_returnsError() {
-		String result = devServer.createForm(null, "css", "640", "480", null, null, null);
+		String result = devServer.createForm(null, "css", "640", "480", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue("Should return error for null name: " + result, result.contains("Error"));
