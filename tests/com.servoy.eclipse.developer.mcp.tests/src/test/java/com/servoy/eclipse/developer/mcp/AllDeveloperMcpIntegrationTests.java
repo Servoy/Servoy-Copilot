@@ -50,6 +50,7 @@ import com.servoy.eclipse.developer.mcp.integration.ServoyMediaServerIntegration
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerWorkspaceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoySolutionServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ValidationToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServerTest;
@@ -78,7 +79,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyIdeServerIntegrationTest.class, ServoyIdeServerWorkspaceIntegrationTest.class,
 		ServoyMediaServerIntegrationTest.class, ServoySolutionServiceIntegrationTest.class,
 		ServoyWpmServerIntegrationTest.class,
-		ServoyCoderServerTest.class,
+		ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class, McpServerBuiltinsTest.class,
 		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, GetNavigationPathIntegrationTest.class, })
 public class AllDeveloperMcpIntegrationTests {
