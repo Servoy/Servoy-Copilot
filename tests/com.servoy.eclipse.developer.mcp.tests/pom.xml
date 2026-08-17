@@ -126,6 +126,10 @@
                                     <type>eclipse-plugin</type>
                                     <artifactId>com.servoy.eclipse.extension.compatibility</artifactId>
                                 </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>com.servoy.eclipse.cypress</artifactId>
+                                </dependency>
                                  <dependency>
                                     <type>eclipse-plugin</type>
                                     <artifactId>${arch.extension.plugin}</artifactId>
