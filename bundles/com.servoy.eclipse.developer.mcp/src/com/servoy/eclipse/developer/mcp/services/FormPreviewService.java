@@ -63,6 +63,10 @@ public class FormPreviewService {
 
 	public String showFormInBrowser(String formName, boolean openBrowser) {
 		try {
+			if (formName == null || formName.isBlank()) {
+				return "Error: Form name must not be null or empty.";
+			}
+
 			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
 					.getActiveProject();
 			if (activeProject == null) {
