@@ -62,6 +62,13 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Before
 	public void setUp() throws Exception {
+		// Force early class loading of cypress bundle to avoid log4j/OSGi deadlock during tests
+		try {
+			Class.forName("com.servoy.eclipse.cypress.services.FormSpecGenerator");
+		} catch (ClassNotFoundException e) {
+			// ignore - bundle not available in this test environment
+		}
+
 		tool = new ServoyTestingServer();
 
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
