@@ -21,6 +21,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
@@ -62,33 +63,16 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Before
 	public void setUp() throws Exception {
-		System.out.println("[ShowFormInBrowserIT] setUp() START");
-		// Force early class loading of cypress bundle to avoid log4j/OSGi deadlock during tests
-		try {
-			System.out.println("[ShowFormInBrowserIT] Loading FormSpecGenerator class...");
-			Class.forName("com.servoy.eclipse.cypress.services.FormSpecGenerator");
-			System.out.println("[ShowFormInBrowserIT] FormSpecGenerator loaded OK");
-		} catch (ClassNotFoundException e) {
-			System.out.println("[ShowFormInBrowserIT] FormSpecGenerator NOT FOUND (expected in plain JUnit)");
-		}
-
-		System.out.println("[ShowFormInBrowserIT] Creating ServoyTestingServer...");
 		tool = new ServoyTestingServer();
-		System.out.println("[ShowFormInBrowserIT] ServoyTestingServer created");
 
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
-		System.out.println("[ShowFormInBrowserIT] Waiting for app server...");
 		waitForAppServer();
-		System.out.println("[ShowFormInBrowserIT] App server ready");
-		System.out.println("[ShowFormInBrowserIT] Ensuring test solution...");
 		ensureTestSolutionInWorkspace();
-		System.out.println("[ShowFormInBrowserIT] Ensuring active project...");
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);
-		System.out.println("[ShowFormInBrowserIT] setUp() DONE, activeProject=" + activeProject.getSolution().getName());
 	}
 
 	// -----------------------------------------------------------------------
@@ -111,12 +95,9 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Test
 	public void testCreateFormWithLabel_openInBrowser_returnsUrl() throws Exception {
-		System.out.println("[ShowFormInBrowserIT] testCreateFormWithLabel_openInBrowser_returnsUrl START");
 		ensureForm(FORM_WITH_LABEL);
 
-		System.out.println("[ShowFormInBrowserIT] Calling showFormInBrowser...");
 		String result = tool.showFormInBrowser(FORM_WITH_LABEL, false);
-		System.out.println("[ShowFormInBrowserIT] showFormInBrowser returned: " + (result != null ? result.substring(0, Math.min(100, result.length())) : "null"));
 
 		assertNotNull("Result should not be null", result);
 		assertTrue("Result should contain formpreview parameter", result.contains("formpreview=" + FORM_WITH_LABEL));
@@ -222,16 +203,11 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Test
 	public void testOpenMultipleForms_sequentially() throws Exception {
-		System.out.println("[ShowFormInBrowserIT] testOpenMultipleForms_sequentially START");
 		ensureForm(FORM_WITH_LABEL);
 		ensureForm(FORM_EMPTY);
 
-		System.out.println("[ShowFormInBrowserIT] Calling showFormInBrowser(FORM_WITH_LABEL)...");
 		String result1 = tool.showFormInBrowser(FORM_WITH_LABEL, false);
-		System.out.println("[ShowFormInBrowserIT] First call returned: " + (result1 != null ? result1.substring(0, Math.min(100, result1.length())) : "null"));
-		System.out.println("[ShowFormInBrowserIT] Calling showFormInBrowser(FORM_EMPTY)...");
 		String result2 = tool.showFormInBrowser(FORM_EMPTY, false);
-		System.out.println("[ShowFormInBrowserIT] Second call returned: " + (result2 != null ? result2.substring(0, Math.min(100, result2.length())) : "null"));
 
 		assertNotNull("First result should not be null", result1);
 		assertNotNull("Second result should not be null", result2);
@@ -247,7 +223,6 @@ public class ShowFormInBrowserIntegrationTest {
 
 	@Test
 	public void testFormWithButtonAndLabel_cypressFindsElements() throws Exception {
-		System.out.println("[ShowFormInBrowserIT] testFormWithButtonAndLabel_cypressFindsElements START");
 		Form form = ensureFormWithButtonAndLabel();
 		assertNotNull("Form should be created", form);
 

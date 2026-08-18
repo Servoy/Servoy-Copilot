@@ -121,6 +121,23 @@
                                 -Dproperty-file="${project.basedir}/testresources/servoy.properties"
                                 -Dchromium.integration.eclipse.disable=true
                                 -Dorg.eclipse.ui.testing=true</argLine>
+                            <bundleStartLevel>
+                                <bundle>
+                                    <id>org.apache.logging.log4j.api</id>
+                                    <level>2</level>
+                                    <autoStart>true</autoStart>
+                                </bundle>
+                                <bundle>
+                                    <id>org.apache.logging.log4j.core</id>
+                                    <level>2</level>
+                                    <autoStart>true</autoStart>
+                                </bundle>
+                                <bundle>
+                                    <id>j2db_log4j</id>
+                                    <level>3</level>
+                                    <autoStart>true</autoStart>
+                                </bundle>
+                            </bundleStartLevel>
                             <dependencies>
                                 <dependency>
                                     <type>eclipse-plugin</type>
@@ -129,6 +146,18 @@
                                 <dependency>
                                     <type>eclipse-plugin</type>
                                     <artifactId>com.servoy.eclipse.cypress</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>j2db_log4j</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>org.apache.logging.log4j.core</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>org.apache.logging.log4j.api</artifactId>
                                 </dependency>
                                  <dependency>
                                     <type>eclipse-plugin</type>

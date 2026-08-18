@@ -91,10 +91,11 @@ public class FormPreviewService {
 			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview="
 					+ formName;
 
-			String serverErrors;
-			try (RuntimeErrorCapture capture = new RuntimeErrorCapture()) {
-				if (openBrowser) {
-					Display.getDefault().asyncExec(() -> {
+			String serverErrors = null;
+			if (openBrowser) {
+				try (RuntimeErrorCapture capture = new RuntimeErrorCapture()) {
+					Display display = Display.getDefault();
+					display.asyncExec(() -> {
 						try {
 							org.eclipse.ui.PlatformUI.getWorkbench().getBrowserSupport()
 									.createBrowser(
@@ -107,10 +108,16 @@ public class FormPreviewService {
 							ServoyLog.logError("Cannot open form in browser", e);
 						}
 					});
-				}
 
-				Thread.sleep(5000);
-				serverErrors = capture.formatCapturedErrors();
+					long deadline = System.currentTimeMillis() + 5000;
+					if (display.getThread() == Thread.currentThread()) {
+						while (System.currentTimeMillis() < deadline)
+							display.readAndDispatch();
+					} else {
+						Thread.sleep(5000);
+					}
+					serverErrors = capture.formatCapturedErrors();
+				}
 			}
 
 			String result = "Opened form '" + formName + "' in external browser: " + url;
