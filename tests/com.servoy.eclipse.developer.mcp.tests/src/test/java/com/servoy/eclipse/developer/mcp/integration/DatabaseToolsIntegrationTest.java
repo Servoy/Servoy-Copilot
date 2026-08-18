@@ -170,7 +170,7 @@ public class DatabaseToolsIntegrationTest {
 
 	@Test
 	public void testCreateTable_nullTableName() {
-		String result = devServer.createTable("some_server", null, null);
+		String result = devServer.createTable("some_server", null, null, null);
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("tableName"));
@@ -178,7 +178,7 @@ public class DatabaseToolsIntegrationTest {
 
 	@Test
 	public void testCreateTable_invalidIdentifier() {
-		String result = devServer.createTable("some_server", "123 invalid!", null);
+		String result = devServer.createTable("some_server", "123 invalid!", null, null);
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("not a valid SQL identifier"));
@@ -186,7 +186,7 @@ public class DatabaseToolsIntegrationTest {
 
 	@Test
 	public void testCreateTable_tempPrefix() {
-		String result = devServer.createTable("some_server", "temp_test", null);
+		String result = devServer.createTable("some_server", "temp_test", null, null);
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("temp_"));
@@ -194,7 +194,7 @@ public class DatabaseToolsIntegrationTest {
 
 	@Test
 	public void testCreateTable_servoyPrefix() {
-		String result = devServer.createTable("some_server", "servoy_test", null);
+		String result = devServer.createTable("some_server", "servoy_test", null, null);
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("svy_") || result.contains("servoy"));
@@ -202,7 +202,7 @@ public class DatabaseToolsIntegrationTest {
 
 	@Test
 	public void testCreateTable_invalidServer() {
-		String result = devServer.createTable("nonexistent_server_xyz", "valid_table", null);
+		String result = devServer.createTable("nonexistent_server_xyz", "valid_table", null, null);
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("not found"));

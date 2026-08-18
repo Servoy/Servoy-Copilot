@@ -1631,13 +1631,15 @@ public class ServoyDevServer {
 	@Tool(name = "createRelation", description = "Creates a new Servoy relation in the active solution. "
 			+ "Requires primary and foreign dataSources. "
 			+ "Optionally maps columns and sets join type. "
+			+ "When primaryColumn/foreignColumn are omitted, auto-detects the FK by looking for "
+			+ "'<primaryTable>_id' or the primary table's PK column name in the foreign table. "
 			+ "Returns an error if a relation with the same name already exists.", type = "object")
 	public String createRelation(
 			@ToolParam(name = "name", description = "Relation name (e.g. 'customers_to_orders')", required = true) String name,
 			@ToolParam(name = "primaryDataSource", description = "Primary table datasource (format: 'db:/server_name/table_name')", required = true) String primaryDataSource,
 			@ToolParam(name = "foreignDataSource", description = "Foreign table datasource (format: 'db:/server_name/table_name')", required = true) String foreignDataSource,
-			@ToolParam(name = "primaryColumn", description = "Primary key column name for the join condition", required = false) String primaryColumn,
-			@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition", required = false) String foreignColumn,
+			@ToolParam(name = "primaryColumn", description = "Primary key column name for the join condition. If omitted, auto-detects from the primary table's PK.", required = false) String primaryColumn,
+			@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition. If omitted, auto-detects by looking for '<primaryTable>_id' or the PK column name in the foreign table.", required = false) String foreignColumn,
 			@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType) {
 		try {
 			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
@@ -1646,11 +1648,63 @@ public class ServoyDevServer {
 					&& activeProject.getEditingSolution().getRelation(name) != null) {
 				return "Error: Relation '" + name + "' already exists in the active solution.";
 			}
-			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, primaryColumn,
-					foreignColumn, joinType);
+
+			String resolvedPrimaryCol = primaryColumn;
+			String resolvedForeignCol = foreignColumn;
+
+			if ((resolvedPrimaryCol == null || resolvedPrimaryCol.isBlank())
+					|| (resolvedForeignCol == null || resolvedForeignCol.isBlank())) {
+				String autoResult = autoDetectRelationColumns(primaryDataSource, foreignDataSource);
+				if (autoResult != null) {
+					String[] detected = autoResult.split(":");
+					if (resolvedPrimaryCol == null || resolvedPrimaryCol.isBlank()) resolvedPrimaryCol = detected[0];
+					if (resolvedForeignCol == null || resolvedForeignCol.isBlank()) resolvedForeignCol = detected[1];
+				}
+			}
+
+			return artifactService.createRelation(name, primaryDataSource, foreignDataSource, resolvedPrimaryCol,
+					resolvedForeignCol, joinType);
 		} catch (Exception e) {
 			ServoyLog.logError("Error creating relation: " + name, e);
 			return "Error: " + e.getMessage();
+		}
+	}
+
+	private String autoDetectRelationColumns(String primaryDataSource, String foreignDataSource) {
+		try {
+			String primaryDs = primaryDataSource.startsWith("db:/") ? primaryDataSource : "db:/" + primaryDataSource;
+			String foreignDs = foreignDataSource.startsWith("db:/") ? foreignDataSource : "db:/" + foreignDataSource;
+
+			String[] primaryParts = primaryDs.replace("db:/", "").split("/");
+			String[] foreignParts = foreignDs.replace("db:/", "").split("/");
+			if (primaryParts.length < 2 || foreignParts.length < 2) return null;
+
+			IServerInternal primaryServer = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					.getServer(primaryParts[0], false, false);
+			IServerInternal foreignServer = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					.getServer(foreignParts[0], false, false);
+			if (primaryServer == null || foreignServer == null) return null;
+
+			ITable primaryTable = primaryServer.getTable(primaryParts[1]);
+			ITable foreignTable = foreignServer.getTable(foreignParts[1]);
+			if (primaryTable == null || foreignTable == null) return null;
+
+			java.util.List<Column> pkColumns = primaryTable.getRowIdentColumns();
+			if (pkColumns == null || pkColumns.isEmpty()) return null;
+
+			String pkColName = pkColumns.get(0).getName();
+			String primaryTableName = primaryParts[1];
+
+			String[] candidates = { primaryTableName + "_id", primaryTableName + "id", pkColName };
+			for (String candidate : candidates) {
+				if (foreignTable.getColumn(candidate) != null) {
+					return pkColName + ":" + candidate;
+				}
+			}
+
+			return null;
+		} catch (Exception e) {
+			return null;
 		}
 	}
 
@@ -1966,13 +2020,23 @@ public class ServoyDevServer {
 		}
 	}
 
-	@Tool(name = "createTable", description = "Creates a new empty database table with an auto-generated primary key column. "
+	/** Backward-compatible overload — no columns. */
+	public String createTable(String serverName, String tableName, String inMemory) {
+		return createTable(serverName, tableName, inMemory, null);
+	}
+
+	@Tool(name = "createTable", description = "Creates a new database table with an auto-generated primary key column. "
 			+ "The PK column is named '<tableName>_id' with type INTEGER. "
-			+ "For database tables, uses database identity sequence. For in-memory tables, uses Servoy sequence.", type = "object")
+			+ "For database tables, uses database identity sequence. For in-memory tables, uses Servoy sequence. "
+			+ "When 'columns' is provided, adds all specified columns in the same call — no separate addColumn needed.", type = "object")
 	public String createTable(
 			@ToolParam(name = "serverName", description = "Database server name where the table will be created. Required for database tables, ignored for in-memory tables.", required = true) String serverName,
 			@ToolParam(name = "tableName", description = "Name of the table to create. Must be a valid SQL identifier, cannot start with 'temp_' or 'svy_'.", required = true) String tableName,
-			@ToolParam(name = "inMemory", description = "If 'true', creates an in-memory datasource table in the active solution instead of a database table. Default: false.", required = false) String inMemory) {
+			@ToolParam(name = "inMemory", description = "If 'true', creates an in-memory datasource table in the active solution instead of a database table. Default: false.", required = false) String inMemory,
+			@ToolParam(name = "columns", description = "Columns to add after table creation. Format: 'name:TYPE[:length][:nullable]' comma-separated. "
+					+ "TYPE is TEXT, INTEGER, NUMBER, DATETIME, or MEDIA. Length defaults to 50 for TEXT. "
+					+ "Nullable defaults to true; use 'false' to make non-nullable. "
+					+ "Example: 'name:TEXT:100,email:TEXT:200,age:INTEGER,created:DATETIME,active:INTEGER::false'", required = false) String columns) {
 		if (tableName == null || tableName.isBlank())
 			return "Error: tableName is required";
 
@@ -1984,6 +2048,9 @@ public class ServoyDevServer {
 			return "Error: table name cannot start with 'svy_'";
 
 		boolean createInMemory = Optional.ofNullable(inMemory).map(Boolean::parseBoolean).orElse(false);
+
+		if (!createInMemory && (serverName == null || serverName.isBlank()))
+			return "Error: serverName is required for database tables";
 
 		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
 		IValidateName validator = servoyModel.getNameValidator();
@@ -2014,11 +2081,9 @@ public class ServoyDevServer {
 				com.servoy.j2db.persistence.TableNode tableNode = solution.getOrCreateTableNode(table.getDataSource());
 				project.saveEditingSolutionNodes(new IPersist[] { tableNode }, true);
 
-				return "In-memory table '" + tableName + "' created in project '" + project.getProject().getName() + "' with PK column '" + pkName + "'.";
+				String colResult = addColumnsFromSpec(table, columns, validator);
+				return "In-memory table '" + tableName + "' created in project '" + project.getProject().getName() + "' with PK column '" + pkName + "'." + colResult;
 			} else {
-				if (serverName == null || serverName.isBlank())
-					return "Error: serverName is required for database tables";
-
 				IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
 						.getServer(serverName, false, false);
 				if (server == null)
@@ -2035,6 +2100,8 @@ public class ServoyDevServer {
 				pkColumn.setSequenceType(ColumnInfo.DATABASE_IDENTITY);
 				pkColumn.setFlag(IBaseColumn.PK_COLUMN, true);
 
+				String colResult = addColumnsFromSpec(table, columns, validator);
+
 				server.syncTableObjWithDB(table, false, true);
 				TableChangeHandler.getInstance().fireTablesAdded(server, new String[] { tableName });
 
@@ -2043,12 +2110,81 @@ public class ServoyDevServer {
 					dmm.updateAllColumnInfo(table);
 				}
 
-				return "Table '" + tableName + "' created on server '" + serverName + "' with PK column '" + pkName + "'.";
+				ServoyProject project = servoyModel.getActiveProject();
+				if (project != null && project.getEditingSolution() != null) {
+					Solution solution = project.getEditingSolution();
+					com.servoy.j2db.persistence.TableNode tableNode = solution.getOrCreateTableNode(table.getDataSource());
+					project.saveEditingSolutionNodes(new IPersist[] { tableNode }, true);
+				}
+
+				return "Table '" + tableName + "' created on server '" + serverName + "' with PK column '" + pkName + "'." + colResult;
 			}
 		} catch (Exception e) {
 			ServoyLog.logError("createTable failed", e);
 			return "Error: " + e.getMessage();
 		}
+	}
+
+	private String addColumnsFromSpec(ITable table, String columns, IValidateName validator) {
+		if (columns == null || columns.isBlank()) return "";
+
+		java.util.List<String> added = new java.util.ArrayList<>();
+		java.util.List<String> errors = new java.util.ArrayList<>();
+
+		for (String colSpec : columns.split(",")) {
+			String[] parts = colSpec.trim().split(":");
+			if (parts.length < 2) {
+				errors.add("Invalid column spec '" + colSpec.trim() + "' — need at least name:TYPE");
+				continue;
+			}
+
+			String colName = parts[0].trim();
+			String colType = parts[1].trim().toUpperCase();
+			int length = 0;
+			boolean allowNull = true;
+
+			if (parts.length >= 3 && !parts[2].trim().isEmpty()) {
+				try { length = Integer.parseInt(parts[2].trim()); } catch (NumberFormatException ex) { /* ignore */ }
+			}
+			if (parts.length >= 4 && !parts[3].trim().isEmpty()) {
+				allowNull = Boolean.parseBoolean(parts[3].trim());
+			}
+
+			int typeId;
+			switch (colType) {
+				case "INTEGER": typeId = com.servoy.j2db.persistence.IColumnTypes.INTEGER; break;
+				case "NUMBER": typeId = com.servoy.j2db.persistence.IColumnTypes.NUMBER; break;
+				case "DATETIME": typeId = com.servoy.j2db.persistence.IColumnTypes.DATETIME; break;
+				case "MEDIA": typeId = com.servoy.j2db.persistence.IColumnTypes.MEDIA; break;
+				case "TEXT": typeId = com.servoy.j2db.persistence.IColumnTypes.TEXT; break;
+				default:
+					errors.add("Invalid type '" + colType + "' for column '" + colName + "'");
+					continue;
+			}
+
+			if (length == 0 && colType.equals("TEXT")) length = 50;
+
+			try {
+				if (table.getColumn(colName) != null) {
+					errors.add("Column '" + colName + "' already exists");
+					continue;
+				}
+				((com.servoy.j2db.persistence.AbstractTable) table).createNewColumn(validator, colName,
+						ColumnType.getInstance(typeId, length, 0), allowNull);
+				added.add(colName);
+			} catch (Exception ex) {
+				errors.add("Failed to add '" + colName + "': " + ex.getMessage());
+			}
+		}
+
+		StringBuilder result = new StringBuilder();
+		if (!added.isEmpty()) {
+			result.append("\n  Columns added (").append(added.size()).append("): ").append(String.join(", ", added));
+		}
+		if (!errors.isEmpty()) {
+			result.append("\n  Column errors: ").append(String.join("; ", errors));
+		}
+		return result.toString();
 	}
 
 	@Tool(name = "createServer", description = "Creates a new PostgreSQL database and registers it as a Servoy database server. "
