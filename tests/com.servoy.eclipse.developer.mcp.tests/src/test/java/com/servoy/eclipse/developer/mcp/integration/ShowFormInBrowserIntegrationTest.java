@@ -179,12 +179,11 @@ public class ShowFormInBrowserIntegrationTest {
 	}
 
 	@Test
-	public void testShowFormInBrowser_emptyString_returnsUrl() {
+	public void testShowFormInBrowser_emptyString_returnsError() {
 		String result = tool.showFormInBrowser("", false);
 
 		assertNotNull("Result should not be null", result);
-		assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
-		assertTrue("Should contain URL with empty formpreview", result.contains("formpreview="));
+		assertTrue("Should return error for empty form name", result.startsWith("Error"));
 	}
 
 	@Test
