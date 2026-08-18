@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
@@ -179,16 +180,35 @@ public class ServoyIdeServerWorkspaceIntegrationTest {
 
 	@Test
 	public void testGetCompilationErrors_forProject() {
-		String result = server.getCompilationErrors(PROJECT_NAME, null, null, null);
+		String result = server.getCompilationErrors(PROJECT_NAME, null, null, null, "false");
 
 		assertNotNull(result);
 	}
 
 	@Test
 	public void testGetCompilationErrors_allProjects() {
-		String result = server.getCompilationErrors(null, null, null, null);
+		String result = server.getCompilationErrors(null, null, null, null, "false");
 
 		assertNotNull(result);
+	}
+
+	@Test
+	public void testGetCompilationErrors_waitsForBuild() throws Exception {
+		createTestFile("globals.js", "function broken( { return; }");
+		IFile file = project.getFile("globals.js");
+		IMarker marker = file.createMarker(IMarker.PROBLEM);
+		marker.setAttribute(IMarker.SEVERITY, IMarker.SEVERITY_ERROR);
+		marker.setAttribute(IMarker.MESSAGE, "Syntax error: missing ) after formal parameters");
+		marker.setAttribute(IMarker.LINE_NUMBER, 1);
+
+		String result = server.getCompilationErrors(PROJECT_NAME, "ERROR", null, null, "true");
+
+		assertNotNull(result);
+		assertTrue(result.contains("ERROR"));
+		assertTrue(result.contains("globals.js"));
+		assertTrue(result.contains("Syntax error"));
+
+		marker.delete();
 	}
 
 	@Test

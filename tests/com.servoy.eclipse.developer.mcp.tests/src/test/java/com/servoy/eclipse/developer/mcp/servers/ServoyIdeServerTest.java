@@ -238,7 +238,7 @@ public class ServoyIdeServerTest
 	@Test
 	public void testGetCompilationErrors_allProjects()
 	{
-		String result = server.getCompilationErrors(null, null, null, null);
+		String result = server.getCompilationErrors(null, null, null, null, "false");
 		assertNotNull(result);
 		assertTrue(result.contains("Compilation Problems"));
 	}
@@ -246,7 +246,7 @@ public class ServoyIdeServerTest
 	@Test
 	public void testGetCompilationErrors_missingProject()
 	{
-		String result = server.getCompilationErrors("NonExistentProject_XYZ", null, null, null);
+		String result = server.getCompilationErrors("NonExistentProject_XYZ", null, null, null, "false");
 		assertNotNull(result);
 		assertTrue(result.contains("not found"));
 	}

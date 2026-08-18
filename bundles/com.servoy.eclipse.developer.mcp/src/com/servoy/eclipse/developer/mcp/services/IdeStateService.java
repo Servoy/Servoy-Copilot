@@ -25,6 +25,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.IWorkbench;
@@ -186,8 +187,20 @@ public class IdeStateService
 
 	// --- Compilation errors (generic marker API, no JDT) ---
 
-	public String getCompilationErrors(String projectName, String severity, int maxResults, String filePattern)
+	public String getCompilationErrors(String projectName, String severity, int maxResults, String filePattern, boolean waitForBuild)
 	{
+		if (waitForBuild)
+		{
+			try
+			{
+				Job.getJobManager().join(ResourcesPlugin.FAMILY_AUTO_BUILD, null);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+			}
+		}
+
 		if (maxResults <= 0) maxResults = 50;
 
 		int severityFilter = -1; // -1 = all

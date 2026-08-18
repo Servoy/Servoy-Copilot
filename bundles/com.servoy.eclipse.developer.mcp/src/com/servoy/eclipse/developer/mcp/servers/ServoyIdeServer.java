@@ -336,14 +336,16 @@ public class ServoyIdeServer {
 		return ideStateService.getConsoleOutput(consoleName, lines, allConsoles, shouldClear);
 	}
 
-	@Tool(name = "getCompilationErrors", description = "Retrieves compilation errors and problems from the current workspace or a specific project.", type = "object")
+	@Tool(name = "getCompilationErrors", description = "Retrieves compilation errors and problems from the current workspace or a specific project. By default waits for any in-progress auto-build to finish before reading markers.", type = "object")
 	public String getCompilationErrors(
 			@ToolParam(name = "projectName", description = "The name of the specific project to check (optional, leave empty for all projects)", required = false) String projectName,
 			@ToolParam(name = "severity", description = "Filter by severity level: 'ERROR', 'WARNING', 'INFO', or 'ALL' (default)", required = false) String severity,
 			@ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults,
-			@ToolParam(name = "filePattern", description = "Glob pattern to filter by file name (e.g. '*.js', '*.frm'). If omitted, all files are included.", required = false) String filePattern) {
+			@ToolParam(name = "filePattern", description = "Glob pattern to filter by file name (e.g. '*.js', '*.frm'). If omitted, all files are included.", required = false) String filePattern,
+			@ToolParam(name = "waitForBuild", description = "If 'true' (default), waits for any running auto-build to finish before reading markers. Set to 'false' for a quick peek at current state.", required = false) String waitForBuild) {
 		int max = Optional.ofNullable(maxResults).map(Integer::parseInt).orElse(50);
-		return ideStateService.getCompilationErrors(projectName, severity, max, filePattern);
+		boolean wait = waitForBuild == null || !"false".equalsIgnoreCase(waitForBuild);
+		return ideStateService.getCompilationErrors(projectName, severity, max, filePattern, wait);
 	}
 
 	// --- Private helpers ---
