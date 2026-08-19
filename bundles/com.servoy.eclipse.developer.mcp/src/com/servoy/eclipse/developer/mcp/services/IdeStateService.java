@@ -191,6 +191,7 @@ public class IdeStateService
 	{
 		if (waitForBuild)
 		{
+			long waitStart = System.currentTimeMillis();
 			try
 			{
 				Job.getJobManager().join(ResourcesPlugin.FAMILY_AUTO_BUILD, null);
@@ -199,6 +200,8 @@ public class IdeStateService
 			{
 				Thread.currentThread().interrupt();
 			}
+			long waited = System.currentTimeMillis() - waitStart;
+			com.servoy.eclipse.developer.mcp.McpToolLog.logCall("getCompilationErrors.waitForBuild", waited);
 		}
 
 		if (maxResults <= 0) maxResults = 50;

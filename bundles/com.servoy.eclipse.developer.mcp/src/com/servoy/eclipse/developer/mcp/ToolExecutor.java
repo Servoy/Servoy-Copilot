@@ -62,12 +62,16 @@ public class ToolExecutor
 
 	private Object invokeMethod(Method method, Object[] args)
 	{
+		long start = System.currentTimeMillis();
 		try
 		{
-			return method.invoke(serverImpl, args);
+			Object result = method.invoke(serverImpl, args);
+			McpToolLog.logCall(toFunctionName(method), System.currentTimeMillis() - start);
+			return result;
 		}
 		catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e)
 		{
+			McpToolLog.logError(toFunctionName(method), System.currentTimeMillis() - start, e);
 			throw new RuntimeException(e);
 		}
 	}
