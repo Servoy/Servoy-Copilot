@@ -304,14 +304,6 @@ version(s), and exceptions or additional permissions here}.&quot;
    </license>
 
    <plugin
-         id="com.servoy.eclipse.servoypilot.langchain4j"
-         version="0.0.0"/>
-
-   <plugin
-         id="com.servoy.eclipse.servoypilot"
-         version="0.0.0"/>
-
-   <plugin
          id="com.servoy.eclipse.developer.mcp"
          version="0.0.0"/>
 

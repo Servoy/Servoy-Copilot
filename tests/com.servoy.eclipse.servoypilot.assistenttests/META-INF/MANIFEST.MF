@@ -5,7 +5,6 @@ Bundle-SymbolicName: com.servoy.eclipse.servoypilot.assistenttests
 Bundle-Version: 2026.3.0.qualifier
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Require-Bundle: com.servoy.eclipse.developer.mcp,
- com.servoy.eclipse.servoypilot,
  org.junit;bundle-version="4.13.0",
  org.eclipse.core.runtime,
  org.eclipse.core.resources,

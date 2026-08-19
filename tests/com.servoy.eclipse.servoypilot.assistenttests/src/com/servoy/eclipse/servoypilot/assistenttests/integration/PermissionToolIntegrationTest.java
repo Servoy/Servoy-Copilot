@@ -19,6 +19,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.integration.ServoyRunnerTestBase;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.tools.security.SecurityToolsHelper;
 import com.servoy.j2db.persistence.Form;

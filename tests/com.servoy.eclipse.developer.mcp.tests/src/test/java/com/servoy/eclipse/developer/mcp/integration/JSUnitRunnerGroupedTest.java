@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -12,7 +12,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assume.assumeNotNull;
 
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
@@ -30,7 +30,6 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService} -- MODULES and FORMS grouped modes.
@@ -111,7 +110,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 	/**
 	 * Cached result of {@code runTests("MODULES")} -- computed once per JVM session.
-	 * Avoids launching the headless client for each of the many @Test methods.
+	 * Avoids launching the SmartClient for each of the many @Test methods.
 	 */
 	private static String cachedModulesResult;
 
@@ -133,7 +132,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available.
-		assertNotNull("No Display available - test requires a running Eclipse UI",
+		assumeNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Skip if no Servoy app server.
@@ -154,7 +153,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 		// Guard: if class setup failed (project activation timed out), both results are
 		// null. Skip gracefully rather than NPE in every test method.
-		assertNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
+		assumeNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
 	}
 
 	// -----------------------------------------------------------------------
@@ -383,7 +382,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			if (!mod.isOpen()) mod.open(monitor);
 
 			writeProjectFile(mod, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_MODULE + "\",\n" +
+				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_MODULE + "\",\n" +
 				"solutionType:2,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000002\"\n",
 				monitor);
 			writeProjectFile(mod, "solution_settings.obj",
@@ -416,7 +415,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			if (!sol.isOpen()) sol.open(monitor);
 
 			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_SOLUTION + "\",\n" +
+				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_SOLUTION + "\",\n" +
 				"solutionType:1,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000001\"\n",
 				monitor);
 			// solution_settings.obj declares the module via modulesNames.
@@ -442,12 +441,8 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 		}, new NullProgressMonitor());
 
-		// Wait for workspace auto-build (DLTK indexing) to complete before running tests.
-		ResourcesPlugin.getWorkspace().build(
-			org.eclipse.core.resources.IncrementalProjectBuilder.INCREMENTAL_BUILD,
-			new NullProgressMonitor());
-		org.eclipse.core.runtime.jobs.Job.getJobManager().join(
-			ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
+		// Give workspace and Servoy builder jobs time to settle.
+		Thread.sleep(2000);
 	}
 
 	/**

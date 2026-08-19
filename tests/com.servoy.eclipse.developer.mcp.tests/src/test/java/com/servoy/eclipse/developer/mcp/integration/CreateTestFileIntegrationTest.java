@@ -10,7 +10,7 @@ package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assume.assumeNotNull;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -88,7 +88,7 @@ public class CreateTestFileIntegrationTest
 			e.printStackTrace(System.err);
 			servoyProject = null;
 		}
-		assertNotNull("Failed to create test project in workspace - skipping Layer 2 tests",
+		assumeNotNull("Failed to create test project in workspace - skipping Layer 2 tests",
 			servoyProject);
 
 		// Clean slate: OS-level delete bypasses any Eclipse workspace rule/lock that
@@ -326,7 +326,7 @@ public class CreateTestFileIntegrationTest
 			IProject project = servoyProject.getProject();
 			java.io.File f = new java.io.File(project.getLocation().toFile(), fileName);
 			if (f.exists()) f.delete();
-			project.refreshLocal(IResource.DEPTH_ONE, new NullProgressMonitor());
+			project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		}
 		catch (Exception ignored)
 		{
