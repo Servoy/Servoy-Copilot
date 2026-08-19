@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import org.eclipse.core.resources.ICommand;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IWorkspaceRunnable;
@@ -33,6 +34,7 @@ import org.junit.Test;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.AbstractRepository;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
@@ -168,6 +170,44 @@ public class CreateSolutionIntegrationTest {
 			assertNotNull("Should have active project after activation", activeProject);
 		} finally {
 			cleanupProject(solName);
+		}
+	}
+
+	@Test
+	public void testActivateSolution_getCompilationErrors_waitsForBuild() throws Exception {
+		String solA = "testBuildA_" + System.currentTimeMillis();
+		String solB = "testBuildB_" + System.currentTimeMillis();
+
+		try {
+			devServer.createSolution(solB, "ng_client", "false", "true", null);
+
+			IProject projectB = ResourcesPlugin.getWorkspace().getRoot().getProject(solB);
+			assertTrue("Project B should exist", projectB.exists());
+
+			IFile jsFile = projectB.getFile("globals.js");
+			jsFile.create(new java.io.ByteArrayInputStream(
+				"function broken( { return; }".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+				true, new NullProgressMonitor());
+
+			devServer.createSolution(solA, "ng_client", "true", "true", null);
+			pumpEvents(ACTIVATE_SETTLE_MS);
+
+			devServer.activateSolution(solB);
+
+			ServoyIdeServer ideServer = new ServoyIdeServer(
+				new com.servoy.eclipse.developer.mcp.services.ProjectService(),
+				new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
+				new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
+				new com.servoy.eclipse.developer.mcp.services.IdeStateService());
+
+			String result = ideServer.getCompilationErrors(solB, "ERROR", null, null, "true");
+
+			assertNotNull(result);
+			assertTrue("Should find syntax error after switching solution", result.contains("ERROR"));
+			assertTrue("Should reference the broken file", result.contains("globals.js"));
+		} finally {
+			cleanupProject(solB);
+			cleanupProject(solA);
 		}
 	}
 
