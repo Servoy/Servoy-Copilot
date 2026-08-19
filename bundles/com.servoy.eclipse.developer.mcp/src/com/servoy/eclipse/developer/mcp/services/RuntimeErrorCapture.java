@@ -4,23 +4,37 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 
 public final class RuntimeErrorCapture implements AutoCloseable
 {
+	private static final String APPENDER_NAME = "ServoyMCP_RuntimeErrorCapture";
+
 	private final CopyOnWriteArrayList<String> capturedErrors = new CopyOnWriteArrayList<>();
-	private final CapturingHandler handler;
-	private final Logger rootLogger;
+	private final CapturingAppender appender;
+	private final LoggerContext context;
 	private volatile boolean closed = false;
 
 	public RuntimeErrorCapture()
 	{
-		handler = new CapturingHandler();
-		rootLogger = Logger.getLogger("");
-		rootLogger.addHandler(handler);
+		context = (LoggerContext)LogManager.getContext(false);
+		Configuration config = context.getConfiguration();
+
+		appender = new CapturingAppender(APPENDER_NAME + "_" + System.nanoTime());
+		appender.start();
+
+		LoggerConfig rootLoggerConfig = config.getRootLogger();
+		rootLoggerConfig.addAppender(appender, Level.ERROR, null);
+		context.updateLoggers();
 	}
 
 	public List<String> getCapturedErrors()
@@ -47,43 +61,37 @@ public final class RuntimeErrorCapture implements AutoCloseable
 	{
 		if (closed) return;
 		closed = true;
-		rootLogger.removeHandler(handler);
+
+		Configuration config = context.getConfiguration();
+		LoggerConfig rootLoggerConfig = config.getRootLogger();
+		rootLoggerConfig.removeAppender(appender.getName());
+		context.updateLoggers();
+		appender.stop();
 	}
 
-	private class CapturingHandler extends Handler
+	private class CapturingAppender extends AbstractAppender
 	{
-		CapturingHandler()
+		protected CapturingAppender(String name)
 		{
-			setLevel(Level.SEVERE);
+			super(name, null, PatternLayout.createDefaultLayout(), true, Property.EMPTY_ARRAY);
 		}
 
 		@Override
-		public void publish(LogRecord record)
+		public void append(LogEvent event)
 		{
 			if (closed) return;
-			if (record.getLevel().intValue() < Level.SEVERE.intValue()) return;
 
-			String loggerName = record.getLoggerName();
+			String loggerName = event.getLoggerName();
 			if (loggerName != null && (loggerName.startsWith("org.sablo") || loggerName.startsWith("com.servoy")))
 			{
-				String message = record.getMessage();
-				Throwable thrown = record.getThrown();
+				String message = event.getMessage().getFormattedMessage();
+				Throwable thrown = event.getThrown();
 				if (thrown != null)
 				{
 					message = message + " \u2014 " + thrown.getClass().getSimpleName() + ": " + thrown.getMessage();
 				}
 				capturedErrors.add(message);
 			}
-		}
-
-		@Override
-		public void flush()
-		{
-		}
-
-		@Override
-		public void close()
-		{
 		}
 	}
 }
