@@ -122,17 +122,33 @@ public abstract class ServoyRunnerTestBase
 				error[0] = e;
 			}
 		}, "jsunit-test-runner");
+		t.setDaemon(true); // don't block JVM shutdown if test thread moves on
 		t.start();
 
 		Display display = Display.getDefault();
-		long deadline = System.currentTimeMillis() + (TIMEOUT_SECONDS + 30) * 1000L;
-		while (t.isAlive() && System.currentTimeMillis() < deadline)
+		long timeoutMs = (TIMEOUT_SECONDS + 30) * 1000L;
+		long deadline = System.currentTimeMillis() + timeoutMs;
+
+		boolean onUIThread = display != null && !display.isDisposed()
+			&& display.getThread() == Thread.currentThread();
+
+		if (onUIThread)
 		{
-			if (display != null && !display.isDisposed() && display.readAndDispatch())
+			// Pump SWT events so syncExec calls from the background thread are dispatched.
+			while (t.isAlive() && System.currentTimeMillis() < deadline)
 			{
-				continue; // processed an event - re-check thread state immediately
+				if (display.readAndDispatch())
+				{
+					continue;
+				}
+				Thread.sleep(10);
 			}
-			Thread.sleep(10); // brief yield when no events are pending
+		}
+		else
+		{
+			// Not on the UI thread - just wait. Eclipse's main event loop will
+			// dispatch any syncExec calls made by the background thread.
+			t.join(timeoutMs);
 		}
 
 		if (error[0] != null) throw error[0];

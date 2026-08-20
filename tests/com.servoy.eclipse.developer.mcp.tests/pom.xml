@@ -123,12 +123,22 @@
                                 -Dorg.eclipse.ui.testing=true</argLine>
                             <bundleStartLevel>
                                 <bundle>
+                                    <id>slf4j.api</id>
+                                    <level>1</level>
+                                    <autoStart>true</autoStart>
+                                </bundle>
+                                <bundle>
                                     <id>org.apache.logging.log4j.api</id>
                                     <level>2</level>
                                     <autoStart>true</autoStart>
                                 </bundle>
                                 <bundle>
                                     <id>org.apache.logging.log4j.core</id>
+                                    <level>2</level>
+                                    <autoStart>true</autoStart>
+                                </bundle>
+                                <bundle>
+                                    <id>org.apache.logging.log4j.slf4j2.impl</id>
                                     <level>2</level>
                                     <autoStart>true</autoStart>
                                 </bundle>
@@ -158,6 +168,14 @@
                                 <dependency>
                                     <type>eclipse-plugin</type>
                                     <artifactId>org.apache.logging.log4j.api</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>org.apache.logging.log4j.slf4j2.impl</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <type>eclipse-plugin</type>
+                                    <artifactId>slf4j.api</artifactId>
                                 </dependency>
                                  <dependency>
                                     <type>eclipse-plugin</type>
