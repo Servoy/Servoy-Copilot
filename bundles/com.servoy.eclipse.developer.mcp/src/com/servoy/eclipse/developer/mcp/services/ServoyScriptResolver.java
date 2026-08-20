@@ -38,6 +38,8 @@ import com.servoy.eclipse.model.util.ServoyLog;
  *   <li>Otherwise, use the currently active Servoy solution.</li>
  *   <li>Within the resolved project, search {@code forms/<name>.js} then {@code scopes/<name>.js},
  *       then recursively in both folders.</li>
+ *   <li>If not found and {@code moduleName} is null, iterate all modules of the active solution
+ *       and apply the same search strategy to each module's project.</li>
  * </ol>
  * </p>
  *
@@ -64,28 +66,28 @@ public class ServoyScriptResolver
 		IProject project = resolveProject(moduleName);
 		if (project == null || !project.isOpen()) return null;
 
-		// 1. forms/<name>.js (direct)
-		IFile file = project.getFile("forms/" + cleanName + ".js");
-		if (file.exists()) return file;
+		IFile result = searchInProject(project, cleanName);
+		if (result != null) return result;
 
-		// 2. scopes/<name>.js (direct)
-		file = project.getFile("scopes/" + cleanName + ".js");
-		if (file.exists()) return file;
-
-		// 3. Recursive search in forms/ folder
-		IFolder formsFolder = project.getFolder("forms");
-		if (formsFolder.exists())
+		if (moduleName != null && !moduleName.isBlank())
 		{
-			IFile found = searchInFolder(formsFolder, cleanName + ".js");
-			if (found != null) return found;
+			return null;
 		}
 
-		// 4. Recursive search in scopes/ folder
-		IFolder scopesFolder = project.getFolder("scopes");
-		if (scopesFolder.exists())
+		IServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		ServoyProject[] modules = model.getModulesOfActiveProject();
+		if (modules != null)
 		{
-			IFile found = searchInFolder(scopesFolder, cleanName + ".js");
-			if (found != null) return found;
+			for (ServoyProject mod : modules)
+			{
+				IProject modProject = mod.getProject();
+				if (modProject == null || !modProject.isOpen() || modProject.equals(project))
+				{
+					continue;
+				}
+				result = searchInProject(modProject, cleanName);
+				if (result != null) return result;
+			}
 		}
 
 		return null;
@@ -109,14 +111,52 @@ public class ServoyScriptResolver
 				sb.append(" in active solution '").append(project.getName()).append("'");
 			else
 				sb.append(" - no active Servoy solution found");
+
+			IServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			ServoyProject[] modules = model.getModulesOfActiveProject();
+			if (modules != null && modules.length > 0)
+			{
+				sb.append(" and its modules [");
+				for (int i = 0; i < modules.length; i++)
+				{
+					if (i > 0) sb.append(", ");
+					sb.append(modules[i].getProject().getName());
+				}
+				sb.append("]");
+			}
 		}
-		sb.append(".\nExpected locations: forms/<name>.js or scopes/<name>.js");
+		sb.append(".\nExpected locations: forms/<name>.js or scopes/<name>.js (searched in active solution and all modules)");
 		return sb.toString();
 	}
 
 	// -------------------------------------------------------------------------
 	// Private helpers
 	// -------------------------------------------------------------------------
+
+	private IFile searchInProject(IProject project, String cleanName)
+	{
+		IFile file = project.getFile("forms/" + cleanName + ".js");
+		if (file.exists()) return file;
+
+		file = project.getFile("scopes/" + cleanName + ".js");
+		if (file.exists()) return file;
+
+		IFolder formsFolder = project.getFolder("forms");
+		if (formsFolder.exists())
+		{
+			IFile found = searchInFolder(formsFolder, cleanName + ".js");
+			if (found != null) return found;
+		}
+
+		IFolder scopesFolder = project.getFolder("scopes");
+		if (scopesFolder.exists())
+		{
+			IFile found = searchInFolder(scopesFolder, cleanName + ".js");
+			if (found != null) return found;
+		}
+
+		return null;
+	}
 
 	private IProject resolveProject(String moduleName)
 	{
@@ -126,7 +166,6 @@ public class ServoyScriptResolver
 			return (project != null && project.exists()) ? project : null;
 		}
 
-		// Use active Servoy solution
 		IServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		ServoyProject activeProject = model.getActiveProject();
 		return (activeProject != null) ? activeProject.getProject() : null;

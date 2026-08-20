@@ -460,6 +460,32 @@ public class WorkspaceService
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
+		if (!file.exists() && resourcePath.endsWith(".js"))
+		{
+			try
+			{
+				if (project.hasNature("com.servoy.eclipse.core.ServoyProject"))
+				{
+					IFile formsFile = project.getFile("forms/" + resourcePath);
+					if (formsFile.exists())
+					{
+						file = formsFile;
+					}
+					else
+					{
+						IFile scopesFile = project.getFile("scopes/" + resourcePath);
+						if (scopesFile.exists())
+						{
+							file = scopesFile;
+						}
+					}
+				}
+			}
+			catch (CoreException e)
+			{
+				// nature check failed, fall through to error
+			}
+		}
 		if (!file.exists())
 			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 
