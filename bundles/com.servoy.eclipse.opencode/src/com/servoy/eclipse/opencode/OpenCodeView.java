@@ -66,78 +66,7 @@ public class OpenCodeView extends ViewPart {
 
 	private static final String DEFAULT_SERVER_URL = "http://127.0.0.1:" + RunOpencodeCommand.DEFAULT_PORT + "/";
 
-	/**
-	 * CSS injected into the opencode web app on every page load to apply Servoy
-	 * branding. Overrides the brand/interactive/button colour tokens with Servoy
-	 * blue; backgrounds and text are intentionally left at the opencode defaults.
-	 */
-	private static final String BRAND_CSS = """
-			:root {
-			  /* Servoy orange brand colours */
-			  --surface-brand-base: #f5a623 !important;
-			  --surface-brand-hover: #d4891e !important;
-			  --surface-interactive-base: rgba(245, 166, 35, 0.15) !important;
-			  --surface-interactive-hover: rgba(245, 166, 35, 0.25) !important;
-			  --surface-interactive-weak: rgba(245, 166, 35, 0.08) !important;
-			  --surface-interactive-weak-hover: rgba(245, 166, 35, 0.15) !important;
-			  --text-interactive-base: #f8c46a !important;
-			  --border-interactive-base: #f5a623 !important;
-			  --border-interactive-hover: #d4891e !important;
-			  --border-interactive-active: #b5741a !important;
-			  /* icon-strong-base drives primary icon button background */
-			  --icon-strong-base: #f5a623 !important;
-			  --icon-strong-hover: #d4891e !important;
-			  --icon-strong-active: #b5741a !important;
-			  --icon-brand-base: #f5a623 !important;
-			  --icon-interactive-base: #f8c46a !important;
-			}
-			/* Direct rule for primary icon button */
-			[data-component="icon-button"][data-variant="primary"]:not(:disabled) {
-			  background-color: #f5a623 !important;
-			}
-			[data-component="icon-button"][data-variant="primary"]:not(:disabled):hover {
-			  background-color: #d4891e !important;
-			}
-			/* Hide the session sidebar toggle button - panel is opened via JS */
-			[data-component="icon-button"][data-icon="menu"].titlebar-icon {
-			  display: none !important;
-			}
-			/* Hide the terminal toggle - not needed in the embedded view */
-			[aria-controls="terminal-panel"] {
-			  display: none !important;
-			}
-			/* Hide sidebar rail content (project switcher, settings, help)
-			   but keep its width so the layout does not shift */
-			[data-component="sidebar-rail"] {
-			  visibility: hidden !important;
-			}
-			""";
-
-	private static final String INJECT_CSS_JS = "(function(){" + //$NON-NLS-1$
-			// CSS: inject once
-			"  if (!document.getElementById('servoy-brand')) {" + //$NON-NLS-1$
-			"    var s = document.createElement('style');" + //$NON-NLS-1$
-			"    s.id = 'servoy-brand';" + //$NON-NLS-1$
-			"    s.textContent = " + toJsString(BRAND_CSS) + ";" + //$NON-NLS-1$ //$NON-NLS-2$
-			"    document.head.appendChild(s);" + //$NON-NLS-1$
-			"  }" + //$NON-NLS-1$
-			// Text replacement: run on every navigation (SPA-safe)
-			"  function fixText() {" + //$NON-NLS-1$
-			"    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);" + //$NON-NLS-1$
-			"    var n;" + //$NON-NLS-1$
-			"    while ((n = w.nextNode()) !== null) {" + //$NON-NLS-1$
-			"      if (n.nodeValue.trim() === 'Build anything') {" + //$NON-NLS-1$
-			"        n.nodeValue = 'What should we build in Servoy today?';" + //$NON-NLS-1$
-			"      }" + //$NON-NLS-1$
-			"    }" + //$NON-NLS-1$
-			"  }" + //$NON-NLS-1$
-			"  fixText();" + //$NON-NLS-1$
-			// Watch for dynamically rendered content (register observer once per page load)
-			"  if (!window._svyBrandObs) {" + //$NON-NLS-1$
-			"    window._svyBrandObs = new MutationObserver(fixText);" + //$NON-NLS-1$
-			"    window._svyBrandObs.observe(document.body, {childList: true, subtree: true});" + //$NON-NLS-1$
-			"  }" + //$NON-NLS-1$
-			"})();"; //$NON-NLS-1$
+	private static final String INJECT_CSS_JS = OpenCodeBranding.buildInjectScript();
 
 	private IBrowser browser;
 
@@ -387,26 +316,6 @@ public class OpenCodeView extends ViewPart {
 			ServoyLog.logError(e);
 		}
 		return DEFAULT_SERVER_URL;
-	}
-
-	// -----------------------------------------------------------------------
-	// Branding helpers
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Wraps a CSS string in a JavaScript single-quoted string literal, escaping
-	 * backslashes, single quotes, and newlines so it is safe to embed inline in JS.
-	 *
-	 * @param css the raw CSS text
-	 * @return a JS string literal including the surrounding single quotes
-	 */
-	private static String toJsString(String css) {
-		String escaped = css
-				.replace("\\", "\\\\") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("'", "\\'") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\n", "\\n") //$NON-NLS-1$ //$NON-NLS-2$
-				.replace("\r", "\\r"); //$NON-NLS-1$ //$NON-NLS-2$
-		return "'" + escaped + "'"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 }
