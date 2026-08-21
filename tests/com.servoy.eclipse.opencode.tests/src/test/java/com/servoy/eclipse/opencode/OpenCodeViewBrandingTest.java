@@ -73,9 +73,10 @@ public class OpenCodeViewBrandingTest
 	@Test
 	public void testHiddenToolPrefixes_containsExpectedEntries()
 	{
-		assertEquals("Should have exactly 1 hidden tool prefix",
-			1, OpenCodeBranding.HIDDEN_TOOL_PREFIXES.length);
-		assertEquals("scratchpad", OpenCodeBranding.HIDDEN_TOOL_PREFIXES[0]);
+		assertEquals("Should have exactly 2 hidden tool names",
+			2, OpenCodeBranding.HIDDEN_TOOL_PREFIXES.length);
+		assertEquals("scratchpad_think", OpenCodeBranding.HIDDEN_TOOL_PREFIXES[0]);
+		assertEquals("scratchpad_completion_meta", OpenCodeBranding.HIDDEN_TOOL_PREFIXES[1]);
 	}
 
 	// -----------------------------------------------------------------------
@@ -277,9 +278,9 @@ public class OpenCodeViewBrandingTest
 	}
 
 	@Test
-	public void testShouldHide_partialMatch_returnsTrue()
+	public void testShouldHide_partialMatch_returnsFalse()
 	{
-		assertTrue("'scratchpad' alone must be hidden (prefix match)",
+		assertFalse("'scratchpad' alone must NOT be hidden (only specific tool names match)",
 			OpenCodeBranding.shouldHideToolCall("scratchpad"));
 	}
 }

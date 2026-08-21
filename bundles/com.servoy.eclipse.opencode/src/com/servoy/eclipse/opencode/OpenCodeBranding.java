@@ -17,8 +17,8 @@ package com.servoy.eclipse.opencode;
  */
 public class OpenCodeBranding
 {
-	/** Tool name prefixes that should be hidden from the conversation view. */
-	static final String[] HIDDEN_TOOL_PREFIXES = { "scratchpad" };
+	/** Tool names that should be hidden from the conversation view. */
+	static final String[] HIDDEN_TOOL_PREFIXES = { "scratchpad_think", "scratchpad_completion_meta" };
 
 	/** CSS selector for OpenCode tool-call wrapper elements. */
 	static final String TOOL_WRAPPER_SELECTOR = "[data-component=\"tool-part-wrapper\"]";
