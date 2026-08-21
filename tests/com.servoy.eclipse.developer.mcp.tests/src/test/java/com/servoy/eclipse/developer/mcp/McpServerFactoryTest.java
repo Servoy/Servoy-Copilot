@@ -41,6 +41,16 @@ import io.modelcontextprotocol.spec.McpSchema;
  * JUnit 4 tests for {@link McpServerFactory}.
  */
 public class McpServerFactoryTest {
+
+	private static Map<String, Object> schemaAsMap(McpSchema.JsonSchema schema) {
+		if (schema == null) return null;
+		Map<String, Object> map = new HashMap<>();
+		if (schema.type() != null) map.put("type", schema.type());
+		if (schema.properties() != null) map.put("properties", schema.properties());
+		if (schema.required() != null) map.put("required", schema.required());
+		return map;
+	}
+
 	@McpServer(name = "factory-test")
 	public static class ValidServer {
 		@Tool(name = "echo", description = "Echoes input", type = "object")
@@ -127,7 +137,7 @@ public class McpServerFactoryTest {
 						"content", Map.of("type", "string")),
 				List.of("projectName", "filePath", "content"), false, null, null);
 		McpSchema.Tool tool = new McpSchema.Tool("replaceFileContent", "replaceFileContent", "Replaces file content",
-				schema, null, null, null);
+				schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("projectName", "myProject");
@@ -145,7 +155,7 @@ public class McpServerFactoryTest {
 						"content", Map.of("type", "string")),
 				List.of("projectName", "filePath", "content"), false, null, null);
 		McpSchema.Tool tool = new McpSchema.Tool("replaceFileContent", "replaceFileContent", "Replaces file content",
-				schema, null, null, null);
+				schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("projectName", "myProject");
@@ -161,7 +171,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_nullArgs_returnsError() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object",
 				Map.of("projectName", Map.of("type", "string")), List.of("projectName"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schemaAsMap(schema), null, null,
 				null);
 
 		String result = McpServerFactory.validateRequiredParams(tool, null);
@@ -174,7 +184,7 @@ public class McpServerFactoryTest {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object",
 				Map.of("projectName", Map.of("type", "string"), "content", Map.of("type", "string")),
 				List.of("projectName", "content"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schemaAsMap(schema), null, null,
 				null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -190,7 +200,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_noRequiredParams_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of("optional", Map.of("type", "string")),
 				List.of(), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("noRequired", "noRequired", "No required params", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("noRequired", "noRequired", "No required params", schemaAsMap(schema), null, null,
 				null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -205,7 +215,7 @@ public class McpServerFactoryTest {
 						"content", Map.of("type", "string")),
 				List.of("projectName", "filePath", "content"), false, null, null);
 		McpSchema.Tool tool = new McpSchema.Tool("replaceFileContent", "replaceFileContent", "Replaces file content",
-				schema, null, null, null);
+				schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("projectName", "myProject");
@@ -223,7 +233,7 @@ public class McpServerFactoryTest {
 						"content", Map.of("type", "string")),
 				List.of("projectName", "filePath", "content"), false, null, null);
 		McpSchema.Tool tool = new McpSchema.Tool("replaceFileContent", "replaceFileContent", "Replaces file content",
-				schema, null, null, null);
+				schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("projectName", "myProject");
@@ -243,7 +253,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_emptyStringValue_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of("content", Map.of("type", "string")),
 				List.of("content"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schemaAsMap(schema), null, null,
 				null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -257,7 +267,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_whitespaceOnlyValue_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of("content", Map.of("type", "string")),
 				List.of("content"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("createFile", "createFile", "Creates a file", schemaAsMap(schema), null, null,
 				null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -272,7 +282,7 @@ public class McpServerFactoryTest {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object",
 				Map.of("file-path.v2", Map.of("type", "string"), "content#1", Map.of("type", "string")),
 				List.of("file-path.v2", "content#1"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("weirdTool", "weirdTool", "Tool with special param names", schema,
+		McpSchema.Tool tool = new McpSchema.Tool("weirdTool", "weirdTool", "Tool with special param names", schemaAsMap(schema),
 				null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -288,7 +298,7 @@ public class McpServerFactoryTest {
 		String longName = "a".repeat(500);
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of(longName, Map.of("type", "string")),
 				List.of(longName), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("longParamTool", "longParamTool", "Tool with long param name", schema,
+		McpSchema.Tool tool = new McpSchema.Tool("longParamTool", "longParamTool", "Tool with long param name", schemaAsMap(schema),
 				null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -303,7 +313,7 @@ public class McpServerFactoryTest {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object",
 				Map.of("projectName", Map.of("type", "string"), "filePath", Map.of("type", "string")),
 				List.of("projectName", "filePath"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("readFile", "readFile", "Reads a file", schema, null, null, null);
+		McpSchema.Tool tool = new McpSchema.Tool("readFile", "readFile", "Reads a file", schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 
@@ -315,7 +325,7 @@ public class McpServerFactoryTest {
 
 	@Test
 	public void testValidateRequiredParams_nullSchema_returnsNull() {
-		McpSchema.Tool tool = new McpSchema.Tool("noSchema", "noSchema", "No schema tool", null, null, null, null);
+		McpSchema.Tool tool = new McpSchema.Tool("noSchema", "noSchema", "No schema tool", Map.of(), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		String result = McpServerFactory.validateRequiredParams(tool, args);
@@ -326,7 +336,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_nullRequiredList_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of("optional", Map.of("type", "string")),
 				null, false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("nullRequired", "nullRequired", "Null required list", schema, null,
+		McpSchema.Tool tool = new McpSchema.Tool("nullRequired", "nullRequired", "Null required list", schemaAsMap(schema), null,
 				null, null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -338,7 +348,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_nonStringValuePresent_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of("count", Map.of("type", "integer")),
 				List.of("count"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("countTool", "countTool", "Tool with integer param", schema, null,
+		McpSchema.Tool tool = new McpSchema.Tool("countTool", "countTool", "Tool with integer param", schemaAsMap(schema), null,
 				null, null);
 
 		Map<String, Object> args = new HashMap<>();
@@ -352,7 +362,7 @@ public class McpServerFactoryTest {
 	public void testValidateRequiredParams_extraParamsIgnored_returnsNull() {
 		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object",
 				Map.of("projectName", Map.of("type", "string")), List.of("projectName"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("readFile", "readFile", "Reads a file", schema, null, null, null);
+		McpSchema.Tool tool = new McpSchema.Tool("readFile", "readFile", "Reads a file", schemaAsMap(schema), null, null, null);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("projectName", "myProject");
@@ -369,7 +379,7 @@ public class McpServerFactoryTest {
 				"object", Map.of("a", Map.of("type", "string"), "b", Map.of("type", "string"), "c",
 						Map.of("type", "string"), "d", Map.of("type", "string")),
 				List.of("a", "b", "c", "d"), false, null, null);
-		McpSchema.Tool tool = new McpSchema.Tool("multiTool", "multiTool", "Multi param tool", schema, null, null,
+		McpSchema.Tool tool = new McpSchema.Tool("multiTool", "multiTool", "Multi param tool", schemaAsMap(schema), null, null,
 				null);
 
 		Map<String, Object> args = new HashMap<>();

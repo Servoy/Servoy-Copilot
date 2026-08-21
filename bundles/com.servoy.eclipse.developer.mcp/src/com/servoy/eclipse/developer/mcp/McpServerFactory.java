@@ -188,16 +188,19 @@ public class McpServerFactory
 			.collect(Collectors.toList());
 	}
 
+	@SuppressWarnings("unchecked")
 	static String validateRequiredParams(Tool tool, Map<String, Object> args)
 	{
 		var schema = tool.inputSchema();
-		if (schema == null || schema.required() == null || schema.required().isEmpty())
+		if (schema == null) return null;
+		var requiredList = (List<String>)schema.get("required");
+		if (requiredList == null || requiredList.isEmpty())
 		{
 			return null;
 		}
 
 		var missing = new ArrayList<String>();
-		for (String param : schema.required())
+		for (String param : requiredList)
 		{
 			if (args == null || !args.containsKey(param) || args.get(param) == null)
 			{
@@ -239,8 +242,10 @@ public class McpServerFactory
 				}
 			}
 
-			McpSchema.JsonSchema schema =
-				new McpSchema.JsonSchema(toolAnn.type(), properties, required, false, null, null);
+			Map<String, Object> schema = new LinkedHashMap<>();
+			schema.put("type", toolAnn.type());
+			schema.put("properties", properties);
+			schema.put("required", required);
 			tools.add(new Tool(toolAnn.name(), toolAnn.name(), toolAnn.description(), schema, null, null, null));
 		}
 		return tools;

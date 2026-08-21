@@ -10,8 +10,7 @@ Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.developer.mcp
 Bundle-ActivationPolicy: lazy
 Export-Package: com.servoy.eclipse.developer.mcp.services
-Bundle-ClassPath: .,
- lib/mcp-json-jackson2-1.1.2.jar
+Bundle-ClassPath: .
 Require-Bundle: org.eclipse.core.runtime,
  com.servoy.eclipse.opencode,
  com.servoy.eclipse.cypress,
@@ -82,12 +81,14 @@ Import-Package: com.fasterxml.jackson.annotation;version="[2.20.0,3.0.0)",
  com.servoy.j2db.server.starter,
  com.servoy.j2db.util,
  com.servoy.j2db.util.xmlxport,
- io.modelcontextprotocol.json;version="[1.1.0,2.0.0)",
- io.modelcontextprotocol.json.schema;version="[1.1.0,2.0.0)",
- io.modelcontextprotocol.server;version="[1.1.0,2.0.0)",
- io.modelcontextprotocol.server.transport;version="[1.1.0,2.0.0)",
- io.modelcontextprotocol.spec;version="[1.1.0,2.0.0)",
- io.modelcontextprotocol.util;version="[1.1.0,2.0.0)",
+ io.modelcontextprotocol.json;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.json.jackson2;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.json.schema;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.json.schema.jackson2;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.server;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.server.transport;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.spec;version="[2.0.0,3.0.0)",
+ io.modelcontextprotocol.util;version="[2.0.0,3.0.0)",
  jakarta.servlet;version="[6.0.0,7.0.0)",
  jakarta.servlet.annotation;version="[6.0.0,7.0.0)",
  jakarta.servlet.http;version="[6.0.0,7.0.0)",
