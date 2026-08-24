@@ -24,6 +24,8 @@ import java.util.Base64;
 
 import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.ui.IPartListener2;
+import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
 
@@ -70,6 +72,10 @@ public class OpenCodeView extends ViewPart {
 
 	private IBrowser browser;
 
+	private volatile String pendingUrl;
+
+	private IPartListener2 partListener;
+
 	/**
 	 * Non-null only while this view is waiting for the first active solution.
 	 * Cleared (and removed from the model) on first {@code activeProjectChanged}
@@ -102,6 +108,8 @@ public class OpenCodeView extends ViewPart {
 	@Override
 	public void dispose() {
 		unregisterActiveProjectListener();
+		removePartVisibleListener();
+		pendingUrl = null;
 		if (browser != null && !browser.isDisposed()) {
 			browser.dispose();
 		}
@@ -240,6 +248,35 @@ public class OpenCodeView extends ViewPart {
 		PlatformUI.getWorkbench().getDisplay().asyncExec(this::initUrl);
 	}
 
+	// -----------------------------------------------------------------------
+	// Part-visible listener (deferred navigation)
+	// -----------------------------------------------------------------------
+
+	private void registerPartVisibleListener() {
+		if (partListener != null) return;
+		partListener = new IPartListener2() {
+			@Override
+			public void partVisible(IWorkbenchPartReference partRef) {
+				if (partRef.getPart(false) == OpenCodeView.this && pendingUrl != null) {
+					ServoyLog.logInfo("opencode the url is (deferred): " + pendingUrl);
+					setUrl(pendingUrl);
+					pendingUrl = null;
+					removePartVisibleListener();
+				}
+			}
+		};
+		getSite().getPage().addPartListener(partListener);
+	}
+
+	private void removePartVisibleListener() {
+		IPartListener2 l = partListener;
+		if (l == null) return;
+		partListener = null;
+		if (getSite() != null && getSite().getPage() != null) {
+			getSite().getPage().removePartListener(l);
+		}
+	}
+
 
 	// -----------------------------------------------------------------------
 	// URL-switcher thread (server-starting path)
@@ -271,6 +308,9 @@ public class OpenCodeView extends ViewPart {
 					if (getSite() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
 						ServoyLog.logInfo("opencode the url is: " + targetUrl );
 						setUrl(targetUrl);
+					} else if (getSite() != null) {
+						pendingUrl = targetUrl;
+						registerPartVisibleListener();
 					}
 				});
 			} catch (InterruptedException e) {
