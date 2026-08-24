@@ -215,7 +215,8 @@ public class ServoyTestingServer
 	@Tool(name = "screenshotForm", description = "Takes a screenshot of a specific Servoy form rendered in a headless browser. " +
 		"Bypasses authentication and captures the form as it appears at runtime. " + "Returns the file path of the saved screenshot PNG. " +
 		"Use this to visually verify form layout, check element positioning, or capture the current state of a form. " +
-		"If the form has validation errors (ERROR-severity markers on .frm or .js files), returns a text error listing the problems instead of taking a screenshot.", type = "object")
+		"If the form has property type mismatches that prevent it from rendering, returns a text error listing them instead of taking a screenshot. " +
+		"Problem markers on the form's files (unresolved methods, dataproviders, script errors) do not block the screenshot - they are reported as a warning alongside the saved image.", type = "object")
 	public String screenshotForm(
 		@ToolParam(name = "formName", description = "The name of the form to screenshot (e.g. 'mainForm', 'orderDetails')") String formName,
 		@ToolParam(name = "waitSeconds", description = "How many seconds to wait for the form to fully render before taking the screenshot. Use 5 for simple forms, 10 for complex ones.", type = "integer") int waitSeconds)

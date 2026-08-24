@@ -1104,9 +1104,14 @@ public class CypressFormTestingIntegrationTest {
 	// screenshotForm marker validation PDE tests (SVY-21195)
 	// -----------------------------------------------------------------------
 
+	/**
+	 * Problem markers on the .js file must not gate the screenshot. Invalid JavaScript
+	 * produces DLTK ERROR markers but does not stop the form from rendering, so
+	 * screenshotForm must proceed rather than return a marker-gate error.
+	 */
 	@Test
-	public void testScreenshotForm_formWithMarkerErrors_returnsTextError() throws Exception {
-		String invalidFormName = "cypressInvalidMarkerForm";
+	public void testScreenshotForm_jsFileErrors_doNotBlock() throws Exception {
+		String invalidFormName = "cypressInvalidJsOnlyForm";
 		ensureForm(invalidFormName);
 
 		IProject project = activeProject.getProject();
@@ -1118,57 +1123,58 @@ public class CypressFormTestingIntegrationTest {
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
 		pumpEvents(2000);
 
-		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
-				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
-			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
-					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
-				hasErrorMarkers = true;
-				break;
-			}
-		}
-		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
+		assertTrue("Invalid JS must produce DLTK error markers on the .js file", hasErrorMarkers(jsFile));
 
 		String result = testingServer.screenshotForm(invalidFormName, 1);
 		assertNotNull("screenshotForm result should not be null", result);
-		assertTrue("Should return text error (not screenshot path) when form has markers: " + result,
-				result.contains("validation errors"));
-		assertTrue("Error should list specific marker messages: " + result, result.contains("[ERROR]"));
-		assertFalse("Should NOT return a .png path when form has errors: " + result, result.contains(".png"));
+		assertFalse("Problem markers must not gate the screenshot: " + result,
+				result.contains("has problem markers") && result.startsWith("Error:"));
 	}
 
+	/**
+	 * Problem markers on the .frm file must not gate the screenshot either. Marker presence
+	 * is a poor proxy for render failure - an unresolved event method sits on the .frm file
+	 * yet the form renders fine. Only property type mismatches block (see
+	 * validateFormProperties).
+	 */
 	@Test
-	public void testScreenshotForm_formWithMarkerErrors_includesFormName() throws Exception {
-		String invalidFormName = "cypressInvalidMarkerForm2";
+	public void testScreenshotForm_frmFileMarkers_doNotBlock() throws Exception {
+		String invalidFormName = "cypressInvalidFrmForm";
 		ensureForm(invalidFormName);
 
 		IProject project = activeProject.getProject();
-		writeProjectFile(project, "forms/" + invalidFormName + ".js",
-				"!!! this is not valid JavaScript !!!\nfunction broken( {", new NullProgressMonitor());
-		org.eclipse.core.resources.IFile jsFile = project.getFile("forms/" + invalidFormName + ".js");
-		assertTrue("js file should exist after write", jsFile.exists());
+		writeProjectFile(project, "forms/" + invalidFormName + ".frm",
+				"!!! this is not valid frm JSON !!!", new NullProgressMonitor());
+		org.eclipse.core.resources.IFile frmFile = project.getFile("forms/" + invalidFormName + ".frm");
+		assertTrue("frm file should exist after write", frmFile.exists());
 
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
 		pumpEvents(2000);
 
-		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
+		assertTrue("Invalid .frm JSON must produce ERROR markers on the .frm file", hasErrorMarkers(frmFile));
+
+		String result = testingServer.screenshotForm(invalidFormName, 1);
+		assertNotNull("screenshotForm result should not be null", result);
+		// Markers are reported as a Warning alongside the result, never as a blocking gate.
+		assertFalse("Problem markers on .frm must not gate the screenshot: " + result,
+				result.startsWith("Error: Form '" + invalidFormName + "' has problem markers"));
+	}
+
+	/** Returns true when the given file carries at least one ERROR-severity problem marker. */
+	private static boolean hasErrorMarkers(org.eclipse.core.resources.IFile file) throws Exception {
+		for (org.eclipse.core.resources.IMarker m : file.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
 				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
 			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
 					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
-				hasErrorMarkers = true;
-				break;
+				return true;
 			}
 		}
-		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
-
-		String result = testingServer.screenshotForm(invalidFormName, 1);
-		assertNotNull(result);
-		assertTrue("Error message should include form name: " + result, result.contains(invalidFormName));
+		return false;
 	}
 
+	// AC1: showFormInBrowser never blocks — JS errors appear as Warning: text only
 	@Test
-	public void testShowFormInBrowser_formWithJSMarkerErrors_returnsValidationError() throws Exception {
+	public void testShowFormInBrowser_formWithJSMarkerErrors_opensSuccessfully() throws Exception {
 		String invalidFormName = "cypressInvalidBrowserForm";
 		ensureForm(invalidFormName);
 
@@ -1181,21 +1187,16 @@ public class CypressFormTestingIntegrationTest {
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
 		pumpEvents(2000);
 
-		boolean hasErrorMarkers = false;
-		for (org.eclipse.core.resources.IMarker m : jsFile.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
-				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
-			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
-					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
-				hasErrorMarkers = true;
-				break;
-			}
-		}
-		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers);
+		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers(jsFile));
 
 		String result = testingServer.showFormInBrowser(invalidFormName, false);
 		assertNotNull("showFormInBrowser result should not be null", result);
-		assertTrue("Should return validation error, not 'Opened form': " + result,
-				result.contains("validation errors") || result.contains("compilation errors"));
-		assertTrue("Error should mention the form name: " + result, result.contains(invalidFormName));
+		// AC1: showFormInBrowser must never block — must not return a bare "Error:" response
+		assertFalse("showFormInBrowser must never return a blocking Error: response for JS-only markers (AC1): " + result,
+				result.startsWith("Error:"));
+		// The result should report the form was opened, possibly with a Warning: about the JS errors
+		assertTrue("showFormInBrowser should report form opened (or Warning:) even when .js has errors: " + result,
+				result.contains("Opened form") || result.contains("Warning:"));
+		assertTrue("Result should mention the form name: " + result, result.contains(invalidFormName));
 	}
 }

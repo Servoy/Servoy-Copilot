@@ -709,12 +709,12 @@ public class ServoyTestingServerTest {
 	// -----------------------------------------------------------------------
 
 	@Test
-	public void testScreenshotForm_descriptionMentionsValidationErrors() {
+	public void testScreenshotForm_descriptionMentionsPropertyTypeMismatchGate() {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue("screenshotForm description should mention validation errors: " + tool.description(),
-				tool.description().contains("validation errors"));
+		assertTrue("screenshotForm description should name property type mismatches as the blocking gate: " + tool.description(),
+				tool.description().contains("property type mismatches"));
 	}
 
 	@Test
@@ -733,6 +733,22 @@ public class ServoyTestingServerTest {
 		Tool tool = m.getAnnotation(Tool.class);
 		assertTrue("screenshotForm description should mention returning text error: " + tool.description(),
 				tool.description().contains("text error"));
+	}
+
+	/**
+	 * Problem markers no longer gate the screenshot. The description must say so, and must
+	 * not claim any file's markers block it.
+	 */
+	@Test
+	public void testScreenshotForm_descriptionSaysMarkersDoNotBlock() {
+		Method m = findToolMethod("screenshotForm");
+		assertNotNull(m);
+		Tool tool = m.getAnnotation(Tool.class);
+		assertTrue("screenshotForm description should state problem markers do not block the screenshot: " + tool.description(),
+				tool.description().contains("do not block the screenshot"));
+		assertFalse("screenshotForm description must not claim .frm/.js markers block the screenshot: " + tool.description(),
+				tool.description().contains(".frm or .js") || tool.description().contains(".js files")
+						|| tool.description().contains("markers on its .frm file"));
 	}
 
 	// -----------------------------------------------------------------------
