@@ -25,12 +25,35 @@ public class OpenCodeBranding
 
 	/**
 	 * CSS injected into the opencode web app on every page load to apply Servoy
-	 * branding. Overrides the brand/interactive/button colour tokens with Servoy
-	 * orange; backgrounds and text are intentionally left at the opencode defaults.
+	 * branding.
+	 * <p>
+	 * The v2 theme system uses a colour scale ({@code --v2-blue-100} through
+	 * {@code --v2-blue-1200}) that all accent semantic tokens reference. By
+	 * overriding the blue scale with a Servoy-orange scale centred on
+	 * {@code #f5a623}, the entire UI picks up orange automatically.
+	 * </p>
+	 * <p>
+	 * Legacy (pre-v2) variable overrides are kept as a fallback for any elements
+	 * still using the old token names.
+	 * </p>
 	 */
 	static final String BRAND_CSS = """
 			:root {
-			  /* Servoy orange brand colours */
+			  /* ===== v2 theme: override blue scale with Servoy orange ===== */
+			  --v2-blue-100: #fef6e8 !important;
+			  --v2-blue-200: #fdecc8 !important;
+			  --v2-blue-300: #fce0a4 !important;
+			  --v2-blue-400: #f8c46a !important;
+			  --v2-blue-500: #f7b342 !important;
+			  --v2-blue-600: #f5a623 !important;
+			  --v2-blue-700: #d4891e !important;
+			  --v2-blue-800: #b5741a !important;
+			  --v2-blue-900: #965f16 !important;
+			  --v2-blue-1000: #7a4d12 !important;
+			  --v2-blue-1100: #5e3b0e !important;
+			  --v2-blue-1200: #462c0a !important;
+
+			  /* ===== Legacy (pre-v2) fallback overrides ===== */
 			  --surface-brand-base: #f5a623 !important;
 			  --surface-brand-hover: #d4891e !important;
 			  --surface-interactive-base: rgba(245, 166, 35, 0.15) !important;
@@ -41,14 +64,25 @@ public class OpenCodeBranding
 			  --border-interactive-base: #f5a623 !important;
 			  --border-interactive-hover: #d4891e !important;
 			  --border-interactive-active: #b5741a !important;
-			  /* icon-strong-base drives primary icon button background */
 			  --icon-strong-base: #f5a623 !important;
 			  --icon-strong-hover: #d4891e !important;
 			  --icon-strong-active: #b5741a !important;
 			  --icon-brand-base: #f5a623 !important;
 			  --icon-interactive-base: #f8c46a !important;
 			}
-			/* Direct rule for primary icon button */
+			/* ===== Send button: override contrast bg to Servoy orange ===== */
+			/* New layout send button uses inline style with --v2-background-bg-contrast */
+			[data-action="prompt-submit"] {
+			  --v2-background-bg-contrast: #f5a623 !important;
+			  color: #ffffff !important;
+			}
+			[data-action="prompt-submit"]:hover {
+			  --v2-background-bg-contrast: #d4891e !important;
+			}
+			[data-action="prompt-submit"] svg {
+			  color: #ffffff !important;
+			}
+			/* Old layout primary icon button */
 			[data-component="icon-button"][data-variant="primary"]:not(:disabled) {
 			  background-color: #f5a623 !important;
 			}
@@ -67,6 +101,23 @@ public class OpenCodeBranding
 			   but keep its width so the layout does not shift */
 			[data-component="sidebar-rail"] {
 			  visibility: hidden !important;
+			}
+			/* Hide the OpenCode watermark SVG and logo-splash SVG */
+			svg.text-v2-background-bg-inverse,
+			svg[data-component="logo-splash"] {
+			  display: none !important;
+			}
+			/* Style for the Servoy replacement text injected by JS */
+			.servoy-brand-text {
+			  font-size: 2rem;
+			  font-weight: 800;
+			  color: #f5a623;
+			  letter-spacing: 0.05em;
+			  user-select: none;
+			  pointer-events: none;
+			  text-align: center;
+			  width: 100%;
+			  padding: 1rem 0;
 			}
 			""";
 
@@ -105,8 +156,9 @@ public class OpenCodeBranding
 		sb.append("    s.textContent = ").append(toJsString(BRAND_CSS)).append(";");
 		sb.append("    document.head.appendChild(s);");
 		sb.append("  }");
-		// Text replacement + scratchpad hiding
-		sb.append("  function fixText() {");
+		// Branding fixup: text replacement, logo replacement, scratchpad hiding
+		sb.append("  function fixBranding() {");
+		// Replace "Build anything" text (English fallback for older UI versions)
 		sb.append("    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);");
 		sb.append("    var n;");
 		sb.append("    while ((n = w.nextNode()) !== null) {");
@@ -114,6 +166,29 @@ public class OpenCodeBranding
 		sb.append("        n.nodeValue = 'What should we build in Servoy today?';");
 		sb.append("      }");
 		sb.append("    }");
+		// Replace OpenCode watermark SVG (has class text-v2-background-bg-inverse) with Servoy branding text
+		sb.append("    document.querySelectorAll('svg.text-v2-background-bg-inverse').forEach(function(svg) {");
+		sb.append("      if (!svg.dataset.svyReplaced) {");
+		sb.append("        svg.style.display = 'none';");
+		sb.append("        svg.dataset.svyReplaced = '1';");
+		sb.append("        var div = document.createElement('div');");
+		sb.append("        div.className = 'servoy-brand-text';");
+		sb.append("        div.textContent = 'What should we build in Servoy today?';");
+		sb.append("        svg.parentNode.insertBefore(div, svg);");
+		sb.append("      }");
+		sb.append("    });");
+		// Hide logo-splash and decorative logo-mark SVGs
+		sb.append("    document.querySelectorAll('svg').forEach(function(svg) {");
+		sb.append("      var vb = svg.getAttribute('viewBox');");
+		sb.append("      if ((vb === '0 0 80 100' || svg.getAttribute('data-component') === 'logo-splash') && !svg.dataset.svyReplaced) {");
+		sb.append("        svg.style.display = 'none';");
+		sb.append("        svg.dataset.svyReplaced = '1';");
+		sb.append("      }");
+		sb.append("      if (svg.getAttribute('data-component') === 'logo-mark' && svg.classList.contains('w-10') && !svg.dataset.svyReplaced) {");
+		sb.append("        svg.style.display = 'none';");
+		sb.append("        svg.dataset.svyReplaced = '1';");
+		sb.append("      }");
+		sb.append("    });");
 		// Hide scratchpad tool calls
 		sb.append("    document.querySelectorAll('").append(TOOL_WRAPPER_SELECTOR).append("').forEach(function(el) {");
 		sb.append("      var txt = el.textContent || '';");
@@ -128,10 +203,10 @@ public class OpenCodeBranding
 		sb.append("      }");
 		sb.append("    });");
 		sb.append("  }");
-		sb.append("  fixText();");
+		sb.append("  fixBranding();");
 		// MutationObserver for dynamic content
 		sb.append("  if (!window._svyBrandObs) {");
-		sb.append("    window._svyBrandObs = new MutationObserver(fixText);");
+		sb.append("    window._svyBrandObs = new MutationObserver(fixBranding);");
 		sb.append("    window._svyBrandObs.observe(document.body, {childList: true, subtree: true});");
 		sb.append("  }");
 		sb.append("})();");
