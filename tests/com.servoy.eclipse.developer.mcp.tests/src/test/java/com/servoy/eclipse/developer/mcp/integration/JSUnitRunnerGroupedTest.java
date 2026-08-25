@@ -9,6 +9,7 @@
 package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -130,7 +131,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available.
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Skip if no Servoy app server.
@@ -151,7 +152,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 		// Guard: if class setup failed (project activation timed out), both results are
 		// null. Skip gracefully rather than NPE in every test method.
-		assumeNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
+		assertNotNull("Class setup did not complete (activation failed) - skipping", modulesResult);
 	}
 
 	// -----------------------------------------------------------------------
@@ -349,7 +350,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	private void ensureGroupedProjectsInWorkspace() throws Exception
 	{
 		// module
-		ensureSolutionInWorkspace(TEST_GROUPED_MODULE, UUID.randomUUID().toString(), SERVOY_RESOURCES, 
+		ensureSolutionInWorkspace(TEST_GROUPED_MODULE, UUID.randomUUID().toString(), SERVOY_RESOURCES, null,
 			(modulePrj, monitor) -> {
 				// Force-write globals.js so content changes are always picked up.
 				try {
@@ -360,12 +361,8 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			});
 
 		// main solution
-		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+		ensureTestSolutionInWorkspace(new String[] { TEST_GROUPED_MODULE }, (solPrj, monitor) -> {
 			try {
-				writeProjectFile(solPrj, "solution_settings.obj",
-						"modulesNames:\"" + TEST_GROUPED_MODULE + "\",\n" +
-						"typeid:43,\nuuid:\"" + solutionUUID + "\",\nversion:\"1.0\"\n",
-						monitor);
 				// Parent globals.js has no test_ methods -- scope is intentionally empty.
 				writeProjectFile(solPrj, "globals.js",
 					"// No test methods in parent globals -- tests live in the module and form.\n",

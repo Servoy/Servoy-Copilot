@@ -23,7 +23,7 @@
         <setEntry value="servoy_ngclient.tests"/>
     </setAttribute>
     <booleanAttribute key="includeOptional" value="true"/>
-    <stringAttribute key="location" value="${workspace_loc}/../junit-workspace-integration"/>
+    <stringAttribute key="location" value="${workspace_loc}/../tests-mcp-developer-integration"/>
     <booleanAttribute key="org.eclipse.debug.core.ATTR_FORCE_SYSTEM_CONSOLE_ENCODING" value="false"/>
     <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
         <listEntry value="/com.servoy.eclipse.developer.mcp.tests/src/test/java/com/servoy/eclipse/developer/mcp/AllDeveloperMcpIntegrationTests.java"/>
@@ -50,7 +50,7 @@
     <setAttribute key="selected_target_bundles">
         <setEntry value="bcpg@default:default"/>
         <setEntry value="bcpkix@default:default"/>
-        <setEntry value="bcprov*1.85.2@default:default"/>
+        <setEntry value="bcprov@default:default"/>
         <setEntry value="bcutil@default:default"/>
         <setEntry value="com.equo.chromium.cef.win32.win32.x86_64@default:false"/>
         <setEntry value="com.equo.chromium@default:default"/>
@@ -132,7 +132,7 @@
         <setEntry value="org.apache.batik.css@default:default"/>
         <setEntry value="org.apache.batik.i18n@default:default"/>
         <setEntry value="org.apache.batik.util@default:default"/>
-        <setEntry value="org.apache.commons.commons-codec*1.22.1@default:default"/>
+        <setEntry value="org.apache.commons.commons-codec@default:default"/>
         <setEntry value="org.apache.commons.commons-collections4@default:default"/>
         <setEntry value="org.apache.commons.commons-compress@default:default"/>
         <setEntry value="org.apache.commons.commons-dbcp2@default:default"/>
@@ -142,7 +142,6 @@
         <setEntry value="org.apache.commons.commons-logging@default:default"/>
         <setEntry value="org.apache.commons.commons-pool2@default:default"/>
         <setEntry value="org.apache.commons.lang3@default:default"/>
-        <setEntry value="org.apache.commons.logging@default:default"/>
         <setEntry value="org.apache.commons.text@default:default"/>
         <setEntry value="org.apache.felix.gogo.command@default:default"/>
         <setEntry value="org.apache.felix.gogo.runtime@default:default"/>
@@ -449,7 +448,6 @@
         <setEntry value="com.servoy.eclipse.nodejs.win32.win32.x86_64@default:default"/>
         <setEntry value="com.servoy.eclipse.notification@default:default"/>
         <setEntry value="com.servoy.eclipse.opencode@default:default"/>
-        <setEntry value="com.servoy.eclipse.servoypilot.assistenttests@default:default"/>
         <setEntry value="com.servoy.eclipse.servoypilot.langchain4j@default:default"/>
         <setEntry value="com.servoy.eclipse.servoypilot@default:default"/>
         <setEntry value="com.servoy.eclipse.ui.tweaks@3:true"/>

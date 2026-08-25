@@ -47,7 +47,7 @@ public class CreateArtifactsIntegrationTest extends TestUtilitiesClass {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace(null);
+		ensureTestSolutionInWorkspace(null, null);
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();

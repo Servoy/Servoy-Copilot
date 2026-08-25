@@ -25,7 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
+import com.servoy.eclipse.ngclient.ui.Activator;
 
 /**
  * Unit tests for {@link AbstractIntegrationTest}'s static lifecycle hooks
@@ -41,43 +41,43 @@ public class AbstractIntegrationTestBaseTest
 	@BeforeEach
 	void captureState()
 	{
-		stateBeforeTest = NodeFolderCreatorJob.isDisabled();
+		stateBeforeTest = Activator.isNodeExtractionAndTitaniumBuildDisabled();
 	}
 
 	@AfterEach
 	void restoreState()
 	{
-		NodeFolderCreatorJob.setDisabled(stateBeforeTest);
+		Activator.setNodeExtractionAndTitaniumBuildDisabled(stateBeforeTest);
 	}
 
 	@Nested
 	class DisableHook
 	{
 		@Test
-		@org.junit.jupiter.api.DisplayName("disableNodeFolderCreatorJob() sets NodeFolderCreatorJob.isDisabled() to true")
+		@org.junit.jupiter.api.DisplayName("adjustTitaniumBuildJobEnablementForThisClass() sets Activator.isNodeExtractionAndTitaniumBuildDisabled() to true")
 		void disableHookSetsDisabledTrue()
 		{
-			NodeFolderCreatorJob.setDisabled(false); // start from known state
-			AbstractIntegrationTest.disableNodeFolderCreatorJob();
-			assertTrue(NodeFolderCreatorJob.isDisabled(),
-				"After disableNodeFolderCreatorJob(), NodeFolderCreatorJob must report disabled=true");
+			Activator.setNodeExtractionAndTitaniumBuildDisabled(false); // start from known state
+			AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
+			assertTrue(Activator.isNodeExtractionAndTitaniumBuildDisabled(),
+				"After adjustTitaniumBuildJobEnablementForThisClass(), NodeFolderCreatorJob must report disabled=true");
 		}
 
 		@Test
-		@org.junit.jupiter.api.DisplayName("disableNodeFolderCreatorJob() is idempotent when already disabled")
+		@org.junit.jupiter.api.DisplayName("adjustTitaniumBuildJobEnablementForThisClass() is idempotent when already disabled")
 		void disableHookIsIdempotent()
 		{
-			NodeFolderCreatorJob.setDisabled(true);
-			AbstractIntegrationTest.disableNodeFolderCreatorJob();
-			assertTrue(NodeFolderCreatorJob.isDisabled(),
+			Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
+			AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
+			assertTrue(Activator.isNodeExtractionAndTitaniumBuildDisabled(),
 				"Repeated disable calls must leave disabled=true");
 		}
 
 		@Test
-		@org.junit.jupiter.api.DisplayName("disableNodeFolderCreatorJob() does not throw")
+		@org.junit.jupiter.api.DisplayName("adjustTitaniumBuildJobEnablementForThisClass() does not throw")
 		void disableHookDoesNotThrow()
 		{
-			assertDoesNotThrow(AbstractIntegrationTest::disableNodeFolderCreatorJob);
+			assertDoesNotThrow(AbstractIntegrationTest::adjustTitaniumBuildJobEnablementForThisClass);
 		}
 	}
 
@@ -85,30 +85,30 @@ public class AbstractIntegrationTestBaseTest
 	class RestoreHook
 	{
 		@Test
-		@org.junit.jupiter.api.DisplayName("restoreNodeFolderCreatorJob() sets NodeFolderCreatorJob.isDisabled() to false")
+		@org.junit.jupiter.api.DisplayName("restoreTitaniumBuildJobEnablementToDefault() sets Activator.isNodeExtractionAndTitaniumBuildDisabled() to false")
 		void restoreHookSetsDisabledFalse()
 		{
-			NodeFolderCreatorJob.setDisabled(true); // start from known state
-			AbstractIntegrationTest.restoreNodeFolderCreatorJob();
-			assertFalse(NodeFolderCreatorJob.isDisabled(),
-				"After restoreNodeFolderCreatorJob(), NodeFolderCreatorJob must report disabled=false");
+			Activator.setNodeExtractionAndTitaniumBuildDisabled(true); // start from known state
+			AbstractIntegrationTest.restoreTitaniumBuildJobEnablementToDefault();
+			assertFalse(Activator.isNodeExtractionAndTitaniumBuildDisabled(),
+				"After restoreTitaniumBuildJobEnablementToDefault(), NodeFolderCreatorJob must report disabled=false");
 		}
 
 		@Test
-		@org.junit.jupiter.api.DisplayName("restoreNodeFolderCreatorJob() is idempotent when already enabled")
+		@org.junit.jupiter.api.DisplayName("restoreTitaniumBuildJobEnablementToDefault() is idempotent when already enabled")
 		void restoreHookIsIdempotent()
 		{
-			NodeFolderCreatorJob.setDisabled(false);
-			AbstractIntegrationTest.restoreNodeFolderCreatorJob();
-			assertFalse(NodeFolderCreatorJob.isDisabled(),
+			Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
+			AbstractIntegrationTest.restoreTitaniumBuildJobEnablementToDefault();
+			assertFalse(Activator.isNodeExtractionAndTitaniumBuildDisabled(),
 				"Repeated restore calls must leave disabled=false");
 		}
 
 		@Test
-		@org.junit.jupiter.api.DisplayName("restoreNodeFolderCreatorJob() does not throw")
+		@org.junit.jupiter.api.DisplayName("restoreTitaniumBuildJobEnablementToDefault() does not throw")
 		void restoreHookDoesNotThrow()
 		{
-			assertDoesNotThrow(AbstractIntegrationTest::restoreNodeFolderCreatorJob);
+			assertDoesNotThrow(AbstractIntegrationTest::restoreTitaniumBuildJobEnablementToDefault);
 		}
 	}
 
@@ -119,13 +119,13 @@ public class AbstractIntegrationTestBaseTest
 		@org.junit.jupiter.api.DisplayName("disable then restore leaves the toggle at false")
 		void disableThenRestoreLeavesEnabled()
 		{
-			NodeFolderCreatorJob.setDisabled(false);
+			Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 
-			AbstractIntegrationTest.disableNodeFolderCreatorJob();
-			assertTrue(NodeFolderCreatorJob.isDisabled(), "Must be disabled after setup hook");
+			AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
+			assertTrue(Activator.isNodeExtractionAndTitaniumBuildDisabled(), "Must be disabled after setup hook");
 
-			AbstractIntegrationTest.restoreNodeFolderCreatorJob();
-			assertFalse(NodeFolderCreatorJob.isDisabled(), "Must be re-enabled after teardown hook");
+			AbstractIntegrationTest.restoreTitaniumBuildJobEnablementToDefault();
+			assertFalse(Activator.isNodeExtractionAndTitaniumBuildDisabled(), "Must be re-enabled after teardown hook");
 		}
 
 		@Test
@@ -134,11 +134,11 @@ public class AbstractIntegrationTestBaseTest
 		{
 			for (int i = 0; i < 5; i++)
 			{
-				AbstractIntegrationTest.disableNodeFolderCreatorJob();
-				assertTrue(NodeFolderCreatorJob.isDisabled(), "Cycle " + i + ": must be disabled after setup");
+				AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
+				assertTrue(Activator.isNodeExtractionAndTitaniumBuildDisabled(), "Cycle " + i + ": must be disabled after setup");
 
-				AbstractIntegrationTest.restoreNodeFolderCreatorJob();
-				assertFalse(NodeFolderCreatorJob.isDisabled(), "Cycle " + i + ": must be enabled after teardown");
+				AbstractIntegrationTest.restoreTitaniumBuildJobEnablementToDefault();
+				assertFalse(Activator.isNodeExtractionAndTitaniumBuildDisabled(), "Cycle " + i + ": must be enabled after teardown");
 			}
 		}
 	}
@@ -152,9 +152,9 @@ public class AbstractIntegrationTestBaseTest
 		{
 			// Verifies the spec requirement: "The default disabled field value remains
 			// false (enabled) so non-test Servoy Developer launches are unaffected."
-			AbstractIntegrationTest.restoreNodeFolderCreatorJob();
-			assertFalse(NodeFolderCreatorJob.isDisabled(),
-				"After restoreNodeFolderCreatorJob(), the default must be false (enabled)");
+			AbstractIntegrationTest.restoreTitaniumBuildJobEnablementToDefault();
+			assertFalse(Activator.isNodeExtractionAndTitaniumBuildDisabled(),
+				"After restoreTitaniumBuildJobEnablementToDefault(), the default must be false (enabled)");
 		}
 	}
 }

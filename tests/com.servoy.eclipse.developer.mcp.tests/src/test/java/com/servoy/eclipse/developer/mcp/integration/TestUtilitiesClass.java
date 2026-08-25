@@ -6,7 +6,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IContainer;
@@ -24,6 +26,9 @@ import org.eclipse.swt.widgets.Display;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.ngclient.ui.CopySourceFolderAction;
+import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
+import com.servoy.eclipse.ui.views.solutionexplorer.actions.RenameSolutionAction;
 import com.servoy.j2db.persistence.AbstractRepository;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 import com.servoy.j2db.util.UUID;
@@ -32,9 +37,10 @@ public class TestUtilitiesClass {
 
 	private static final long APP_SERVER_POLL_MS = 15_000;
 	private static final long ACTIVATE_SETTLE_MS = 10_000;
+	private static final long TITANIUM_BUILD_SETTLE_MS = 300_000;
 
 	private static Boolean appServerAvailableCache;
-	private String testSolutionName;
+	protected String testSolutionName;
 	private String servoyResourcesProjectName;
 	protected String solutionUUID;
 	
@@ -56,13 +62,16 @@ public class TestUtilitiesClass {
 		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
 	}
 
-	protected void ensureTestSolutionInWorkspace(BiConsumer<IProject, IProgressMonitor> setupSolutionInternals) throws Exception
+	protected void ensureTestSolutionInWorkspace(String nameOfModules[], BiConsumer<IProject, IProgressMonitor> setupSolutionInternals) throws Exception
 	{
-		ensureSolutionInWorkspace(testSolutionName, solutionUUID, servoyResourcesProjectName, setupSolutionInternals);
+		ensureSolutionInWorkspace(testSolutionName, solutionUUID, servoyResourcesProjectName, nameOfModules, setupSolutionInternals);
 	}
 	
+	/**
+	 * @param nameOfModules can be null, or a list of modules (make sure those projects already exist in the workspace) to include as IProject refs & solution modules in the solution_settings.obj file
+	 */
 	protected static void ensureSolutionInWorkspace(String solutionName, String solutionUUID,
-			String resPrjName, BiConsumer<IProject, IProgressMonitor> setupSolutionInternals) throws Exception
+			String resPrjName, String nameOfModules[], BiConsumer<IProject, IProgressMonitor> setupSolutionInternals) throws Exception
 	{
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(resPrjName);
@@ -86,7 +95,14 @@ public class TestUtilitiesClass {
 				ICommand sb = d.newCommand();
 				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
 				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
+				IProject[] refPrjs = new IProject[(nameOfModules != null ? nameOfModules.length : 0) + 1];
+				refPrjs[0] = res;
+				if (nameOfModules != null) for (int i = 0; i < nameOfModules.length; i++) {
+					IProject modulePrj = ResourcesPlugin.getWorkspace().getRoot().getProject(nameOfModules[i]);
+					if (modulePrj == null) fail("Please make sure that the module with name '" + nameOfModules[i] + "' is created before calling this method.");
+					refPrjs[i + 1] = modulePrj; 
+				}
+				d.setReferencedProjects(refPrjs);
 				sol.create(d, monitor);
 				
 				initializeIt = true;
@@ -102,7 +118,10 @@ public class TestUtilitiesClass {
 								solutionName + "\",\nsolutionType:1024,\ntypeid:43,\nuuid:\"" + solutionUUID + "\"\n",
 								monitor);
 				writeProjectFile(sol, "solution_settings.obj",
-						"typeid:43,\nuuid:\"" + solutionUUID + "\",\nversion:\"1.0\"\n", monitor);
+						(nameOfModules != null ?  "modulesNames:\"" 
+								+ List.of(nameOfModules).stream().collect(Collectors.joining(","))
+								+ "\",\n" : "")
+						+ "typeid:43,\nuuid:\"" + solutionUUID + "\",\nversion:\"1.0\"\n", monitor);
 				writeProjectFile(sol, ".buildpath",
 						"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
 						monitor);
@@ -114,40 +133,38 @@ public class TestUtilitiesClass {
 
 	protected void ensureActiveProject() throws Exception
 	{
+		ensureSolutionReadyAndOptionallyActive(testSolutionName, true);
+	}
+
+	protected static void ensureSolutionReadyAndOptionallyActive(String solName, boolean shouldBeTheActiveSolutionAsWell) throws Exception
+	{
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 
-		ServoyProject active = model.getActiveProject();
-		if (active != null && testSolutionName.equals(active.getProject().getName()))
-			return;
-
 		model.refreshServoyProjects();
-		ServoyProject toActivate[] = { null };
+		ServoyProject servoyProjectForSolution[] = { null };
 		pumpEventsUntil(2000, () -> {
 			ServoyProject[] projects = model.getServoyProjects();
 			assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
 
 			for (ServoyProject p : projects)
 			{
-				if (testSolutionName.equals(p.getProject().getName()))
+				if (solName.equals(p.getProject().getName()))
 				{
-					toActivate[0] = p;
+					servoyProjectForSolution[0] = p;
 					break;
 				}
 			}
-			assertNotNull("Cannot find test solution's project in order to activate it", toActivate[0]);
+			assertNotNull("Cannot find test solution's project in order to activate it", servoyProjectForSolution[0]);
 		});
 
-		try
-		{
-			model.setActiveProject(toActivate[0], true);
-		}
-		catch (Exception e)
-		{
-			// caught by assertNotNull below
+		if (shouldBeTheActiveSolutionAsWell) {
+			ServoyProject active = model.getActiveProject();
+			if (active == null || !solName.equals(active.getProject().getName()))
+				model.setActiveProject(servoyProjectForSolution[0], true);
 		}
 
 		pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
-			assertNotNull("Active project is null", model.getActiveProject());
+			if (shouldBeTheActiveSolutionAsWell) assertNotNull("Active project is null", model.getActiveProject());
 			
 			// The background "Writing I18N files..." job (EclipseMessages) dereferences
 			// servoyProject.getSolution() without a null-check. While our synthetic
@@ -159,7 +176,7 @@ public class TestUtilitiesClass {
 
 			assertNotNull("Solution should be loaded after activation", model.getActiveProject().getSolution());
 			assertNotNull("Editing solution should be resolved after activation", model.getActiveProject().getEditingSolution());
-			assertEquals("Project '" + testSolutionName + "'was not activated sucessfully", testSolutionName, model.getActiveProject().getSolution().getName());
+			if (shouldBeTheActiveSolutionAsWell) assertEquals("Project '" + solName + "'was not activated sucessfully", solName, model.getActiveProject().getSolution().getName());
 		});
 
 		waitForWorkspaceBuildJobs();
@@ -196,7 +213,7 @@ public class TestUtilitiesClass {
 		}
 	}
 
-	protected void pumpEventsUntil(long forMaxMs, Runnable untilAssertionsPass) {
+	protected static void pumpEventsUntil(long forMaxMs, Runnable untilAssertionsPass) {
 		boolean success = false;
 		try
 		{
@@ -220,7 +237,7 @@ public class TestUtilitiesClass {
 		}
 	}
 	
-	private boolean justCheckCall(Runnable untilAssertionsPass) {
+	private static boolean justCheckCall(Runnable untilAssertionsPass) {
 		try {
 			untilAssertionsPass.run();
 			return true;
@@ -229,21 +246,38 @@ public class TestUtilitiesClass {
 		}
 	}
 
-	protected void waitForWorkspaceBuildJobs() {
+	protected static void waitForWorkspaceBuildJobs() {
 		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
 		// Pump the SWT loop while the auto-build and any scheduled workspace jobs run.
 		pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
 			try {
 				jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, null);
 				jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, null);
+				jm.join(CopySourceFolderAction.JOB_FAMILY, null);
 			} catch (Exception e) {
 				// ignore - best-effort drain
 			}
 			if (jm.find(ResourcesPlugin.FAMILY_AUTO_BUILD).length != 0
-					|| jm.find(ResourcesPlugin.FAMILY_MANUAL_BUILD).length != 0) {
+					|| jm.find(ResourcesPlugin.FAMILY_MANUAL_BUILD).length != 0
+					|| jm.find(CopySourceFolderAction.JOB_FAMILY).length != 0) {
 				fail("Build jobs still running after " + (ACTIVATE_SETTLE_MS / 1000) + " sec.");
 			}
 		});
 	}
 
+	protected static void waitForTitaniumuildJobs() {
+		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
+		// Pump the SWT loop while the auto-build and any scheduled workspace jobs run.
+		pumpEventsUntil(TITANIUM_BUILD_SETTLE_MS, () -> {
+			try {
+				jm.join(CopySourceFolderAction.JOB_FAMILY, null);
+			} catch (Exception e) {
+				// ignore - best-effort drain
+			}
+			if (jm.find(CopySourceFolderAction.JOB_FAMILY).length != 0) {
+				fail("Build jobs still running after " + (TITANIUM_BUILD_SETTLE_MS / 1000) + " sec.");
+			}
+		});
+	}
+	
 }

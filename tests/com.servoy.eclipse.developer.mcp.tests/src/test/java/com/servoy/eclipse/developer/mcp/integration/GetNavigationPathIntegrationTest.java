@@ -67,7 +67,7 @@ public class GetNavigationPathIntegrationTest extends TestUtilitiesClass {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+		ensureTestSolutionInWorkspace(null, (solPrj, monitor) -> {
 			try {
 				writeProjectFileInWorkspaceRun(solPrj, SOURCE_PATH, SOURCE_SCRIPT);
 			} catch (CoreException e) {

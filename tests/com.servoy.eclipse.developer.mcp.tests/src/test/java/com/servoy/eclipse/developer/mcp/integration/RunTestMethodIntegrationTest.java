@@ -214,7 +214,7 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 	 */
 	private void ensureActiveServoyProject() throws Exception
 	{
-		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+		ensureTestSolutionInWorkspace(null, (solPrj, monitor) -> {
 			try {
 				writeProjectFile(solPrj, "globals.js",
 						"/**\n * @properties={typeid:24,uuid:\"f1e2d3c4-b5a6-7890-fedc-ba9876543210\"}\n */\n"

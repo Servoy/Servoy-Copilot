@@ -89,7 +89,7 @@ public class ScriptContextServiceIntegrationTest extends TestUtilitiesClass {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+		ensureTestSolutionInWorkspace(null, (solPrj, monitor) -> {
 			try {
 				writeProjectFileInWorkspaceRun(solPrj, FORM_PATH, FORM_SCRIPT);
 			} catch (CoreException e) {

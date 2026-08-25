@@ -23,6 +23,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.GraphicalComponent;
 
@@ -54,6 +55,15 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 		super(TEST_SOLUTION, "servoy_resources");
 	}
 
+	/**
+	 * Enable the titanium build before any test in this class runs.
+	 * Because we really need to show the client in a browser and test it.
+	 */
+	@BeforeClass
+	public static void adjustTitaniumBuildJobEnablementForThisClass() {
+		Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
+	}
+
 	@Before
 	public void setUp() throws Exception {
 		tool = new ServoyTestingServer();
@@ -61,8 +71,14 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace(null);
+
+		long x = System.currentTimeMillis();
+		System.out.println("*** " + this.getClass().getName() + " writing solution, activating project and building");
+		
+		ensureTestSolutionInWorkspace(null, null);
 		ensureActiveProject();
+		
+		System.out.println("*** activating project and building took: " + String.format( "%.2f", ((System.currentTimeMillis() - x) / 1000d)) + " s");
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);

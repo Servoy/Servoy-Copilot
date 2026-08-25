@@ -111,7 +111,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		if (!classSetUpDone)
 		{
 			classSetUpDone = true; // Set first - prevents re-running if later steps throw
-			ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+			ensureTestSolutionInWorkspace(null, (solPrj, monitor) -> {
 				try {
 					// Always force-write globals.js so content changes (e.g. new test functions)
 					// are picked up even when the file already exists from a previous test run.

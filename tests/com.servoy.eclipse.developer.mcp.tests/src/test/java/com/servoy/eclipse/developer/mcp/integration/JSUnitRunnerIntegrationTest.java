@@ -73,7 +73,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 		TestUtilitiesClass.waitForAppServer();
 
 		// 3. Ensure a Servoy project is active in the workspace.
-		ensureTestSolutionInWorkspace((solProject, monitor) -> {
+		ensureTestSolutionInWorkspace(null, (solProject, monitor) -> {
 			try {
 				writeProjectFile(solProject, "globals.js",
 						"/**\n * @properties={typeid:24,uuid:\"f1e2d3c4-b5a6-7890-fedc-ba9876543210\"}\n */\n"

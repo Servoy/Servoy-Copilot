@@ -16,30 +16,16 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
-
-import org.eclipse.core.resources.ICommand;
-import org.eclipse.core.resources.IContainer;
-import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
@@ -48,8 +34,7 @@ import com.servoy.eclipse.developer.mcp.services.ProjectService;
 import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.util.UUID;
 
 /**
  * Integration tests for SVY-21355: MCP submodule script resolution.
@@ -74,13 +59,11 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * <p>
  * Runs as a JUnit Plug-in test via {@code eclipse-pde_runJUnitPluginTestClass}.
  */
-public class ServoyScriptResolverIntegrationTest {
+public class ServoyScriptResolverIntegrationTest extends TestUtilitiesClass {
+
 	private static final String TEST_SOLUTION = "test_resolver_suite";
 	private static final String TEST_MODULE = "test_resolver_module";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
-
-	private static final long APP_SERVER_POLL_MS = 15_000;
-	private static final long ACTIVATE_SETTLE_MS = 10_000;
 
 	private static final String ACTIVE_FORM_NAME = "activeForm";
 	private static final String ACTIVE_FORM_SCRIPT = "function onShow(event) {\n" //
@@ -105,7 +88,9 @@ public class ServoyScriptResolverIntegrationTest {
 	private ServoyIdeServer server;
 	private ServoyProject activeProject;
 
-	private static Boolean appServerAvailableCache;
+	public ServoyScriptResolverIntegrationTest() {
+		super(TEST_SOLUTION, "servoy_resources");
+	}
 
 	@Before
 	public void setUp() throws Exception {
@@ -121,11 +106,11 @@ public class ServoyScriptResolverIntegrationTest {
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);
 
-		createProjectFile(activeProject.getProject(), "forms/" + ACTIVE_FORM_NAME + ".js", ACTIVE_FORM_SCRIPT);
+		writeProjectFileInWorkspaceRun(activeProject.getProject(), "forms/" + ACTIVE_FORM_NAME + ".js", ACTIVE_FORM_SCRIPT);
 
 		IProject moduleProject = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_MODULE);
-		createProjectFile(moduleProject, "forms/" + MODULE_FORM_NAME + ".js", MODULE_FORM_SCRIPT);
-		createProjectFile(moduleProject, "scopes/" + MODULE_SCOPE_NAME + ".js", MODULE_SCOPE_SCRIPT);
+		writeProjectFileInWorkspaceRun(moduleProject, "forms/" + MODULE_FORM_NAME + ".js", MODULE_FORM_SCRIPT);
+		writeProjectFileInWorkspaceRun(moduleProject, "scopes/" + MODULE_SCOPE_NAME + ".js", MODULE_SCOPE_SCRIPT);
 	}
 
 	@After
@@ -277,182 +262,9 @@ public class ServoyScriptResolverIntegrationTest {
 				result.contains("not found") || result.contains("Not found"));
 	}
 
-	// -----------------------------------------------------------------------
-	// Environment bootstrap
-	// -----------------------------------------------------------------------
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
-
 	private void ensureMultiModuleWorkspace() throws Exception {
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen())
-				res.open(monitor);
-
-			IProject mod = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_MODULE);
-			if (!mod.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_MODULE);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-						"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				mod.create(d, monitor);
-			}
-			if (!mod.isOpen())
-				mod.open(monitor);
-
-			writeProjectFile(mod, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ TEST_MODULE + "\",\n"
-							+ "solutionType:2,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-111111111111\"\n",
-					monitor);
-			writeProjectFile(mod, "solution_settings.obj",
-					"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-111111111111\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(mod, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-					monitor);
-
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-						"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res, mod });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen())
-				sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ TEST_SOLUTION + "\",\n"
-							+ "solutionType:1,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-222222222222\"\n",
-					monitor);
-			writeProjectFile(sol, "solution_settings.obj", "modulesNames:\"" + TEST_MODULE + "\",\n"
-					+ "typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-222222222222\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-					monitor);
-		}, new NullProgressMonitor());
-
-		pumpEvents(2000);
+		ensureSolutionInWorkspace(TEST_MODULE, UUID.randomUUID().toString(), SERVOY_RESOURCES, null, null);
+		ensureTestSolutionInWorkspace(new String[] { TEST_MODULE }, null);
 	}
 
-	private void ensureActiveProject() throws Exception {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
-			return;
-
-		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
-
-		ServoyProject toActivate = null;
-		for (ServoyProject p : projects) {
-			if (TEST_SOLUTION.equals(p.getProject().getName())) {
-				toActivate = p;
-				break;
-			}
-		}
-		if (toActivate == null)
-			toActivate = projects[0];
-
-		try {
-			model.setActiveProject(toActivate, true);
-		} catch (Exception e) {
-			// handled below
-		}
-
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread()) {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		} else {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertNotNull("Active project not set", model.getActiveProject());
-	}
-
-	private void createProjectFile(IProject project, String path, String content) throws CoreException {
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IFile file = project.getFile(path);
-			byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-			if (file.exists()) {
-				file.setContents(new ByteArrayInputStream(bytes), true, true, monitor);
-			} else {
-				IContainer parent = file.getParent();
-				if (parent instanceof IFolder && !parent.exists()) {
-					createFolderHierarchy((IFolder) parent, monitor);
-				}
-				file.create(new ByteArrayInputStream(bytes), true, monitor);
-			}
-		}, new NullProgressMonitor());
-		pumpEvents(300);
-	}
-
-	private void createFolderHierarchy(IFolder folder, IProgressMonitor monitor) throws CoreException {
-		if (!folder.getParent().exists() && folder.getParent() instanceof IFolder) {
-			createFolderHierarchy((IFolder) folder.getParent(), monitor);
-		}
-		if (!folder.exists()) {
-			folder.create(true, true, monitor);
-		}
-	}
-
-	private void writeProjectFile(IProject project, String fileName, String content, IProgressMonitor monitor)
-			throws CoreException {
-		IFile file = project.getFile(fileName);
-		byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-		if (file.exists()) {
-			file.setContents(new ByteArrayInputStream(bytes), true, false, monitor);
-		} else {
-			file.create(new ByteArrayInputStream(bytes), true, monitor);
-		}
-	}
-
-	private void pumpEvents(long ms) {
-		try {
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread()) {
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			} else {
-				Thread.sleep(ms);
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-	}
 }

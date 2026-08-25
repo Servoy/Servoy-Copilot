@@ -19,6 +19,11 @@ package com.servoy.eclipse.developer.mcp.integration;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
+import com.servoy.eclipse.core.IDeveloperServoyModel;
+import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.ngclient.ui.Activator;
+import com.servoy.eclipse.ngclient.ui.CopySourceFolderAction;
 import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
 
 /**
@@ -40,6 +45,8 @@ import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
  */
 public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	
+	private static boolean titaniumBuildAlreadyTriggeredForThisClass = false;
+
 	public AbstractIntegrationTest(String testSolutionName, String servoyResourcesProjectName) {
 		super(testSolutionName, servoyResourcesProjectName);
 	}
@@ -49,8 +56,8 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	 * Override in subclasses that require the node folder to be set up.
 	 */
 	@BeforeClass
-	public static void disableNodeFolderCreatorJob() {
-		NodeFolderCreatorJob.setDisabled(true);
+	public static void adjustTitaniumBuildJobEnablementForThisClass() {
+		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 	}
 
 	/**
@@ -58,7 +65,45 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	 * so subsequent test classes are unaffected.
 	 */
 	@AfterClass
-	public static void restoreNodeFolderCreatorJob() {
-		NodeFolderCreatorJob.setDisabled(false);
+	public static void restoreTitaniumBuildJobEnablementToDefault() {
+		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 	}
+	
+	@Override
+	protected void ensureActiveProject() throws Exception
+	{
+		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+
+		ServoyProject active = model.getActiveProject();
+		boolean wasActive = (active != null && testSolutionName.equals(active.getProject().getName()));
+			
+		super.ensureActiveProject();
+		
+		if (!Activator.isNodeExtractionAndTitaniumBuildDisabled())
+		{
+			if (wasActive && !titaniumBuildAlreadyTriggeredForThisClass) {
+				// if the solution happened to be already active
+				// on the first setUp that calls ensureActiveProject (titaniumBuildAlreadyTriggeredForThisClass)
+				// then do trigger a check for a titanium build - as if previously running testclasses did no build it
+				// and Activator.isNodeExtractionAndTitaniumBuildDisabled() used to be false, it might not have been built at all
+				buildTitaniumIfNeeded();
+			} else waitForTitaniumuildJobs();
+			  // else it was already built once for this class or it will be built now automatically by
+			  // the solution activation; when all build jobs are enabled while current class is running tests it should auto-build titanium if needed from now on
+			titaniumBuildAlreadyTriggeredForThisClass = true;
+		}
+	}
+	
+	protected void buildTitaniumIfNeeded() {
+		long x = System.currentTimeMillis();
+		System.out.println("*** " + this.getClass().getName() + " buildTitaniumOnce starting");
+
+		CopySourceFolderAction.startTitaniumNGBuild(CopySourceFolderAction.NORMAL_BUILD);
+		
+		System.out.println("*** buildTitaniumOnce took: " + String.format( "%.2f", ((System.currentTimeMillis() - x) / 1000d)) + " s");
+	
+		waitForTitaniumuildJobs();
+		waitForWorkspaceBuildJobs();
+	}
+
 }

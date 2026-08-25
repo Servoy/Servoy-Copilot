@@ -28,22 +28,27 @@ import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.persistence.IValidateName;
+import com.servoy.j2db.persistence.Relation;
+import com.servoy.j2db.persistence.Solution;
+import com.servoy.j2db.persistence.ValueList;
 
 /**
  * Integration tests for {@link ServoySolutionService}.
  * Requires Eclipse platform + Servoy runtime with an active solution.
  */
-public class ServoySolutionServiceIntegrationTest
+public class ServoySolutionServiceIntegrationTest extends TestUtilitiesClass
 {
-	private static final long APP_SERVER_POLL_MS = 15_000;
-
 	private ServoySolutionService service;
-	private static Boolean appServerAvailableCache;
+	
+	public ServoySolutionServiceIntegrationTest() {
+		super("testSolForServoySolutionServiceIntegrationTest", "servoy_resources");
+	}
 
 	@Before
 	public void setUp() throws Exception
@@ -51,7 +56,36 @@ public class ServoySolutionServiceIntegrationTest
 		service = new ServoySolutionService();
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 		waitForAppServer();
+		ensureTestSolutionInWorkspace(null, null);
 		ensureActiveProject();
+
+		// Seed the test solution with representative data via the Servoy solution API
+		// (must run after ensureActiveProject() so the model has the solution loaded)
+		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		Solution solution = activeProject.getEditingSolution();
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+
+		// one form (CSS layout, no datasource) — exercises the listForms / findForm paths
+		if (solution.getForm("testSolSvcForm") == null)
+			new ServoyArtifactCreationService().createForm("testSolSvcForm", "css", 640, 480, null, null, null);
+
+		// one relation — exercises the listRelations path
+		if (solution.getRelation("testSolSvcRelation") == null)
+		{
+			Relation rel = solution.createNewRelation(validator, "testSolSvcRelation",
+				"db:/mem/table1", "db:/mem/table2", 1);
+			activeProject.saveEditingSolutionNodes(new IPersist[] { rel }, true);
+		}
+
+		// one custom valuelist — exercises the listValueLists path
+		if (solution.getValueList("testSolSvcValueList") == null)
+		{
+			ValueList vl = solution.createNewValueList(validator, "testSolSvcValueList");
+			vl.setCustomValues("Alpha\nBeta\nGamma");
+			activeProject.saveEditingSolutionNodes(new IPersist[] { vl }, true);
+		}
+
+		waitForWorkspaceBuildJobs();
 	}
 
 	// -------------------------------------------------------------------------
@@ -277,70 +311,4 @@ public class ServoySolutionServiceIntegrationTest
 			result.contains("No valuelist") || result.contains("specified"));
 	}
 
-	// -------------------------------------------------------------------------
-	// Helpers
-	// -------------------------------------------------------------------------
-
-	private void waitForAppServer() throws InterruptedException
-	{
-		if (appServerAvailableCache == null)
-		{
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
-			{
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
-
-	private void ensureActiveProject() throws Exception
-	{
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-		ServoyProject active = model.getActiveProject();
-		if (active != null) return;
-
-		// If no active project, try to activate the first available
-		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject[] projects = model.getServoyProjects();
-		if (projects != null && projects.length > 0)
-		{
-			try
-			{
-				model.setActiveProject(projects[0], true);
-			}
-			catch (Exception e)
-			{
-				// best effort
-			}
-			pumpEvents(2000);
-		}
-		assertNotNull("Active project required for ServoySolutionService tests",
-			model.getActiveProject());
-	}
-
-	private void pumpEvents(long ms)
-	{
-		try
-		{
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread())
-			{
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			}
-			else
-			{
-				Thread.sleep(ms);
-			}
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-		}
-	}
 }

@@ -27,23 +27,10 @@ import org.eclipse.swt.widgets.Display;
  * <li>Markdown-table count extractors via {@link #extractCount}.</li>
  * </ul>
  */
-public abstract class ServoyRunnerTestBase extends AbstractIntegrationTest {
+public abstract class ServoyRunnerTestBase extends TestUtilitiesClass {
 
 	/** Timeout in seconds for each JSUnit SmartClient run. */
-	protected static final int TIMEOUT_SECONDS = 20;
-
-	/**
-	 * How long (ms) to poll for the Servoy ApplicationServer singleton on the first
-	 * check. 5 seconds gives enough headroom for an in-progress startup without
-	 * hanging too long.
-	 */
-	protected static final long APP_SERVER_POLL_MS = 5_000;
-
-	/**
-	 * How long (ms) to wait after calling setActiveProject() for activation to
-	 * settle.
-	 */
-	protected static final long ACTIVATE_SETTLE_MS = 10_000;
+	protected static final int TIMEOUT_SECONDS = 30;
 
 	public ServoyRunnerTestBase(String testSolutionName, String servoyResourcesProjectName) {
 		super(testSolutionName, servoyResourcesProjectName);

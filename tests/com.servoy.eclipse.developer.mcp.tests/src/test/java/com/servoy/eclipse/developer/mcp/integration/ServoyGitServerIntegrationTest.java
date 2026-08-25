@@ -80,6 +80,8 @@ public class ServoyGitServerIntegrationTest {
 
 	@After
 	public void tearDown() throws Exception {
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
+		
 		if (repository != null) {
 			repository.close();
 		}
@@ -258,6 +260,7 @@ public class ServoyGitServerIntegrationTest {
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to create test file: " + path, e);
 		}
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
 	private void createAndCommitFile(String path, String content, String message) {

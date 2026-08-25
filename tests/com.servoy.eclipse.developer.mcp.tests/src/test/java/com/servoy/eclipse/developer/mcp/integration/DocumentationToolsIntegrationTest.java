@@ -48,7 +48,15 @@ public class DocumentationToolsIntegrationTest extends TestUtilitiesClass {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace();
+		ensureTestSolutionInWorkspace(null, (sol, monitor) -> {
+			try {
+				writeProjectFile(sol, "scopes/" + TEST_SCOPE_FILE,
+						"/**\n * @type {String}\n */\nvar testVariable = 'hello';\n\n/**\n * @param {String} name\n * @return {String}\n */\nfunction testFunction(name) {\n\treturn 'Hello ' + name;\n}\n",
+						monitor);
+			} catch (CoreException e) {
+				throw new RuntimeException(e);
+			}
+		});
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -170,22 +178,6 @@ public class DocumentationToolsIntegrationTest extends TestUtilitiesClass {
 		String result = devServer.applyDocumentations(TEST_SCOPE_FILE, itemsJson);
 		assertNotNull(result);
 		assertFalse("applyDocumentations should not return a top-level error: " + result, result.startsWith("Error"));
-	}
-
-	protected void ensureTestSolutionInWorkspace() throws Exception {
-		super.ensureTestSolutionInWorkspace((sol, monitor) -> {
-			try {
-				IFolder scopesFolder = sol.getFolder("scopes");
-				if (!scopesFolder.exists())
-					scopesFolder.create(true, true, monitor);
-
-				writeProjectFile(sol, "scopes/" + TEST_SCOPE_FILE,
-						"/**\n * @type {String}\n */\nvar testVariable = 'hello';\n\n/**\n * @param {String} name\n * @return {String}\n */\nfunction testFunction(name) {\n\treturn 'Hello ' + name;\n}\n",
-						monitor);
-			} catch (CoreException e) {
-				throw new RuntimeException(e);
-			}
-		});
 	}
 
 }

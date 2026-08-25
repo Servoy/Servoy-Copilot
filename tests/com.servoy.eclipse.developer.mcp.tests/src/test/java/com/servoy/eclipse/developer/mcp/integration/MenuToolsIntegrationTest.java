@@ -20,22 +20,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import org.eclipse.core.resources.ICommand;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
  * Integration tests for the ServoyDevServer menu management tools (SVY-21114):
@@ -52,18 +43,15 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * The setUp mirrors the proven pattern in
  * {@link CreateArtifactsIntegrationTest}.
  */
-public class MenuToolsIntegrationTest {
-	private static final String TEST_SOLUTION = "test_menu_suite";
-	private static final String SERVOY_RESOURCES = "servoy_resources";
-
-	private static final long APP_SERVER_POLL_MS = 15_000;
-	private static final long ACTIVATE_SETTLE_MS = 10_000;
-
+public class MenuToolsIntegrationTest extends TestUtilitiesClass {
+	
 	private ServoyDevServer devServer;
 	private ServoyProject activeProject;
 
-	private static Boolean appServerAvailableCache;
-
+	public MenuToolsIntegrationTest() {
+		super("test_menu_suite", "servoy_resources");
+	}
+	
 	@Before
 	public void setUp() throws Exception {
 		devServer = new ServoyDevServer();
@@ -71,7 +59,7 @@ public class MenuToolsIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace();
+		ensureTestSolutionInWorkspace(null, null);
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -295,128 +283,4 @@ public class MenuToolsIntegrationTest {
 		devServer.deleteMenu(menuName);
 	}
 
-	// -----------------------------------------------------------------------
-	// Environment bootstrap (mirrors CreateArtifactsIntegrationTest)
-	// -----------------------------------------------------------------------
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
-
-	private void ensureTestSolutionInWorkspace() throws Exception {
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen())
-				res.open(monitor);
-
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-						"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen())
-				sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ TEST_SOLUTION + "\",\n"
-							+ "solutionType:1024,\ntypeid:43,\nuuid:\"d2c3e4f5-a6b7-8901-bcde-334567890abc\"\n",
-					monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-					"typeid:43,\nuuid:\"d2c3e4f5-a6b7-8901-bcde-334567890abc\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-					monitor);
-		}, new NullProgressMonitor());
-
-		pumpEvents(1000);
-	}
-
-	private void ensureActiveProject() throws Exception {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
-			return;
-
-		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
-
-		ServoyProject toActivate = null;
-		for (ServoyProject p : projects) {
-			if (TEST_SOLUTION.equals(p.getProject().getName())) {
-				toActivate = p;
-				break;
-			}
-		}
-		if (toActivate == null)
-			toActivate = projects[0];
-
-		try {
-			model.setActiveProject(toActivate, true);
-		} catch (Exception e) {
-			// handled below
-		}
-
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread()) {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		} else {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertNotNull("Active project not set", model.getActiveProject());
-	}
-
-	private void writeProjectFile(IProject project, String fileName, String content,
-			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
-		org.eclipse.core.resources.IFile file = project.getFile(fileName);
-		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		if (file.exists()) {
-			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
-		} else {
-			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
-		}
-	}
-
-	private void pumpEvents(long ms) {
-		try {
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread()) {
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			} else {
-				Thread.sleep(ms);
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-	}
 }

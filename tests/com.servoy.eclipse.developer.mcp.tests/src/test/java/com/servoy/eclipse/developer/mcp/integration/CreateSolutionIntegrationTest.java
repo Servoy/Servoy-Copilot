@@ -188,9 +188,11 @@ public class CreateSolutionIntegrationTest extends TestUtilitiesClass {
 				true, new NullProgressMonitor());
 
 			devServer.createSolution(solA, "ng_client", "true", "true", null);
-			pumpEvents(ACTIVATE_SETTLE_MS);
 
 			devServer.activateSolution(solB);
+
+			ensureSolutionReadyAndOptionallyActive(solA, false);
+			ensureSolutionReadyAndOptionallyActive(solB, true);
 
 			ServoyIdeServer ideServer = new ServoyIdeServer(
 				new com.servoy.eclipse.developer.mcp.services.ProjectService(),

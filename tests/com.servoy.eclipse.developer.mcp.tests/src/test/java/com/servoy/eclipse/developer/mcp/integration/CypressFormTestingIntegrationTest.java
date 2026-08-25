@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,6 +41,7 @@ import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
@@ -65,6 +67,13 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 		super("test_cypress_suite", "servoy_resources");
 	}
 
+	@org.junit.BeforeClass
+	public static void adjustTitaniumBuildJobEnablementForThisClass()
+	{
+		// Cypress tests need the node install extracted and the titanium client built — re-enable the copy/npm cycle.
+		Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
+	}
+
 	@Before
 	public void setUp() throws Exception {
 		testingServer = new ServoyTestingServer();
@@ -74,24 +83,18 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace(null);
+
+		long x = System.currentTimeMillis();
+		System.out.println("*** " + this.getClass().getName() + " writing solution, activating project and building");
+
+		ensureTestSolutionInWorkspace(null, null);
+
 		ensureActiveProject();
+		
+		System.out.println("*** activating project and building took: " + String.format( "%.2f", ((System.currentTimeMillis() - x) / 1000d)) + " s");
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);
-	}
-
-	@org.junit.BeforeClass
-	public static void disableNodeFolderCreatorJob()
-	{
-		// Cypress tests may need the node folder — re-enable the copy/npm cycle.
-		com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob.setDisabled(false);
-	}
-
-	@org.junit.AfterClass
-	public static void tearDownClass() throws Exception {
-		// Wait for server to release formpreview sessions before next test suite starts
-		//Thread.sleep(5000);
 	}
 
 	// -----------------------------------------------------------------------
@@ -1045,13 +1048,17 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	/** Returns true when the given file carries at least one ERROR-severity problem marker. */
-	private static boolean hasErrorMarkers(org.eclipse.core.resources.IFile file) throws Exception {
-		for (org.eclipse.core.resources.IMarker m : file.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
-				org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
-			if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
-					-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
-				return true;
+	private static boolean hasErrorMarkers(org.eclipse.core.resources.IFile file) {
+		try {
+			for (org.eclipse.core.resources.IMarker m : file.findMarkers(org.eclipse.core.resources.IMarker.PROBLEM, true,
+					org.eclipse.core.resources.IResource.DEPTH_ZERO)) {
+				if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY,
+						-1) == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+					return true;
+				}
 			}
+		} catch (CoreException e) {
+			fail("Cannot check for error markers: " + e.getMessage());
 		}
 		return false;
 	}
@@ -1071,7 +1078,7 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
 
 		pumpEventsUntil(2000, () -> {
-			assertTrue("Invalid JS must produce DLTK error markers", assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers(jsFile)););
+			assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers(jsFile));
 		});
 
 		String result = testingServer.showFormInBrowser(invalidFormName, false);

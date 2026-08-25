@@ -54,7 +54,7 @@ import com.servoy.j2db.util.UUID;
  * solution. They are skipped (via Assume) when the environment is not
  * available.
  */
-public class RenamePersistIntegrationTest extends AbstractIntegrationTest {
+public class RenamePersistIntegrationTest extends TestUtilitiesClass {
 	private static final String TEST_SOLUTION = "test_rename_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 
@@ -74,7 +74,7 @@ public class RenamePersistIntegrationTest extends AbstractIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace(null);
+		ensureTestSolutionInWorkspace(null, null);
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -583,7 +583,7 @@ public class RenamePersistIntegrationTest extends AbstractIntegrationTest {
 		String solName = "renameSolTest_" + System.currentTimeMillis();
 		String newSolName = solName + "_renamed";
 
-		ensureSolutionInWorkspace(solName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
+		ensureSolutionInWorkspace(solName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null, null);
 
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		model.refreshServoyProjects();
@@ -622,8 +622,8 @@ public class RenamePersistIntegrationTest extends AbstractIntegrationTest {
 		String parentName = "renModParent_" + System.currentTimeMillis();
 		String newModuleName = moduleName + "_renamed";
 
-		ensureSolutionInWorkspace(moduleName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
-		ensureSolutionInWorkspace(parentName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
+		ensureSolutionInWorkspace(moduleName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null, null);
+		ensureSolutionInWorkspace(parentName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null, null);
 
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		model.refreshServoyProjects();
