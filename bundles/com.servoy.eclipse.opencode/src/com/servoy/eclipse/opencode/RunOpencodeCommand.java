@@ -112,6 +112,10 @@ public class RunOpencodeCommand extends Job {
 						"--hostname", "127.0.0.1"));
 		Map<String, String> env = new HashMap<>(buildServoyXdgEnv());
 		env.putAll(additionalEnvVars);
+		String projectPath = OpenCodeUtil.getActiveProjectPath();
+		if (projectPath != null) {
+			env.put("PWD", projectPath);
+		}
 		serverCommand.setExtraEnvironment(Collections.unmodifiableMap(env));
 
 		Activator activator = Activator.getInstance();

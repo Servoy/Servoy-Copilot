@@ -336,14 +336,55 @@ public class OpenCodeView extends ViewPart {
 	}
 
 	/**
-	 * Builds the URL to open for a project. Uses {@code /<base64>/session}
-	 * (no specific session ID) - the same path opencode's own UI navigates to
-	 * when opening a project, so it goes through the correct routing.
+	 * Builds the URL to open for a project. If {@code sessionId} is non-null,
+	 * navigates to that specific session; otherwise opens the new-session view.
 	 */
-	private String resolveSessionUrl(int port, String projectPath) {
+	private String resolveSessionUrl(int port, String projectPath, String sessionId) {
 		String encoded = Base64.getUrlEncoder().withoutPadding()
 				.encodeToString(projectPath.getBytes(StandardCharsets.UTF_8));
-		return "http://127.0.0.1:" + port + "/" + encoded + "/session"; //$NON-NLS-1$ //$NON-NLS-2$
+		String encodedDir = java.net.URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
+		String sessionSegment = sessionId != null ? "/session/" + sessionId : "/session"; //$NON-NLS-1$ //$NON-NLS-2$
+		return "http://127.0.0.1:" + port + "/" + encoded + sessionSegment + "?directory=" + encodedDir; //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	private String resolveSessionUrl(int port, String projectPath) {
+		return resolveSessionUrl(port, projectPath, findLastSessionId(port, projectPath));
+	}
+
+	private String findLastSessionId(int port, String projectPath) {
+		try {
+			String encodedDir = java.net.URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
+			java.net.URL url = java.net.URI.create(
+					"http://127.0.0.1:" + port + "/session?directory=" + encodedDir + "&limit=1&roots=true") //$NON-NLS-1$ //$NON-NLS-2$
+					.toURL();
+			ServoyLog.logInfo("OpenCode: querying sessions at: " + url); //$NON-NLS-1$
+			java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+			conn.setRequestMethod("GET"); //$NON-NLS-1$
+			conn.setConnectTimeout(10000);
+			conn.setReadTimeout(30000);
+			int responseCode = conn.getResponseCode();
+			ServoyLog.logInfo("OpenCode: session list response code: " + responseCode); //$NON-NLS-1$
+			if (responseCode == 200) {
+				try (java.io.InputStream is = conn.getInputStream()) {
+					String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+					ServoyLog.logInfo("OpenCode: session list response: " + body); //$NON-NLS-1$
+					int idIdx = body.indexOf("\"id\""); //$NON-NLS-1$
+					if (idIdx >= 0) {
+						int colon = body.indexOf(':', idIdx);
+						int quote1 = body.indexOf('"', colon + 1);
+						int quote2 = body.indexOf('"', quote1 + 1);
+						if (quote1 >= 0 && quote2 > quote1) {
+							String sessionId = body.substring(quote1 + 1, quote2);
+							ServoyLog.logInfo("OpenCode: resuming session: " + sessionId); //$NON-NLS-1$
+							return sessionId;
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			ServoyLog.logInfo("OpenCode: could not query last session: " + e.getMessage()); //$NON-NLS-1$
+		}
+		return null;
 	}
 
 	private String getPageUrl(String bundlePath) {
