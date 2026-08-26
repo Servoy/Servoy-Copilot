@@ -24,6 +24,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.osgi.framework.BundleContext;
 
+import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
@@ -145,53 +146,107 @@ public class Activator extends Plugin
 	/**
 	 * Stops the running opencode server process (called from {@link #stop}).
 	 * <p>
-	 * The outer {@link RunOpencodeCommand} job is cancelled <em>first</em> so its {@code monitor.isCanceled()}
-	 * returns {@code true}. This ensures the retry guard in {@code run()} sees the cancellation and does not
-	 * schedule another attempt after the process is killed.
+	 * The outer {@link RunOpencodeCommand} job is cancelled <em>first</em> so its
+	 * {@code monitor.isCanceled()} returns {@code true}. This ensures the retry
+	 * guard in {@code run()} sees the cancellation and does not schedule another
+	 * attempt after the process is killed.
 	 * </p>
 	 * <p>
-	 * Then {@link RunNPMCommand#cancel()} is called to set that job's cancel flag, followed by
-	 * {@link #killProcessTree} to kill the OS process directly. We bypass {@code canceling()} in
-	 * {@code RunNPMCommand} because during Eclipse shutdown the ngclient.ui activator is already null, causing
-	 * {@code canceling()} to NPE before ever touching the process, which leaves the {@code readLine()} loop
-	 * blocked.
+	 * Then {@link RunNPMCommand#cancel()} is called to set that job's cancel flag,
+	 * followed by {@link #killProcessTree} to kill the OS process directly. We
+	 * bypass {@code canceling()} in {@code RunNPMCommand} because during Eclipse
+	 * shutdown the ngclient.ui activator is already null, causing
+	 * {@code canceling()} to NPE before ever touching the process, which leaves the
+	 * {@code readLine()} loop blocked.
 	 * </p>
 	 */
-	public void stopServer()
-	{
-		// Cancel the outer job first so monitor.isCanceled() == true in RunOpencodeCommand.run()
+	public void stopServer() {
+		ServoyLog.logInfo("OpenCode: stopServer() called");
+		// Cancel the outer job first so monitor.isCanceled() == true in
+		// RunOpencodeCommand.run()
 		Job job = serverJob;
-		if (job != null)
-		{
+		if (job != null) {
+			ServoyLog.logInfo("OpenCode: cancelling server job");
 			job.cancel();
 			serverJob = null;
+		} else {
+			ServoyLog.logInfo("OpenCode: serverJob was null");
 		}
 
 		IRunNPMCommand cmd = serverCommand;
-		if (cmd != null)
-		{
+		if (cmd != null) {
+			ServoyLog.logInfo("OpenCode: cancelling server command and killing process tree");
 			cmd.cancel();
 			killProcessTree(cmd);
 			serverCommand = null;
+		} else {
+			ServoyLog.logInfo("OpenCode: serverCommand was null");
 		}
 	}
 
 	/**
-	 * Kills the OS process (and its entire descendant tree) wrapped inside {@code cmd}.
+	 * Kills the OS process (and its entire descendant tree) wrapped inside
+	 * {@code cmd}.
 	 * <p>
-	 * Descendants are destroyed first (so their stdout handles are closed), then the root process. This ensures the
-	 * {@code readLine()} loop in {@code RunNPMCommand.runCommand()} unblocks promptly on all platforms.
+	 * On Windows, uses {@code taskkill /F /T} to kill detached children that
+	 * Java's {@code process.descendants()} cannot see (e.g. bun spawned by
+	 * opencode). On other platforms, walks the Java process tree.
+	 * </p>
+	 * <p>
+	 * After killing, closes the process streams to unblock the
+	 * {@code readLine()} loop in {@code RunNPMCommand.runCommand()}.
 	 * </p>
 	 */
-	private void killProcessTree(IRunNPMCommand cmd)
-	{
+	private void killProcessTree(IRunNPMCommand cmd) {
 		Process process = cmd.getProcess();
-		if (process == null) return;
+		if (process == null) {
+			ServoyLog.logInfo("OpenCode: killProcessTree - process is null");
+			return;
+		}
 
+		long pid = process.pid();
+		ServoyLog.logInfo("OpenCode: killing process tree, root PID: " + pid + ", alive: " + process.isAlive());
+
+		if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+			try {
+				Process taskkill = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid))
+						.redirectErrorStream(true).start();
+				taskkill.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+				ServoyLog.logInfo("OpenCode: taskkill /F /T /PID " + pid + " completed");
+			} catch (Exception e) {
+				ServoyLog.logInfo("OpenCode: taskkill failed: " + e.getMessage());
+			}
+		} else {
+			try {
+				new ProcessBuilder("pkill", "-9", "-P", String.valueOf(pid))
+						.redirectErrorStream(true).start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+				ServoyLog.logInfo("OpenCode: pkill -9 -P " + pid + " completed");
+				new ProcessBuilder("kill", "-9", String.valueOf(pid))
+						.redirectErrorStream(true).start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+				ServoyLog.logInfo("OpenCode: kill -9 " + pid + " completed");
+			} catch (Exception e) {
+				ServoyLog.logInfo("OpenCode: pkill/kill failed: " + e.getMessage());
+			}
+		}
+
+		// Fallback: if the process is still alive, use Java API
+		if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+			ServoyLog.logInfo("OpenCode: PID " + pid + " still alive after OS kill, using Java API fallback");
 		process.descendants().forEach(ProcessHandle::destroyForcibly);
 		process.destroyForcibly();
 	}
 
+		// Close streams to unblock readLine() in RunNPMCommand.runCommand()
+		try {
+			process.getInputStream().close();
+		} catch (Exception ignored) {
+		}
+		try {
+			process.getErrorStream().close();
+		} catch (Exception ignored) {
+		}
+		ServoyLog.logInfo("OpenCode: process streams closed for PID: " + pid);
+	}
 	// --- logging helpers ---
 
 	/**
