@@ -258,7 +258,7 @@ public class OpenCodeView extends ViewPart {
 			@Override
 			public void partVisible(IWorkbenchPartReference partRef) {
 				if (partRef.getPart(false) == OpenCodeView.this && pendingUrl != null) {
-					ServoyLog.logInfo("opencode the url is (deferred): " + pendingUrl);
+					Activator.getInstance().logToConsole("loading url (deferred): " + pendingUrl);
 					setUrl(pendingUrl);
 					pendingUrl = null;
 					removePartVisibleListener();
@@ -306,7 +306,7 @@ public class OpenCodeView extends ViewPart {
 
 				PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
 					if (getSite() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
-						ServoyLog.logInfo("opencode the url is: " + targetUrl );
+						Activator.getInstance().logToConsole("loading url: " + targetUrl);
 						setUrl(targetUrl);
 					} else if (getSite() != null) {
 						pendingUrl = targetUrl;
