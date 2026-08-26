@@ -7,5 +7,9 @@ Bundle-Vendor: Servoy
 Fragment-Host: com.servoy.eclipse.opencode
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Import-Package: org.junit;version="4.0.0",
+ org.junit.jupiter.api;version="5.0.0",
+ org.junit.jupiter.api.io;version="5.0.0",
+ org.junit.jupiter.params;version="5.0.0",
+ org.junit.jupiter.params.provider;version="5.0.0",
  org.junit.rules;version="4.0.0"
 Automatic-Module-Name: com.servoy.eclipse.opencode.tests

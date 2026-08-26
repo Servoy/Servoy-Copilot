@@ -17,67 +17,111 @@
 
 package com.servoy.eclipse.opencode;
 
+import java.io.IOException;
+import java.net.URL;
+
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Plugin;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.jface.resource.ImageDescriptor;
+import org.eclipse.ui.console.ConsolePlugin;
+import org.eclipse.ui.console.IConsoleManager;
 import org.osgi.framework.BundleContext;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ngclient.ui.EclipseIOConsole;
+import com.servoy.eclipse.ngclient.ui.IConsole;
 import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
+import com.servoy.eclipse.ngclient.ui.StringOutputStream;
 
 /**
  * Plugin activator for {@code com.servoy.eclipse.opencode}.
  * <p>
- * On startup, schedules {@link OpencodeFolderCreatorJob} (unless the {@code opencode.url} system property is set,
- * which means an external server is used). Holds a reference to the running {@link RunOpencodeCommand} job and the
- * inner {@link RunNPMCommand} so both can be cancelled cleanly on shutdown.
+ * On startup, schedules {@link OpencodeFolderCreatorJob} (unless the
+ * {@code opencode.url} system property is set, which means an external server
+ * is used). Holds a reference to the running {@link RunOpencodeCommand} job and
+ * the inner {@link RunNPMCommand} so both can be cancelled cleanly on shutdown.
  * </p>
  * <p>
- * Server-ready coordination state is delegated to {@link OpencodeServerState} so that the latch/port logic can be
- * unit-tested without an OSGi runtime.
+ * Server-ready coordination state is delegated to {@link OpencodeServerState}
+ * so that the latch/port logic can be unit-tested without an OSGi runtime.
  * </p>
  *
  * @author jcompagner
  * @since 2026.06
  */
-public class Activator extends Plugin
-{
+public class Activator extends Plugin {
 	public static final String PLUGIN_ID = "com.servoy.eclipse.opencode";
 
 	private static Activator instance;
 
-	/** The outer Eclipse Job that owns the server lifecycle (used to cancel its monitor on shutdown). */
+	/**
+	 * The outer Eclipse Job that owns the server lifecycle (used to cancel its
+	 * monitor on shutdown).
+	 */
 	private volatile Job serverJob;
 
-	/** The inner RunNPMCommand that wraps the OS process (used to kill the process tree on shutdown). */
+	/**
+	 * The inner RunNPMCommand that wraps the OS process (used to kill the process
+	 * tree on shutdown).
+	 */
 	private volatile IRunNPMCommand serverCommand;
 
 	/** Holds the CountDownLatch and port - extracted for testability. */
 	private final OpencodeServerState serverState = new OpencodeServerState(RunOpencodeCommand.DEFAULT_PORT);
 
-	@Override
-	public void start(BundleContext context) throws Exception
-	{
-		super.start(context);
-		instance = this;
+	private IConsole aiConsole;
 
-		// Setup is deferred until the user has both logged in and has an active solution.
-		// OpenCodeView.initUrl() calls ensureServerStarting() when all conditions are met.
+	public synchronized IConsole getConsole() {
+		if (aiConsole == null) {
+			try {
+				URL imageUrl = getBundle().getEntry("/icons/aichat.png");
+				EclipseIOConsole eclipseConsole = new EclipseIOConsole("Servoy AI Console", "servoyAiConsole",
+						imageUrl != null ? ImageDescriptor.createFromURL(imageUrl) : null);
+				IConsoleManager consoleManager = ConsolePlugin.getDefault().getConsoleManager();
+				consoleManager.addConsoles(new org.eclipse.ui.console.IOConsole[] { eclipseConsole });
+				aiConsole = eclipseConsole;
+			} catch (NullPointerException e) {
+				return null;
+			}
+		}
+		return aiConsole;
+	}
+
+	public void logToConsole(String message) {
+		IConsole c = getConsole();
+		if (c != null) {
+			try {
+				StringOutputStream out = c.outputStream();
+				out.write("[Servoy AI] " + message + "\n");
+				out.close();
+			} catch (IOException ignored) {
+			}
+		}
 	}
 
 	@Override
-	public void stop(BundleContext context) throws Exception
-	{
+	public void start(BundleContext context) throws Exception {
+		super.start(context);
+		instance = this;
+
+		// Setup is deferred until the user has both logged in and has an active
+		// solution.
+		// OpenCodeView.initUrl() calls ensureServerStarting() when all conditions are
+		// met.
+	}
+
+	@Override
+	public void stop(BundleContext context) throws Exception {
 		stopServer();
 		instance = null;
 		super.stop(context);
 	}
 
-	public static Activator getInstance()
-	{
+	public static Activator getInstance() {
 		return instance;
 	}
 
@@ -86,24 +130,26 @@ public class Activator extends Plugin
 	private volatile boolean setupStarted = false;
 
 	/**
-	 * Schedules {@link OpencodeFolderCreatorJob} the first time it is called (idempotent).
-	 * Must be called only after login is complete and an active solution is present.
+	 * Schedules {@link OpencodeFolderCreatorJob} the first time it is called
+	 * (idempotent). Must be called only after login is complete and an active
+	 * solution is present.
 	 */
-	void ensureServerStarting()
-	{
+	void ensureServerStarting() {
 		String urlOverride = System.getProperty(OpencodePerspective.URL_PROPERTY);
-		if (urlOverride != null) return; // external server, nothing to do
-		if (setupStarted) return;
+		if (urlOverride != null)
+			return; // external server, nothing to do
+		if (setupStarted)
+			return;
 		setupStarted = true;
 		log(IStatus.INFO, "OpenCode: prerequisites met Ã¢ scheduling setup job."); //$NON-NLS-1$
 		new OpencodeFolderCreatorJob().schedule();
 	}
 
 	/**
-	 * Called by {@link RunOpencodeCommand} once the server is ready to accept connections.
+	 * Called by {@link RunOpencodeCommand} once the server is ready to accept
+	 * connections.
 	 */
-	void serverStarted(int port)
-	{
+	void serverStarted(int port) {
 		log(IStatus.INFO, "OpenCode server ready on port " + port + ".");
 		serverState.serverStarted(port);
 	}
@@ -113,33 +159,29 @@ public class Activator extends Plugin
 	 *
 	 * @return {@code true} if the server started within the timeout
 	 */
-	public boolean waitForServer(long timeoutMs) throws InterruptedException
-	{
+	public boolean waitForServer(long timeoutMs) throws InterruptedException {
 		return serverState.waitForServer(timeoutMs);
 	}
 
-	public int getServerPort()
-	{
+	public int getServerPort() {
 		return serverState.getServerPort();
 	}
 
-	public boolean isServerReady()
-	{
+	public boolean isServerReady() {
 		return serverState.isReady();
 	}
 
 	/**
-	 * Registers the outer {@link RunOpencodeCommand} job. Called by {@link RunOpencodeCommand#run} before the
-	 * server process is launched so that {@link #stopServer()} can cancel the job's own monitor, which in turn
-	 * makes {@code monitor.isCanceled()} return {@code true} in the retry-guard check.
+	 * Registers the outer {@link RunOpencodeCommand} job. Called by
+	 * {@link RunOpencodeCommand#run} before the server process is launched so that
+	 * {@link #stopServer()} can cancel the job's own monitor, which in turn makes
+	 * {@code monitor.isCanceled()} return {@code true} in the retry-guard check.
 	 */
-	void setServerJob(Job job)
-	{
+	void setServerJob(Job job) {
 		this.serverJob = job;
 	}
 
-	void setServerCommand(IRunNPMCommand cmd)
-	{
+	void setServerCommand(IRunNPMCommand cmd) {
 		this.serverCommand = cmd;
 	}
 
@@ -232,9 +274,9 @@ public class Activator extends Plugin
 		// Fallback: if the process is still alive, use Java API
 		if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
 			ServoyLog.logInfo("OpenCode: PID " + pid + " still alive after OS kill, using Java API fallback");
-		process.descendants().forEach(ProcessHandle::destroyForcibly);
-		process.destroyForcibly();
-	}
+			process.descendants().forEach(ProcessHandle::destroyForcibly);
+			process.destroyForcibly();
+		}
 
 		// Close streams to unblock readLine() in RunNPMCommand.runCommand()
 		try {
@@ -250,14 +292,13 @@ public class Activator extends Plugin
 	// --- logging helpers ---
 
 	/**
-	 * Writes directly to this plugin's log (i.e. {@code .metadata/.log}) using our own bundle ID. Safe to call
-	 * during {@link #stop} because the platform log outlives individual plugin activators.
+	 * Writes directly to this plugin's log (i.e. {@code .metadata/.log}) using our
+	 * own bundle ID. Safe to call during {@link #stop} because the platform log
+	 * outlives individual plugin activators.
 	 */
-	private void log(int severity, String message)
-	{
+	private void log(int severity, String message) {
 		ILog log = getLog();
-		if (log != null)
-		{
+		if (log != null) {
 			log.log(new Status(severity, PLUGIN_ID, message));
 		}
 	}

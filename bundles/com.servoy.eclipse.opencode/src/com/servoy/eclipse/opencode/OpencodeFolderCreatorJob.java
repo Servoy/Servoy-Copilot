@@ -140,38 +140,40 @@ public class OpencodeFolderCreatorJob extends Job {
 			// createNPMCommand internally waits for Node.js extraction (via
 			// waitForNodeExtraction)
 			IRunNPMCommand install = ngActivator.createNPMCommand(opencodeDir, List.of("install"));
+			install.setOutputStream(activator.getConsole().outputStream());
 			try {
 				install.runCommand(monitor);
 			} catch (IOException | InterruptedException e) {
-				ServoyLog.logError("OpencodeFolderCreatorJob: npm install failed", e);
+				activator.logToConsole("npm install failed: " + e.getMessage());
 				return new Status(IStatus.WARNING, Activator.PLUGIN_ID, "npm install failed: " + e.getMessage());
 			}
 
 			if (install.getExitCode() == 0) {
 				try {
 					markerFile.createNewFile();
-					ServoyLog.logInfo("Servoy AI: opencode installed successfully.");
+					activator.logToConsole("opencode installed successfully.");
 				} catch (IOException e) {
 					ServoyLog.logError("OpencodeFolderCreatorJob: cannot create marker file", e);
 				}
 			} else {
 				String msg = "npm install for opencode exited with code " + install.getExitCode();
-				ServoyLog.logError(msg, null);
+				activator.logToConsole(msg);
 				return new Status(IStatus.WARNING, Activator.PLUGIN_ID, msg);
 			}
 		} else {
 			// Already installed — check for a newer patch release within the ~1.15.x range
 			IRunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "opencode-ai")); //$NON-NLS-1$
+			update.setOutputStream(activator.getConsole().outputStream());
 			try {
 				update.runCommand(monitor);
 				if (update.getExitCode() == 0) {
-					ServoyLog.logInfo("Servoy AI: opencode-ai update check complete."); //$NON-NLS-1$
+					activator.logToConsole("opencode-ai update check complete.");
 				} else {
-					ServoyLog.logInfo("Servoy AI: npm update opencode-ai exited with code " + update.getExitCode() //$NON-NLS-1$
-							+ " (non-fatal)."); //$NON-NLS-1$
+					activator.logToConsole(
+							"npm update opencode-ai exited with code " + update.getExitCode() + " (non-fatal).");
 				}
 			} catch (IOException | InterruptedException e) {
-				ServoyLog.logInfo("Servoy AI: npm update opencode-ai failed (non-fatal): " + e.getMessage()); //$NON-NLS-1$
+				activator.logToConsole("npm update opencode-ai failed (non-fatal): " + e.getMessage());
 			}
 		}
 

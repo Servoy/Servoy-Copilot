@@ -357,17 +357,17 @@ public class OpenCodeView extends ViewPart {
 			java.net.URL url = java.net.URI.create(
 					"http://127.0.0.1:" + port + "/session?directory=" + encodedDir + "&limit=1&roots=true") //$NON-NLS-1$ //$NON-NLS-2$
 					.toURL();
-			ServoyLog.logInfo("OpenCode: querying sessions at: " + url); //$NON-NLS-1$
+			Activator.getInstance().logToConsole("querying sessions at: " + url);
 			java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
 			conn.setRequestMethod("GET"); //$NON-NLS-1$
 			conn.setConnectTimeout(10000);
-			conn.setReadTimeout(30000);
+			conn.setReadTimeout(60000);
 			int responseCode = conn.getResponseCode();
-			ServoyLog.logInfo("OpenCode: session list response code: " + responseCode); //$NON-NLS-1$
+			Activator.getInstance().logToConsole("session list response code: " + responseCode);
 			if (responseCode == 200) {
 				try (java.io.InputStream is = conn.getInputStream()) {
 					String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-					ServoyLog.logInfo("OpenCode: session list response: " + body); //$NON-NLS-1$
+					Activator.getInstance().logToConsole("session list response: " + body);
 					int idIdx = body.indexOf("\"id\""); //$NON-NLS-1$
 					if (idIdx >= 0) {
 						int colon = body.indexOf(':', idIdx);
@@ -375,14 +375,14 @@ public class OpenCodeView extends ViewPart {
 						int quote2 = body.indexOf('"', quote1 + 1);
 						if (quote1 >= 0 && quote2 > quote1) {
 							String sessionId = body.substring(quote1 + 1, quote2);
-							ServoyLog.logInfo("OpenCode: resuming session: " + sessionId); //$NON-NLS-1$
+							Activator.getInstance().logToConsole("resuming session: " + sessionId);
 							return sessionId;
 						}
 					}
 				}
 			}
 		} catch (Exception e) {
-			ServoyLog.logInfo("OpenCode: could not query last session: " + e.getMessage()); //$NON-NLS-1$
+			Activator.getInstance().logToConsole("could not query last session: " + e.getMessage());
 		}
 		return null;
 	}

@@ -47,8 +47,7 @@ import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
  * </p>
  * <p>
  * Delegates all node/npm path setup to
- * {@code com.servoy.eclipse.ngclient.ui.Activator}
- * via
+ * {@code com.servoy.eclipse.ngclient.ui.Activator} via
  * {@link com.servoy.eclipse.ngclient.ui.Activator#createNPMCommand(File, List)}.
  * No direct knowledge of where node is extracted is needed here.
  * </p>
@@ -107,9 +106,7 @@ public class RunOpencodeCommand extends Job {
 		// Use npm exec - ngclient.ui resolves node/npm paths and waits for
 		// extraction internally.
 		IRunNPMCommand serverCommand = ngActivator.createNPMCommand(opencodeDir,
-				List.of("exec", "--", "opencode", "serve",
-						"--port", String.valueOf(port),
-						"--hostname", "127.0.0.1"));
+				List.of("exec", "--", "opencode", "serve", "--port", String.valueOf(port), "--hostname", "127.0.0.1"));
 		Map<String, String> env = new HashMap<>(buildServoyXdgEnv());
 		env.putAll(additionalEnvVars);
 		String projectPath = OpenCodeUtil.getActiveProjectPath();
@@ -124,20 +121,22 @@ public class RunOpencodeCommand extends Job {
 			return new Status(IStatus.ERROR, Activator.PLUGIN_ID, "Activator not available");
 		}
 
+		serverCommand.setOutputStream(activator.getConsole().outputStream());
+
 		// Register both the outer job (this) and the inner command so stopServer()
 		// can cancel this job's monitor (preventing spurious retry) AND kill the OS
 		// process.
 		activator.setServerJob(this);
 		activator.setServerCommand(serverCommand);
 
-		ServoyLog.logInfo("OpenCode: launching server on port " + port + ".");
+		activator.logToConsole("Launching server on port " + port + ".");
 		startWatchdogThread(port);
 
 		try {
 			serverCommand.runCommand(monitor);
 		} catch (IOException | InterruptedException e) {
 			if (!monitor.isCanceled()) {
-				ServoyLog.logError("OpenCode: server process I/O error", e);
+				activator.logToConsole("Server process I/O error: " + e.getMessage());
 			}
 		}
 
@@ -150,12 +149,11 @@ public class RunOpencodeCommand extends Job {
 		int exitCode = serverCommand.getExitCode();
 		if (exitCode != 0 && exitCode != RunNPMCommand.EXIT_CODE_CANCELLED && !monitor.isCanceled()) {
 			if (retryCount < MAX_RETRIES) {
-				ServoyLog.logInfo("OpenCode: unexpected exit (code " + exitCode + ") - scheduling retry " +
-						(retryCount + 1) + "/" + MAX_RETRIES + " in 5 s.");
+				activator.logToConsole("Unexpected exit (code " + exitCode + ") - scheduling retry " + (retryCount + 1)
+						+ "/" + MAX_RETRIES + " in 5 s.");
 				new RunOpencodeCommand(opencodeDir, retryCount + 1, additionalEnvVars).schedule(RETRY_DELAY_MS);
 			} else {
-				ServoyLog.logError("OpenCode: server exited unexpectedly (code " + exitCode + ") - no more retries.",
-						null);
+				activator.logToConsole("Server exited unexpectedly (code " + exitCode + ") - no more retries.");
 			}
 		}
 
@@ -169,8 +167,8 @@ public class RunOpencodeCommand extends Job {
 	 * installation the user may have.
 	 * <p>
 	 * The override can be suppressed by setting the JVM property
-	 * {@code opencode.use.default.xdg=true}, which causes this method to return
-	 * an empty map so opencode falls back to its default XDG directories.
+	 * {@code opencode.use.default.xdg=true}, which causes this method to return an
+	 * empty map so opencode falls back to its default XDG directories.
 	 * </p>
 	 *
 	 * @return a map of XDG environment variables to inject, or an empty map if the
@@ -181,17 +179,13 @@ public class RunOpencodeCommand extends Job {
 			return Map.of();
 		}
 		String servoyHome = System.getProperty("user.home") + File.separator + ".servoy";
-		return Map.of(
-				"XDG_CONFIG_HOME", servoyHome,
-				"XDG_DATA_HOME", servoyHome,
-				"XDG_STATE_HOME", servoyHome,
+		return Map.of("XDG_CONFIG_HOME", servoyHome, "XDG_DATA_HOME", servoyHome, "XDG_STATE_HOME", servoyHome,
 				"XDG_CACHE_HOME", servoyHome);
 	}
 
 	/**
-	 * Polls {@code http://127.0.0.1:<port>/} every 500 ms (up to 120 s).
-	 * Calls {@link Activator#serverStarted(int)} on the first successful HTTP
-	 * response.
+	 * Polls {@code http://127.0.0.1:<port>/} every 500 ms (up to 120 s). Calls
+	 * {@link Activator#serverStarted(int)} on the first successful HTTP response.
 	 *
 	 * @param port the port opencode was launched on
 	 */
@@ -211,6 +205,7 @@ public class RunOpencodeCommand extends Job {
 						activator = Activator.getInstance();
 						if (activator != null && !activator.isServerReady()) {
 							activator.serverStarted(port);
+							activator.logToConsole("Server ready on port " + port + ".");
 						}
 						return;
 					}
@@ -232,8 +227,8 @@ public class RunOpencodeCommand extends Job {
 	 * Finds the first available TCP port starting at {@code startPort}, scanning
 	 * upward up to 100 ports.
 	 * <p>
-	 * Uses a {@link ServerSocket} bind-test: if the bind succeeds the port is
-	 * free; the socket is closed immediately so opencode can use it.
+	 * Uses a {@link ServerSocket} bind-test: if the bind succeeds the port is free;
+	 * the socket is closed immediately so opencode can use it.
 	 * </p>
 	 *
 	 * @param startPort the preferred port (normally {@link #DEFAULT_PORT})
