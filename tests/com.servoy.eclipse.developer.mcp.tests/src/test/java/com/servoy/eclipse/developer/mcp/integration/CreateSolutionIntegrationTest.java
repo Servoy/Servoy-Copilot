@@ -20,7 +20,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
@@ -36,18 +35,17 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
-public class CreateSolutionIntegrationTest {
+public class CreateSolutionIntegrationTest extends TestUtilitiesClass {
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 
-	private static final long APP_SERVER_POLL_MS = 15_000;
 	private static final long ACTIVATE_SETTLE_MS = 10_000;
 
 	private ServoyDevServer devServer;
 
-	private static Boolean appServerAvailableCache;
+	public CreateSolutionIntegrationTest() {
+		super(null, null); // we test for sol and res. prj here, we don't need those super utilities that use those
+	}
 
 	@Before
 	public void setUp() throws Exception {
@@ -88,11 +86,11 @@ public class CreateSolutionIntegrationTest {
 			assertTrue("Should indicate created and activated: " + result,
 					result.contains("Created") || result.contains("activated") || result.contains(solName));
 
-			pumpEvents(ACTIVATE_SETTLE_MS);
-
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-			ServoyProject activeProject = model.getActiveProject();
-			assertNotNull("Should have an active project after activation", activeProject);
+			pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
+				IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+				ServoyProject activeProject = model.getActiveProject();
+				assertNotNull("Should have an active project after activation", activeProject);
+			});
 		} finally {
 			cleanupProject(solName);
 		}
@@ -105,15 +103,15 @@ public class CreateSolutionIntegrationTest {
 
 		try {
 			devServer.createSolution(parentName, "ng_client", "true", "false", null);
-			pumpEvents(ACTIVATE_SETTLE_MS);
+			pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
+				String result = devServer.createSolution(moduleName, "ng_module", "false", "false", parentName);
 
-			String result = devServer.createSolution(moduleName, "ng_module", "false", "false", parentName);
+				assertNotNull(result);
+				assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
 
-			assertNotNull(result);
-			assertFalse("Should not start with Error: " + result, result.startsWith("Error"));
-
-			IProject moduleProject = ResourcesPlugin.getWorkspace().getRoot().getProject(moduleName);
-			assertTrue("Module project should exist", moduleProject.exists());
+				IProject moduleProject = ResourcesPlugin.getWorkspace().getRoot().getProject(moduleName);
+				assertTrue("Module project should exist", moduleProject.exists());
+			});
 		} finally {
 			cleanupProject(moduleName);
 			cleanupProject(parentName);
@@ -163,11 +161,11 @@ public class CreateSolutionIntegrationTest {
 			assertNotNull(result);
 			assertFalse("Should not be an error: " + result, result.startsWith("Error"));
 
-			pumpEvents(ACTIVATE_SETTLE_MS);
-
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-			ServoyProject activeProject = model.getActiveProject();
-			assertNotNull("Should have active project after activation", activeProject);
+			pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
+				IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+				ServoyProject activeProject = model.getActiveProject();
+				assertNotNull("Should have active project after activation", activeProject);
+			});
 		} finally {
 			cleanupProject(solName);
 		}
@@ -246,17 +244,6 @@ public class CreateSolutionIntegrationTest {
 		}
 	}
 
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
-
 	private void ensureResourcesProject() throws Exception {
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
@@ -278,21 +265,6 @@ public class CreateSolutionIntegrationTest {
 			}
 		} catch (Exception e) {
 			// best effort cleanup
-		}
-	}
-
-	private void pumpEvents(long ms) {
-		try {
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread()) {
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			} else {
-				Thread.sleep(ms);
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
 		}
 	}
 }

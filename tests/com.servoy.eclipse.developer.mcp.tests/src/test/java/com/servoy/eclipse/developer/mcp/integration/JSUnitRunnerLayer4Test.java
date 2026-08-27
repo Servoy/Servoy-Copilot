@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -12,28 +12,20 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assert.fail;
 
-import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
-import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
-import com.servoy.eclipse.model.nature.ServoyProject;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService}.
  * <p>
- * Unlike the Layer 3 tests (which use a no-op solution and skip on SmartClient failure),
+ * Unlike the Layer 3 tests (which use a no-op solution and skip on headless client failure),
  * Layer 4 uses a solution with <em>real JSUnit assertions</em> and <b>hard-asserts</b>
  * on all outcomes once the Servoy application server is confirmed running.
  * <p>
@@ -54,11 +46,6 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  */
 public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 {
-	/** Name of the Layer 4 Servoy solution created in the PDE test workspace. */
-	private static final String TEST_LAYER4_SOLUTION = "test_layer4_suite";
-
-	/** Name of the shared ServoyResources project (shared with Layer 3). */
-	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	/** globals.js content: 3 passing tests + 1 intentionally failing test. */
 	private static final String GLOBALS_JS =
@@ -86,7 +73,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		// ---- test_mathFailure: 5 != 2+2  -> intentional ERROR ----
 		"/**\n * @properties={typeid:24,uuid:\"11111111-2222-3333-4444-555555555554\"}\n */\n" +
 		"function test_mathFailure() {\n" +
-		"\t// Intentional: 5 != 4 -> throws Error -> reported as 💥 ERROR\n" +
+		"\t// Intentional: 5 != 4 -> throws Error -> reported as ?? ERROR\n" +
 		"\t_l4_assertEqual(5, 2 + 2);\n" +
 		"}\n";
 
@@ -94,7 +81,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 
 	/**
 	 * Cached result of {@code runTests("ALL")} - computed once for the whole class,
-	 * not once per test method. Avoids launching the SmartClient 10 times.
+	 * not once per test method. Avoids launching the headless client 10 times.
 	 */
 	private static String cachedAllResult;
 
@@ -104,28 +91,47 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	/** allResult for the current test - set from the cache in setUp(). */
 	private String allResult;
 
+	public JSUnitRunnerLayer4Test() {
+		super("test_layer4_suite", "servoy_resources");
+	}
+
 	@Before
 	public void setUp() throws Exception
 	{
 		runner = new JSUnitRunnerService();
 
 		// 1. SWT must be available.
-		assumeNotNull("No Display available - test requires a running Eclipse UI",
+		assertNotNull("No Display available - test requires a running Eclipse UI",
 			Display.getDefault());
 
 		// 2. Skip if no Servoy app server - same guard as Layer 3.
 		waitForAppServer();
 
-		// 3. One-time setup: create solution, activate it, run the SmartClient once.
+		// 3. One-time setup: create solution, activate it, run the headless client once.
 		if (!classSetUpDone)
 		{
 			classSetUpDone = true; // Set first - prevents re-running if later steps throw
-			ensureLayer4ProjectsInWorkspace();
-			ensureLayer4ProjectActive();
+			ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+				try {
+					// Always force-write globals.js so content changes (e.g. new test functions)
+					// are picked up even when the file already exists from a previous test run.
+					IFile globalsFile = solPrj.getFile("globals.js");
+					byte[] globalsBytes = GLOBALS_JS.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+					java.io.ByteArrayInputStream globalsStream = new java.io.ByteArrayInputStream(globalsBytes);
+					if (globalsFile.exists())
+							globalsFile.setContents(globalsStream, true, false, monitor);
+					else
+						globalsFile.create(globalsStream, true, monitor);
+				} catch (CoreException e) {
+					fail("Cannot create globals file: " + e.getMessage());
+				}
+			});
+			ensureActiveProject();
 			cachedAllResult = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		}
 
 		allResult = cachedAllResult;
+		assertNotNull("Class setup did not complete - allResult is null", allResult);
 	}
 
 	// -----------------------------------------------------------------------
@@ -327,7 +333,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	@Test
 	public void testLayer4_allPassedMessageAbsent()
 	{
-		// "✅ All X test(s) passed!" is only emitted when failed == 0 && errors == 0.
+		// "? All X test(s) passed!" is only emitted when failed == 0 && errors == 0.
 		// With 1 error this branch must be skipped entirely.
 		assertFalse(
 			"The 'all passed' success line must NOT appear when errors > 0; result:\n" + allResult,
@@ -376,157 +382,4 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 		assertNotNull("runTests(\"MODULES\") must not return null for layer4 solution", result);
 	}
 
-	// -----------------------------------------------------------------------
-	// Setup helpers
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Creates {@code servoy_resources} (shared with Layer 3) and {@code test_layer4_suite}
-	 * in the PDE test workspace. Idempotent - skipped if projects already exist.
-	 */
-	private void ensureLayer4ProjectsInWorkspace() throws Exception
-	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
-			// servoy_resources - shared stub, may already exist from Layer 3 setUp
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen()) res.open(monitor);
-
-			// test_layer4_suite
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_LAYER4_SOLUTION);
-			if (!sol.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_LAYER4_SOLUTION);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen()) sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"test_layer4_suite\",\n" +
-				"solutionType:1,\ntypeid:43,\nuuid:\"11111111-2222-3333-4444-000000000004\"\n",
-				monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"11111111-2222-3333-4444-000000000004\",\nversion:\"1.0\"\n",
-				monitor);
-			// Always force-write globals.js so content changes (e.g. new test functions)
-			// are picked up even when the file already exists from a previous test run.
-			IFile globalsFile = sol.getFile("globals.js");
-			byte[] globalsBytes = GLOBALS_JS.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-			java.io.ByteArrayInputStream globalsStream = new java.io.ByteArrayInputStream(globalsBytes);
-			if (globalsFile.exists())
-				globalsFile.setContents(globalsStream, true, false, monitor);
-			else
-				globalsFile.create(globalsStream, true, monitor);
-			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
-		}, new NullProgressMonitor());
-
-		Thread.sleep(1000);
-	}
-
-	/**
-	 * Activates {@code test_layer4_suite} as the Servoy active project.
-	 * Unlike Layer 3, this method hard-fails (not skips) if activation cannot complete,
-	 * because Layer 4 requires an exact solution with known test counts.
-	 */
-	private void ensureLayer4ProjectActive() throws Exception
-	{
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		// If test_layer4_suite is already active, nothing to do.
-		if (isLayer4Active(model)) return;
-
-		// Refresh so the newly created project is visible to the model.
-		model.refreshServoyProjects();
-		// Pump SWT events for 1 s so refreshServoyProjects() background jobs can
-		// deliver any UI-thread callbacks before we look up the project.
-		Display display = Display.getDefault();
-		long refreshEnd = System.currentTimeMillis() + 1000;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (System.currentTimeMillis() < refreshEnd)
-				display.readAndDispatch();
-		}
-		else
-		{
-			Thread.sleep(1000);
-		}
-
-		// Find test_layer4_suite specifically.
-		ServoyProject layer4Project = null;
-		ServoyProject[] projects = model.getServoyProjects();
-		if (projects != null)
-		{
-			for (ServoyProject p : projects)
-			{
-				if (TEST_LAYER4_SOLUTION.equals(p.getProject().getName()))
-				{
-					layer4Project = p;
-					break;
-				}
-			}
-		}
-		assertNotNull(
-			"test_layer4_suite not found in workspace - cannot run Layer 4 tests",
-			layer4Project);
-
-		// Call setActiveProject directly (not via asyncExec): PDE tests run on the SWT
-		// event thread, so asyncExec tasks are queued AFTER our polling loop returns.
-		// Direct call lets background activation jobs start immediately.
-		try
-		{
-			model.setActiveProject(layer4Project, true);
-		}
-		catch (Exception e)
-		{
-			// activation failure will be caught by the timeout assertion below
-		}
-
-		// Pump SWT events so activation background jobs can deliver UI-thread callbacks.
-		// Thread.sleep() here holds the event thread and causes the timeout to always fire.
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (!isLayer4Active(model) && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		}
-		else
-		{
-			while (!isLayer4Active(model) && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertTrue(
-			"test_layer4_suite was not activated within " + (ACTIVATE_SETTLE_MS / 1000) + " seconds",
-			isLayer4Active(model));
-	}
-
-	private boolean isLayer4Active(IDeveloperServoyModel model)
-	{
-		try
-		{
-			ServoyProject active = model.getActiveProject();
-			return active != null && TEST_LAYER4_SOLUTION.equals(active.getProject().getName());
-		}
-		catch (Throwable t)
-		{
-			return false;
-		}
-	}
 }

@@ -20,6 +20,7 @@ import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 import org.junit.platform.suite.api.SuiteDisplayName;
 
+import com.servoy.eclipse.developer.mcp.integration.AbstractIntegrationTestBaseTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewServiceTest;
@@ -38,6 +39,8 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 		PersistDuplicateServiceTest.class,
 		// servers
 		ServoyI18nServerTest.class,
+		// integration base
+		AbstractIntegrationTestBaseTest.class,
 })
 public class AllDeveloperMcpJupiterUnitTests {
 }

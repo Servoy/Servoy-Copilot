@@ -24,23 +24,20 @@ import static org.junit.Assert.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.console.MessageConsole;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.actions.CypressConsoleUtil;
-import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.Form;
@@ -56,20 +53,17 @@ import com.servoy.j2db.server.shared.IApplicationServerSingleton;
  * solution. They are skipped (via Assume) when the environment is not
  * available.
  */
-public class CypressFormTestingIntegrationTest {
-	private static final String TEST_SOLUTION = "test_cypress_suite";
-	private static final String SERVOY_RESOURCES = "servoy_resources";
+public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 	private static final String TEST_FORM = "cypressTestForm";
-
-	private static final long APP_SERVER_POLL_MS = 15_000;
-	private static final long ACTIVATE_SETTLE_MS = 10_000;
 
 	private ServoyTestingServer testingServer;
 	private FormSpecGenerator specGenerator;
 	private FormSpecRunner specRunner;
 	private ServoyProject activeProject;
 
-	private static Boolean appServerAvailableCache;
+	public CypressFormTestingIntegrationTest() {
+		super("test_cypress_suite", "servoy_resources");
+	}
 
 	@Before
 	public void setUp() throws Exception {
@@ -80,17 +74,24 @@ public class CypressFormTestingIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace();
+		ensureTestSolutionInWorkspace(null);
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull("Active project required", activeProject);
 	}
 
+	@org.junit.BeforeClass
+	public static void disableNodeFolderCreatorJob()
+	{
+		// Cypress tests may need the node folder — re-enable the copy/npm cycle.
+		com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob.setDisabled(false);
+	}
+
 	@org.junit.AfterClass
 	public static void tearDownClass() throws Exception {
 		// Wait for server to release formpreview sessions before next test suite starts
-		Thread.sleep(5000);
+		//Thread.sleep(5000);
 	}
 
 	// -----------------------------------------------------------------------
@@ -112,7 +113,6 @@ public class CypressFormTestingIntegrationTest {
 		assertNotNull("Cypress spec path should not be null", cySpec);
 		assertTrue("Cypress spec file should exist after showFormInBrowser", Files.exists(cySpec));
 
-		IProject project = activeProject.getProject();
 		Path setupPath = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
 				.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
 				.resolve("cy-form-spec").resolve(TEST_FORM + ".spec.js");
@@ -129,9 +129,9 @@ public class CypressFormTestingIntegrationTest {
 		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM);
 		long firstModified = Files.getLastModifiedTime(cySpec).toMillis();
 
-		Thread.sleep(1100);
 
 		testingServer.showFormInBrowser(TEST_FORM, false);
+		Thread.sleep(1100);
 		long secondModified = Files.getLastModifiedTime(cySpec).toMillis();
 
 		assertTrue("Spec file should not be regenerated if it already exists", firstModified == secondModified);
@@ -200,11 +200,12 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("testForm should return results", result.contains("passed") || result.contains("failed"));
 
 		MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
-		pumpEvents(300);
-		String consoleContent = console.getDocument().get();
-		assertNotNull("Console document should not be null after testForm", consoleContent);
-		assertTrue("Console should contain test result written by testForm: " + consoleContent,
-				consoleContent.contains("passed") || consoleContent.contains("failed"));
+		pumpEventsUntil(300, () -> {
+			String consoleContent = console.getDocument().get();
+			assertNotNull("Console document should not be null after testForm", consoleContent);
+			assertTrue("Console should contain test result written by testForm: " + consoleContent,
+					consoleContent.contains("passed") || consoleContent.contains("failed"));
+		});
 	}
 
 	@Test
@@ -265,11 +266,12 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("testingMode should be true", "true".equals(value));
 
 		MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
-		pumpEvents(300);
-		String consoleContent = console.getDocument().get();
-		assertNotNull("Console should have content after showAndTest", consoleContent);
-		assertTrue("Console should contain showAndTest output: " + consoleContent, consoleContent.contains("passed")
-				|| consoleContent.contains("failed") || consoleContent.contains("timed out"));
+		pumpEventsUntil(300, () -> {
+			String consoleContent = console.getDocument().get();
+			assertNotNull("Console should have content after showAndTest", consoleContent);
+			assertTrue("Console should contain showAndTest output: " + consoleContent, consoleContent.contains("passed")
+					|| consoleContent.contains("failed") || consoleContent.contains("timed out"));
+		});
 	}
 
 	// -----------------------------------------------------------------------
@@ -971,132 +973,12 @@ public class CypressFormTestingIntegrationTest {
 			if (cySpec != null)
 				Files.deleteIfExists(cySpec);
 
-			IProject project = activeProject.getProject();
 			Path setupSpec = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile()
 					.toPath().resolve("jenkins-custom").resolve("e2e-test-scripts").resolve("cypress")
 					.resolve("cy-form-spec").resolve(formName + ".spec.js");
 			Files.deleteIfExists(setupSpec);
 		} catch (Exception e) {
 			// ignore
-		}
-	}
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
-	}
-
-	private void ensureTestSolutionInWorkspace() throws Exception {
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen())
-				res.open(monitor);
-
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-						"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen())
-				sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-					"fileVersion:" + com.servoy.j2db.persistence.AbstractRepository.repository_version
-							+ ",\nmustAuthenticate:false,\nname:\"" + TEST_SOLUTION + "\",\n"
-							+ "solutionType:1024,\ntypeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\"\n",
-					monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-					"typeid:43,\nuuid:\"c1e2f3a4-b5c6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-					monitor);
-		}, new NullProgressMonitor());
-	}
-
-	private void ensureActiveProject() throws Exception {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
-			return;
-
-		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
-
-		ServoyProject toActivate = null;
-		for (ServoyProject p : projects) {
-			if (TEST_SOLUTION.equals(p.getProject().getName())) {
-				toActivate = p;
-				break;
-			}
-		}
-		if (toActivate == null)
-			toActivate = projects[0];
-
-		try {
-			model.setActiveProject(toActivate, true);
-		} catch (Exception e) {
-			// caught by assumeNotNull below
-		}
-
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread()) {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		} else {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertNotNull("Active project not set - skipping", model.getActiveProject());
-	}
-
-	private void writeProjectFile(IProject project, String fileName, String content,
-			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
-		org.eclipse.core.resources.IFile file = project.getFile(fileName);
-		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		if (file.exists()) {
-			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
-		} else {
-			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
-		}
-	}
-
-	private void pumpEvents(long ms) {
-		try {
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread()) {
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			} else {
-				Thread.sleep(ms);
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
 		}
 	}
 
@@ -1121,9 +1003,10 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("js file should exist after write", jsFile.exists());
 
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
-		pumpEvents(2000);
 
-		assertTrue("Invalid JS must produce DLTK error markers on the .js file", hasErrorMarkers(jsFile));
+		pumpEventsUntil(2000, () -> {
+			assertTrue("Invalid JS must produce DLTK error markers on the .js file", hasErrorMarkers(jsFile));
+		});
 
 		String result = testingServer.screenshotForm(invalidFormName, 1);
 		assertNotNull("screenshotForm result should not be null", result);
@@ -1149,9 +1032,10 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("frm file should exist after write", frmFile.exists());
 
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
-		pumpEvents(2000);
 
-		assertTrue("Invalid .frm JSON must produce ERROR markers on the .frm file", hasErrorMarkers(frmFile));
+		pumpEventsUntil(2000, () -> {
+			assertTrue("Invalid .frm JSON must produce ERROR markers on the .frm file", hasErrorMarkers(frmFile));
+		});
 
 		String result = testingServer.screenshotForm(invalidFormName, 1);
 		assertNotNull("screenshotForm result should not be null", result);
@@ -1185,9 +1069,10 @@ public class CypressFormTestingIntegrationTest {
 		assertTrue("js file should exist after write", jsFile.exists());
 
 		project.build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
-		pumpEvents(2000);
 
-		assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers(jsFile));
+		pumpEventsUntil(2000, () -> {
+			assertTrue("Invalid JS must produce DLTK error markers", assertTrue("Invalid JS must produce DLTK error markers", hasErrorMarkers(jsFile)););
+		});
 
 		String result = testingServer.showFormInBrowser(invalidFormName, false);
 		assertNotNull("showFormInBrowser result should not be null", result);

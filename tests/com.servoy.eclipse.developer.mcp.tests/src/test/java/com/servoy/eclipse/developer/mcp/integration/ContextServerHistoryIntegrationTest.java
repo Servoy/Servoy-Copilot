@@ -128,15 +128,11 @@ public class ContextServerHistoryIntegrationTest {
 				}
 			}, new NullProgressMonitor());
 
-			Thread.sleep(100);
-
 			ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 				IFile file = project.getFile(path);
 				file.setContents(new ByteArrayInputStream("version 2".getBytes(StandardCharsets.UTF_8)), true, true,
 						monitor);
 			}, new NullProgressMonitor());
-
-			Thread.sleep(100);
 
 			ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 				IFile file = project.getFile(path);

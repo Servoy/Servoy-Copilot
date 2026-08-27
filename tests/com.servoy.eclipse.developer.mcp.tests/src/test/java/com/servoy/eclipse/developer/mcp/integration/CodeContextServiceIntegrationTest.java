@@ -46,13 +46,17 @@ import com.servoy.eclipse.developer.mcp.services.CodeContextService;
  * Integration tests for {@link CodeContextService}.
  * Requires Eclipse platform with DLTK JavaScript support.
  */
-public class CodeContextServiceIntegrationTest
+public class CodeContextServiceIntegrationTest extends TestUtilitiesClass
 {
 	private static final String PROJECT_NAME = "test_code_context_suite";
 
 	private CodeContextService service;
 	private IProject project;
 
+	public CodeContextServiceIntegrationTest() {
+		super(null, null);
+	}
+	
 	@Before
 	public void setUp() throws Exception
 	{
@@ -163,12 +167,15 @@ public class CodeContextServiceIntegrationTest
 		IFile jsFile = createJsFile("test_simple.js", jsContent);
 
 		// Allow DLTK time to index
-		pumpEvents(2000);
+		SelectionInfo info[] = { null };
+		pumpEventsUntil(2000, () -> {
+			info[0] = service.createSelectionInfoFromFile(jsFile);
+			assertNotNull(info[0]);
+		});
 
-		SelectionInfo info = service.createSelectionInfoFromFile(jsFile);
-		if (info == null) return; // DLTK not fully initialized
+//		if (info == null) return; // DLTK not fully initialized
 
-		CodeContext result = service.getCodeContext(info, null);
+		CodeContext result = service.getCodeContext(info[0], null);
 
 		assertNotNull(result);
 		assertFalse("Should not have error: " + result.getErrorMessage(), result.hasError());
@@ -180,12 +187,15 @@ public class CodeContextServiceIntegrationTest
 		String jsContent = "var result = application.getServerNames();";
 		IFile jsFile = createJsFile("test_api.js", jsContent);
 
-		pumpEvents(2000);
+		SelectionInfo info[] = { null };
+		pumpEventsUntil(2000, () -> {
+			info[0] = service.createSelectionInfoFromFile(jsFile);
+			assertNotNull(info[0]);
+		});
 
-		SelectionInfo info = service.createSelectionInfoFromFile(jsFile);
-		if (info == null) return; // DLTK not fully initialized
+//		if (info == null) return; // DLTK not fully initialized
 
-		CodeContext result = service.getCodeContext(info, null);
+		CodeContext result = service.getCodeContext(info[0], null);
 
 		assertNotNull(result);
 		assertFalse("Should not have error: " + result.getErrorMessage(), result.hasError());
@@ -199,13 +209,16 @@ public class CodeContextServiceIntegrationTest
 		String jsContent = "var x = application.getServerNames();\nvar y = security.getUserName();";
 		IFile jsFile = createJsFile("test_filter.js", jsContent);
 
-		pumpEvents(2000);
+		SelectionInfo info[] = { null };
+		pumpEventsUntil(2000, () -> {
+			info[0] = service.createSelectionInfoFromFile(jsFile);
+			assertNotNull(info[0]);
+		});
 
-		SelectionInfo info = service.createSelectionInfoFromFile(jsFile);
-		if (info == null) return;
+//		if (info == null) return;
 
 		// Only extract 'application' identifier
-		CodeContext result = service.getCodeContext(info, new String[] { "application" });
+		CodeContext result = service.getCodeContext(info[0], new String[] { "application" });
 
 		assertNotNull(result);
 		assertFalse("Should not have error", result.hasError());
@@ -222,12 +235,15 @@ public class CodeContextServiceIntegrationTest
 		String jsContent = "var name = controller.getName();\nvar count = foundset.getSize();";
 		IFile jsFile = createJsFile("test_multi.js", jsContent);
 
-		pumpEvents(2000);
+		SelectionInfo info[] = { null };
+		pumpEventsUntil(2000, () -> {
+			info[0] = service.createSelectionInfoFromFile(jsFile);
+			assertNotNull(info[0]);
+		});
 
-		SelectionInfo info = service.createSelectionInfoFromFile(jsFile);
-		if (info == null) return;
+//		if (info == null) return;
 
-		CodeContext result = service.getCodeContext(info, null);
+		CodeContext result = service.getCodeContext(info[0], null);
 
 		assertNotNull(result);
 		assertFalse("Should not have error", result.hasError());
@@ -258,18 +274,18 @@ public class CodeContextServiceIntegrationTest
 		String content = "function hello() { return 'world'; }";
 		IFile jsFile = createJsFile("test_selinfo.js", content);
 
-		pumpEvents(1000);
+		pumpEventsUntil(1000, () -> {
+			SelectionInfo result = service.createSelectionInfoFromFile(jsFile);
 
-		SelectionInfo result = service.createSelectionInfoFromFile(jsFile);
-
-		// May be null if DLTK can't create ISourceModule (depends on project config)
-		if (result != null)
-		{
-			assertNotNull(result.getFilePath());
-			assertTrue("Should have full file selected", result.isFullFileSelected());
-			assertEquals(content.length(), result.getLength());
-			assertEquals(content, result.getSelectedText());
-		}
+			// May be null if DLTK can't create ISourceModule (depends on project config)
+			if (result != null)
+			{
+				assertNotNull(result.getFilePath());
+				assertTrue("Should have full file selected", result.isFullFileSelected());
+				assertEquals(content.length(), result.getLength());
+				assertEquals(content, result.getSelectedText());
+			}
+		});
 	}
 
 	@Test
@@ -278,11 +294,11 @@ public class CodeContextServiceIntegrationTest
 		// A .txt file won't be recognized as ISourceModule by DLTK
 		IFile txtFile = createFile("test.txt", "not javascript");
 
-		pumpEvents(500);
-
-		SelectionInfo result = service.createSelectionInfoFromFile(txtFile);
-		// Should return null because DLTK won't create a source module for .txt
-		assertNull("Should return null for non-JS file", result);
+		pumpEventsUntil(500, () -> {
+			SelectionInfo result = service.createSelectionInfoFromFile(txtFile);
+			// Should return null because DLTK won't create a source module for .txt
+			assertNull("Should return null for non-JS file", result);
+		});
 	}
 
 	// -------------------------------------------------------------------------
@@ -343,25 +359,4 @@ public class CodeContextServiceIntegrationTest
 		return project.getFile(path);
 	}
 
-	private void pumpEvents(long ms)
-	{
-		try
-		{
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread())
-			{
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			}
-			else
-			{
-				Thread.sleep(ms);
-			}
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-		}
-	}
 }

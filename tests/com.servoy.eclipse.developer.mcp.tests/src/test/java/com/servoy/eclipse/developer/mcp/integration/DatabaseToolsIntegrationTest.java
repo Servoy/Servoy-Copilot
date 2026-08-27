@@ -17,7 +17,6 @@
 package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Before;
@@ -26,12 +25,13 @@ import org.junit.Test;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
-public class DatabaseToolsIntegrationTest {
-	private static final long APP_SERVER_POLL_MS = 30_000;
+public class DatabaseToolsIntegrationTest extends TestUtilitiesClass {
 
 	private ServoyDevServer devServer;
 
-	private static Boolean appServerAvailableCache;
+	public DatabaseToolsIntegrationTest() {
+		super(null, null); // we don't user super utilites for solution/res. prj.
+	}
 
 	@Before
 	public void setUp() throws Exception {
@@ -270,17 +270,6 @@ public class DatabaseToolsIntegrationTest {
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("serverName"));
-	}
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
 	}
 
 	private String findAvailableServer() {

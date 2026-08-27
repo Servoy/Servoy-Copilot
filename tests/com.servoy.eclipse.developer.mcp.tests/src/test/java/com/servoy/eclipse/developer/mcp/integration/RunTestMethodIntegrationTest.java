@@ -11,22 +11,14 @@ package com.servoy.eclipse.developer.mcp.integration;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
-import org.eclipse.core.resources.ICommand;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
-import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
-import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
 
 /**
  * Integration tests for {@link JSUnitRunnerService#runTestMethod(String, String, int)}.
@@ -50,19 +42,18 @@ import com.servoy.j2db.persistence.AbstractRepository;
  */
 public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 {
-	/** Name of the minimal Servoy solution created in the PDE test workspace. */
-	private static final String TEST_PILOT_SOLUTION = "test_pilot_suite";
-
-	/** Name of the ServoyResources project created alongside the test solution. */
-	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	/**
 	 * The known-passing test method in {@code test_pilot_suite/globals.js}.
-	 * This function is always present (created by ensureServoyProjectsInWorkspace).
+	 * This function is always present.
 	 */
 	private static final String KNOWN_PASSING_METHOD = "test_pilot_passesAlways";
 
 	private JSUnitRunnerService runner;
+
+	public RunTestMethodIntegrationTest() {
+		super("test_pilot_suite", "servoy_resources");
+	}
 
 	@Before
 	public void setUp() throws Exception
@@ -220,143 +211,20 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 
 	/**
 	 * Ensures {@code test_pilot_suite} is the active Servoy project.
-	 * Delegates project creation to {@link #ensureServoyProjectsInWorkspace()} and then
-	 * activates the solution via the ServoyModel.
 	 */
 	private void ensureActiveServoyProject() throws Exception
 	{
-		ensureServoyProjectsInWorkspace();
-
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		if (isPilotActive(model))
-			return;
-
-		model.refreshServoyProjects();
-
-		Display display = Display.getDefault();
-		long refreshEnd = System.currentTimeMillis() + 1000;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (System.currentTimeMillis() < refreshEnd)
-				display.readAndDispatch();
-		}
-		else
-		{
-			Thread.sleep(1000);
-		}
-
-		if (isPilotActive(model))
-			return;
-
-		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in the workspace after setup attempt - skipping integration tests",
-			projects != null && projects.length > 0);
-
-		ServoyProject toActivate = null;
-		for (ServoyProject p : projects)
-		{
-			if (TEST_PILOT_SOLUTION.equals(p.getProject().getName()))
-			{
-				toActivate = p;
-				break;
+		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+			try {
+				writeProjectFile(solPrj, "globals.js",
+						"/**\n * @properties={typeid:24,uuid:\"f1e2d3c4-b5a6-7890-fedc-ba9876543210\"}\n */\n"
+							+ "function test_pilot_passesAlways() {\n\t// no-op: always passes\n}\n",
+						monitor);
+			} catch (CoreException e) {
+				fail("Can't create the globals.js file: " + e.getMessage());
 			}
-		}
-		if (toActivate == null)
-			toActivate = projects[0];
-
-		try
-		{
-			model.setActiveProject(toActivate, true);
-		}
-		catch (Exception e)
-		{
-			// activation failure caught by assertNotNull below
-		}
-
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		}
-		else
-		{
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertNotNull("Active project not set after " + (ACTIVATE_SETTLE_MS / 1000)
-			+ " seconds - integration tests cannot proceed", model.getActiveProject());
+		});
+		ensureActiveProject();
 	}
 
-	/** Returns true if {@code test_pilot_suite} is the currently active Servoy project. */
-	private boolean isPilotActive(IDeveloperServoyModel model)
-	{
-		ServoyProject active = model.getActiveProject();
-		return active != null && TEST_PILOT_SOLUTION.equals(active.getProject().getName());
-	}
-
-	/**
-	 * Creates minimal Servoy projects in the PDE test workspace (idempotent).
-	 * Same structure as used by {@link JSUnitRunnerIntegrationTest}.
-	 */
-	private void ensureServoyProjectsInWorkspace() throws Exception
-	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen())
-				res.open(monitor);
-
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_PILOT_SOLUTION);
-			if (!sol.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_PILOT_SOLUTION);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen())
-				sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:" + AbstractRepository.repository_version
-					+ ",\nmustAuthenticate:false,\nname:\"test_pilot_suite\",\n"
-					+ "solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"\n",
-				monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-				"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(sol, "globals.js",
-				"/**\n * @properties={typeid:24,uuid:\"f1e2d3c4-b5a6-7890-fedc-ba9876543210\"}\n */\n"
-					+ "function test_pilot_passesAlways() {\n\t// no-op: always passes\n}\n",
-				monitor);
-			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
-		}, new NullProgressMonitor());
-
-		Display display = Display.getDefault();
-		long settleEnd = System.currentTimeMillis() + 1000;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (System.currentTimeMillis() < settleEnd)
-				display.readAndDispatch();
-		}
-		else
-		{
-			Thread.sleep(1000);
-		}
-	}
 }

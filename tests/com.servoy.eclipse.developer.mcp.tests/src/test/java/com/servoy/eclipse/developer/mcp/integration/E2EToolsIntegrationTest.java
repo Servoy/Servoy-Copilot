@@ -61,12 +61,13 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * {@code cypress/cy-form-spec} directories, so cleaning up {@code cypress/e2e}
  * here does not disturb other suites.
  */
-public class E2EToolsIntegrationTest {
-	private static final long APP_SERVER_POLL_MS = 15_000;
+public class E2EToolsIntegrationTest extends TestUtilitiesClass {
 
 	private ServoyTestingServer testingServer;
 
-	private static Boolean appServerAvailableCache;
+	public E2EToolsIntegrationTest() {
+		super(null, null); // this test class does not use solution & res. project
+	}
 
 	@Before
 	public void setUp() throws Exception {
@@ -185,14 +186,4 @@ public class E2EToolsIntegrationTest {
 		});
 	}
 
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
 }

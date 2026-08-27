@@ -20,13 +20,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import org.eclipse.core.resources.ICommand;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
@@ -35,18 +34,17 @@ import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
-import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameService;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Menu;
 import com.servoy.j2db.persistence.MenuItem;
 import com.servoy.j2db.persistence.Solution;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
+import com.servoy.j2db.util.UUID;
 
 /**
  * Integration tests for {@link PersistRenameService} - tests renaming of forms,
@@ -56,19 +54,18 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * solution. They are skipped (via Assume) when the environment is not
  * available.
  */
-public class RenamePersistIntegrationTest {
+public class RenamePersistIntegrationTest extends AbstractIntegrationTest {
 	private static final String TEST_SOLUTION = "test_rename_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
-
-	private static final long APP_SERVER_POLL_MS = 15_000;
-	private static final long ACTIVATE_SETTLE_MS = 10_000;
 
 	private PersistRenameService renameService;
 	private ServoyDevServer devServer;
 	private ServoyProject activeProject;
 
-	private static Boolean appServerAvailableCache;
-
+	public RenamePersistIntegrationTest() {
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+	
 	@Before
 	public void setUp() throws Exception {
 		renameService = new PersistRenameService();
@@ -77,7 +74,7 @@ public class RenamePersistIntegrationTest {
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
 
 		waitForAppServer();
-		ensureTestSolutionInWorkspace();
+		ensureTestSolutionInWorkspace(null);
 		ensureActiveProject();
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -586,55 +583,34 @@ public class RenamePersistIntegrationTest {
 		String solName = "renameSolTest_" + System.currentTimeMillis();
 		String newSolName = solName + "_renamed";
 
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
-			IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(solName);
-			d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature" });
-			ICommand sc = d.newCommand();
-			sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-			ICommand sb = d.newCommand();
-			sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-			d.setBuildSpec(new ICommand[] { sc, sb });
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			d.setReferencedProjects(new IProject[] { res });
-			sol.create(d, monitor);
-			sol.open(monitor);
+		ensureSolutionInWorkspace(solName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
 
-			writeProjectFile(sol, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ solName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
-							+ java.util.UUID.randomUUID().toString() + "\"\n",
-					monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
-		}, new NullProgressMonitor());
-
-		pumpEvents(2000);
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		model.refreshServoyProjects();
-		pumpEvents(2000);
-
-		ServoyProject solProject = model.getServoyProject(solName);
-		assertNotNull("Solution project should be created", solProject);
+		pumpEventsUntil(4000, () -> {
+			ServoyProject solProject = model.getServoyProject(solName);
+			assertNotNull("Solution project should be created", solProject);
+		});
 
 		String result = renameService.renameSolution(solName, newSolName);
 
 		assertNotNull(result);
 		assertTrue("Should indicate success: " + result, result.contains("successfully") || result.contains("Renamed"));
 
-		pumpEvents(2000);
-		model.refreshServoyProjects();
+		IProject newProject[] = { null };
+		pumpEventsUntil(2000, () -> {
+			model.refreshServoyProjects();
 
-		IProject oldProject = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
-		assertFalse("Old project should not exist after rename", oldProject.exists());
+			IProject oldProject = ResourcesPlugin.getWorkspace().getRoot().getProject(solName);
+			assertFalse("Old project should not exist after rename", oldProject.exists());
 
-		IProject newProject = ResourcesPlugin.getWorkspace().getRoot().getProject(newSolName);
-		assertTrue("New project should exist after rename", newProject.exists());
+			newProject[0] = ResourcesPlugin.getWorkspace().getRoot().getProject(newSolName);
+			assertTrue("New project should exist after rename", newProject[0].exists());
+		});
 
 		// cleanup
 		try {
-			newProject.delete(true, new NullProgressMonitor());
+			newProject[0].delete(true, new NullProgressMonitor());
 		} catch (Exception e) {
 			// best effort
 		}
@@ -646,82 +622,44 @@ public class RenamePersistIntegrationTest {
 		String parentName = "renModParent_" + System.currentTimeMillis();
 		String newModuleName = moduleName + "_renamed";
 
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
+		ensureSolutionInWorkspace(moduleName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
+		ensureSolutionInWorkspace(parentName, UUID.randomUUID().toString(), SERVOY_RESOURCES, null);
 
-			IProject modProj = ResourcesPlugin.getWorkspace().getRoot().getProject(moduleName);
-			IProjectDescription md = ResourcesPlugin.getWorkspace().newProjectDescription(moduleName);
-			md.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature" });
-			ICommand sc1 = md.newCommand();
-			sc1.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-			ICommand sb1 = md.newCommand();
-			sb1.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-			md.setBuildSpec(new ICommand[] { sc1, sb1 });
-			md.setReferencedProjects(new IProject[] { res });
-			modProj.create(md, monitor);
-			modProj.open(monitor);
-			writeProjectFile(modProj, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ moduleName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
-							+ java.util.UUID.randomUUID().toString() + "\"\n",
-					monitor);
-			writeProjectFile(modProj, "solution_settings.obj",
-					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
-
-			IProject parProj = ResourcesPlugin.getWorkspace().getRoot().getProject(parentName);
-			IProjectDescription pd = ResourcesPlugin.getWorkspace().newProjectDescription(parentName);
-			pd.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature" });
-			ICommand sc2 = pd.newCommand();
-			sc2.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-			ICommand sb2 = pd.newCommand();
-			sb2.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-			pd.setBuildSpec(new ICommand[] { sc2, sb2 });
-			pd.setReferencedProjects(new IProject[] { res });
-			parProj.create(pd, monitor);
-			parProj.open(monitor);
-			writeProjectFile(parProj, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ parentName + "\",\n" + "solutionType:1024,\ntypeid:43,\nuuid:\""
-							+ java.util.UUID.randomUUID().toString() + "\"\n",
-					monitor);
-			writeProjectFile(parProj, "solution_settings.obj",
-					"typeid:43,\nuuid:\"" + java.util.UUID.randomUUID().toString() + "\",\nversion:\"1.0\"\n", monitor);
-		}, new NullProgressMonitor());
-
-		pumpEvents(2000);
 		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
 		model.refreshServoyProjects();
-		pumpEvents(2000);
+		Solution parentSol[] = { null };
+		ServoyProject parentProject[] = { null };
+		pumpEventsUntil(4000, () -> {
+			ServoyProject moduleProject = model.getServoyProject(moduleName);
+			parentProject[0] = model.getServoyProject(parentName);
+			assertNotNull("Module project should exist", moduleProject);
+			assertNotNull("Parent project should exist", parentProject[0]);
+			parentSol[0] = parentProject[0].getEditingSolution();
+			assertNotNull("Parent editing solution should exist", parentSol[0]);
+			assertNotNull("Module editing solution should exist", moduleProject.getEditingSolution());
+		});
 
-		ServoyProject moduleProject = model.getServoyProject(moduleName);
-		ServoyProject parentProject = model.getServoyProject(parentName);
-		assertNotNull("Module project should exist", moduleProject);
-		assertNotNull("Parent project should exist", parentProject);
-
-		Solution parentSol = parentProject.getEditingSolution();
-		assertNotNull("Parent editing solution should exist", parentSol);
-		parentSol.setModulesNames(moduleName);
-		parentProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { parentSol }, true);
-		pumpEvents(1000);
+		parentSol[0].setModulesNames(moduleName);
+		parentProject[0].saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { parentSol[0] }, true);
+		
+		waitForWorkspaceBuildJobs();
 
 		String result = renameService.renameSolution(moduleName, newModuleName);
 		assertNotNull(result);
 		assertTrue("Rename should succeed: " + result, result.contains("successfully"));
-
-		pumpEvents(2000);
+		
 		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject updatedParent = model.getServoyProject(parentName);
-		if (updatedParent != null && updatedParent.getEditingSolution() != null) {
-			String modules = updatedParent.getEditingSolution().getModulesNames();
-			assertNotNull("Parent should still have modules", modules);
-			assertTrue("Module reference should be updated to new name: " + modules, modules.contains(newModuleName));
-			assertFalse("Old module name should not be in references: " + modules,
-					modules.contains(moduleName) && !modules.contains(newModuleName));
-		}
+		
+		pumpEventsUntil(1000, () -> {
+			ServoyProject updatedParent = model.getServoyProject(parentName);
+			if (updatedParent != null && updatedParent.getEditingSolution() != null) {
+				String modules = updatedParent.getEditingSolution().getModulesNames();
+				assertNotNull("Parent should still have modules", modules);
+				assertTrue("Module reference should be updated to new name: " + modules, modules.contains(newModuleName));
+				assertFalse("Old module name should not be in references: " + modules,
+						modules.contains(moduleName) && !modules.contains(newModuleName));
+			}
+		});
 
 		// cleanup
 		try {
@@ -816,128 +754,4 @@ public class RenamePersistIntegrationTest {
 		assertNull("Form should not exist with old name", activeProject.getEditingSolution().getForm(formName));
 	}
 
-	// -----------------------------------------------------------------------
-	// Helpers
-	// -----------------------------------------------------------------------
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started - skipping", appServerAvailableCache);
-	}
-
-	private void ensureTestSolutionInWorkspace() throws Exception {
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen())
-				res.open(monitor);
-
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_SOLUTION);
-			if (!sol.exists()) {
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_SOLUTION);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyProject",
-						"org.eclipse.dltk.javascript.core.nature" });
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen())
-				sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-					"fileVersion:" + AbstractRepository.repository_version + ",\nmustAuthenticate:false,\nname:\""
-							+ TEST_SOLUTION + "\",\n"
-							+ "solutionType:1024,\ntypeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\"\n",
-					monitor);
-			writeProjectFile(sol, "solution_settings.obj",
-					"typeid:43,\nuuid:\"a1b2c3d4-e5f6-7890-abcd-123456789abc\",\nversion:\"1.0\"\n", monitor);
-			writeProjectFile(sol, ".buildpath",
-					"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry excluding=\".stp/|medias/\" kind=\"src\" path=\"\"/>\n</buildpath>\n",
-					monitor);
-		}, new NullProgressMonitor());
-
-		pumpEvents(1000);
-	}
-
-	private void ensureActiveProject() throws Exception {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		ServoyProject active = model.getActiveProject();
-		if (active != null && TEST_SOLUTION.equals(active.getProject().getName()))
-			return;
-
-		model.refreshServoyProjects();
-		pumpEvents(1000);
-
-		ServoyProject[] projects = model.getServoyProjects();
-		assertTrue("No ServoyProject found in workspace", projects != null && projects.length > 0);
-
-		ServoyProject toActivate = null;
-		for (ServoyProject p : projects) {
-			if (TEST_SOLUTION.equals(p.getProject().getName())) {
-				toActivate = p;
-				break;
-			}
-		}
-		if (toActivate == null)
-			toActivate = projects[0];
-
-		try {
-			model.setActiveProject(toActivate, true);
-		} catch (Exception e) {
-			// caught by assumeNotNull below
-		}
-
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		Display display = Display.getDefault();
-		if (display.getThread() == Thread.currentThread()) {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		} else {
-			while (model.getActiveProject() == null && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertNotNull("Active project not set - skipping", model.getActiveProject());
-	}
-
-	private void writeProjectFile(IProject project, String fileName, String content,
-			org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
-		org.eclipse.core.resources.IFile file = project.getFile(fileName);
-		byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		if (file.exists()) {
-			file.setContents(new java.io.ByteArrayInputStream(bytes), true, false, monitor);
-		} else {
-			file.create(new java.io.ByteArrayInputStream(bytes), true, monitor);
-		}
-	}
-
-	private void pumpEvents(long ms) {
-		try {
-			Display display = Display.getDefault();
-			long end = System.currentTimeMillis() + ms;
-			if (display.getThread() == Thread.currentThread()) {
-				while (System.currentTimeMillis() < end)
-					display.readAndDispatch();
-			} else {
-				Thread.sleep(ms);
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-	}
 }

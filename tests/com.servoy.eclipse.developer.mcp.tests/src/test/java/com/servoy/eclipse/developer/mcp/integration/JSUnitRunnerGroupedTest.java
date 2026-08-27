@@ -12,24 +12,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
 
-import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
-import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
-import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.util.UUID;
 
 /**
  * Layer 4 integration tests for {@link JSUnitRunnerService} -- MODULES and FORMS grouped modes.
@@ -126,6 +120,10 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	private String modulesResult;
 	private String formsResult;
 
+	public JSUnitRunnerGroupedTest() {
+		super(TEST_GROUPED_SOLUTION, SERVOY_RESOURCES);
+	}
+
 	@Before
 	public void setUp() throws Exception
 	{
@@ -143,7 +141,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		{
 			classSetUpDone = true;
 			ensureGroupedProjectsInWorkspace();
-			ensureGroupedProjectActive();
+			ensureActiveProject();
 			cachedModulesResult = runOnBackgroundThread(() -> runner.runTests("MODULES", TIMEOUT_SECONDS));
 			cachedFormsResult = runOnBackgroundThread(() -> runner.runTests("FORMS", TIMEOUT_SECONDS));
 		}
@@ -350,186 +348,46 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	 */
 	private void ensureGroupedProjectsInWorkspace() throws Exception
 	{
-		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
-
-			// 1. servoy_resources
-			IProject res = ResourcesPlugin.getWorkspace().getRoot().getProject(SERVOY_RESOURCES);
-			if (!res.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(SERVOY_RESOURCES);
-				d.setNatureIds(new String[] { "com.servoy.eclipse.core.ServoyResources" });
-				res.create(d, monitor);
-			}
-			if (!res.isOpen()) res.open(monitor);
-
-			// 2. test_grouped_module (solutionType:2 = module)
-			IProject mod = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_GROUPED_MODULE);
-			if (!mod.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_GROUPED_MODULE);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				d.setReferencedProjects(new IProject[] { res });
-				mod.create(d, monitor);
-			}
-			if (!mod.isOpen()) mod.open(monitor);
-
-			writeProjectFile(mod, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_MODULE + "\",\n" +
-				"solutionType:2,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000002\"\n",
-				monitor);
-			writeProjectFile(mod, "solution_settings.obj",
-				"typeid:43,\nuuid:\"22222222-3333-4444-5555-000000000002\",\nversion:\"1.0\"\n",
-				monitor);
-			writeProjectFile(mod, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
-			// Force-write globals.js so content changes are always picked up.
-			forceWriteFile(mod.getFile("globals.js"), MODULE_GLOBALS_JS, monitor);
-
-			// 3. test_grouped_suite (solutionType:1 = parent solution)
-			IProject sol = ResourcesPlugin.getWorkspace().getRoot().getProject(TEST_GROUPED_SOLUTION);
-			if (!sol.exists())
-			{
-				IProjectDescription d = ResourcesPlugin.getWorkspace().newProjectDescription(TEST_GROUPED_SOLUTION);
-				d.setNatureIds(new String[] {
-					"com.servoy.eclipse.core.ServoyProject",
-					"org.eclipse.dltk.javascript.core.nature"
-				});
-				ICommand sc = d.newCommand();
-				sc.setBuilderName("org.eclipse.dltk.core.scriptbuilder");
-				ICommand sb = d.newCommand();
-				sb.setBuilderName("com.servoy.eclipse.core.servoyBuilder");
-				d.setBuildSpec(new ICommand[] { sc, sb });
-				// Reference both servoy_resources AND the module project.
-				d.setReferencedProjects(new IProject[] { res, mod });
-				sol.create(d, monitor);
-			}
-			if (!sol.isOpen()) sol.open(monitor);
-
-			writeProjectFile(sol, "rootmetadata.obj",
-				"fileVersion:52,\nmustAuthenticate:false,\nname:\"" + TEST_GROUPED_SOLUTION + "\",\n" +
-				"solutionType:1,\ntypeid:43,\nuuid:\"22222222-3333-4444-5555-000000000001\"\n",
-				monitor);
-			// solution_settings.obj declares the module via modulesNames.
-			writeProjectFile(sol, "solution_settings.obj",
-				"modulesNames:\"" + TEST_GROUPED_MODULE + "\",\n" +
-				"typeid:43,\nuuid:\"22222222-3333-4444-5555-000000000001\",\nversion:\"1.0\"\n",
-				monitor);
-			writeProjectFile(sol, ".buildpath",
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<buildpath>\n\t<buildpathentry kind=\"src\" path=\"\"/>\n</buildpath>\n",
-				monitor);
-			// Parent globals.js has no test_ methods -- scope is intentionally empty.
-			writeProjectFile(sol, "globals.js",
-				"// No test methods in parent globals -- tests live in the module and form.\n",
-				monitor);
-
-			// Form files
-			IFolder formsDir = sol.getFolder("forms");
-			if (!formsDir.exists()) formsDir.create(true, true, monitor);
-
-			// Force-write both form files so content changes are always picked up.
-			forceWriteFile(sol.getFile("forms/" + TEST_FORM_NAME + ".frm"), FORM_FRM, monitor);
-			forceWriteFile(sol.getFile("forms/" + TEST_FORM_NAME + ".js"), FORM_JS, monitor);
-
-		}, new NullProgressMonitor());
-
-		// Give workspace and Servoy builder jobs time to settle.
-		Thread.sleep(2000);
-	}
-
-	/**
-	 * Activates {@code test_grouped_suite} as the Servoy active project.
-	 * Hard-fails (does not skip) if activation cannot complete -- the test counts
-	 * depend on an exact solution with known structure.
-	 */
-	private void ensureGroupedProjectActive() throws Exception
-	{
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-
-		if (isGroupedActive(model)) return;
-
-		model.refreshServoyProjects();
-		// Pump SWT events for 2 s so refreshServoyProjects() background jobs can
-		// deliver any UI-thread callbacks before we look up the project.
-		Display display = Display.getDefault();
-		long refreshEnd = System.currentTimeMillis() + 2000;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (System.currentTimeMillis() < refreshEnd)
-				display.readAndDispatch();
-		}
-		else
-		{
-			Thread.sleep(2000);
-		}
-
-		ServoyProject groupedProject = null;
-		ServoyProject[] projects = model.getServoyProjects();
-		if (projects != null)
-		{
-			for (ServoyProject p : projects)
-			{
-				if (TEST_GROUPED_SOLUTION.equals(p.getProject().getName()))
-				{
-					groupedProject = p;
-					break;
+		// module
+		ensureSolutionInWorkspace(TEST_GROUPED_MODULE, UUID.randomUUID().toString(), SERVOY_RESOURCES, 
+			(modulePrj, monitor) -> {
+				// Force-write globals.js so content changes are always picked up.
+				try {
+					forceWriteFile(modulePrj.getFile("globals.js"), MODULE_GLOBALS_JS, monitor);
+				} catch (CoreException e) {
+					fail("Cannot write module globals.js: " + e.getMessage());
 				}
+			});
+
+		// main solution
+		ensureTestSolutionInWorkspace((solPrj, monitor) -> {
+			try {
+				writeProjectFile(solPrj, "solution_settings.obj",
+						"modulesNames:\"" + TEST_GROUPED_MODULE + "\",\n" +
+						"typeid:43,\nuuid:\"" + solutionUUID + "\",\nversion:\"1.0\"\n",
+						monitor);
+				// Parent globals.js has no test_ methods -- scope is intentionally empty.
+				writeProjectFile(solPrj, "globals.js",
+					"// No test methods in parent globals -- tests live in the module and form.\n",
+					monitor);
+	
+				// Form files
+				IFolder formsDir = solPrj.getFolder("forms");
+				if (!formsDir.exists()) formsDir.create(true, true, monitor);
+	
+				// Force-write both form files so content changes are always picked up.
+				forceWriteFile(solPrj.getFile("forms/" + TEST_FORM_NAME + ".frm"), FORM_FRM, monitor);
+				forceWriteFile(solPrj.getFile("forms/" + TEST_FORM_NAME + ".js"), FORM_JS, monitor);
+			} catch (CoreException e) {
+				fail("Cannot write main solution details: " + e.getMessage());
 			}
-		}
-		assertNotNull(
-			TEST_GROUPED_SOLUTION + " not found in workspace -- cannot run grouped tests",
-			groupedProject);
+		});
 
-		// Call setActiveProject directly (not via asyncExec) so it runs immediately on
-		// the current (SWT event) thread. Background activation jobs can then complete
-		// while we poll below.
-		try
-		{
-			model.setActiveProject(groupedProject, true);
-		}
-		catch (Exception e)
-		{
-			// activation failure will be caught by the timeout assertion below
-		}
-
-		// Pump SWT events so activation background jobs can deliver UI-thread callbacks.
-		// Thread.sleep() here holds the event thread and causes the timeout to always fire.
-		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_MS;
-		if (display.getThread() == Thread.currentThread())
-		{
-			while (!isGroupedActive(model) && System.currentTimeMillis() < deadline)
-				display.readAndDispatch();
-		}
-		else
-		{
-			while (!isGroupedActive(model) && System.currentTimeMillis() < deadline)
-				Thread.sleep(200);
-		}
-
-		assertTrue(
-			TEST_GROUPED_SOLUTION + " was not activated within " + (ACTIVATE_SETTLE_MS / 1000) + " seconds",
-			isGroupedActive(model));
-	}
-
-	private boolean isGroupedActive(IDeveloperServoyModel model)
-	{
-		try
-		{
-			ServoyProject active = model.getActiveProject();
-			return active != null && TEST_GROUPED_SOLUTION.equals(active.getProject().getName());
-		}
-		catch (Throwable t)
-		{
-			return false;
-		}
+		// Wait for workspace auto-build (DLTK indexing) to complete before running tests.
+		ResourcesPlugin.getWorkspace().build(
+			org.eclipse.core.resources.IncrementalProjectBuilder.INCREMENTAL_BUILD,
+			new NullProgressMonitor());
+		waitForWorkspaceBuildJobs();
 	}
 
 	/**
