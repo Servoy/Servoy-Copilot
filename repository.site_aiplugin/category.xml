@@ -18,21 +18,6 @@
    <bundle id="org.yaml.snakeyaml">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
-   <bundle id="org.apache.pdfbox.fontbox">
-      <category name="servoy.pilot.depdencies"/>
-   </bundle>
-   <bundle id="org.apache.pdfbox">
-      <category name="servoy.pilot.depdencies"/>
-   </bundle>
-   <bundle id="org.apache.pdfbox.io">
-      <category name="servoy.pilot.depdencies"/>
-   </bundle>
-   <bundle id="org.apache.tika.core">
-      <category name="servoy.pilot.depdencies"/>
-   </bundle>
-   <bundle id="org.apache.tika.parser-text-module">
-      <category name="servoy.pilot.depdencies"/>
-   </bundle>
    <bundle id="com.google.guava">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
@@ -48,26 +33,24 @@
    <bundle id="org.apache.commons.commons-logging">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
-   <!-- ONNX disabled
-   <bundle id="onnx-models-bge-small-en">
+   <bundle id="io.modelcontextprotocol.sdk.mcp-core">
       <category name="servoy.pilot.depdencies"/>
    </bundle>
-   -->
-    <bundle id="io.modelcontextprotocol.sdk.mcp-core">
-       <category name="servoy.pilot.depdencies"/>
-    </bundle>
-    <bundle id="io.modelcontextprotocol.sdk.mcp-json-jackson2">
-       <category name="servoy.pilot.depdencies"/>
-    </bundle>
-    <bundle id="io.projectreactor.reactor-core">
-       <category name="servoy.pilot.depdencies"/>
-    </bundle>
-    <bundle id="reactive-streams">
-       <category name="servoy.pilot.depdencies"/>
-    </bundle>
-    <bundle id="org.jspecify.jspecify">
-       <category name="servoy.pilot.depdencies"/>
-    </bundle>
+   <bundle id="io.modelcontextprotocol.sdk.mcp-json-jackson2">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="io.projectreactor.reactor-core">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="reactive-streams">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="org.jspecify.jspecify">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
+   <bundle id="com.networknt.json-schema-validator">
+      <category name="servoy.pilot.depdencies"/>
+   </bundle>
    <category-def name="servoy.pilot" label="Servoy AI Pilot"/>
    <category-def name="servoy.pilot.depdencies" label="Servoy AI Pilot dependencies"/>
 </site>
