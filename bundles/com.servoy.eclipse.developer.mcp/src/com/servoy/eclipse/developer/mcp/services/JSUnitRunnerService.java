@@ -17,10 +17,8 @@
 package com.servoy.eclipse.developer.mcp.services;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.debug.core.ILaunch;
@@ -74,51 +72,57 @@ public class JSUnitRunnerService
 					return "No modules found in the active solution.";
 
 				List<String> moduleNames = new ArrayList<>();
-				List<ITestRunSession> moduleSessions = new ArrayList<>();
+				List<RunResult> moduleResults = new ArrayList<>();
 				for (Solution module : modules)
 				{
-					ITestRunSession session = runForTarget(new TestTarget(module), timeoutSeconds);
+					RunResult runResult = runForTarget(new TestTarget(module), timeoutSeconds);
 					moduleNames.add(module.getName());
-					moduleSessions.add(session);
+					moduleResults.add(runResult);
 				}
 
 				String[] result = new String[1];
-				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Modules", moduleNames, moduleSessions));
+				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Modules", moduleNames, moduleResults));
 				return result[0];
 			}
 
 			if ("FORMS".equalsIgnoreCase(scopeOrAll != null ? scopeOrAll.trim() : ""))
 			{
 				List<String> formNames = new ArrayList<>();
-				List<ITestRunSession> formSessions = new ArrayList<>();
+				List<RunResult> formRuns = new ArrayList<>();
 
 				Iterator<Form> formIt = activeSolution.getForms(null, true);
 				while (formIt != null && formIt.hasNext())
 				{
 					Form form = formIt.next();
-					ITestRunSession session = runForTarget(new TestTarget(form), timeoutSeconds);
+					RunResult runResult = runForTarget(new TestTarget(form), timeoutSeconds);
 					formNames.add(form.getName());
-					formSessions.add(session);
+					formRuns.add(runResult);
 				}
 
 				if (formNames.isEmpty())
 					return "No forms found in the active solution.";
 
 				String[] result = new String[1];
-				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Forms", formNames, formSessions));
+				Display.getDefault().syncExec(() -> result[0] = formatGroupedResults("Forms", formNames, formRuns));
 				return result[0];
 			}
 
 			TestTarget target = buildTestTarget(scopeOrAll, activeProject);
-			ITestRunSession session = runForTarget(target, timeoutSeconds);
+			RunResult runResult = runForTarget(target, timeoutSeconds);
 
-			if (session == null)
+			if (runResult.session() == null)
 				return "Error: Test run timed out after " + timeoutSeconds + " seconds. " +
 					"Ensure the Servoy Application Server is running and the solution starts in JSUnit mode.";
 
+			String incompleteRunDetails = "";
+			if (runResult.session() != null && !runResult.finishedBeforeTimeout())
+			{
+				incompleteRunDetails = "Error - Timed out while running! Partial results follow:\n";
+			}
+
 			String[] result = new String[1];
-			Display.getDefault().syncExec(() -> result[0] = formatResults(session));
-			return result[0];
+			Display.getDefault().syncExec(() -> result[0] = formatResults(runResult.session()));
+			return incompleteRunDetails + result[0];
 		}
 		catch (CoreException e)
 		{
@@ -148,14 +152,20 @@ public class JSUnitRunnerService
 		try
 		{
 			TestTarget target = buildTestTarget(scopeOrAll, activeProject);
-			ITestRunSession session = runForTarget(target, timeoutSeconds);
+			RunResult runResult = runForTarget(target, timeoutSeconds);
 
-			if (session == null)
-				return "Error: Test run timed out after " + timeoutSeconds + " seconds. " +
+			if (runResult.session() == null)
+				return "Error: Test run timed out after " + timeoutSeconds + " seconds, before really starting. " +
 					"Ensure the Servoy Application Server is running and the solution starts in JSUnit mode.";
+			
+			String incompleteRunDetails = "";
+			if (runResult.session() != null && !runResult.finishedBeforeTimeout())
+			{
+				incompleteRunDetails = "Error - Timed out while running! Partial results follow:\n";
+			}
 
 			List<ITestCaseElement> allCases = new ArrayList<>();
-			Display.getDefault().syncExec(() -> collectTestCases(session.getChildren(), allCases));
+			Display.getDefault().syncExec(() -> collectTestCases(runResult.session().getChildren(), allCases));
 
 			String lowerMethod = testMethodName.toLowerCase();
 			List<ITestCaseElement> matches = allCases.stream()
@@ -168,12 +178,12 @@ public class JSUnitRunnerService
 					.map(ITestCaseElement::getTestName)
 					.collect(java.util.stream.Collectors.joining(", "));
 				return "Error: No test named '" + testMethodName + "' found in scope '" + scopeOrAll +
-					"'. Tests found: " + available;
+					"'. Tests found: " + available + "\n" + incompleteRunDetails;
 			}
 
 			String[] result = new String[1];
 			Display.getDefault().syncExec(() -> result[0] = formatSingleMethodResult(testMethodName, matches));
-			return result[0];
+			return incompleteRunDetails + result[0];
 		}
 		catch (CoreException e)
 		{
@@ -236,7 +246,10 @@ public class JSUnitRunnerService
 		return sb.toString();
 	}
 
-	private ITestRunSession runForTarget(TestTarget target, int timeoutSeconds) throws CoreException, InterruptedException
+	/**
+	 * @return the test run session if it was found; and the boolean is true if the session finished running; false if it was stopped after the timeout
+	 */
+	private RunResult runForTarget(TestTarget target, int timeoutSeconds) throws CoreException, InterruptedException
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
 
@@ -328,7 +341,7 @@ public class JSUnitRunnerService
 	 * significantly longer than a single test's timeout under a cold headless launch, so this waits
 	 * up to a generous ceiling for the session to appear and get populated.
 	 */
-	private ITestRunSession waitForSessionByLaunch(ILaunch launch, long timeoutMs) throws InterruptedException
+	private RunResult waitForSessionByLaunch(ILaunch launch, long timeoutMs) throws InterruptedException
 	{
 		// Correlate session by launch object; robust against interleaved runs.
 		// Use the caller-provided timeout (with a modest floor). The caller is responsible for
@@ -358,7 +371,7 @@ public class JSUnitRunnerService
 			// Results have been bridged into the session.
 			if (found[0] != null && childCount[0] > 0)
 			{
-				return found[0];
+				return new RunResult(found[0], true);
 			}
 
 			Thread.sleep(POLL_INTERVAL_MS);
@@ -366,10 +379,10 @@ public class JSUnitRunnerService
 
 		ITestRunSession[] fallback = new ITestRunSession[1];
 		Display.getDefault().syncExec(() -> fallback[0] = DLTKTestingPlugin.getModel().getTestRunSession(launch));
-		return fallback[0];
+		return new RunResult(fallback[0], false);
 	}
 
-	private String formatGroupedResults(String groupType, List<String> names, List<ITestRunSession> sessions)
+	private String formatGroupedResults(String groupType, List<String> names, List<RunResult> moduleRunResults)
 	{
 		StringBuilder sb = new StringBuilder();
 		sb.append("**JSUnit Test Results - ").append(groupType).append("**\n\n");
@@ -380,16 +393,21 @@ public class JSUnitRunnerService
 		for (int i = 0; i < names.size(); i++)
 		{
 			String name = names.get(i);
-			ITestRunSession session = sessions.get(i);
+			RunResult runResult = moduleRunResults.get(i);
 
-			if (session == null)
+			if (runResult.session() == null)
 			{
-				details.add("\n**" + name + "** - timed out");
+				details.add("\n**" + name + "** Error - timed out before really starting.");
 				continue;
 			}
 
+			if (runResult.session() != null && !runResult.finishedBeforeTimeout())
+			{
+				details.add("\n**" + name + "** Error - timed out while running! Partial results follow:\n");
+			}
+
 			List<ITestCaseElement> testCases = new ArrayList<>();
-			collectTestCases(session.getChildren(), testCases);
+			collectTestCases(runResult.session().getChildren(), testCases);
 
 			long passed = testCases.stream().filter(t -> t.getTestResult(false) == ITestElement.Result.OK).count();
 			long failed = testCases.stream().filter(t -> t.getTestResult(false) == ITestElement.Result.FAILURE).count();
