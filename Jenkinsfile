@@ -45,7 +45,18 @@ pipeline {
                 }
             }
         }
-        
+        stage('Deploy Plugin Site') {
+            steps {
+                sh '''
+                rm -rf /data/www/latest/servoy_ai/
+                mkdir -p /data/www/latest/servoy_ai/
+                for d in repository.site_aiplugin/target/repository/; do 
+                    [ -d "$d" ] && cp -r "$d/." "/data/www/latest/servoy_ai/"
+                    break
+                done
+                '''
+            }
+        }
         stage('Integration Tests') {
             steps {
                 wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
@@ -63,19 +74,6 @@ pipeline {
                 always {
                     junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
                 }
-            }
-        }
-        
-        stage('Deploy Plugin Site') {
-            steps {
-                sh '''
-                rm -rf /data/www/latest/servoy_ai/
-                mkdir -p /data/www/latest/servoy_ai/
-                for d in repository.site_aiplugin/target/repository/; do 
-                    [ -d "$d" ] && cp -r "$d/." "/data/www/latest/servoy_ai/"
-                    break
-                done
-                '''
             }
         }
     }
