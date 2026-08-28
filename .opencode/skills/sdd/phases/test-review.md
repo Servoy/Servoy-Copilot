@@ -75,12 +75,14 @@ For each test class:
       `result.contains("passed") || result.contains("failed") || result.contains("timed out") || result.contains("error")`).
       These are **blocking** issues.
 
-**Waiting / async**
+**Waiting / async in PDE tests **
 - [ ] No long static `Thread.sleep(N)` in integration tests — must use `pumpEventsUntil(maxMs, assertions)`
       or equivalent condition-polling. Raw sleeps are a **blocking** issue.
 - [ ] the Titanium build/node/cypress install that are blocked normally via `Activator.setNodeExtractionAndTitaniumBuildDisabled(true)`
       is not running unnecessarily — only tests that genuinely need
       the node/npm build should call it with false.
+- [ ] each test class needs to delete the workspace projects that it uses in @BeforeClass - because the workspace is reused between runs
+      due to some caches that take a long time to regenerate
 
 **Skipping**
 - [ ] No `Assume.*` used to silently skip tests. If a precondition is not met, the test

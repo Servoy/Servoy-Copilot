@@ -121,6 +121,7 @@
                                 -Dproperty-file="${project.basedir}/testresources/servoy.properties"
                                 -Dchromium.integration.eclipse.disable=true
                                 -Dorg.eclipse.ui.testing=true</argLine>
+                            <clearWorkspaceBeforeLaunch>false</clearWorkspaceBeforeLaunch>
                             <bundleStartLevel>
                                 <bundle>
                                     <id>slf4j.api</id>

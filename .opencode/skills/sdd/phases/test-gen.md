@@ -68,6 +68,9 @@ and still drives the SWT event loop to prevent deadlocks.
 `Activator.setNodeExtractionAndTitaniumBuildDisabled(false)` when the test genuinely needs the node/npm
 build to run (e.g. Cypress tests). Never let it run when it is not needed.
 
+These PDE tests are currently run without cleaning the workspace (in order to reuse node/cypress/... caches from .metadata). So each
+test class needs to delete the workspace projects that it uses in @BeforeClass.
+
 ### Test quality rules
 
 **No `Assume.*` to skip tests.** If a test silently passes because a precondition
