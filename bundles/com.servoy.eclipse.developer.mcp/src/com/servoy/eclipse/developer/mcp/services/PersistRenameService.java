@@ -31,48 +31,6 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * persist type.
  */
 public class PersistRenameService {
-	public String renamePersist(String persistType, String oldName, String newName, String solutionName) {
-		if (persistType == null || persistType.isBlank())
-			return "Error: persistType is required.";
-		if (oldName == null || oldName.isBlank())
-			return "Error: oldName is required.";
-		if (newName == null || newName.isBlank())
-			return "Error: newName is required.";
-		if (oldName.equals(newName))
-			return "Error: oldName and newName are the same.";
-
-		try {
-			ServoyProject project = resolveProject(solutionName);
-			if (project == null)
-				return "Error: Solution '" + (solutionName != null ? solutionName : "active") + "' not found.";
-
-			switch (persistType.toLowerCase().trim()) {
-			case "form":
-				return renameForm(oldName, newName, project);
-			case "relation":
-				return renameRelation(oldName, newName, project);
-			case "valuelist":
-				return renameValueList(oldName, newName, project);
-			case "menu":
-				return renameMenu(oldName, newName, project);
-			case "menuitem":
-				return renameMenuItem(oldName, newName, project);
-			case "media":
-				return renameMedia(oldName, newName, project);
-			case "scope":
-				return renameScope(oldName, newName, project);
-			case "solution":
-				return renameSolution(oldName, newName);
-			default:
-				return "Error: Unsupported persistType '" + persistType
-						+ "'. Supported: form, relation, valuelist, menu, menuitem, media, scope, solution.";
-			}
-		} catch (Exception e) {
-			ServoyLog.logError("renamePersist failed", e);
-			return "Error: " + e.getMessage();
-		}
-	}
-
 	public String renameForm(String oldName, String newName, ServoyProject project) throws RepositoryException {
 		Solution solution = project.getEditingSolution();
 		if (solution == null)
@@ -387,14 +345,6 @@ public class PersistRenameService {
 		return "Renamed " + typeName.toLowerCase() + " '" + oldName + "' to '" + newName + "' successfully.";
 	}
 
-	private ServoyProject resolveProject(String solutionName) {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
-		if (solutionName != null && !solutionName.isBlank()) {
-			return model.getServoyProject(solutionName);
-		}
-		return model.getActiveProject();
-	}
-
 	/**
 	 * Renames a Servoy artifact or raw workspace file identified by
 	 * {@code oldName}.
@@ -594,7 +544,9 @@ public class PersistRenameService {
 			Solution solution = null;
 			try {
 				solution = project.getEditingSolution();
-			} catch (Exception ignored) {
+			} catch (Exception e) {
+				ServoyLog.logWarning("renameBySimpleName: could not load editing solution for project '"
+						+ project.getProject().getName() + "' — excluded from ambiguity scan", e);
 			}
 			if (solution == null)
 				continue;
@@ -697,23 +649,7 @@ public class PersistRenameService {
 			}
 		} else if (matches.size() > 1) {
 			// Ambiguous — build disambiguation error
-			StringBuilder sb = new StringBuilder();
-			sb.append("Error: Ambiguous name '").append(oldName).append("' — found in multiple locations:\n");
-			for (String[] match : matches) {
-				String type = match[0];
-				String projName = match[2];
-				String extra = match[3];
-				if ("menuitem".equals(type) && extra != null) {
-					sb.append("  - menuitem '").append(oldName).append("' in menu '").append(extra)
-							.append("' (solution '").append(projName).append("')\n");
-				} else {
-					sb.append("  - ").append(type).append(" '").append(oldName).append("' in '").append(projName)
-							.append("'\n");
-				}
-			}
-			sb.append("Provide a path hint (e.g. '").append(activeProject.getProject().getName()).append("/forms/")
-					.append(oldName).append("') to disambiguate.");
-			return sb.toString();
+			return buildAmbiguousMessage(oldName, matches, activeProject.getProject().getName());
 		} else {
 			// 0 matches in model — raw file fallback
 			IFile rawFile = null;
@@ -734,6 +670,27 @@ public class PersistRenameService {
 				return p;
 		}
 		return null;
+	}
+
+	private String buildAmbiguousMessage(String oldName, java.util.List<String[]> matches,
+			String activeProjectName) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("Error: Ambiguous name '").append(oldName).append("' — found in multiple locations:\n");
+		for (String[] match : matches) {
+			String type = match[0];
+			String projName = match[2];
+			String extra = match[3];
+			if ("menuitem".equals(type) && extra != null) {
+				sb.append("  - menuitem '").append(oldName).append("' in menu '").append(extra)
+						.append("' (solution '").append(projName).append("')\n");
+			} else {
+				sb.append("  - ").append(type).append(" '").append(oldName).append("' in '").append(projName)
+						.append("'\n");
+			}
+		}
+		sb.append("Provide a path hint (e.g. '").append(activeProjectName).append("/forms/").append(oldName)
+				.append("') to disambiguate.");
+		return sb.toString();
 	}
 
 	private String rawFileRename(IFile file, String newName) {

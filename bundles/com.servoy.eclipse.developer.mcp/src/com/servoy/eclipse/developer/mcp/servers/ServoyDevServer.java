@@ -2654,7 +2654,7 @@ public class ServoyDevServer {
 	}
 
 	@Tool(name = "updateMenu", description = "Updates properties of an existing Servoy menu (styleClass, encapsulation). "
-		+ "Use renamePersist to rename a menu.", type = "object")
+		+ "Use renameFile to rename a menu.", type = "object")
 	public String updateMenu(
 		@ToolParam(name = "name", description = "The name of the menu to update") String name,
 		@ToolParam(name = "styleClass", description = "New CSS style class(es) (empty string to clear)", required = false) String styleClass,
@@ -2664,7 +2664,7 @@ public class ServoyDevServer {
 	}
 
 	@Tool(name = "updateMenuItem", description = "Updates properties of an existing menu item (text, tooltip, styleClass, icon, enabled). "
-		+ "Use renamePersist to rename a menu item.", type = "object")
+		+ "Use renameFile to rename a menu item.", type = "object")
 	public String updateMenuItem(
 		@ToolParam(name = "menuName", description = "The name of the menu containing the item") String menuName,
 		@ToolParam(name = "itemName", description = "The name of the menu item to update") String itemName,

@@ -85,25 +85,28 @@ public class PersistRenameServiceTest {
 	}
 
 	@Test
-	public void testRenameByName_ambiguous_sourceContainsAmbiguousKeyword() throws Exception {
-		java.net.URL loc = PersistRenameService.class.getProtectionDomain().getCodeSource().getLocation();
-		java.nio.file.Path binDir = java.nio.file.Paths.get(loc.toURI());
-		java.nio.file.Path sourceFile = null;
-		java.nio.file.Path check = binDir;
-		for (int i = 0; i < 6; i++) {
-			java.nio.file.Path candidate = check
-					.resolve("src/com/servoy/eclipse/developer/mcp/services/PersistRenameService.java");
-			if (java.nio.file.Files.exists(candidate)) {
-				sourceFile = candidate;
-				break;
-			}
-			check = check.getParent();
-		}
-		if (sourceFile != null && java.nio.file.Files.exists(sourceFile)) {
-			String source = java.nio.file.Files.readString(sourceFile);
-			assertTrue("renameByName must contain literal 'Ambiguous' for collision error",
-					source.contains("Ambiguous"));
-		}
+	public void testBuildAmbiguousMessage_listsEachMatchAndPathHint() throws Exception {
+		java.lang.reflect.Method m = PersistRenameService.class.getDeclaredMethod("buildAmbiguousMessage",
+				String.class, java.util.List.class, String.class);
+		m.setAccessible(true);
+
+		java.util.List<String[]> matches = new java.util.ArrayList<>();
+		matches.add(new String[] { "form", "myArtifact", "solutionA", null });
+		matches.add(new String[] { "relation", "myArtifact", "solutionB", null });
+		matches.add(new String[] { "menuitem", "myArtifact", "solutionA", "mainMenu" });
+
+		String result = (String) m.invoke(service, "myArtifact", matches, "activeSolution");
+
+		assertNotNull(result);
+		assertTrue("Should flag as ambiguous", result.contains("Ambiguous"));
+		assertTrue("Should mention the form match in solutionA",
+				result.contains("form 'myArtifact' in 'solutionA'"));
+		assertTrue("Should mention the relation match in solutionB",
+				result.contains("relation 'myArtifact' in 'solutionB'"));
+		assertTrue("Should mention the menuitem match with its owning menu",
+				result.contains("menuitem 'myArtifact' in menu 'mainMenu' (solution 'solutionA')"));
+		assertTrue("Should suggest a path hint using the active solution name",
+				result.contains("activeSolution/forms/myArtifact"));
 	}
 
 	@Test
