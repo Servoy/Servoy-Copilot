@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -31,6 +32,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 public class SecurityToolsIntegrationTest extends TestUtilitiesClass {
 
 	private static final String TEST_SOLUTION = "test_security_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String TEST_FORM = "securityTestForm";
 	private static final String TEST_PERMISSION = "TestPermission";
 	private static final String TEST_USER = "testSecUser";
@@ -39,7 +41,14 @@ public class SecurityToolsIntegrationTest extends TestUtilitiesClass {
 	private ServoyProject activeProject;
 
 	public SecurityToolsIntegrationTest() {
-		super(TEST_SOLUTION, "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

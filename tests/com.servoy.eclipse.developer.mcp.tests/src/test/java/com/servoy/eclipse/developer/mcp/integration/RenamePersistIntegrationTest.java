@@ -30,6 +30,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
@@ -65,7 +66,14 @@ public class RenamePersistIntegrationTest extends TestUtilitiesClass {
 	public RenamePersistIntegrationTest() {
 		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
-	
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
+	}
+
 	@Before
 	public void setUp() throws Exception {
 		renameService = new PersistRenameService();

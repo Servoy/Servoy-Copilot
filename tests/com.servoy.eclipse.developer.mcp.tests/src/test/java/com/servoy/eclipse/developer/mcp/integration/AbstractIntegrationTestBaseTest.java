@@ -55,7 +55,7 @@ public class AbstractIntegrationTestBaseTest
 	{
 		@Test
 		@org.junit.jupiter.api.DisplayName("adjustTitaniumBuildJobEnablementForThisClass() sets Activator.isNodeExtractionAndTitaniumBuildDisabled() to true")
-		void disableHookSetsDisabledTrue()
+		void disableHookSetsDisabledTrue() throws Exception
 		{
 			Activator.setNodeExtractionAndTitaniumBuildDisabled(false); // start from known state
 			AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
@@ -65,7 +65,7 @@ public class AbstractIntegrationTestBaseTest
 
 		@Test
 		@org.junit.jupiter.api.DisplayName("adjustTitaniumBuildJobEnablementForThisClass() is idempotent when already disabled")
-		void disableHookIsIdempotent()
+		void disableHookIsIdempotent() throws Exception
 		{
 			Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 			AbstractIntegrationTest.adjustTitaniumBuildJobEnablementForThisClass();
@@ -117,7 +117,7 @@ public class AbstractIntegrationTestBaseTest
 	{
 		@Test
 		@org.junit.jupiter.api.DisplayName("disable then restore leaves the toggle at false")
-		void disableThenRestoreLeavesEnabled()
+		void disableThenRestoreLeavesEnabled() throws Exception
 		{
 			Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 
@@ -130,7 +130,7 @@ public class AbstractIntegrationTestBaseTest
 
 		@Test
 		@org.junit.jupiter.api.DisplayName("multiple disable/restore cycles are consistent")
-		void multipleLifecycleCyclesAreConsistent()
+		void multipleLifecycleCyclesAreConsistent() throws Exception
 		{
 			for (int i = 0; i < 5; i++)
 			{

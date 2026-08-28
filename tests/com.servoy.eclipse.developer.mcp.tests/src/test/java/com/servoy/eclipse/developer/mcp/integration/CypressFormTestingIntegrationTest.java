@@ -56,6 +56,9 @@ import com.servoy.j2db.server.shared.IApplicationServerSingleton;
  * available.
  */
 public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
+
+	private static final String TEST_SOLUTION = "test_cypress_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String TEST_FORM = "cypressTestForm";
 
 	private ServoyTestingServer testingServer;
@@ -64,12 +67,15 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 	private ServoyProject activeProject;
 
 	public CypressFormTestingIntegrationTest() {
-		super("test_cypress_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
 
 	@org.junit.BeforeClass
-	public static void adjustTitaniumBuildJobEnablementForThisClass()
+	public static void adjustTitaniumBuildJobEnablementForThisClass() throws Exception
 	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
+
 		// Cypress tests need the node install extracted and the titanium client built — re-enable the copy/npm cycle.
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 	}

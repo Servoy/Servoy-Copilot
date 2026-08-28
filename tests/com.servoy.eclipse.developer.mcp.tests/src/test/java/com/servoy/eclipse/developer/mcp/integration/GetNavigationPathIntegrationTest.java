@@ -24,6 +24,7 @@ import static org.junit.Assert.fail;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
@@ -45,6 +46,9 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
  * main form, unreachable target).
  */
 public class GetNavigationPathIntegrationTest extends TestUtilitiesClass {
+	private static final String TEST_SOLUTION = "test_navpath_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
+
 	private static final String SOURCE_FORM = "navPathSource";
 	private static final String SOURCE_PATH = "forms/" + SOURCE_FORM + ".js";
 
@@ -57,7 +61,14 @@ public class GetNavigationPathIntegrationTest extends TestUtilitiesClass {
 	private ServoyTestingServer testingServer;
 
 	public GetNavigationPathIntegrationTest() {
-		super("test_navpath_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

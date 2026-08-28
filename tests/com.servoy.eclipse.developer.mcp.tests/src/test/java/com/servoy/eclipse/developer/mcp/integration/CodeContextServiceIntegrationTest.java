@@ -36,6 +36,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.dto.CodeContext;
@@ -56,7 +57,14 @@ public class CodeContextServiceIntegrationTest extends TestUtilitiesClass
 	public CodeContextServiceIntegrationTest() {
 		super(null, null);
 	}
-	
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(PROJECT_NAME);
+		waitForWorkspaceBuildJobs();
+	}
+
 	@Before
 	public void setUp() throws Exception
 	{

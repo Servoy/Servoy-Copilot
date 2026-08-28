@@ -56,7 +56,7 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	 * Override in subclasses that require the node folder to be set up.
 	 */
 	@BeforeClass
-	public static void adjustTitaniumBuildJobEnablementForThisClass() {
+	public static void adjustTitaniumBuildJobEnablementForThisClass() throws Exception {
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 	}
 
@@ -67,6 +67,7 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	@AfterClass
 	public static void restoreTitaniumBuildJobEnablementToDefault() {
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
+		waitForTitaniumuildJobs(); // just to make sure we are not in the middle of a titanium build when continuing with next test class
 	}
 	
 	@Override

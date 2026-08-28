@@ -24,6 +24,7 @@ import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -31,14 +32,22 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.model.nature.ServoyProject;
 
 public class DocumentationToolsIntegrationTest extends TestUtilitiesClass {
-
+	private static final String TEST_SOLUTION = "test_documentation_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String TEST_SCOPE_FILE = "globals.js";
 
 	private ServoyDevServer devServer;
 	private ServoyProject activeProject;
 
 	public DocumentationToolsIntegrationTest() {
-		super("test_documentation_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

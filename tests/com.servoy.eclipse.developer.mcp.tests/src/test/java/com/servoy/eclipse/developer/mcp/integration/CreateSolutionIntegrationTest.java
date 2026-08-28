@@ -28,6 +28,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
@@ -45,6 +46,13 @@ public class CreateSolutionIntegrationTest extends TestUtilitiesClass {
 
 	public CreateSolutionIntegrationTest() {
 		super(null, null); // we test for sol and res. prj here, we don't need those super utilities that use those
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

@@ -21,6 +21,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
@@ -123,6 +124,13 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 
 	public JSUnitRunnerGroupedTest() {
 		super(TEST_GROUPED_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_GROUPED_SOLUTION, TEST_GROUPED_MODULE, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

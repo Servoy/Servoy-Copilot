@@ -21,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -33,13 +34,22 @@ import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Solution;
 
 public class PersistDuplicateIntegrationTest extends TestUtilitiesClass {
+	private static final String TEST_SOLUTION = "test_duplicate_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	private PersistDuplicateService duplicateService;
 	private ServoyDevServer devServer;
 	private ServoyProject activeProject;
 
 	public PersistDuplicateIntegrationTest() {
-		super("test_duplicate_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

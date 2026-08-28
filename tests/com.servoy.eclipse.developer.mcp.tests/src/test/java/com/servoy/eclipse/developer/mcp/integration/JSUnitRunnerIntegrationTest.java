@@ -16,6 +16,7 @@ import static org.junit.Assert.fail;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
@@ -60,6 +61,13 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 
 	public JSUnitRunnerIntegrationTest() {
 		super(TEST_PILOT_SOLUTION, RESOURCES_PRJ);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_PILOT_SOLUTION, RESOURCES_PRJ);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

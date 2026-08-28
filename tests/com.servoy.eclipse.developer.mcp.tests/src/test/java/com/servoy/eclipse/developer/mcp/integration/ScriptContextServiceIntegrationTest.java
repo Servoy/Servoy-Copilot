@@ -25,6 +25,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -47,6 +48,8 @@ import com.servoy.eclipse.developer.mcp.services.ScriptContextService.SelectionR
  * type resolution -&gt; JSON, and the JSDoc fallback) was uncovered.
  */
 public class ScriptContextServiceIntegrationTest extends TestUtilitiesClass {
+	private static final String TEST_SOLUTION = "test_scriptctx_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	private static final String FORM_NAME = "scriptCtxForm";
 	private static final String FORM_PATH = "forms/" + FORM_NAME + ".js";
@@ -79,7 +82,14 @@ public class ScriptContextServiceIntegrationTest extends TestUtilitiesClass {
 	private ScriptContextService service;
 
 	public ScriptContextServiceIntegrationTest() {
-		super("test_scriptctx_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

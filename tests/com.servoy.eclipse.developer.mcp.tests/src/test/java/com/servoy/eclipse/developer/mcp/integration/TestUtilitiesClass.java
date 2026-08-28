@@ -246,6 +246,25 @@ public class TestUtilitiesClass {
 		}
 	}
 
+	/**
+	 * Deletes the named projects from the workspace (with their contents), ignoring
+	 * projects that do not exist. Call this from a {@code @BeforeClass} method so
+	 * that each test class always starts with a fresh project state.
+	 */
+	public static void deleteProjects(String... projectNames) throws CoreException
+	{
+		NullProgressMonitor monitor = new NullProgressMonitor();
+		for (String name : projectNames)
+		{
+			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
+			if (project.exists())
+			{
+				if (!project.isOpen()) project.open(monitor);
+				project.delete(true, true, monitor);
+			}
+		}
+	}
+
 	protected static void waitForWorkspaceBuildJobs() {
 		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
 		// Pump the SWT loop while the auto-build and any scheduled workspace jobs run.

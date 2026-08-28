@@ -21,6 +21,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.services.TestFileService;
@@ -49,6 +50,13 @@ public class CreateTestFileIntegrationTest
 
 	private TestFileService service;
 	private ServoyProject servoyProject;
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		TestUtilitiesClass.deleteProjects(SOLUTION_NAME);
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
+	}
 
 	@Before
 	public void setUp()

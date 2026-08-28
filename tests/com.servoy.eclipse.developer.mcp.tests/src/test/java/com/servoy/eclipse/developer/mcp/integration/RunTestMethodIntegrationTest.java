@@ -16,6 +16,7 @@ import static org.junit.Assert.fail;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
@@ -42,6 +43,8 @@ import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
  */
 public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 {
+	private static final String TEST_SOLUTION = "test_pilot_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	/**
 	 * The known-passing test method in {@code test_pilot_suite/globals.js}.
@@ -52,7 +55,14 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 	private JSUnitRunnerService runner;
 
 	public RunTestMethodIntegrationTest() {
-		super("test_pilot_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

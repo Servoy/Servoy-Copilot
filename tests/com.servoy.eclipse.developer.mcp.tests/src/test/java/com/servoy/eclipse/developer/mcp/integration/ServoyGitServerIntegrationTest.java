@@ -36,6 +36,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
@@ -47,6 +48,13 @@ public class ServoyGitServerIntegrationTest {
 	private ServoyGitServer gitServer;
 	private IProject project;
 	private Repository repository;
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
+	}
 
 	@Before
 	public void setUp() throws Exception {

@@ -16,6 +16,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
@@ -27,6 +28,13 @@ public class ContextServerHistoryIntegrationTest {
 	private ServoyContextServer contextServer;
 	private IProject project;
 	private String testFileName;
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
+	}
 
 	@Before
 	public void setUp() throws Exception {

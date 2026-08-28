@@ -24,6 +24,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.swt.widgets.Display;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -89,7 +90,14 @@ public class ServoyScriptResolverIntegrationTest extends TestUtilitiesClass {
 	private ServoyProject activeProject;
 
 	public ServoyScriptResolverIntegrationTest() {
-		super(TEST_SOLUTION, "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, TEST_MODULE, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

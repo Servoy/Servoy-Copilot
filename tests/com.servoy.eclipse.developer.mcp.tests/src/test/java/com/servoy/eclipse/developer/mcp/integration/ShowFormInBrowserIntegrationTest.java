@@ -44,6 +44,7 @@ import com.servoy.j2db.persistence.GraphicalComponent;
 public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 
 	private static final String TEST_SOLUTION = "test_showform_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 	private static final String FORM_WITH_LABEL = "formWithLabel";
 	private static final String FORM_WITH_MULTIPLE_LABELS = "formWithMultipleLabels";
 	private static final String FORM_EMPTY = "formEmpty";
@@ -52,15 +53,19 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 	private ServoyProject activeProject;
 
 	public ShowFormInBrowserIntegrationTest() {
-		super(TEST_SOLUTION, "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
 
 	/**
 	 * Enable the titanium build before any test in this class runs.
 	 * Because we really need to show the client in a browser and test it.
+	 * Also deletes any stale solution projects so the class starts fresh.
 	 */
 	@BeforeClass
-	public static void adjustTitaniumBuildJobEnablementForThisClass() {
+	public static void adjustTitaniumBuildJobEnablementForThisClass() throws Exception {
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
+
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 	}
 

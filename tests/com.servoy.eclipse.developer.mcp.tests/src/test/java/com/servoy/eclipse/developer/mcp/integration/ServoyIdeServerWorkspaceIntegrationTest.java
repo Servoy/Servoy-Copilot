@@ -21,6 +21,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
@@ -34,6 +35,13 @@ public class ServoyIdeServerWorkspaceIntegrationTest {
 
 	private ServoyIdeServer server;
 	private IProject project;
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
+		TestUtilitiesClass.waitForWorkspaceBuildJobs();
+	}
 
 	@Before
 	public void setUp() throws Exception {

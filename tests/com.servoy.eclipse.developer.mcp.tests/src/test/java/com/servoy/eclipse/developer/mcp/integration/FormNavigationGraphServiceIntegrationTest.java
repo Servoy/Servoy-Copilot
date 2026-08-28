@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -48,6 +49,8 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  * on disk and building navigation edges from it.
  */
 public class FormNavigationGraphServiceIntegrationTest extends TestUtilitiesClass {
+	private static final String TEST_SOLUTION = "test_navgraph_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	private static final String SOURCE_FORM = "navSource";
 	private static final String SOURCE_PATH = "forms/" + SOURCE_FORM + ".js";
@@ -72,9 +75,16 @@ public class FormNavigationGraphServiceIntegrationTest extends TestUtilitiesClas
 	private ServoyProject activeProject;
 
 	public FormNavigationGraphServiceIntegrationTest() {
-		super("test_navgraph_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
-	
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
+	}
+
 	@Before
 	public void setUp() throws Exception {
 		service = new FormNavigationGraphService();

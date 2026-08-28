@@ -18,6 +18,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
@@ -46,6 +47,8 @@ import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
  */
 public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 {
+	private static final String TEST_SOLUTION = "test_layer4_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	/** globals.js content: 3 passing tests + 1 intentionally failing test. */
 	private static final String GLOBALS_JS =
@@ -92,7 +95,14 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	private String allResult;
 
 	public JSUnitRunnerLayer4Test() {
-		super("test_layer4_suite", "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before

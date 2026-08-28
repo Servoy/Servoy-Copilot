@@ -20,27 +20,19 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 
-import org.eclipse.core.resources.ICommand;
-import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IProjectDescription;
-import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
@@ -48,8 +40,6 @@ import com.servoy.eclipse.developer.mcp.services.MarkdownService;
 import com.servoy.eclipse.developer.mcp.services.ProjectService;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 import com.servoy.eclipse.model.nature.ServoyProject;
-import com.servoy.j2db.persistence.AbstractRepository;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
  * Integration tests for the ServoyIdeServer read/navigation tools that need a
@@ -68,6 +58,7 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 public class ServoyIdeServerReadIntegrationTest extends TestUtilitiesClass {
 
 	private static final String TEST_SOLUTION = "test_ide_read_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
 
 	private static final String FORM_NAME = "readTestForm";
 	private static final String FORM_SCRIPT = "function onLoad(event) {\n" //
@@ -84,7 +75,14 @@ public class ServoyIdeServerReadIntegrationTest extends TestUtilitiesClass {
 	private ServoyProject activeProject;
 
 	public ServoyIdeServerReadIntegrationTest() {
-		super(TEST_SOLUTION, "servoy_resources");
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeClass
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Before
