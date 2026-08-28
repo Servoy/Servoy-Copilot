@@ -85,17 +85,19 @@ public class PersistRenameServiceTest {
 	}
 
 	@Test
-	public void testBuildAmbiguousMessage_listsEachMatchAndPathHint() throws Exception {
-		java.lang.reflect.Method m = PersistRenameService.class.getDeclaredMethod("buildAmbiguousMessage",
-				String.class, java.util.List.class, String.class);
-		m.setAccessible(true);
-
+	public void testBuildAmbiguousMessage_listsEachMatchAndPathHint() {
+		// Package-private method called directly (no reflection): this test class is
+		// in the same package as PersistRenameService. Avoiding getDeclaredMethod()
+		// here matters because it forces resolution of every declared method's
+		// signature in the class, which can throw NoClassDefFoundError if an
+		// unrelated OSGi bundle referenced elsewhere in the class fails to activate
+		// during this test run.
 		java.util.List<String[]> matches = new java.util.ArrayList<>();
 		matches.add(new String[] { "form", "myArtifact", "solutionA", null });
 		matches.add(new String[] { "relation", "myArtifact", "solutionB", null });
 		matches.add(new String[] { "menuitem", "myArtifact", "solutionA", "mainMenu" });
 
-		String result = (String) m.invoke(service, "myArtifact", matches, "activeSolution");
+		String result = service.buildAmbiguousMessage("myArtifact", matches, "activeSolution");
 
 		assertNotNull(result);
 		assertTrue("Should flag as ambiguous", result.contains("Ambiguous"));
