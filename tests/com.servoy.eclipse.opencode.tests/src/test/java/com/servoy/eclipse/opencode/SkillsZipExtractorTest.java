@@ -127,25 +127,29 @@ public class SkillsZipExtractorTest {
 		}
 	}
 
-	/** HTTP URL is returned as-is �?? no file-existence check is performed. */
+	/** HTTP URL is returned with plugin_version appended -- no file-existence check is performed. */
 	@Test
-	public void getSkillsZipSource_httpUrl_returnsUrlWithoutFileCheck() {
+	public void getSkillsZipSource_httpUrl_returnsUrlWithPluginVersion() {
 		String url = "http://example.com/skills.zip?loginToken=abc123";
 		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, url);
 		try {
-			assertEquals("HTTP URL must be returned as-is", url, SkillsZipExtractor.getSkillsZipSource());
+			String result = SkillsZipExtractor.getSkillsZipSource();
+			assertTrue("HTTP URL must start with original URL", result.startsWith(url));
+			assertTrue("HTTP URL must contain plugin_version parameter", result.contains("&plugin_version="));
 		} finally {
 			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
 		}
 	}
 
-	/** HTTPS URL is returned as-is �?? no file-existence check is performed. */
+	/** HTTPS URL is returned with plugin_version appended -- no file-existence check is performed. */
 	@Test
-	public void getSkillsZipSource_httpsUrl_returnsUrlWithoutFileCheck() {
+	public void getSkillsZipSource_httpsUrl_returnsUrlWithPluginVersion() {
 		String url = "https://cloud.servoy.com/skills.zip?loginToken=abc123";
 		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, url);
 		try {
-			assertEquals("HTTPS URL must be returned as-is", url, SkillsZipExtractor.getSkillsZipSource());
+			String result = SkillsZipExtractor.getSkillsZipSource();
+			assertTrue("HTTPS URL must start with original URL", result.startsWith(url));
+			assertTrue("HTTPS URL must contain plugin_version parameter", result.contains("&plugin_version="));
 		} finally {
 			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
 		}
@@ -660,15 +664,16 @@ public class SkillsZipExtractorTest {
 
 	/**
 	 * AC: Pre-set SERVOY_SKILLS_ZIP with an HTTPS URL is preserved by
-	 * getSkillsZipSource.
+	 * getSkillsZipSource (with plugin_version appended).
 	 */
 	@Test
 	public void getSkillsZipSource_preSetToHttpsUrl_preservesValue() {
 		String customUrl = "https://my-server.com/custom-skills.zip";
 		System.setProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY, customUrl);
 		try {
-			assertEquals("Pre-set HTTPS URL must be returned as-is", customUrl,
-					SkillsZipExtractor.getSkillsZipSource());
+			String result = SkillsZipExtractor.getSkillsZipSource();
+			assertTrue("Pre-set HTTPS URL must start with original URL", result.startsWith(customUrl));
+			assertTrue("Pre-set HTTPS URL must contain plugin_version parameter", result.contains("&plugin_version="));
 		} finally {
 			System.clearProperty(SkillsZipExtractor.SKILLS_ZIP_PROPERTY);
 		}
