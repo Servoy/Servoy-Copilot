@@ -324,7 +324,7 @@ public class OpenCodeView extends ViewPart {
 				}
 
 				PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
-					if (getSite() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
+					if (getSite() != null && getSite().getPage() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
 						Activator.getInstance().logToConsole("loading url: " + targetUrl);
 						setUrl(targetUrl);
 					} else if (getSite() != null) {
