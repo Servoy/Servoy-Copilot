@@ -27,16 +27,13 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServer;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 public class ServoyI18nServerIntegrationTest {
-	private static final long APP_SERVER_POLL_MS = 30_000;
 
 	private ServoyI18nServer i18nServer;
-
-	private static Boolean appServerAvailableCache;
 
 	@Before
 	public void setUp() throws Exception {
 		i18nServer = new ServoyI18nServer();
-		waitForAppServer();
+		TestUtilitiesClass.waitForAppServer();
 	}
 
 	@Test
@@ -139,17 +136,6 @@ public class ServoyI18nServerIntegrationTest {
 
 		assertTrue(result.contains("Error"));
 		assertTrue(result.contains("not found") || result.contains("No active solution"));
-	}
-
-	private void waitForAppServer() throws InterruptedException {
-		if (appServerAvailableCache == null) {
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline) {
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
 	}
 
 	private String findAvailableServer() {

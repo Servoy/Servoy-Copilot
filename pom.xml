@@ -15,6 +15,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <servoy.url>https://build.servoy.com/latest/servoy_lts_2026/update_site/</servoy.url>
+        <servoy.install.tarball.for.appserver>/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz</servoy.install.tarball.for.appserver>
     </properties>
 
     <repositories>

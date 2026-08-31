@@ -156,11 +156,8 @@
         <setEntry value="org.apache.lucene.analysis-common@default:default"/>
         <setEntry value="org.apache.lucene.analysis-smartcn@default:default"/>
         <setEntry value="org.apache.lucene.core@default:default"/>
-        <setEntry value="org.apache.pdfbox.fontbox@default:default"/>
-        <setEntry value="org.apache.pdfbox.io@default:default"/>
         <setEntry value="org.apache.sshd.osgi@default:default"/>
         <setEntry value="org.apache.sshd.sftp@default:default"/>
-        <setEntry value="org.apache.tika.core@default:default"/>
         <setEntry value="org.apache.xerces@default:default"/>
         <setEntry value="org.apache.xml.resolver@default:default"/>
         <setEntry value="org.apache.xmlgraphics@default:default"/>
@@ -448,8 +445,6 @@
         <setEntry value="com.servoy.eclipse.nodejs.win32.win32.x86_64@default:default"/>
         <setEntry value="com.servoy.eclipse.notification@default:default"/>
         <setEntry value="com.servoy.eclipse.opencode@default:default"/>
-        <setEntry value="com.servoy.eclipse.servoypilot.langchain4j@default:default"/>
-        <setEntry value="com.servoy.eclipse.servoypilot@default:default"/>
         <setEntry value="com.servoy.eclipse.ui.tweaks@3:true"/>
         <setEntry value="com.servoy.eclipse.ui@default:default"/>
         <setEntry value="j2db_documentation@default:default"/>
@@ -462,6 +457,8 @@
         <setEntry value="servoy_base@default:default"/>
         <setEntry value="servoy_debug@default:default"/>
         <setEntry value="servoy_headless_client@default:default"/>
+        <setEntry value="servoy_mcp@default:default"/>
+        <setEntry value="servoy_mcp_tests@default:false"/>
         <setEntry value="servoy_ngclient@default:default"/>
         <setEntry value="servoy_shared@default:default"/>
         <setEntry value="servoy_smart_client@default:default"/>

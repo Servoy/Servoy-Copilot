@@ -36,17 +36,15 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  */
 public class ValidationToolsIntegrationTest
 {
-	private static final long APP_SERVER_POLL_MS = 15_000;
 
 	private ServoyDevServer devServer;
-	private static Boolean appServerAvailableCache;
 
 	@Before
 	public void setUp() throws Exception
 	{
 		devServer = new ServoyDevServer();
 		assertNotNull("No Display available - test requires a running Eclipse UI", Display.getDefault());
-		waitForAppServer();
+		TestUtilitiesClass.waitForAppServer();
 	}
 
 	// -------------------------------------------------------------------------
@@ -233,20 +231,6 @@ public class ValidationToolsIntegrationTest
 	// -------------------------------------------------------------------------
 	// Helpers
 	// -------------------------------------------------------------------------
-
-	private void waitForAppServer() throws InterruptedException
-	{
-		if (appServerAvailableCache == null)
-		{
-			long deadline = System.currentTimeMillis() + APP_SERVER_POLL_MS;
-			while (!ApplicationServerRegistry.exists() && System.currentTimeMillis() < deadline)
-			{
-				Thread.sleep(500);
-			}
-			appServerAvailableCache = ApplicationServerRegistry.exists();
-		}
-		assertTrue("Servoy application server not started", appServerAvailableCache);
-	}
 
 	private String findAvailableServer()
 	{

@@ -26,6 +26,8 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.GraphicalComponent;
+import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.persistence.RepositoryException;
 
 /**
  * Integration tests for the ShowFormInBrowser tool with actual form creation.
@@ -101,10 +103,11 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 		GraphicalComponent label = form.createNewGraphicalComponent(new Point(20, 20));
 		label.setText("Hello from test!");
 		label.setName("lblHello");
-		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form }, true);
+		saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form });
 
+		assertNotNull("Sol Form should exist after save", activeProject.getSolution().getForm(FORM_WITH_LABEL));
 		Form reloaded = activeProject.getEditingSolution().getForm(FORM_WITH_LABEL);
-		assertNotNull("Form should exist after save", reloaded);
+		assertNotNull("Editing sol Form should exist after save", reloaded);
 	}
 
 	@Test
@@ -147,10 +150,16 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 		lbl3.setText("Footer");
 		lbl3.setName("lblFooter");
 
-		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form }, true);
+		saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form });
 
+		assertNotNull("Sol Form should exist", activeProject.getSolution().getForm(FORM_WITH_MULTIPLE_LABELS));
 		Form reloaded = activeProject.getEditingSolution().getForm(FORM_WITH_MULTIPLE_LABELS);
-		assertNotNull("Form should exist", reloaded);
+		assertNotNull("Editing sol Form should exist", reloaded);
+	}
+	
+	private void saveEditingSolutionNodes(IPersist[] iPersists) throws RepositoryException {
+		activeProject.saveEditingSolutionNodes(iPersists, true);
+		waitForWorkspaceBuildJobs();
 	}
 
 	@Test
@@ -286,8 +295,10 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 
 	private Form ensureFormWithButtonAndLabel() throws Exception {
 		Form existing = activeProject.getEditingSolution().getForm(FORM_BUTTON_LABEL);
-		if (existing != null)
+		if (existing != null) {
+			assertNotNull("Sol form should not be null", activeProject.getSolution().getForm(FORM_BUTTON_LABEL));
 			return existing;
+		}
 
 		new ServoyArtifactCreationService().createForm(FORM_BUTTON_LABEL, "css", 640, 480, null, null, null);
 		Form form = activeProject.getEditingSolution().getForm(FORM_BUTTON_LABEL);
@@ -301,7 +312,8 @@ public class ShowFormInBrowserIntegrationTest extends AbstractIntegrationTest {
 		label.setName("lblStatus");
 		label.setText("Status");
 
-		activeProject.saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form }, true);
+		saveEditingSolutionNodes(new com.servoy.j2db.persistence.IPersist[] { form });
+		assertNotNull("Sol form should not be null", activeProject.getSolution().getForm(FORM_BUTTON_LABEL));
 		return form;
 	}
 
