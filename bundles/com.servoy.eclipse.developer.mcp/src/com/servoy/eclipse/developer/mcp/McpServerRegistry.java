@@ -61,7 +61,7 @@ public class McpServerRegistry {
 	 * URL prefix for all MCP endpoints - distinct from the existing /mcp path
 	 * used by workflows.
 	 */
-	public static final String MCP_PATH_PREFIX = "/mcp";
+	public static final String MCP_PATH_PREFIX = "/dev_mcp";
 
 	/**
 	 * Named servlet wrapper classes - one per planned endpoint. Tomcat uses
