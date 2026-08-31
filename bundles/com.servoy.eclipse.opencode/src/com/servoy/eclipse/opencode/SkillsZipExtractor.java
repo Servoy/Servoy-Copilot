@@ -33,6 +33,8 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.osgi.framework.Version;
+
 import com.servoy.j2db.ClientVersion;
 import com.servoy.j2db.persistence.IServer;
 import com.servoy.j2db.persistence.IServerInternal;
@@ -98,8 +100,10 @@ class SkillsZipExtractor {
 		String prop = System.getProperty(SKILLS_ZIP_PROPERTY);
 		if (prop == null || prop.isBlank())
 			return null;
-		if (prop.startsWith("http://") || prop.startsWith("https://")) //$NON-NLS-1$ //$NON-NLS-2$
-			return prop;
+		if (prop.startsWith("http://") || prop.startsWith("https://")) { //$NON-NLS-1$ //$NON-NLS-2$
+			Version version = Activator.getInstance().getBundle().getVersion();
+			return prop + "&plugin_version=" + version.getMajor() + "." + version.getMinor() + "." + version.getMicro();
+		}
 		return Files.exists(Paths.get(prop)) ? prop : null;
 	}
 

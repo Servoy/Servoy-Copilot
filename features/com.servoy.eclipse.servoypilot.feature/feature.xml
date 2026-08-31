@@ -2,7 +2,7 @@
 <feature
       id="com.servoy.eclipse.servoypilot.feature"
       label="Servoy AI Copilot feature"
-      version="2026.3.0.qualifier"
+      version="2026.3.1.qualifier"
       provider-name="Servoy"
       os="linux,macosx,win32"
       arch="aarch64,x86_64">
@@ -305,10 +305,10 @@ version(s), and exceptions or additional permissions here}.&quot;
 
    <plugin
          id="com.servoy.eclipse.developer.mcp"
-         version="0.0.0"/>
+         version="2026.3.1.qualifier"/>
 
    <plugin
          id="com.servoy.eclipse.opencode"
-         version="0.0.0"/>
+         version="2026.3.1.qualifier"/>
 
 </feature>
