@@ -210,6 +210,33 @@ public class OpenCodeBranding
 		sb.append("    window._svyBrandObs.observe(document.body, {childList: true, subtree: true});");
 		sb.append("  }");
 		sb.append("})();");
+		// Session-tracking hook: reports the current session ID back to Java
+		// via the __servoySessionChanged BrowserFunction whenever the URL changes.
+		sb.append("(function(){");
+		sb.append("  if (window._svySessionHookInstalled) return;");
+		sb.append("  window._svySessionHookInstalled = true;");
+		sb.append("  function currentSessionIdFromPath() {");
+		sb.append("    var m = /\\/session\\/([^\\/?#]+)/.exec(location.pathname);");
+		sb.append("    return m ? m[1] : null;");
+		sb.append("  }");
+		sb.append("  function report() {");
+		sb.append("    var id = currentSessionIdFromPath();");
+		sb.append("    if (id !== window._svyLastReportedSessionId) {");
+		sb.append("      window._svyLastReportedSessionId = id;");
+		sb.append("      if (window.__servoySessionChanged) window.__servoySessionChanged(id || '');");
+		sb.append("    }");
+		sb.append("  }");
+		sb.append("  ['pushState', 'replaceState'].forEach(function(name) {");
+		sb.append("    var orig = history[name];");
+		sb.append("    history[name] = function() {");
+		sb.append("      var ret = orig.apply(this, arguments);");
+		sb.append("      report();");
+		sb.append("      return ret;");
+		sb.append("    };");
+		sb.append("  });");
+		sb.append("  window.addEventListener('popstate', report);");
+		sb.append("  report();");
+		sb.append("})();");
 		return sb.toString();
 	}
 
