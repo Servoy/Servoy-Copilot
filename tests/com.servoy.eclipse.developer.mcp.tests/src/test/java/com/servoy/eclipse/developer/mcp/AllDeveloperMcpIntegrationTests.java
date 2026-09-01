@@ -29,6 +29,7 @@ import com.servoy.eclipse.developer.mcp.integration.CreateSolutionIntegrationTes
 import com.servoy.eclipse.developer.mcp.integration.CreateTestFileIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DatabaseToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DocumentationToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.FormCssPositionAndRelationSeverityIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.FormNavigationGraphServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.GetNavigationPathIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
@@ -79,7 +80,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyGitServerIntegrationTest.class, ServoyI18nServerIntegrationTest.class,
 		ServoyIdeServerIntegrationTest.class, ServoyIdeServerWorkspaceIntegrationTest.class,
 		ServoyMediaServerIntegrationTest.class, ServoySolutionServiceIntegrationTest.class,
-		ServoyWpmServerIntegrationTest.class,
+		ServoyWpmServerIntegrationTest.class, FormCssPositionAndRelationSeverityIntegrationTest.class,
 		ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class, McpServerBuiltinsTest.class,
 		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class, })
