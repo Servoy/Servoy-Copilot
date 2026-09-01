@@ -9,59 +9,35 @@
   "mcp": {
     "eclipse-ide": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-ide",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-ide",
     },
     "time": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/time",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/time",
     },
     "memory": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/memory",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/memory",
     },
     "eclipse-coder": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-coder",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-coder",
     },
     "eclipse-runner": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-runner",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-runner",
     },
     "eclipse-context": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-context",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-context",
     },
     "eclipse-git": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-git",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-git",
     },
     "eclipse-pde": {
       "type": "remote",
-      "url": "http://localhost:8085/mcp/eclipse-pde",
-      "headers": {
-        "Authorization": "Bearer 461d1ccf-6e26-4fc3-b718-52ac4adda455"
-      }
+      "url": "http://localhost:8087/mcp/eclipse-pde",
     }
   }
 }
