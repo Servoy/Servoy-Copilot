@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.awt.Dimension;
+import java.awt.Point;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,6 +35,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.servoy.base.persistence.constants.IValueListConstants;
 import com.servoy.base.query.IBaseSQLCondition;
 import com.servoy.base.query.IQueryConstants;
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -44,6 +46,7 @@ import com.servoy.eclipse.model.inmemory.MemServer;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.AbstractTable;
 import com.servoy.j2db.persistence.Column;
+import com.servoy.j2db.persistence.Field;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IColumnTypes;
 import com.servoy.j2db.persistence.IDataProvider;
@@ -55,7 +58,9 @@ import com.servoy.j2db.persistence.Relation;
 import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.TableNode;
+import com.servoy.j2db.persistence.ValueList;
 import com.servoy.j2db.query.ColumnType;
+import com.servoy.j2db.util.UUID;
 
 /**
  * PDE plug-in integration tests for the two builder marker checks added by SVY-21356:
@@ -454,12 +459,52 @@ public class FormCssPositionAndRelationSeverityIntegrationTest extends TestUtili
 			1, markers.size());
 	}
 
-	// Scenario 11 (relation used by a related-values valuelist attached to a field
-	// on a form) was NOT automated: it requires wiring a full valuelist + field + form
-	// combination on top of the relation, which is disproportionate setup for a check
-	// that is already exercised at the relation level by the tests above.
-	// ServoyRelationBuilder.checkRelation adds the marker only to the relation's own
-	// resource — it has no marker-forwarding code path for RELATION_ITEM_TYPE_PROBLEM.
+	// -----------------------------------------------------------------------
+	// Relation severity — Scenario 11
+	// Relation with a mismatched item, used by a related-values valuelist that
+	// is attached to a field on a form -> the relation itself still gets
+	// exactly one ERROR marker (ServoyRelationBuilder.checkRelation adds the
+	// marker only to the relation's own resource; it has no marker-forwarding
+	// code path to the valuelist/field/form for RELATION_ITEM_TYPE_PROBLEM).
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testRelationUsedByValuelistOnFormField_stillGetsErrorMarkerOnRelation() throws Exception
+	{
+		ITable primaryTable = createMemTableWithColumn(unique("svy21356_vlRelPrimary"), "dt_col", IColumnTypes.DATETIME);
+		ITable foreignTable = createMemTableWithColumn(unique("svy21356_vlRelForeign"), "int_col", IColumnTypes.INTEGER);
+
+		Relation relation = solution.createNewRelation(validator, unique("svy21356_vlMismatchRel"),
+			primaryTable.getDataSource(), foreignTable.getDataSource(), IQueryConstants.LEFT_OUTER_JOIN);
+		relation.setAllowCreationRelatedRecords(true);
+		relation.createNewRelationItems(
+			new IDataProvider[] { primaryTable.getColumn("dt_col") },
+			new int[] { IBaseSQLCondition.EQUALS_OPERATOR },
+			new Column[] { (Column)foreignTable.getColumn("int_col") });
+
+		ValueList valuelist = solution.createNewValueList(validator, unique("svy21356_relatedVl"));
+		valuelist.setValueListType(IValueListConstants.RELATED_VALUES);
+		valuelist.setRelationName(relation.getName());
+		valuelist.setDataProviderID1(foreignTable.getColumn("int_col").getName());
+
+		Form form = createPlainCssPositionForm(unique("svy21356_vlRelForm"));
+		form.createNewPart(Part.BODY, 480);
+		form.setDataSource(primaryTable.getDataSource());
+		Field field = form.createNewField(new Point(20, 20));
+		field.setName(unique("svy21356_vlField"));
+		field.setValuelistID(valuelist.getUUID().toString());
+
+		saveAndBuild(form, valuelist);
+		saveAndCheckRelation(relation);
+
+		List<IMarker> markers = findMarkersContaining(relation, ServoyBuilder.PROJECT_RELATION_MARKER_TYPE,
+			"mismatched keys");
+		assertEquals("Expected exactly one relationItemTypeProblem marker on the relation, even though it is used by " +
+			"a valuelist attached to a form field", 1, markers.size());
+		IMarker marker = markers.get(0);
+		assertEquals("relationItemTypeProblem marker must be ERROR severity even when the relation backs a valuelist",
+			IMarker.SEVERITY_ERROR, marker.getAttribute(IMarker.SEVERITY, -1));
+	}
 
 	// -----------------------------------------------------------------------
 	// CSS-position-no-body-part marker — AC4: preference IGNORE suppresses marker
@@ -504,6 +549,122 @@ public class FormCssPositionAndRelationSeverityIntegrationTest extends TestUtili
 				prefs.put(prefKey, originalValue);
 			prefs.flush();
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// NO-GAP regression — Form field with a dangling valuelistID
+	// Confirmed by investigation (docs/SVY-21356-investigation.md, section 2):
+	// the generic ELEMENTS dangling-reference check in
+	// ServoyFormBuilder.addFormMarkers already covers Field.valuelistID via
+	// ServoyBuilderUtils.addNullReferenceMarker - no new marker was added for
+	// this case. This test locks in that existing behaviour.
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testFieldWithDanglingValuelistId_getsPropertyTargetNotFoundMarker() throws Exception
+	{
+		String formName = unique("svy21356_danglingVl");
+		Form form = createPlainCssPositionForm(formName);
+		form.createNewPart(Part.BODY, 480);
+
+		Field field = form.createNewField(new Point(20, 20));
+		field.setName(unique("svy21356_field"));
+		// a syntactically valid UUID that does not resolve to any persist in the solution
+		field.setValuelistID(UUID.randomUUID().toString());
+
+		saveAndBuild(form);
+
+		List<IMarker> markers = findMarkersContaining(form, ServoyBuilder.PROJECT_FORM_MARKER_TYPE,
+			"is linked to an entity that does not exist");
+		assertEquals("Expected exactly one dangling-valuelistID marker", 1, markers.size());
+		IMarker marker = markers.get(0);
+		assertEquals("Dangling valuelistID marker must be ERROR severity (formPropertyTargetNotFound)",
+			IMarker.SEVERITY_ERROR, marker.getAttribute(IMarker.SEVERITY, -1));
+	}
+
+	@Test
+	public void testFieldWithNoValuelistId_noPropertyTargetNotFoundMarker() throws Exception
+	{
+		String formName = unique("svy21356_noVl");
+		Form form = createPlainCssPositionForm(formName);
+		form.createNewPart(Part.BODY, 480);
+
+		Field field = form.createNewField(new Point(20, 20));
+		field.setName(unique("svy21356_field"));
+		// valuelistID left unset entirely
+
+		saveAndBuild(form);
+
+		List<IMarker> markers = findMarkersContaining(form, ServoyBuilder.PROJECT_FORM_MARKER_TYPE,
+			"is linked to an entity that does not exist");
+		assertTrue("Field with no valuelistID set must not get the dangling-reference marker: " + markers,
+			markers.isEmpty());
+	}
+
+	// -----------------------------------------------------------------------
+	// NO-GAP regression — Valuelist databaseValuesType is a pure computed getter
+	// Confirmed by investigation (docs/SVY-21356-investigation.md, section 4):
+	// ValueList.getDatabaseValuesType() has no backing property and cannot be
+	// persisted or set through any mechanism, so there is nothing to check for
+	// "invalid" and no marker was added. This test locks in that the getter
+	// tracks getRelationName() exactly, for both branches.
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testValuelistDatabaseValuesType_tracksRelationNamePresence() throws Exception
+	{
+		ValueList tableVl = solution.createNewValueList(validator, unique("svy21356_tableVl"));
+		tableVl.setValueListType(IValueListConstants.TABLE_VALUES);
+		ITable table = createMemTableWithColumn(unique("svy21356_vlTable"), "col_a", IColumnTypes.INTEGER);
+		tableVl.setDataSource(table.getDataSource());
+
+		assertEquals("With no relationName set, getDatabaseValuesType() must report TABLE_VALUES",
+			IValueListConstants.TABLE_VALUES, tableVl.getDatabaseValuesType());
+
+		ITable primaryTable = createMemTableWithColumn(unique("svy21356_relPrimary"), "int_col", IColumnTypes.INTEGER);
+		ITable foreignTable = createMemTableWithColumn(unique("svy21356_relForeign"), "int_col", IColumnTypes.INTEGER);
+		Relation relation = solution.createNewRelation(validator, unique("svy21356_vlRel"), primaryTable.getDataSource(),
+			foreignTable.getDataSource(), IQueryConstants.LEFT_OUTER_JOIN);
+		relation.setAllowCreationRelatedRecords(true);
+		relation.createNewRelationItems(
+			new IDataProvider[] { primaryTable.getColumn("int_col") },
+			new int[] { IBaseSQLCondition.EQUALS_OPERATOR },
+			new Column[] { (Column)foreignTable.getColumn("int_col") });
+		activeProject.saveEditingSolutionNodes(new IPersist[] { relation }, true);
+
+		ValueList relatedVl = solution.createNewValueList(validator, unique("svy21356_relatedVl"));
+		relatedVl.setValueListType(IValueListConstants.RELATED_VALUES);
+		relatedVl.setRelationName(relation.getName());
+
+		assertEquals("Once relationName is set, getDatabaseValuesType() must report RELATED_VALUES",
+			IValueListConstants.RELATED_VALUES, relatedVl.getDatabaseValuesType());
+	}
+
+	// -----------------------------------------------------------------------
+	// NO-GAP regression — Form dataSource in a malformed/unresolvable format
+	// Confirmed by investigation (docs/SVY-21356-investigation.md, section 5):
+	// ServoyFormBuilder.addFormMarkers resolves form.getDataSource() via
+	// formFlattenedSolution.getTable(...) and raises FORM_INVALID_TABLE
+	// (ERROR) uniformly whenever the table cannot be resolved, regardless of
+	// which way the datasource string is malformed. This test locks in that
+	// behaviour for a garbage datasource string that matches no known scheme.
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testFormWithUnresolvableDataSource_getsInvalidTableMarker() throws Exception
+	{
+		String formName = unique("svy21356_badDs");
+		Form form = solution.createNewForm(validator, null, formName, null, true, new Dimension(640, 480));
+		form.setDataSource("totally:bogus/not-a-real-datasource");
+
+		saveAndBuild(form);
+
+		List<IMarker> markers = findMarkersContaining(form, ServoyBuilder.PROJECT_FORM_MARKER_TYPE, "not accessible");
+		assertEquals("Expected exactly one formInvalidTable marker for an unresolvable dataSource", 1,
+			markers.size());
+		IMarker marker = markers.get(0);
+		assertEquals("formInvalidTable marker must be ERROR severity",
+			IMarker.SEVERITY_ERROR, marker.getAttribute(IMarker.SEVERITY, -1));
 	}
 
 }
