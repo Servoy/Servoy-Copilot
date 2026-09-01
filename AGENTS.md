@@ -164,6 +164,14 @@ For quick codebase orientation and type/method lookup, use the JDT-powered searc
 - **`eclipse-ide_getPackageSummary`** — Returns each type's name, kind, Javadoc first sentence, method/field counts, and interfaces for a package — a table-of-contents in one call. Use to quickly understand what a package contains.
 - **`eclipse-ide_getWorkspaceOverview`** — High-level architectural map of projects → packages → type names for immediate orientation. Use as the first step when exploring an unfamiliar part of the codebase.
 
+### Browser Abstraction — never depend on Chromium directly
+
+The embedded browser view supports two backends (SWT `Browser` and Equo Chromium). **Never** reference `com.equo.chromium.swt.*` (or `org.eclipse.swt.browser.Browser`/`BrowserFunction`) directly from feature code, and never do `instanceof` checks against the concrete browser type or call `IBrowser.getBrowserInstance()` to reach the underlying object.
+
+- **Always** go through the `com.servoy.eclipse.ui.browser.IBrowser` interface (`setUrl`, `setText`, `execute`, `addBrowserFunction`, etc.).
+- To call back into Java from injected JavaScript, use `IBrowser.addBrowserFunction(String name, IBrowserFunction function)` — the SWT/Chromium `BrowserFunction` is created inside the backend-specific wrapper (`SwtBrowserWrapper` / `ChromiumWrapper`), so callers stay backend-agnostic.
+- If `IBrowser` is missing a capability you need, **add it to the interface** (and to both wrapper implementations in `com.servoy.eclipse.ui`) rather than reaching around the abstraction. This keeps the hard Chromium dependency confined to `com.servoy.eclipse.ui` and out of the opencode bundle's manifest.
+
 ---
 
 ## 3. Commit Message Convention `[ai]`
