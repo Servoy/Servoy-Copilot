@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -17,24 +17,14 @@
 
 package com.servoy.eclipse.opencode;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 
 import org.eclipse.core.runtime.FileLocator;
-import org.eclipse.jface.action.Action;
-import org.eclipse.jface.action.IAction;
-import org.eclipse.jface.dialogs.MessageDialog;
-import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.FileDialog;
-import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IPartListener2;
-import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
@@ -93,13 +83,6 @@ public class OpenCodeView extends ViewPart {
 	 */
 	private IActiveProjectListener activeProjectListener;
 
-	/**
-	 * The session ID currently displayed in the browser, reported by the
-	 * injected JavaScript hook. Used by the export action to know which
-	 * session to export.
-	 */
-	volatile String trackedSessionId;
-
 	// -----------------------------------------------------------------------
 	// ViewPart lifecycle
 	// -----------------------------------------------------------------------
@@ -113,8 +96,6 @@ public class OpenCodeView extends ViewPart {
 				browser.execute(INJECT_CSS_JS);
 			}
 		});
-		registerSessionTrackingFunction();
-		createExportAction();
 		initUrl();
 	}
 
@@ -341,141 +322,6 @@ public class OpenCodeView extends ViewPart {
 	}
 
 	// -----------------------------------------------------------------------
-	// Session tracking (JS hook → Java BrowserFunction)
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Registers a {@code BrowserFunction} named {@code __servoySessionChanged}
-	 * that the injected JavaScript calls whenever the session ID in the URL
-	 * changes. Works for both SWT and Chromium browser backends.
-	 */
-	private void registerSessionTrackingFunction()
-	{
-		Object browserInstance = browser.getBrowserInstance();
-		if (browserInstance instanceof org.eclipse.swt.browser.Browser swtBrowser)
-		{
-			new org.eclipse.swt.browser.BrowserFunction(swtBrowser, "__servoySessionChanged") { //$NON-NLS-1$
-				@Override
-				public Object function(Object[] arguments)
-				{
-					onSessionIdReported(arguments);
-					return null;
-				}
-			};
-		}
-		else if (browserInstance instanceof com.equo.chromium.swt.Browser chromiumBrowser)
-		{
-			new com.equo.chromium.swt.BrowserFunction(chromiumBrowser, "__servoySessionChanged") { //$NON-NLS-1$
-				@Override
-				public Object function(Object[] arguments)
-				{
-					onSessionIdReported(arguments);
-					return null;
-				}
-			};
-		}
-	}
-
-	static String parseReportedSessionId(Object[] arguments)
-	{
-		if (arguments == null || arguments.length == 0 || !(arguments[0] instanceof String s) || s.isEmpty())
-		{
-			return null;
-		}
-		return s;
-	}
-
-	private void onSessionIdReported(Object[] arguments)
-	{
-		trackedSessionId = parseReportedSessionId(arguments);
-	}
-
-	// -----------------------------------------------------------------------
-	// Export action
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Adds an "Export session" button to the view toolbar that lets the user
-	 * save the current opencode session as a JSON transcript.
-	 */
-	private void createExportAction()
-	{
-		IAction exportAction = new Action("Export session") { //$NON-NLS-1$
-			@Override
-			public void run()
-			{
-				exportCurrentSession();
-			}
-		};
-		exportAction.setToolTipText("Export the current opencode session as a JSON transcript"); //$NON-NLS-1$
-		exportAction.setImageDescriptor(
-			PlatformUI.getWorkbench().getSharedImages().getImageDescriptor(ISharedImages.IMG_ETOOL_SAVEAS_EDIT));
-		getViewSite().getActionBars().getToolBarManager().add(exportAction);
-		getViewSite().getActionBars().updateActionBars();
-	}
-
-	private void exportCurrentSession()
-	{
-		Shell shell = getSite().getShell();
-
-		if (!com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.isLoginComplete() || !isServoyAiConfigured())
-		{
-			MessageDialog.openWarning(shell, "Export session", //$NON-NLS-1$
-				"Servoy AI is not configured. Please log in and enable Servoy AI first."); //$NON-NLS-1$
-			return;
-		}
-
-		String projectPath = OpenCodeUtil.getActiveProjectPath();
-		if (projectPath == null)
-		{
-			MessageDialog.openWarning(shell, "Export session", //$NON-NLS-1$
-				"No active solution. Please activate a solution first."); //$NON-NLS-1$
-			return;
-		}
-
-		Activator activator = Activator.getInstance();
-		if (activator == null || !activator.isServerReady())
-		{
-			MessageDialog.openWarning(shell, "Export session", //$NON-NLS-1$
-				"The opencode server is not ready yet. Please wait and try again."); //$NON-NLS-1$
-			return;
-		}
-
-		String currentSessionId = trackedSessionId;
-
-		FileDialog fileDialog = new FileDialog(shell, SWT.SAVE);
-		fileDialog.setFilterExtensions(new String[] { "*.json" }); //$NON-NLS-1$
-		fileDialog.setFilterNames(new String[] { "JSON Files (*.json)" }); //$NON-NLS-1$
-		String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")); //$NON-NLS-1$
-		fileDialog.setFileName("opencode-session-export-" + timestamp + ".json"); //$NON-NLS-1$ //$NON-NLS-2$
-		fileDialog.setFilterPath(projectPath);
-		fileDialog.setOverwrite(true);
-
-		String targetPath = fileDialog.open();
-		if (targetPath == null)
-		{
-			return;
-		}
-
-		File opencodeDir = new File(activator.getStateLocation().toFile(), "opencode"); //$NON-NLS-1$
-		new ExportSessionJob(opencodeDir, projectPath, activator.getServerPort(), currentSessionId,
-			new File(targetPath)).schedule();
-	}
-
-	/**
-	 * Opens the system file explorer showing {@code file}. Falls back to
-	 * showing the parent directory if the file does not exist.
-	 *
-	 * @return {@code true} if the file explorer was launched successfully
-	 */
-	static boolean revealInFileExplorer(File file)
-	{
-		File target = file.exists() ? file : file.getParentFile();
-		if (target == null) return false;
-		return org.eclipse.swt.program.Program.launch(target.getAbsolutePath());
-	}
-
-	// -----------------------------------------------------------------------
 	// Path helpers
 	// -----------------------------------------------------------------------
 
@@ -502,7 +348,43 @@ public class OpenCodeView extends ViewPart {
 	}
 
 	private String resolveSessionUrl(int port, String projectPath) {
-		return resolveSessionUrl(port, projectPath, OpenCodeUtil.findLastSessionId(port, projectPath));
+		return resolveSessionUrl(port, projectPath, findLastSessionId(port, projectPath));
+	}
+
+	private String findLastSessionId(int port, String projectPath) {
+		try {
+			String encodedDir = java.net.URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
+			java.net.URL url = java.net.URI.create(
+					"http://127.0.0.1:" + port + "/session?directory=" + encodedDir + "&limit=1&roots=true") //$NON-NLS-1$ //$NON-NLS-2$
+					.toURL();
+			Activator.getInstance().logToConsole("querying sessions at: " + url);
+			java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+			conn.setRequestMethod("GET"); //$NON-NLS-1$
+			conn.setConnectTimeout(10000);
+			conn.setReadTimeout(60000);
+			int responseCode = conn.getResponseCode();
+			Activator.getInstance().logToConsole("session list response code: " + responseCode);
+			if (responseCode == 200) {
+				try (java.io.InputStream is = conn.getInputStream()) {
+					String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+					Activator.getInstance().logToConsole("session list response: " + body);
+					int idIdx = body.indexOf("\"id\""); //$NON-NLS-1$
+					if (idIdx >= 0) {
+						int colon = body.indexOf(':', idIdx);
+						int quote1 = body.indexOf('"', colon + 1);
+						int quote2 = body.indexOf('"', quote1 + 1);
+						if (quote1 >= 0 && quote2 > quote1) {
+							String sessionId = body.substring(quote1 + 1, quote2);
+							Activator.getInstance().logToConsole("resuming session: " + sessionId);
+							return sessionId;
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			Activator.getInstance().logToConsole("could not query last session: " + e.getMessage());
+		}
+		return null;
 	}
 
 	private String getPageUrl(String bundlePath) {

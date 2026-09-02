@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -17,11 +17,6 @@
 
 package com.servoy.eclipse.opencode;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -83,56 +78,6 @@ class OpenCodeUtil {
 				return current;
 			}
 			current = current.getParent();
-		}
-		return null;
-	}
-
-	/**
-	 * Queries the opencode REST API for the last root session in the given
-	 * project directory.
-	 *
-	 * @return the session ID, or {@code null} if none found or on error
-	 */
-	static String findLastSessionId(int port, String projectPath)
-	{
-		try
-		{
-			String encodedDir = URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
-			java.net.URL url = URI.create(
-					"http://127.0.0.1:" + port + "/session?directory=" + encodedDir + "&limit=1&roots=true") //$NON-NLS-1$ //$NON-NLS-2$
-					.toURL();
-			Activator.getInstance().logToConsole("querying sessions at: " + url);
-			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-			conn.setRequestMethod("GET"); //$NON-NLS-1$
-			conn.setConnectTimeout(10000);
-			conn.setReadTimeout(60000);
-			int responseCode = conn.getResponseCode();
-			Activator.getInstance().logToConsole("session list response code: " + responseCode);
-			if (responseCode == 200)
-			{
-				try (InputStream is = conn.getInputStream())
-				{
-					String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-					Activator.getInstance().logToConsole("session list response: " + body);
-					int idIdx = body.indexOf("\"id\""); //$NON-NLS-1$
-					if (idIdx >= 0)
-					{
-						int colon = body.indexOf(':', idIdx);
-						int quote1 = body.indexOf('"', colon + 1);
-						int quote2 = body.indexOf('"', quote1 + 1);
-						if (quote1 >= 0 && quote2 > quote1)
-						{
-							String sessionId = body.substring(quote1 + 1, quote2);
-							Activator.getInstance().logToConsole("resuming session: " + sessionId);
-							return sessionId;
-						}
-					}
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			Activator.getInstance().logToConsole("could not query last session: " + e.getMessage());
 		}
 		return null;
 	}
