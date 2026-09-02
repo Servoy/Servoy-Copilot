@@ -15,8 +15,10 @@
     <setAttribute key="deselected_workspace_bundles">
         <setEntry value="com.servoy.eclipse.firststeps"/>
         <setEntry value="com.servoy.eclipse.jre.linux.x86_64"/>
+        <setEntry value="com.servoy.eclipse.jre.macosx.aarch64"/>
         <setEntry value="com.servoy.eclipse.jre.macosx.x86_64"/>
         <setEntry value="com.servoy.eclipse.nodejs.linux.gtk.x86_64"/>
+        <setEntry value="com.servoy.eclipse.nodejs.macosx.cocoa.aarch64"/>
         <setEntry value="com.servoy.eclipse.nodejs.macosx.cocoa.x86_64"/>
         <setEntry value="com.servoy.eclipse.opencode.tests"/>
         <setEntry value="com.servoy.eclipse.profiler"/>
@@ -382,8 +384,6 @@
         <setEntry value="org.jspecify.jspecify@default:default"/>
         <setEntry value="org.junit@default:default"/>
         <setEntry value="org.maven.ide.eclipse.grouplayout@default:default"/>
-        <setEntry value="org.mortbay.jasper.mortbay-apache-el@default:default"/>
-        <setEntry value="org.mortbay.jasper.mortbay-apache-jsp@default:default"/>
         <setEntry value="org.objectweb.asm.commons@default:default"/>
         <setEntry value="org.objectweb.asm.tree.analysis@default:default"/>
         <setEntry value="org.objectweb.asm.tree@default:default"/>

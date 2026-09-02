@@ -32,7 +32,8 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 /**
  * JUnit 4 tests for {@link ServoyDevServer}.
  */
-public class ServoyDevServerIntegrationTest {
+public class ServoyDevServerIntegrationTest extends DialogGuardBase {
+
 	private final ServoyDevServer server = new ServoyDevServer();
 
 	@Test

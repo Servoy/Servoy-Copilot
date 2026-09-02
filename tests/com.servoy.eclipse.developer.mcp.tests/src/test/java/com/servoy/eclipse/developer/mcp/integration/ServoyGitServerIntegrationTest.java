@@ -42,7 +42,8 @@ import org.junit.Test;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.services.GitService;
 
-public class ServoyGitServerIntegrationTest {
+public class ServoyGitServerIntegrationTest extends DialogGuardBase {
+
 	private static final String PROJECT_NAME = "test_git_server_suite";
 
 	private ServoyGitServer gitServer;

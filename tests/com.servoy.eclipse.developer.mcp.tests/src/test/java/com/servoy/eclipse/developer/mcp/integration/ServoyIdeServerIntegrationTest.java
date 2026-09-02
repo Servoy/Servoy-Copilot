@@ -18,7 +18,6 @@ package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 import org.junit.Test;
 
@@ -38,7 +37,8 @@ import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
  * instance.
  * </p>
  */
-public class ServoyIdeServerIntegrationTest {
+public class ServoyIdeServerIntegrationTest extends DialogGuardBase {
+
 	private final ServoyIdeServer server = new ServoyIdeServer(new ProjectService(), new WorkspaceService(),
 			new MarkdownService(), new IdeStateService());
 

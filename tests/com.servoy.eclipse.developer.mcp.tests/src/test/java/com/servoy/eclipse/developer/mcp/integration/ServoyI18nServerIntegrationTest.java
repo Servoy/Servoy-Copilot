@@ -26,7 +26,7 @@ import org.junit.Test;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServer;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
-public class ServoyI18nServerIntegrationTest {
+public class ServoyI18nServerIntegrationTest extends DialogGuardBase {
 
 	private ServoyI18nServer i18nServer;
 

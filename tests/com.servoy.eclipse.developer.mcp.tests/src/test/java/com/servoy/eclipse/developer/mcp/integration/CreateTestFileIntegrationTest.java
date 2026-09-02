@@ -41,7 +41,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  *   <li>Error conditions: unknown solution, null solution</li>
  * </ul>
  */
-public class CreateTestFileIntegrationTest
+public class CreateTestFileIntegrationTest extends DialogGuardBase
 {
 	// Neutral name - NOT an existing Servoy solution so Servoy never tries to
 	// load it and show blocking error dialogs in the PDE test workspace.

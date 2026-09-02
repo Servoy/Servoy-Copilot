@@ -53,7 +53,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
  *   <li>Empty body: creates a syntactically valid empty function</li>
  * </ul>
  */
-public class AddTestMethodIntegrationTest
+public class AddTestMethodIntegrationTest extends DialogGuardBase
 {   
 	// Neutral name - NOT an existing Servoy solution so Servoy never tries to
 	// load it and show blocking error dialogs in the PDE test workspace.

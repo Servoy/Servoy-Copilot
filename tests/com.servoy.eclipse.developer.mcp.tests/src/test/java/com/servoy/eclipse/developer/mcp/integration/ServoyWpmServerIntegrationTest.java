@@ -16,12 +16,10 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -45,7 +43,7 @@ import com.servoy.eclipse.developer.mcp.services.ComponentSpecService;
  * <p>
  * Must be run as a JUnit Plug-in Test (PDE), e.g. via the WpmIntegrationTests_mac launch config.
  */
-public class ServoyWpmServerIntegrationTest
+public class ServoyWpmServerIntegrationTest extends DialogGuardBase
 {
 	private ServoyWpmServer server;
 	private ComponentSpecService componentSpecService;

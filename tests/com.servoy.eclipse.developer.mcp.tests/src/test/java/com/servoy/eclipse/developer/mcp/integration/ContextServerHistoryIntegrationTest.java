@@ -22,7 +22,8 @@ import org.junit.Test;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
 import com.servoy.eclipse.developer.mcp.services.LocalHistoryService;
 
-public class ContextServerHistoryIntegrationTest {
+public class ContextServerHistoryIntegrationTest extends DialogGuardBase {
+
 	private static final String PROJECT_NAME = "test_context_history_suite";
 
 	private ServoyContextServer contextServer;

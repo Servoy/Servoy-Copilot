@@ -33,6 +33,7 @@ import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.ValueList;
 
 public class CreateArtifactsIntegrationTest extends TestUtilitiesClass {
+
 	private static final String TEST_SOLUTION = "test_artifacts_suite";
 	private static final String SERVOY_RESOURCES = "servoy_resources";
 

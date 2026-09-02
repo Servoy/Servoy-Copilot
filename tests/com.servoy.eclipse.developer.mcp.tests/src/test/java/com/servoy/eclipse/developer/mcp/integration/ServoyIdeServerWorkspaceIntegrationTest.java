@@ -30,7 +30,8 @@ import com.servoy.eclipse.developer.mcp.services.MarkdownService;
 import com.servoy.eclipse.developer.mcp.services.ProjectService;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 
-public class ServoyIdeServerWorkspaceIntegrationTest {
+public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
+
 	private static final String PROJECT_NAME = "test_ide_workspace_suite";
 
 	private ServoyIdeServer server;

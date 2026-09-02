@@ -34,7 +34,7 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * <p>
  * Requires the Eclipse platform + Servoy runtime (JUnit Plug-in Test).
  */
-public class ValidationToolsIntegrationTest
+public class ValidationToolsIntegrationTest extends DialogGuardBase
 {
 
 	private ServoyDevServer devServer;

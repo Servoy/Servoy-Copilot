@@ -27,13 +27,11 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.CopySourceFolderAction;
-import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
-import com.servoy.eclipse.ui.views.solutionexplorer.actions.RenameSolutionAction;
 import com.servoy.j2db.persistence.AbstractRepository;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 import com.servoy.j2db.util.UUID;
 
-public class TestUtilitiesClass {
+public class TestUtilitiesClass extends DialogGuardBase {
 
 	private static final long APP_SERVER_POLL_MS = 15_000;
 	private static final long ACTIVATE_SETTLE_MS = 10_000;

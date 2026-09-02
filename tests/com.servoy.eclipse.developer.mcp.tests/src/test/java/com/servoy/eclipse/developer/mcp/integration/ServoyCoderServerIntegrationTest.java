@@ -41,7 +41,8 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 
-public class ServoyCoderServerIntegrationTest {
+public class ServoyCoderServerIntegrationTest extends DialogGuardBase {
+
 	private static final String PROJECT_NAME = "test_coder_server_suite";
 
 	private ServoyCoderServer coderServer;
