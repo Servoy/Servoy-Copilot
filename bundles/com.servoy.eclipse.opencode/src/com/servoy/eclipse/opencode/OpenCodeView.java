@@ -351,10 +351,29 @@ public class OpenCodeView extends ViewPart {
 	 */
 	private void registerSessionTrackingFunction()
 	{
-		browser.addBrowserFunction("__servoySessionChanged", arguments -> { //$NON-NLS-1$
-			onSessionIdReported(arguments);
-			return null;
-		});
+		Object browserInstance = browser.getBrowserInstance();
+		if (browserInstance instanceof org.eclipse.swt.browser.Browser swtBrowser)
+		{
+			new org.eclipse.swt.browser.BrowserFunction(swtBrowser, "__servoySessionChanged") { //$NON-NLS-1$
+				@Override
+				public Object function(Object[] arguments)
+				{
+					onSessionIdReported(arguments);
+					return null;
+				}
+			};
+		}
+		else if (browserInstance instanceof com.equo.chromium.swt.Browser chromiumBrowser)
+		{
+			new com.equo.chromium.swt.BrowserFunction(chromiumBrowser, "__servoySessionChanged") { //$NON-NLS-1$
+				@Override
+				public Object function(Object[] arguments)
+				{
+					onSessionIdReported(arguments);
+					return null;
+				}
+			};
+		}
 	}
 
 	static String parseReportedSessionId(Object[] arguments)

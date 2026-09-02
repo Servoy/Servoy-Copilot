@@ -15,7 +15,8 @@ Require-Bundle: org.eclipse.ui,
  com.servoy.eclipse.model,
  com.servoy.eclipse.ngclient.ui,
  servoy_shared
-Import-Package: com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
+Import-Package: com.equo.chromium.swt,
+ com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-21
