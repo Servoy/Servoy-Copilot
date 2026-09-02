@@ -67,6 +67,21 @@ locate the code involved in the reported behaviour:
 - Understand the existing design and any relevant extension points / internal mechanisms.
 - Look for existing features that already solve part of the problem.
 
+**Bundled third-party tools — check the tool's own runtime, not just our source.**
+When the ticket asks to *build a capability* into a view/feature that embeds or wraps a
+third-party tool (e.g. the embedded opencode web UI, a bundled browser app, an external
+CLI we shell out to), the capability may already exist in that tool — and it will be
+invisible to a `grep` of our repo. Before concluding "no export/import/diff/etc. exists",
+check the tool itself at the version actually installed (not just the pinned floor in a
+manifest/`package.json`):
+- Its **CLI** (`--help`, subcommands) and **HTTP/REST API** if it exposes one.
+- Its **own UI/runtime** — the menus and actions the tool renders itself (e.g. a web
+  SPA's context menu). This surface is not in our source and is the one most often missed.
+- Its **changelog / upstream docs** for the installed version.
+
+If the tool already provides it, that is a first-class candidate approach in step 5
+(often "No code change needed — use the tool's built-in X"), and usually the right one.
+
 ### 3. Git history analysis
 
 For the code you suspect is involved, run `git blame` and inspect the introducing commit:
@@ -87,6 +102,11 @@ This is the heart of triage. Answer these explicitly, backed by evidence from st
 
 - **Is the problem even in Servoy code?** Or is it user-side (misconfiguration, misuse
   of an API), expected behaviour that's misunderstood, or in a third-party dependency?
+- **For a feature request: does a bundled/wrapped third-party tool already provide it?**
+  If the request is to add a capability to a view that embeds or wraps another tool,
+  confirm the tool doesn't already ship it (per the "Bundled third-party tools" check in
+  step 2) before speccing a reimplementation. Duplicating an upstream-maintained feature
+  is a common wrong turn — the correct verdict is often to use the built-in one.
 - **If it is a real bug, is the ticket's proposed approach the right one?** For example,
   the ticket may ask for a new public API when the correct fix is to adjust an existing
   internal mechanism — no API needed at all. (Real example: SVY-21218.)
