@@ -155,15 +155,7 @@ public class TestUtilitiesClass extends DialogGuardBase {
 			assertNotNull("Cannot find test solution's project in order to activate it", servoyProjectForSolution[0]);
 		});
 
-		if (shouldBeTheActiveSolutionAsWell) {
-			ServoyProject active = model.getActiveProject();
-			if (active == null || !solName.equals(active.getProject().getName()))
-				model.setActiveProject(servoyProjectForSolution[0], true);
-		}
-
 		pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
-			if (shouldBeTheActiveSolutionAsWell) assertNotNull("Active project is null", model.getActiveProject());
-			
 			// The background "Writing I18N files..." job (EclipseMessages) dereferences
 			// servoyProject.getSolution() without a null-check. While our synthetic
 			// solution is still loading, getSolution() can be null and that job NPEs,
@@ -172,10 +164,20 @@ public class TestUtilitiesClass extends DialogGuardBase {
 			// BEFORE writing the script file (which triggers the builder that schedules
 			// that job), so it finds a valid solution.
 
-			assertNotNull("Solution should be loaded after activation", model.getActiveProject().getSolution());
-			assertNotNull("Editing solution should be resolved after activation", model.getActiveProject().getEditingSolution());
-			if (shouldBeTheActiveSolutionAsWell) assertEquals("Project '" + solName + "'was not activated sucessfully", solName, model.getActiveProject().getSolution().getName());
+			assertNotNull("Solution should be loaded", servoyProjectForSolution[0].getSolution());
+			assertNotNull("Editing solution should be resolved after activation", servoyProjectForSolution[0].getEditingSolution());
 		});
+		
+		if (shouldBeTheActiveSolutionAsWell) {
+			ServoyProject active = model.getActiveProject();
+			if (active == null || !solName.equals(active.getProject().getName()))
+				model.setActiveProject(servoyProjectForSolution[0], true);
+
+			pumpEventsUntil(ACTIVATE_SETTLE_MS, () -> {
+				assertNotNull("Active project is null", model.getActiveProject());
+				assertEquals("Project '" + solName + "'was not activated sucessfully", solName, model.getActiveProject().getSolution().getName());
+			});
+		}
 
 		waitForWorkspaceBuildJobs();
 	}
