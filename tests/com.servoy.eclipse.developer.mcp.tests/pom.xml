@@ -135,6 +135,7 @@
                                             <untar src="${tarball}" dest="${extract_dir}" compression="gzip">
                                                 <patternset>
                                                     <include name="application_server/**"/>
+                                                    <exclude name="application_server/postgres_db/**"/>
                                                 </patternset>
                                             </untar>
                                             <!-- Stamp timestamp_file with tarball's own mtime -->
