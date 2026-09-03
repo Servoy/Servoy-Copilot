@@ -77,6 +77,14 @@ public class OpenCodeView extends ViewPart {
 	private IPartListener2 partListener;
 
 	/**
+	 * Worktree last pushed by {@link #seedOpenedProjectsIfNeeded()}, used to
+	 * avoid recomputing {@link OpenCodeUtil#getActiveProjectPath()} (a filesystem
+	 * walk) and re-injecting the seed script on every {@code changed} event once
+	 * the current workspace has already been seeded for this page load.
+	 */
+	private String lastSeededWorktree;
+
+	/**
 	 * Non-null only while this view is waiting for the first active solution.
 	 * Cleared (and removed from the model) on first {@code activeProjectChanged}
 	 * call or when the view is disposed.
@@ -94,9 +102,32 @@ public class OpenCodeView extends ViewPart {
 			@Override
 			public void changed(org.eclipse.swt.browser.LocationEvent event) {
 				browser.execute(INJECT_CSS_JS);
+				// Seed opencode's Home "opened projects" list with the active
+				// workspace so Home shows the solution's session history (SVY-21363).
+				// Only relevant on the actual opencode app - not the local file://
+				// loading/no-solution/not-enabled pages - and only needs doing once
+				// per workspace per page load.
+				if (event.location != null && event.location.startsWith("http://")) { //$NON-NLS-1$
+					seedOpenedProjectsIfNeeded();
+				}
 			}
 		});
 		initUrl();
+	}
+
+	/**
+	 * Resolves the active workspace and, if it differs from the last one seeded
+	 * during this view's lifetime, injects {@link OpenCodeBranding#buildProjectSeedScript}.
+	 * The underlying script is itself idempotent; this cache just avoids the
+	 * {@code .git}-root filesystem walk and script execution on every navigation
+	 * within the opencode SPA once the current workspace is already seeded.
+	 */
+	private void seedOpenedProjectsIfNeeded() {
+		String worktree = OpenCodeUtil.getActiveProjectPath();
+		if (worktree != null && !worktree.equals(lastSeededWorktree)) {
+			browser.execute(OpenCodeBranding.buildProjectSeedScript(worktree));
+			lastSeededWorktree = worktree;
+		}
 	}
 
 	@Override

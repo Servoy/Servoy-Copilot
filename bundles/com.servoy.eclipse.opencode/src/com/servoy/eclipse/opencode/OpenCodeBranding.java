@@ -214,6 +214,59 @@ public class OpenCodeBranding
 	}
 
 	/**
+	 * Builds a JavaScript IIFE that ensures the given workspace {@code worktree}
+	 * is present in opencode's Home "opened projects" list.
+	 * <p>
+	 * opencode renders the Home project cards (and their session history) from
+	 * the {@code opencode.global.dat:server} localStorage key, specifically the
+	 * {@code projects.local[]} array of {@code {worktree, expanded}} entries.
+	 * Servoy deep-links straight into a session on startup and never seeds that
+	 * list, so clicking Home shows "Nothing here yet". This script adds the
+	 * active workspace to that list so Home shows the workspace's sessions.
+	 * <p>
+	 * The script is idempotent: it merges into any existing value and does
+	 * nothing if the worktree is already present (matched case-insensitively and
+	 * separator-insensitively). It never removes other projects the user may
+	 * have opened.
+	 * <p>
+	 * NOTE: the {@code opencode.global.dat:server} key and {@code projects.local[]}
+	 * shape are opencode internals (not a public API), validated against
+	 * opencode-ai 1.18.x. If a future opencode version changes them this seed
+	 * silently no-ops and Home reverts to empty; revisit if that regresses.
+	 *
+	 * @param worktree the active workspace path as reported by opencode (e.g.
+	 *                 {@code C:\R_D\servoy-workspace\master}); if {@code null}
+	 *                 or blank an empty no-op script is returned
+	 */
+	static String buildProjectSeedScript(String worktree)
+	{
+		if (worktree == null || worktree.isBlank()) return "";
+		StringBuilder sb = new StringBuilder();
+		sb.append("(function(){try{");
+		sb.append("  var KEY='opencode.global.dat:server';");
+		sb.append("  var wt=").append(toJsString(worktree)).append(";");
+		sb.append("  var raw=localStorage.getItem(KEY);");
+		sb.append("  var st=raw?JSON.parse(raw):{};");
+		sb.append("  if(!st||typeof st!=='object')st={};");
+		sb.append("  if(!st.projects||typeof st.projects!=='object')st.projects={};");
+		sb.append("  if(!Array.isArray(st.projects.local))st.projects.local=[];");
+		// Normalise for comparison: lower-case (Windows drive letters vary) and
+		// treat back-/forward-slashes as equal, since opencode may persist the
+		// worktree with either separator.
+		sb.append("  function norm(s){return String(s).toLowerCase().replace(/\\\\/g,'/');}");
+		sb.append("  var wtl=norm(wt);");
+		sb.append("  var exists=st.projects.local.some(function(p){return p&&typeof p.worktree==='string'&&norm(p.worktree)===wtl;});");
+		sb.append("  if(!exists){");
+		sb.append("    st.projects.local.push({worktree:wt,expanded:true});");
+		sb.append("    if(!st.lastProject||typeof st.lastProject!=='object')st.lastProject={};");
+		sb.append("    st.lastProject.local=wt;");
+		sb.append("    localStorage.setItem(KEY,JSON.stringify(st));");
+		sb.append("  }");
+		sb.append("}catch(e){}})();");
+		return sb.toString();
+	}
+
+	/**
 	 * Wraps a CSS string in a JavaScript single-quoted string literal.
 	 */
 	static String toJsString(String css)
