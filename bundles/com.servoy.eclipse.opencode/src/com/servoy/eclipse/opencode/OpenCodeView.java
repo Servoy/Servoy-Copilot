@@ -254,6 +254,7 @@ public class OpenCodeView extends ViewPart {
 
 	private void registerPartVisibleListener() {
 		if (partListener != null) return;
+		if (getSite() == null || getSite().getPage() == null) return;
 		partListener = new IPartListener2() {
 			@Override
 			public void partVisible(IWorkbenchPartReference partRef) {
@@ -308,7 +309,7 @@ public class OpenCodeView extends ViewPart {
 					if (getSite() != null && getSite().getPage() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
 						Activator.getInstance().logToConsole("loading url: " + targetUrl);
 						setUrl(targetUrl);
-					} else if (getSite() != null) {
+					} else if (getSite() != null && getSite().getPage() != null) {
 						pendingUrl = targetUrl;
 						registerPartVisibleListener();
 					}
