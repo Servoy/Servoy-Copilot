@@ -383,18 +383,23 @@ public class FormPreviewService
 
 	private Path findScreenshotFile(Path screenshotsDir, String formName)
 	{
-		// Cypress names screenshots after the spec file ("_screenshot_<formName>.cy.js"), so the
-		// screenshot file name starts with the exact "_screenshot_<formName>" token. Matching that
-		// prefix (rather than a bare contains(formName)) avoids picking the wrong file when one form
-		// name is a substring of another (e.g. "order" vs "orders").
-		String screenshotPrefix = "_screenshot_" + formName;
+		// Cypress writes the capture to "screenshots/<specFile>/<screenshotName>.png". Our spec is
+		// named "_screenshot_<formName>.cy.js" and calls cy.screenshot('<formName>'), so the file
+		// lands in the folder "_screenshot_<formName>.cy.js" with the leaf name "<formName>.png".
+		// Match on the exact spec folder (the reliable disambiguator, independent of the screenshot
+		// name argument) and fall back to an exact leaf-name match. This avoids the wrong-file pick
+		// a bare contains(formName) caused when one form name is a substring of another
+		// (e.g. "order" vs "orders").
+		String specFolder = "_screenshot_" + formName + ".cy.js";
+		String leafName = formName + ".png";
 		try (Stream<Path> walk = Files.walk(screenshotsDir))
 		{
 			return walk.filter(p -> p.toString().endsWith(".png"))
 				.filter(p -> {
-					String fileName = p.getFileName().toString();
-					return fileName.startsWith(screenshotPrefix + ".") || fileName.startsWith(screenshotPrefix + " ") ||
-						fileName.equals(screenshotPrefix + ".png");
+					Path parent = p.getParent();
+					boolean inSpecFolder = parent != null && parent.getFileName() != null &&
+						specFolder.equals(parent.getFileName().toString());
+					return inSpecFolder || leafName.equals(p.getFileName().toString());
 				})
 				.findFirst().orElse(null);
 		}
