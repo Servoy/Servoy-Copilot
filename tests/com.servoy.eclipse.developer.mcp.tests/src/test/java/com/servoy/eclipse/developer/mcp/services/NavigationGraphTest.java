@@ -309,6 +309,19 @@ public class NavigationGraphTest {
 			List<NavigationEdge> subgraph = graph.getSubgraphEdges("main", "unreachable");
 			assertTrue(subgraph.isEmpty());
 		}
+
+		@Test
+		@DisplayName("querying the source form itself also returns an empty list (trivial case, not unreachable)")
+		void sourceFormAsTarget_returnsEmpty() {
+			graph.addEdge(edge("main", "orders", "tabpanel"));
+
+			// This is the same "trivial" empty-list case that ServoyTestingServer.getFormNavigationGraph
+			// must special-case as "isMainForm" rather than reporting the main form as unreachable --
+			// findPath/getSubgraphEdges cannot distinguish "no path" from "already there" on their own.
+			List<NavigationEdge> subgraph = graph.getSubgraphEdges("main", "main");
+			assertTrue(subgraph.isEmpty());
+			assertTrue(graph.hasForm("main"), "the form still exists in the graph");
+		}
 	}
 
 	@Nested

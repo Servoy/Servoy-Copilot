@@ -686,7 +686,8 @@ public class ServoyTestingServer
 		"Use this to understand the application's navigation structure for Cypress E2E test generation. " +
 		"If formName is provided, returns only the subgraph relevant to reaching that form plus the navigation path. " +
 		"When formName is given, the result also includes targetFormExists (whether the form participates in the graph at all) " +
-		"and, if no edges are returned, a reachability field of either 'unreachable' (the form exists but no static/script path was found) " +
+		"and, if no edges are returned, a reachability field of 'isMainForm' (formName is the solution's main/entry form, " +
+		"so it is trivially reachable and has no incoming path), 'unreachable' (the form exists but no static/script path was found), " +
 		"or 'unknownForm' (the form name is not in the graph — likely a typo or a form not referenced anywhere). " +
 		"For large solutions, pass summaryOnly=true to get a compact parent->children map instead of full edge objects.", type = "object")
 	public String getFormNavigationGraph(
@@ -737,8 +738,15 @@ public class ServoyTestingServer
 					summary.put("targetFormExists", graph.hasForm(formName.trim()));
 					if (edges.isEmpty())
 					{
-						summary.put("reachability", graph.hasForm(formName.trim())
-							? "unreachable" : "unknownForm");
+						if (mainForm != null && mainForm.equals(formName.trim()))
+						{
+							summary.put("reachability", "isMainForm");
+						}
+						else
+						{
+							summary.put("reachability", graph.hasForm(formName.trim())
+								? "unreachable" : "unknownForm");
+						}
 					}
 					java.util.List<NavigationEdge> path = graph.findPath(mainForm != null ? mainForm : "",
 						formName.trim());
@@ -771,7 +779,14 @@ public class ServoyTestingServer
 				result.put("targetFormExists", graph.hasForm(formName.trim()));
 				if (edges.isEmpty())
 				{
-					result.put("reachability", graph.hasForm(formName.trim()) ? "unreachable" : "unknownForm");
+					if (mainForm != null && mainForm.equals(formName.trim()))
+					{
+						result.put("reachability", "isMainForm");
+					}
+					else
+					{
+						result.put("reachability", graph.hasForm(formName.trim()) ? "unreachable" : "unknownForm");
+					}
 				}
 				java.util.List<NavigationEdge> path = graph.findPath(mainForm != null ? mainForm : "", formName.trim());
 				com.fasterxml.jackson.databind.node.ArrayNode pathArray = mapper.createArrayNode();
