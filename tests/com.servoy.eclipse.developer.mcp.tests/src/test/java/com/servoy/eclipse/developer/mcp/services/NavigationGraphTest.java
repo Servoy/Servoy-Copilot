@@ -2,6 +2,7 @@ package com.servoy.eclipse.developer.mcp.services;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -120,6 +121,49 @@ public class NavigationGraphTest {
 		@DisplayName("returns empty set for empty graph")
 		void emptyGraph_returnsEmptySet() {
 			assertTrue(graph.getAllFormNames().isEmpty());
+		}
+	}
+
+	@Nested
+	@DisplayName("hasForm")
+	class HasFormTests {
+		@Test
+		@DisplayName("returns true for a source form")
+		void sourceForm_returnsTrue() {
+			graph.addEdge(edge("formA", "formB", "tabpanel"));
+			assertTrue(graph.hasForm("formA"));
+		}
+
+		@Test
+		@DisplayName("returns true for a target-only form")
+		void targetOnlyForm_returnsTrue() {
+			graph.addEdge(edge("formA", "formB", "tabpanel"));
+			assertTrue(graph.hasForm("formB"));
+		}
+
+		@Test
+		@DisplayName("returns false for a form not in the graph")
+		void unknownForm_returnsFalse() {
+			graph.addEdge(edge("formA", "formB", "tabpanel"));
+			assertFalse(graph.hasForm("formC"));
+		}
+
+		@Test
+		@DisplayName("returns false for null")
+		void nullForm_returnsFalse() {
+			graph.addEdge(edge("formA", "formB", "tabpanel"));
+			assertFalse(graph.hasForm(null));
+		}
+
+		@Test
+		@DisplayName("distinguishes unreachable existing form from unknown form")
+		void unreachableExisting_vs_unknown() {
+			graph.addEdge(edge("main", "orders", "tabpanel"));
+			graph.addEdge(edge("settings", "profile", "tabless"));
+
+			assertTrue(graph.getSubgraphEdges("main", "profile").isEmpty(), "profile is unreachable from main");
+			assertTrue(graph.hasForm("profile"), "but profile still exists in the graph");
+			assertFalse(graph.hasForm("nonexistent"), "a truly unknown form is not in the graph");
 		}
 	}
 

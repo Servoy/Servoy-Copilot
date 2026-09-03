@@ -383,9 +383,19 @@ public class FormPreviewService
 
 	private Path findScreenshotFile(Path screenshotsDir, String formName)
 	{
+		// Cypress names screenshots after the spec file ("_screenshot_<formName>.cy.js"), so the
+		// screenshot file name starts with the exact "_screenshot_<formName>" token. Matching that
+		// prefix (rather than a bare contains(formName)) avoids picking the wrong file when one form
+		// name is a substring of another (e.g. "order" vs "orders").
+		String screenshotPrefix = "_screenshot_" + formName;
 		try (Stream<Path> walk = Files.walk(screenshotsDir))
 		{
-			return walk.filter(p -> p.toString().endsWith(".png") && p.getFileName().toString().contains(formName))
+			return walk.filter(p -> p.toString().endsWith(".png"))
+				.filter(p -> {
+					String fileName = p.getFileName().toString();
+					return fileName.startsWith(screenshotPrefix + ".") || fileName.startsWith(screenshotPrefix + " ") ||
+						fileName.equals(screenshotPrefix + ".png");
+				})
 				.findFirst().orElse(null);
 		}
 		catch (Exception e)

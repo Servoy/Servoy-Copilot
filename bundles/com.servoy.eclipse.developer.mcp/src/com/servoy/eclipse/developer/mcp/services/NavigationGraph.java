@@ -42,6 +42,18 @@ public class NavigationGraph {
 		return names;
 	}
 
+	/**
+	 * Returns {@code true} when the given form participates in the navigation graph (as the
+	 * source or target of at least one edge). This lets callers distinguish a form that exists
+	 * but is unreachable via static/script analysis (empty subgraph, but present here) from a
+	 * form name the graph has never seen (typo or truly absent).
+	 */
+	public boolean hasForm(String formName) {
+		if (formName == null)
+			return false;
+		return adjacency.containsKey(formName) || reverseAdjacency.containsKey(formName);
+	}
+
 	public List<NavigationEdge> findPath(String fromForm, String toForm) {
 		if (fromForm == null || toForm == null)
 			return Collections.emptyList();
