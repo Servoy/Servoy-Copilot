@@ -17,6 +17,7 @@
 
 package com.servoy.eclipse.opencode;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 
@@ -249,7 +250,8 @@ public class Activator extends Plugin {
 		long pid = process.pid();
 		ServoyLog.logInfo("OpenCode: killing process tree, root PID: " + pid + ", alive: " + process.isAlive());
 
-		if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		if (isWindows) {
 			try {
 				Process taskkill = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid))
 						.redirectErrorStream(true).start();
@@ -277,6 +279,22 @@ public class Activator extends Plugin {
 			process.descendants().forEach(ProcessHandle::destroyForcibly);
 			process.destroyForcibly();
 		}
+
+		// taskkill /T (and the JDK's ProcessHandle.descendants()) only see processes
+		// that Windows/the JVM still track as children/descendants of pid at the
+		// moment they run. npm/opencode commonly launches through an intermediate
+		// shell (e.g. "cmd.exe /c opencode serve"); if that shell has already
+		// exited or been reparented by the time taskkill runs, the real opencode.exe
+		// (and any bun.exe it spawns) becomes an orphan with no traceable parent and
+		// survives both the taskkill tree-kill and the Java descendants() fallback.
+		// Sweep for any leftover process whose command line points at *this*
+		// bundle's managed opencode install directory, independent of any
+		// parent/child relationship. This directory is always the same
+		// workspace-relative OSGi state location - {workspace}/.metadata/.plugins/
+		// com.servoy.eclipse.opencode/opencode - whether Eclipse is running from
+		// source or from an installed Servoy Developer product, so the sweep works
+		// identically in both cases.
+		killOrphansUnderOpencodeDir(isWindows);
 
 		// Close streams to unblock readLine() in RunNPMCommand.runCommand().
 		//
@@ -307,6 +325,65 @@ public class Activator extends Plugin {
 		closer.start();
 		ServoyLog.logInfo("OpenCode: process stream close scheduled (async) for PID: " + pid);
 	}
+
+	/**
+	 * Force-kills any remaining OS process whose command line references this
+	 * bundle's managed opencode install directory ({@code {stateLocation}/opencode}),
+	 * regardless of parent/child relationship. This is a safety net for processes
+	 * orphaned by {@link #killProcessTree} (see the comment there for why that can
+	 * happen), so leftover {@code opencode.exe} / {@code bun.exe} processes don't
+	 * keep running - and keep the port bound - after Eclipse shuts down.
+	 * <p>
+	 * The marker directory is this bundle's OSGi state location
+	 * ({@code getStateLocation()/opencode}), which resolves the same way whether
+	 * Eclipse is launched from source (workspace {@code .metadata/.plugins/...})
+	 * or from an installed Servoy Developer product (product's
+	 * {@code configuration/.../ .metadata/.plugins/...}) - both cases go through
+	 * the same {@code Plugin#getStateLocation()} API, so this sweep works
+	 * identically for both.
+	 * </p>
+	 */
+	private void killOrphansUnderOpencodeDir(boolean isWindows) {
+		File opencodeDir = getOpencodeDir();
+		if (opencodeDir == null) {
+			ServoyLog.logInfo("OpenCode: orphan sweep skipped - opencode dir unknown");
+			return;
+		}
+		String marker = opencodeDir.getAbsolutePath();
+		try {
+			if (isWindows) {
+				String escaped = marker.replace("'", "''");
+				String script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('"
+						+ escaped
+						+ "') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+				Process ps = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+						.redirectErrorStream(true).start();
+				ps.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+			} else {
+				Process pkill = new ProcessBuilder("pkill", "-9", "-f", marker).redirectErrorStream(true).start();
+				pkill.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+			}
+			ServoyLog.logInfo("OpenCode: orphan sweep completed for dir: " + marker);
+		} catch (Exception e) {
+			ServoyLog.logInfo("OpenCode: orphan sweep failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * @return the opencode install directory managed by
+	 *         {@link OpencodeFolderCreatorJob} / {@link RunOpencodeCommand} (i.e.
+	 *         {@code {stateLocation}/opencode}), or {@code null} if the state
+	 *         location is not available (e.g. plugin not properly started, as in
+	 *         some unit tests).
+	 */
+	private File getOpencodeDir() {
+		try {
+			return new File(getStateLocation().toFile(), "opencode");
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
 	// --- logging helpers ---
 
 	/**
