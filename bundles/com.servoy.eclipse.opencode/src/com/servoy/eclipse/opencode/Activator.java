@@ -134,7 +134,7 @@ public class Activator extends Plugin {
 	 * (idempotent). Must be called only after login is complete and an active
 	 * solution is present.
 	 */
-	void ensureServerStarting() {
+	public void ensureServerStarting() {
 		String urlOverride = System.getProperty(OpencodePerspective.URL_PROPERTY);
 		if (urlOverride != null)
 			return; // external server, nothing to do
@@ -278,16 +278,34 @@ public class Activator extends Plugin {
 			process.destroyForcibly();
 		}
 
-		// Close streams to unblock readLine() in RunNPMCommand.runCommand()
-		try {
-			process.getInputStream().close();
-		} catch (Exception ignored) {
-		}
-		try {
-			process.getErrorStream().close();
-		} catch (Exception ignored) {
-		}
-		ServoyLog.logInfo("OpenCode: process streams closed for PID: " + pid);
+		// Close streams to unblock readLine() in RunNPMCommand.runCommand().
+		//
+		// IMPORTANT: this must never be done synchronously on this thread. On Windows,
+		// closing a stream's underlying handle while another thread has a pending
+		// blocking read() on that same handle causes CloseHandle to block until that
+		// read completes. If taskkill did not manage to kill a detached grandchild
+		// (npm/bun can spawn processes outside the tracked tree) the pipe's write end
+		// may still be open somewhere, so the read never completes - and neither would
+		// this close() call. Since this method runs on the OSGi "Framework stop"
+		// thread during Eclipse shutdown, a blocked close() here would hang the entire
+		// IDE shutdown forever (the main thread waits on SystemModule.waitForStop()
+		// for this bundle's stop() to return). Doing the close on a daemon thread
+		// guarantees stopServer()/stop() always return promptly, even if the OS-level
+		// close never unblocks.
+		Thread closer = new Thread(() -> {
+			try {
+				process.getInputStream().close();
+			} catch (Exception ignored) {
+			}
+			try {
+				process.getErrorStream().close();
+			} catch (Exception ignored) {
+			}
+			ServoyLog.logInfo("OpenCode: process streams closed for PID: " + pid);
+		}, "OpenCode-ProcessStreamCloser");
+		closer.setDaemon(true);
+		closer.start();
+		ServoyLog.logInfo("OpenCode: process stream close scheduled (async) for PID: " + pid);
 	}
 	// --- logging helpers ---
 
