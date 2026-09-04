@@ -8,6 +8,7 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -31,15 +32,11 @@ import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
  * <li>At least one ServoyProject must exist in the workspace (setUp activates it automatically).</li>
  * </ol>
  * <p>
- * Tests skip gracefully:
- * <ul>
- * <li>All tests skip if no Servoy app server is running.</li>
- * <li>All tests skip if no ServoyProject is found in the workspace.</li>
- * <li>Tests that invoke the headless client skip (not fail) if the client cannot complete the run.</li>
- * </ul>
+ * The active solution ({@code test_pilot_suite}) contains exactly one test:
+ * {@code test_pilot_passesAlways()} which always passes.
  * <p>
- * These tests are <em>excluded from the Maven/Tycho headless build</em> (see pom.xml surefire excludes).
- * Run manually from Eclipse using {@code RunTestMethodIntegrationTest_mac.launch}.
+ * These tests are <em>excluded from the Maven/Tycho headless build</em> (see pom.xml surefire excludes), but run in a PDE ui verision of tycho junit tests.
+ * Run manually from Eclipse using {@code AllDeveloperMcpIntegrationTests.launch} or variants of it.
  */
 public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 {
@@ -90,8 +87,8 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 	{
 		String result = runner.runTestMethod(null, "ALL", TIMEOUT_SECONDS);
 		assertNotNull(result);
-		assertTrue("Null method name should return an error message starting with 'Error:'",
-			result.startsWith("Error:"));
+		assertEquals("Null method name should return the exact validation error",
+			"Error: testMethodName must not be empty.", result);
 	}
 
 	@Test
@@ -99,8 +96,8 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 	{
 		String result = runner.runTestMethod("   ", "ALL", TIMEOUT_SECONDS);
 		assertNotNull(result);
-		assertTrue("Blank method name should return an error message starting with 'Error:'",
-			result.startsWith("Error:"));
+		assertEquals("Blank method name should return the exact validation error",
+			"Error: testMethodName must not be empty.", result);
 	}
 
 	// -----------------------------------------------------------------------
@@ -123,8 +120,8 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 			() -> runner.runTestMethod(KNOWN_PASSING_METHOD, "ALL", TIMEOUT_SECONDS));
 
 		assertNotNull(result);
-		assertFalse("runTestMethod should not return a launch error for a known method; got: " + result,
-			result.startsWith("Error: Test run timed out") || result.startsWith("Error launching"));
+		assertFalse("runTestMethod should not return a runner-level error for a known method; got: " + result,
+			result.startsWith("Error:"));
 	}
 
 	@Test
@@ -134,11 +131,7 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 			() -> runner.runTestMethod(KNOWN_PASSING_METHOD, "ALL", TIMEOUT_SECONDS));
 
 		assertNotNull(result);
-
-		// Skip if headless client could not complete (timeout / port conflict).
-		assertTrue("headless client run returned an error - skipping method-name assertion",
-			!result.startsWith("Error"));
-
+		assertFalse("runTestMethod must not return a runner-level error", result.startsWith("Error:"));
 		assertTrue(
 			"Output must reference the test method name '" + KNOWN_PASSING_METHOD + "'; got:\n"
 				+ result.substring(0, Math.min(result.length(), 200)),
@@ -152,16 +145,12 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 			() -> runner.runTestMethod(KNOWN_PASSING_METHOD, "ALL", TIMEOUT_SECONDS));
 
 		assertNotNull(result);
-
-		// Skip if headless client could not complete.
-		assertTrue("headless client run returned an error - skipping pass-status assertion",
-			!result.startsWith("Error"));
-
-		// The known method always passes; the output must contain PASS, PASSED, or passed.
+		assertFalse("runTestMethod must not return a runner-level error", result.startsWith("Error:"));
+		// The known method always passes; output must contain the PASS result label.
 		assertTrue(
 			"Output for an always-passing method should indicate it passed; got:\n"
 				+ result.substring(0, Math.min(result.length(), 200)),
-			result.contains("PASS") || result.contains("passed"));
+			result.contains("Result: PASS"));
 	}
 
 	@Test
@@ -171,9 +160,9 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 			() -> runner.runTestMethod(KNOWN_PASSING_METHOD, "ALL", TIMEOUT_SECONDS));
 
 		assertNotNull(result);
-
-		assertTrue("Output must not contain raw Java stack-trace lines (\"at java.\"); got:\n"
-			+ result.substring(0, Math.min(result.length(), 200)), !result.contains("at java."));
+		assertFalse("runTestMethod must not return a runner-level error", result.startsWith("Error:"));
+		assertFalse("Output must not contain raw Java stack-trace lines (\"at java.\"); got:\n"
+			+ result.substring(0, Math.min(result.length(), 200)), result.contains("at java."));
 	}
 
 	@Test
@@ -183,15 +172,10 @@ public class RunTestMethodIntegrationTest extends ServoyRunnerTestBase
 			() -> runner.runTestMethod("nonExistentMethod_xyz_abc_123", "ALL", TIMEOUT_SECONDS));
 
 		assertNotNull(result);
-
-		// Skip if the headless client itself failed (timeout etc.).
-		assertTrue("headless client run returned a launch error - skipping not-found assertion",
-			!result.startsWith("Error: Test run timed out") && !result.startsWith("Error launching"));
-
 		assertTrue(
-			"Unknown method name should produce an error or a 'not found' message; got:\n"
+			"Unknown method name should produce a 'not found' error message; got:\n"
 				+ result.substring(0, Math.min(result.length(), 200)),
-			result.startsWith("Error:"));
+			result.startsWith("Error: No test named 'nonExistentMethod_xyz_abc_123' found in scope 'ALL'."));
 	}
 
 	@Test

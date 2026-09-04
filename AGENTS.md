@@ -92,7 +92,7 @@ This Git repository contains the following core projects/plugins:
 - **Source:** `src/test/java/`
 - Contains both plain unit tests and integration tests that need a running Eclipse workbench.
 
-#### Plain JUnit tests (run with `eclipse-ide_runClassTests`)
+#### Plain JUnit tests (run with `eclipse-ide_runJUnitTests`)
 
 These tests use no live Eclipse workspace or OSGi container — pure Java, reflection, and mocking:
 
@@ -121,7 +121,7 @@ java.lang.NoSuchMethodError: 'java.util.List org.junit.jupiter.api.extension.Ext
 
 **Fix:** Open `org.eclipse.dltk.javascript.rhino` → Java Build Path → Libraries tab → remove or uncheck the `test-libs/junit-jupiter-api-*.jar`, `test-libs/junit-4.*.jar`, and `test-libs/hamcrest-*.jar` entries. Alternatively, remove the `test-libs` folder from rhino's `.classpath` entirely. The test sources can also be removed from the Source tab if rhino tests are not being developed.
 
-#### Plugin tests (run with `eclipse-pde_runJUnitPluginTestClass`)
+#### Plugin tests (run with `eclipse-pde_runJUnitPluginTests`)
 
 These tests require a running Eclipse workbench + Servoy App Server. They use `ResourcesPlugin`, `Display`, `ServoyModelManager`, etc.
 
@@ -131,6 +131,18 @@ These tests require a running Eclipse workbench + Servoy App Server. They use `R
 | `c.s.e.d.mcp` | `AllDeveloperMcpTests` (suite), `AllDeveloperMcpIntegrationTests` (suite) |
 
 Total: **9 integration tests + 2 suites** (require PDE test launcher)
+
+#### How to run integration tests from the `c.s.e.d.mcp.integration` package
+
+**Choosing the right tool and scope:**
+
+- `eclipse-pde_runJUnitPluginTests` is the tool for all PDE plug-in tests. It supports targeting by `className` (single class, or comma-separated for multiple), `methodName`, `packageName`, or no scope at all (all tests in the project). It also accepts a `launcherName` to reuse a saved launch configuration's classpath, VM args and bundle selection while overriding just the test target.
+- Use `eclipse-runner_listLaunchConfigurations` (with `typeFilter="junit-plugin"`) to discover the available saved launch configurations. On Windows, use the configurations **without** a `_mac` suffix. Pick whichever matches what you want to run — a single class, the full integration suite, etc.
+- When you only need to verify a specific class after a code change, pass `launcherName` + `className`. When you want to run all integration tests as the suite normally does, pass only `launcherName` (no `className` override).
+
+**Known limitation with `launcherName` + `className`:** passing a comma-separated list of classes alongside a `launcherName` does not reliably run all of them — the PDE runner appears to execute only one class per launch in that combination. Run each class in a **separate** `eclipse-pde_runJUnitPluginTests` call when you need to verify multiple classes.
+
+**Polling:** these tests start the Servoy Developer, so they typically take 60–120 s or more due to a long time starting it up - and the initial MCP call will likely time out before they finish. Poll with `eclipse-pde_getOperationStatus` using increasing wait times (e.g. 5 s, 10 s, 20 s, you decide) to reduce token usage between checks. While an operation is still running, `getOperationStatus` also surfaces intermediate `summary` and `results` — you can request those to see if everything is ok using `includeResults` to see how many tests have passed/failed so far, without waiting for the whole run. You can also check console output.
 
 #### Suite classes
 - `AllDeveloperMcpTests` — bundles the plain-junit-capable server/cache/guard/services tests but is annotated to run as plugin test

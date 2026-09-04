@@ -81,11 +81,6 @@ public abstract class ServoyRunnerTestBase extends TestUtilitiesClass {
 				}
 				Thread.sleep(10);
 			}
-		} else if (display != null) {
-			long remaining = deadline - System.currentTimeMillis();
-			if (remaining > 0) {
-				t.join(remaining);
-			}
 		} else {
 			long remaining = deadline - System.currentTimeMillis();
 			if (remaining > 0) {
