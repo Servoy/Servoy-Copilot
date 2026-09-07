@@ -74,6 +74,14 @@ public class Activator extends Plugin {
 	/** Holds the CountDownLatch and port - extracted for testability. */
 	private final OpencodeServerState serverState = new OpencodeServerState(RunOpencodeCommand.DEFAULT_PORT);
 
+	/**
+	 * Cached opencode install directory, captured while the bundle is fully
+	 * active. {@link #getStateLocation()} can throw once the bundle is stopping,
+	 * so the orphan sweep in {@link #stopServer()} relies on this cached value
+	 * instead of resolving the state location during shutdown.
+	 */
+	private volatile File cachedOpencodeDir;
+
 	private IConsole aiConsole;
 
 	public synchronized IConsole getConsole() {
@@ -108,6 +116,17 @@ public class Activator extends Plugin {
 	public void start(BundleContext context) throws Exception {
 		super.start(context);
 		instance = this;
+
+		// Resolve and cache the opencode install dir eagerly, while the bundle is
+		// fully active. getStateLocation() can throw once the bundle is stopping,
+		// and the shutdown-time orphan sweep in stopServer() must work even when
+		// this session never launched a server itself (e.g. cleaning up a process
+		// left over from a previous Developer run).
+		try {
+			cachedOpencodeDir = new File(getStateLocation().toFile(), "opencode");
+		} catch (Exception e) {
+			ServoyLog.logInfo("OpenCode: could not resolve opencode dir at start: " + e.getMessage());
+		}
 
 		// Setup is deferred until the user has both logged in and has an active
 		// solution.
@@ -184,6 +203,12 @@ public class Activator extends Plugin {
 
 	void setServerCommand(IRunNPMCommand cmd) {
 		this.serverCommand = cmd;
+		// Capture the install dir now, while the bundle is active and
+		// getStateLocation() still works, so the orphan sweep during shutdown
+		// does not depend on being able to resolve it while stopping.
+		if (cachedOpencodeDir == null) {
+			cachedOpencodeDir = getOpencodeDir();
+		}
 	}
 
 	/**
@@ -225,6 +250,16 @@ public class Activator extends Plugin {
 		} else {
 			ServoyLog.logInfo("OpenCode: serverCommand was null");
 		}
+
+		// Always run the orphan sweep as a final safety net, even if there was no
+		// tracked command/process. opencode launches through an intermediate shell
+		// and spawns detached children (opencode.exe / bun.exe) that Windows no
+		// longer tracks as descendants once the shell exits or is reparented. Those
+		// orphans survive taskkill /T and the JDK descendants() fallback, keep the
+		// server port bound, and hold file locks on the install dir - which is what
+		// causes the "Folder In Use" error when the install dir is later cleaned up.
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		killOrphansUnderOpencodeDir(isWindows);
 	}
 
 	/**
@@ -353,12 +388,25 @@ public class Activator extends Plugin {
 		try {
 			if (isWindows) {
 				String escaped = marker.replace("'", "''");
-				String script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('"
-						+ escaped
-						+ "') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+				// For every process whose command line references the managed
+				// opencode dir, kill the whole tree rooted at it via
+				// `taskkill /F /T /PID`. Using taskkill (not Stop-Process) is
+				// important: opencode.exe spawns its own children, and Stop-Process
+				// -Force only kills the matched PID, leaving grandchildren behind
+				// that keep the port bound and hold locks on the install folder.
+				// The whole thing is retried a few times because a process can be
+				// spawned/reparented in between the enumeration and the kill (this
+				// is exactly the race that let the previous single-pass sweep leave
+				// one opencode.exe alive after shutdown).
+				String script = "for ($i=0; $i -lt 5; $i++) {"
+						+ " $procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('"
+						+ escaped + "') };"
+						+ " if (-not $procs) { break }"
+						+ " foreach ($p in $procs) { & taskkill /F /T /PID $p.ProcessId 2>$null | Out-Null }"
+						+ " Start-Sleep -Milliseconds 300 }";
 				Process ps = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 						.redirectErrorStream(true).start();
-				ps.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+				ps.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
 			} else {
 				Process pkill = new ProcessBuilder("pkill", "-9", "-f", marker).redirectErrorStream(true).start();
 				pkill.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
@@ -377,6 +425,10 @@ public class Activator extends Plugin {
 	 *         some unit tests).
 	 */
 	private File getOpencodeDir() {
+		File cached = cachedOpencodeDir;
+		if (cached != null) {
+			return cached;
+		}
 		try {
 			return new File(getStateLocation().toFile(), "opencode");
 		} catch (Exception e) {
