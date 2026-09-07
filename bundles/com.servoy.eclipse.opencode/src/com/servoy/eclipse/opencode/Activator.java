@@ -76,6 +76,21 @@ public class Activator extends Plugin {
 
 	private IConsole aiConsole;
 
+	/**
+	 * JVM shutdown hook registered in {@link #start} as a last-resort backstop.
+	 * <p>
+	 * OSGi calls {@link #stop} only during an orderly framework shutdown. If the
+	 * IDE is force-quit, crashes, or the JVM otherwise exits without a clean
+	 * bundle stop, {@code stop()} never runs and the spawned opencode process is
+	 * left orphaned - it keeps the port bound and the workspace state folder
+	 * locked, which wedges the next session (the OpenCode view connects to the
+	 * stale orphan and hangs). This hook guarantees the process tree and any
+	 * orphans under our managed opencode dir are killed on JVM exit regardless of
+	 * how the JVM is going down.
+	 * </p>
+	 */
+	private volatile Thread shutdownHook;
+
 	public synchronized IConsole getConsole() {
 		if (aiConsole == null) {
 			try {
@@ -109,6 +124,23 @@ public class Activator extends Plugin {
 		super.start(context);
 		instance = this;
 
+		// Backstop for non-orderly JVM exits (force-quit / crash) where OSGi stop()
+		// never runs and would otherwise leave the opencode process orphaned.
+		Thread hook = new Thread(this::teardownForShutdownHook, "OpenCode-ShutdownHook");
+		try {
+			Runtime.getRuntime().addShutdownHook(hook);
+			this.shutdownHook = hook;
+		} catch (IllegalStateException alreadyShuttingDown) {
+			// JVM already in shutdown - nothing to register.
+		}
+
+		// A previous session may have crashed/force-quit and left an orphaned
+		// opencode.exe/bun.exe still bound to the port and holding our state
+		// directory. Sweep those away up front so the fresh server can bind the
+		// default port and the OpenCode view connects to a live server instead of
+		// a stale, wedged orphan.
+		sweepOrphansOnStartup();
+
 		// Setup is deferred until the user has both logged in and has an active
 		// solution.
 		// OpenCodeView.initUrl() calls ensureServerStarting() when all conditions are
@@ -117,9 +149,50 @@ public class Activator extends Plugin {
 
 	@Override
 	public void stop(BundleContext context) throws Exception {
-		stopServer();
-		instance = null;
-		super.stop(context);
+		try {
+			stopServer();
+		} finally {
+			Thread hook = this.shutdownHook;
+			this.shutdownHook = null;
+			if (hook != null) {
+				try {
+					Runtime.getRuntime().removeShutdownHook(hook);
+				} catch (IllegalStateException shuttingDown) {
+					// JVM already shutting down - the hook will run itself; ignore.
+				}
+			}
+			instance = null;
+			super.stop(context);
+		}
+	}
+
+	/**
+	 * Runs from the JVM shutdown hook thread. Best-effort teardown that must never
+	 * throw (a throwing shutdown hook is logged by the JVM but otherwise useless)
+	 * and must not depend on OSGi services that may already be torn down.
+	 */
+	private void teardownForShutdownHook() {
+		try {
+			stopServer();
+		} catch (Throwable t) {
+			// Deliberately swallow - we are on the JVM shutdown path and cannot
+			// rely on the logging infrastructure still being available.
+		}
+	}
+
+	/**
+	 * Kills any leftover opencode process from a previous, non-cleanly-terminated
+	 * session before a new server is started. Delegates to the same directory-based
+	 * orphan sweep used during shutdown, so it works identically whether running
+	 * from source or from an installed product.
+	 */
+	private void sweepOrphansOnStartup() {
+		try {
+			boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+			killOrphansUnderOpencodeDir(isWindows);
+		} catch (Throwable t) {
+			ServoyLog.logInfo("OpenCode: startup orphan sweep failed: " + t.getMessage());
+		}
 	}
 
 	public static Activator getInstance() {
@@ -203,7 +276,7 @@ public class Activator extends Plugin {
 	 * {@code readLine()} loop blocked.
 	 * </p>
 	 */
-	public void stopServer() {
+	public synchronized void stopServer() {
 		ServoyLog.logInfo("OpenCode: stopServer() called");
 		// Cancel the outer job first so monitor.isCanceled() == true in
 		// RunOpencodeCommand.run()
@@ -225,6 +298,27 @@ public class Activator extends Plugin {
 		} else {
 			ServoyLog.logInfo("OpenCode: serverCommand was null");
 		}
+
+		// ALWAYS sweep, unconditionally.
+		//
+		// The node.exe we launch (and keep a handle to) is only the top of a
+		// node -> npm -> opencode.exe -> bun tree. On Windows the real opencode.exe
+		// reparents away from node almost immediately, so by the time we stop:
+		//   - process.destroy()/destroyForcibly() only reaches the top node,
+		//   - process.descendants() is empty (the tree already broke),
+		//   - taskkill /T finds no children to kill.
+		// The directory-based sweep is therefore the ONLY mechanism that actually
+		// reaches the orphaned opencode.exe/bun that still holds port 4096 and locks
+		// the state folder. It must never be gated behind a live process handle:
+		//   - serverCommand can be null (server still starting, already cleared, or a
+		//     fresh Activator after a crash/reload that never captured the handle);
+		//   - killProcessTree() returns early when cmd.getProcess() is null (canceling()
+		//     nulls it), skipping the sweep that lived inside it.
+		// In every one of those cases the pre-existing code killed nothing. Running the
+		// sweep here, outside all the null-guards, guarantees the processes the
+		// developer started end when the developer stops - which is the whole point.
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		killOrphansUnderOpencodeDir(isWindows);
 	}
 
 	/**
@@ -287,14 +381,10 @@ public class Activator extends Plugin {
 		// exited or been reparented by the time taskkill runs, the real opencode.exe
 		// (and any bun.exe it spawns) becomes an orphan with no traceable parent and
 		// survives both the taskkill tree-kill and the Java descendants() fallback.
-		// Sweep for any leftover process whose command line points at *this*
-		// bundle's managed opencode install directory, independent of any
-		// parent/child relationship. This directory is always the same
-		// workspace-relative OSGi state location - {workspace}/.metadata/.plugins/
-		// com.servoy.eclipse.opencode/opencode - whether Eclipse is running from
-		// source or from an installed Servoy Developer product, so the sweep works
-		// identically in both cases.
-		killOrphansUnderOpencodeDir(isWindows);
+		// The directory-based sweep that actually reaches those orphans now runs
+		// unconditionally in stopServer() (outside the process != null guard above),
+		// so it is intentionally NOT called here - killProcessTree() only handles the
+		// tracked process tree, stopServer() owns the orphan sweep.
 
 		// Close streams to unblock readLine() in RunNPMCommand.runCommand().
 		//
