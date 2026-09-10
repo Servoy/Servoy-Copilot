@@ -42,6 +42,8 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 
+import com.servoy.eclipse.developer.mcp.ResourceNotFoundException;
+
 /**
  * Provides generic file-editing operations for MCP tools.
  * <p>
@@ -290,7 +292,7 @@ public class CodeEditingService
 
 			IResource sourceResource = project.findMember(normalizedSource);
 			if (sourceResource == null || !sourceResource.exists())
-				throw new RuntimeException("Error: Resource '" + sourcePath + "' does not exist in project '" + projectName + "'.");
+				throw new ResourceNotFoundException("Error: Resource '" + sourcePath + "' does not exist in project '" + projectName + "'.");
 
 			IFolder targetFolder = project.getFolder(normalizedTarget);
 			if (!targetFolder.exists())
@@ -489,9 +491,9 @@ public class CodeEditingService
 		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
 		IProject project = root.getProject(projectName);
 		if (!project.exists())
-			throw new RuntimeException("Error: Project '" + projectName + "' does not exist.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' does not exist.");
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 		return project;
 	}
 
@@ -501,7 +503,7 @@ public class CodeEditingService
 		IPath path = IPath.fromPath(Path.of(filePath));
 		IFile file = project.getFile(path);
 		if (!file.exists())
-			throw new RuntimeException("Error: File '" + filePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + filePath + "' does not exist in project '" + projectName + "'.");
 		return file;
 	}
 

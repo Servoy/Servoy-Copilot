@@ -14,6 +14,32 @@ public class McpToolLog
 
 	public static void logError(String toolName, long elapsedMs, Throwable error)
 	{
-		log.error("{} FAILED after {}ms", toolName, elapsedMs, error);
+		ResourceNotFoundException notFound = findNotFound(error);
+		if (notFound != null)
+		{
+			// Expected outcome (agents probe for files that may not exist) - no stack trace.
+			log.debug("{} not found after {}ms: {}", toolName, elapsedMs, notFound.getMessage());
+		}
+		else
+		{
+			log.error("{} FAILED after {}ms", toolName, elapsedMs, error);
+		}
+	}
+
+	/**
+	 * Walks the cause chain of {@code error} and returns the first
+	 * {@link ResourceNotFoundException} found, or {@code null} if the failure is a
+	 * genuine (unexpected) error. Package-visible for unit testing.
+	 */
+	static ResourceNotFoundException findNotFound(Throwable error)
+	{
+		Throwable cause = error;
+		while (cause != null)
+		{
+			if (cause instanceof ResourceNotFoundException tnf) return tnf;
+			if (cause.getCause() == cause) break;
+			cause = cause.getCause();
+		}
+		return null;
 	}
 }

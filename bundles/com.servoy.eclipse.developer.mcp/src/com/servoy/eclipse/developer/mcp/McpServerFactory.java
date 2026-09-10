@@ -263,9 +263,13 @@ public class McpServerFactory
 		}
 		catch (Exception e)
 		{
-			Platform.getLog(McpServerFactory.class).error(e.getMessage(), e);
 			Throwable root = e;
 			while (root.getCause() != null) root = root.getCause();
+			if (!(root instanceof com.servoy.eclipse.developer.mcp.ResourceNotFoundException))
+			{
+				// Expected "not found" outcomes are not real errors - don't spam the Eclipse log.
+				Platform.getLog(McpServerFactory.class).error(e.getMessage(), e);
+			}
 			String cause = root.getMessage() != null ? root.getMessage() : e.getClass().getSimpleName();
 			var content = new McpSchema.TextContent("Error: " + cause);
 			return McpSchema.CallToolResult.builder().addContent(content).isError(true).build();

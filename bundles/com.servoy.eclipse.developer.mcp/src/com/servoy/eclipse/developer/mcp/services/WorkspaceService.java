@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -38,6 +38,7 @@ import org.eclipse.search.core.text.TextSearchMatchAccess;
 import org.eclipse.search.core.text.TextSearchRequestor;
 import org.eclipse.search.core.text.TextSearchScope;
 
+import com.servoy.eclipse.developer.mcp.ResourceNotFoundException;
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
 
 /**
@@ -119,10 +120,10 @@ public class WorkspaceService
 			{
 				return readWorkspaceRootFile(projectName, resourcePath, fallbackFile, showLineNumbers, startLine, endLine);
 			}
-			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		}
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
@@ -135,7 +136,7 @@ public class WorkspaceService
 			{
 				return readWorkspaceRootFile(projectName, resourcePath, fallbackFile, showLineNumbers, startLine, endLine);
 			}
-			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 		}
 
 		try
@@ -264,14 +265,14 @@ public class WorkspaceService
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
-			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
 		if (!file.exists())
-			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 
 		if (ranges == null || ranges.isBlank())
 			throw new IllegalArgumentException("ranges must not be null/blank. Use format: '10-20,50-60'");
@@ -407,14 +408,14 @@ public class WorkspaceService
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
-			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
 		if (!file.exists())
-			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 
 		if (windowSize <= 0) windowSize = 30;
 
@@ -454,9 +455,9 @@ public class WorkspaceService
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
-			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
@@ -487,7 +488,7 @@ public class WorkspaceService
 			}
 		}
 		if (!file.exists())
-			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 
 		try
 		{
@@ -524,14 +525,14 @@ public class WorkspaceService
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
-			throw new RuntimeException("Error: Project '" + projectName + "' not found.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
-			throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+			throw new ResourceNotFoundException("Error: Project '" + projectName + "' is closed.");
 
 		IPath path = IPath.fromPath(Path.of(resourcePath));
 		IFile file = project.getFile(path);
 		if (!file.exists())
-			throw new RuntimeException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
+			throw new ResourceNotFoundException("Error: File '" + resourcePath + "' does not exist in project '" + projectName + "'.");
 
 		if (functionName == null || functionName.isBlank())
 			throw new IllegalArgumentException("functionName must not be null/blank");
@@ -555,7 +556,7 @@ public class WorkspaceService
 			}
 
 			if (startLine == -1)
-				throw new RuntimeException("Error: Function '" + functionName + "' not found in file '" + resourcePath + "'.");
+				throw new ResourceNotFoundException("Error: Function '" + functionName + "' not found in file '" + resourcePath + "'.");
 
 			// Brace matching to find end of function
 			int braceCount = 0;
