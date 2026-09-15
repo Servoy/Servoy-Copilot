@@ -1,0 +1,75 @@
+:host {
+  display: block;
+}
+
+.composer {
+  border-top: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+  padding: 0.6rem 1rem 0.8rem;
+  background: var(--svy-composer-bg, transparent);
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 860px;
+  margin: 0 auto;
+  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.35));
+  border-radius: 12px;
+  padding: 0.45rem 0.55rem;
+  background: var(--svy-input-bg, rgba(127, 127, 127, 0.06));
+
+  &:focus-within {
+    border-color: var(--svy-accent, #f5a623);
+  }
+}
+
+.input {
+  flex: 1;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: hidden;
+}
+
+.attach-btn,
+.send-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attach-btn {
+  background: transparent;
+  color: var(--svy-muted, #9aa0a6);
+
+  &:hover {
+    color: var(--svy-accent, #f5a623);
+  }
+}
+
+.send-btn {
+  background: var(--svy-accent, #f5a623);
+  color: #fff;
+
+  &:hover {
+    background: var(--svy-accent-hover, #d4891e);
+  }
+
+  &.stop {
+    background: var(--svy-stop, #b5741a);
+  }
+}

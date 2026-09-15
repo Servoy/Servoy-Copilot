@@ -1,0 +1,10 @@
+@if (attachments().length > 0) {
+  <div class="chips">
+    @for (attachment of attachments(); track attachmentKey(attachment, $index)) {
+      <span class="chip">
+        <span class="chip-name" [title]="attachment.filename">{{ attachment.filename }}</span>
+        <button type="button" class="chip-remove" (click)="onRemove($index)" aria-label="Remove attachment">×</button>
+      </span>
+    }
+  </div>
+}

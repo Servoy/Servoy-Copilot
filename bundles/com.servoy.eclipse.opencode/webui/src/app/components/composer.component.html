@@ -1,0 +1,28 @@
+<div class="composer" (drop)="onDrop($event)" (dragover)="onDragOver($event)">
+  <svy-attachment-bar [attachments]="attachments()" (remove)="removeAttachment($event)"></svy-attachment-bar>
+
+  <div class="input-row">
+    <button type="button" class="attach-btn" (click)="openFilePicker()" title="Attach files" aria-label="Attach files">
+      +
+    </button>
+
+    <textarea
+      #textarea
+      class="input"
+      rows="1"
+      placeholder="Ask Servoy AI…"
+      [(ngModel)]="text"
+      (input)="onInput()"
+      (keydown)="onKeydown($event)"
+      (paste)="onPaste($event)"
+    ></textarea>
+
+    @if (streaming()) {
+      <button type="button" class="send-btn stop" (click)="onStop()" title="Stop" aria-label="Stop">■</button>
+    } @else {
+      <button type="button" class="send-btn" (click)="submit()" title="Send" aria-label="Send">↑</button>
+    }
+  </div>
+
+  <input #fileInput type="file" multiple hidden (change)="onFilesSelected($event)" />
+</div>

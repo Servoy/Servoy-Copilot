@@ -1,0 +1,22 @@
+<div class="app">
+  <aside class="sidebar">
+    <svy-session-list
+      [sessions]="store.sessions()"
+      [activeSessionId]="store.activeSessionId()"
+      (select)="onSelectSession($event)"
+      (create)="onNewSession()"
+    ></svy-session-list>
+  </aside>
+
+  <main class="chat">
+    @if (store.error(); as error) {
+      <div class="banner">{{ error }}</div>
+    }
+    <svy-message-list class="messages" [messages]="store.messages()"></svy-message-list>
+    <svy-composer
+      [streaming]="store.streaming()"
+      (sendMessage)="onSend($event)"
+      (stop)="onStop()"
+    ></svy-composer>
+  </main>
+</div>

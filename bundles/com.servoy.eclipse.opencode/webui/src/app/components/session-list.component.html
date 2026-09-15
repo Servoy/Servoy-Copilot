@@ -1,0 +1,19 @@
+<div class="sessions">
+  <button type="button" class="new-session" (click)="onNew()">+ New session</button>
+
+  <div class="list">
+    @for (session of sessions(); track session.id) {
+      <button
+        type="button"
+        class="session"
+        [class.active]="session.id === activeSessionId()"
+        (click)="onSelect(session.id)"
+      >
+        <span class="session-title" [title]="title(session)">{{ title(session) }}</span>
+        <span class="session-time">{{ relativeTime(session) }}</span>
+      </button>
+    } @empty {
+      <div class="empty">No sessions yet</div>
+    }
+  </div>
+</div>

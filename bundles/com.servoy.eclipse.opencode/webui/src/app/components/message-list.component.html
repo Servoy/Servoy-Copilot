@@ -1,0 +1,9 @@
+<div class="scroll" #scroll (scroll)="onScroll()">
+  <div class="messages">
+    @for (message of messages(); track messageKey(message, $index)) {
+      <svy-message-item [role]="message.info.role" [parts]="message.parts"></svy-message-item>
+    } @empty {
+      <div class="empty">What should we build in Servoy today?</div>
+    }
+  </div>
+</div>

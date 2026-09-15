@@ -12,4 +12,68 @@
 	</parent>
 	<artifactId>com.servoy.eclipse.opencode</artifactId>
 	<packaging>eclipse-plugin</packaging>
+	<build>
+		<plugins>
+			<!-- Build the Angular chat UI (webui/) into webui-dist/ at build time.
+			     Self-contained: downloads a pinned node+npm into target/; independent
+			     of the runtime npm/node Servoy ships for launching opencode. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-clean-plugin</artifactId>
+				<configuration>
+					<filesets>
+						<fileset>
+							<directory>webui-dist</directory>
+						</fileset>
+					</filesets>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>com.github.eirslett</groupId>
+				<artifactId>frontend-maven-plugin</artifactId>
+				<version>1.15.4</version>
+				<configuration>
+					<workingDirectory>webui</workingDirectory>
+					<installDirectory>target</installDirectory>
+				</configuration>
+				<executions>
+					<!-- 1. Install node and npm locally into target/ -->
+					<execution>
+						<id>install node and npm</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>install-node-and-npm</goal>
+						</goals>
+						<configuration>
+							<nodeVersion>v24.11.1</nodeVersion>
+						</configuration>
+					</execution>
+
+					<!-- 2. npm ci -->
+					<execution>
+						<id>npm ci</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>npm</goal>
+						</goals>
+						<configuration>
+							<arguments>ci</arguments>
+						</configuration>
+					</execution>
+
+					<!-- 3. ng build (production) -> ../webui-dist -->
+					<execution>
+						<id>ng build</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>npm</goal>
+						</goals>
+						<configuration>
+							<arguments>run build</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>

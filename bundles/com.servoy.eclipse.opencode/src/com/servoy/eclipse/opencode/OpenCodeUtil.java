@@ -35,7 +35,7 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * @author jcompagner
  * @since 2026.06
  */
-class OpenCodeUtil {
+public class OpenCodeUtil {
 
 	/**
 	 * Returns the path to open in opencode for the currently active Servoy
@@ -43,7 +43,7 @@ class OpenCodeUtil {
 	 *
 	 * @return the path string, or {@code null} if no solution is active
 	 */
-	static String getActiveProjectPath() {
+	public static String getActiveProjectPath() {
 		IServoyModel model = ServoyModelFinder.getServoyModel();
 		if (model == null)
 			return null;

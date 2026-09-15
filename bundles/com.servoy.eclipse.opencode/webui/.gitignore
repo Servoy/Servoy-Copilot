@@ -1,0 +1,8 @@
+# Angular build scratch (regenerated every build; not committed)
+/node_modules/
+/dist/
+/.angular/
+/out-tsc/
+
+# Vitest
+/coverage/

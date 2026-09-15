@@ -1,0 +1,45 @@
+/* Servoy AI chat UI - global styles.
+   Matches the Servoy Developer look (orange accent) natively, replacing the
+   runtime CSS injection that OpenCodeBranding used to do. */
+
+@import 'highlight.js/styles/github-dark.css';
+
+:root {
+  --svy-accent: #f5a623;
+  --svy-accent-hover: #d4891e;
+  --svy-stop: #b5741a;
+  --svy-fg: #1f2328;
+  --svy-bg: #ffffff;
+  --svy-muted: #6b7075;
+  --svy-border: rgba(127, 127, 127, 0.25);
+  --svy-hover: rgba(127, 127, 127, 0.1);
+  --svy-active: rgba(245, 166, 35, 0.14);
+  --svy-pre-bg: #1e1e1e;
+  --svy-code-bg: rgba(127, 127, 127, 0.14);
+  --svy-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --svy-fg: #e6e6e6;
+    --svy-bg: #1b1b1d;
+    --svy-muted: #9aa0a6;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: var(--svy-fg);
+  background: var(--svy-bg);
+}

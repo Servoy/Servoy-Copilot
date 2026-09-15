@@ -14,10 +14,13 @@ Require-Bundle: org.eclipse.ui,
  com.servoy.eclipse.core,
  com.servoy.eclipse.model,
  com.servoy.eclipse.ngclient.ui,
+ org.apache.tomcat;bundle-version="11.0.8",
  servoy_shared
 Import-Package: com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.20.0,3.0.0)",
- com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)"
+ com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)",
+ jakarta.servlet;version="[6.1.0,8.0.0)",
+ jakarta.servlet.http;version="[6.1.0,8.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.opencode
 Export-Package: com.servoy.eclipse.opencode;version="2026.6.0"

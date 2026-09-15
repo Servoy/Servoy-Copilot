@@ -15,6 +15,13 @@
       </perspective>
    </extension>
    <extension
+         point="org.apache.tomcat.serviceprovider">
+      <serviceprovider
+            class="com.servoy.eclipse.opencode.tomcat.ServicesProvider"
+            id="com.servoy.eclipse.opencode.serviceprovider">
+      </serviceprovider>
+   </extension>
+   <extension
          point="org.eclipse.ui.views">
       <view
             category="com.servoy.eclipse.ui"

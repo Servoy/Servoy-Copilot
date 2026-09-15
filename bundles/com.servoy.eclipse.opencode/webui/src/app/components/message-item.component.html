@@ -1,0 +1,21 @@
+<div class="message" [class.user]="role() === 'user'" [class.assistant]="role() !== 'user'">
+  @for (part of renderable(); track partKey(part, $index)) {
+    @if (isText(part)) {
+      <svy-markdown [content]="part.text ?? ''"></svy-markdown>
+    } @else if (isReasoning(part)) {
+      <div class="reasoning">
+        <svy-markdown [content]="part.text ?? ''"></svy-markdown>
+      </div>
+    } @else if (isTool(part)) {
+      <div class="tool">
+        <button type="button" class="tool-row" (click)="toggle(part, $index)">
+          <span class="tool-caret">{{ isExpanded(part, $index) ? '▾' : '▸' }}</span>
+          <span class="tool-name">{{ label(part) }}</span>
+        </button>
+        @if (isExpanded(part, $index) && toolOutput(part)) {
+          <pre class="tool-output">{{ toolOutput(part) }}</pre>
+        }
+      </div>
+    }
+  }
+</div>

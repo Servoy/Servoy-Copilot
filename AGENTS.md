@@ -38,7 +38,7 @@ This Git repository contains the following core projects/plugins:
 - **State directory:** `{eclipse-state}/opencode/` — contains `package.json`, `node_modules/`, `package_copy.json` (version sentinel), `.fullygenerated` (install marker).
 - **Config directory:** `~/.servoy/opencode/` — contains `opencode.json` (MCP + provider config) and extracted skills zip content.
 - **Update strategy:** On every startup, if the bundle's `package.json` changed → full clean `npm install`; otherwise → `npm update opencode-ai` to pick up the latest `1.15.x` patch. Both steps are non-fatal.
-- **Test bundle:** `com.servoy.eclipse.opencode.tests` — fragment of the opencode bundle, plain JUnit (no OSGi runtime required), tests `McpConfigWriter` and `OpencodeFolderCreatorJob` helpers.
+- **Test bundle:** `com.servoy.eclipse.opencode.tests` — fragment of the opencode bundle, plain JUnit (no OSGi runtime required). Tests `McpConfigWriter` and `OpencodeFolderCreatorJob` helpers, plus the `com.servoy.eclipse.opencode.tomcat` BFF: `OpencodeChatServletTest` (route classification, upstream-path mapping, directory injection incl. spoof-prevention, static-asset path-traversal defense, hashed-asset detection), `OpencodeChatServletGuardTest` (readiness-gate / no-active-solution / port<=0 guards via dynamic-proxy request/response fakes), and `ServicesProviderTest` (`getServletInstances("")` returns one `ServletInstance` mapped to `/servoy_ai/*`; non-root contexts register nothing).
 
 > The following bundles are **no longer actively developed**. They are kept in the repository for reference only. Do not make changes to them unless explicitly instructed.
 

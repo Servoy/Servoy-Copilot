@@ -1,0 +1,63 @@
+:host {
+  display: block;
+}
+
+.message {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  max-width: 100%;
+
+  &.user {
+    background: var(--svy-user-bg, rgba(245, 166, 35, 0.12));
+    border: 1px solid var(--svy-user-border, rgba(245, 166, 35, 0.35));
+    align-self: flex-end;
+  }
+
+  &.assistant {
+    background: var(--svy-assistant-bg, rgba(127, 127, 127, 0.08));
+  }
+}
+
+.reasoning {
+  color: var(--svy-muted, #9aa0a6);
+  font-size: 0.9em;
+  border-left: 2px solid var(--svy-border, rgba(127, 127, 127, 0.3));
+  padding-left: 0.7rem;
+  margin: 0.3rem 0;
+}
+
+.tool {
+  margin: 0.3rem 0;
+}
+
+.tool-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.3));
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.82rem;
+  color: var(--svy-muted, #9aa0a6);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--svy-fg, inherit);
+    border-color: var(--svy-accent, #f5a623);
+  }
+}
+
+.tool-caret {
+  font-size: 0.7rem;
+}
+
+.tool-output {
+  margin: 0.35rem 0 0;
+  padding: 0.6rem 0.8rem;
+  background: var(--svy-pre-bg, #1e1e1e);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}

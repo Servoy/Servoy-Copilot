@@ -7,6 +7,12 @@
     }
   },
   "mcp": {
+    "angular-cli": {
+      "type": "local",
+      "enabled": true,
+      "command": ["npx", "-y", "@angular/cli@22", "mcp"],
+      "cwd": "bundles/com.servoy.eclipse.opencode/webui"
+    },
     "eclipse-ide": {
       "type": "remote",
       "url": "http://localhost:8087/mcp/eclipse-ide",

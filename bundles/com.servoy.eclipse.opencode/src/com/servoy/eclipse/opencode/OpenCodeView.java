@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 1997-2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -19,8 +19,6 @@ package com.servoy.eclipse.opencode;
 
 import java.io.IOException;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
 import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.swt.widgets.Composite;
@@ -34,29 +32,32 @@ import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.opencode.tomcat.OpencodeChatServlet;
 import com.servoy.eclipse.ui.browser.BrowserFactory;
 import com.servoy.eclipse.ui.browser.IBrowser;
+import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
- * Singleton view that hosts the embedded opencode browser.
+ * Singleton view that hosts the embedded Servoy AI chat UI.
  * <p>
- * URL initialisation happens entirely inside {@link #createPartControl} so
- * that the view self-initialises correctly whether it is opened for the first
- * time or reopened after being closed - without needing a restart of the
- * opencode server process.
+ * The view drives an {@link IBrowser} through a small state machine and, once
+ * all preconditions are met, navigates it to the Servoy-owned Angular chat UI
+ * served by {@link OpencodeChatServlet} on the Developer's embedded Tomcat
+ * ({@code http://127.0.0.1:<tomcatPort>/servoy_ai/}). The servlet is the
+ * backend-for-frontend that proxies the opencode HTTP + SSE API and injects the
+ * single project directory, so this view no longer performs any DOM/CSS
+ * injection or session-URL scraping.
  * </p>
  * <p>
- * Three startup paths are handled:
+ * Startup states:
  * <ol>
- * <li><b>No active solution</b> - a warning page is shown and an
- * {@link IActiveProjectListener} is registered. When a solution is
- * activated the listener navigates to the correct URL and unregisters
- * itself.</li>
- * <li><b>Active solution, server still starting</b> - the loading page is
- * shown and a background thread waits for the server, then
- * navigates.</li>
- * <li><b>Active solution, server already ready</b> - navigation happens
- * immediately (typical on reopen after the server is up).</li>
+ * <li>Login not yet done - show loading, wait for login event.</li>
+ * <li>Login done, Servoy AI not configured - show "enable Servoy AI" page.</li>
+ * <li>Dev/external-server override - use that URL directly.</li>
+ * <li>No active solution - show "no solution" page, wait for project
+ * event.</li>
+ * <li>All conditions met - start opencode (first time) and navigate to the
+ * servlet URL.</li>
  * </ol>
  * </p>
  *
@@ -66,23 +67,11 @@ import com.servoy.eclipse.ui.browser.IBrowser;
 public class OpenCodeView extends ViewPart {
 	public static final String VIEW_ID = "com.servoy.eclipse.opencode.OpenCodeView";
 
-	private static final String DEFAULT_SERVER_URL = "http://127.0.0.1:" + RunOpencodeCommand.DEFAULT_PORT + "/";
-
-	private static final String INJECT_CSS_JS = OpenCodeBranding.buildInjectScript();
-
 	private IBrowser browser;
 
 	private volatile String pendingUrl;
 
 	private IPartListener2 partListener;
-
-	/**
-	 * Worktree last pushed by {@link #seedOpenedProjectsIfNeeded()}, used to
-	 * avoid recomputing {@link OpenCodeUtil#getActiveProjectPath()} (a filesystem
-	 * walk) and re-injecting the seed script on every {@code changed} event once
-	 * the current workspace has already been seeded for this page load.
-	 */
-	private String lastSeededWorktree;
 
 	/**
 	 * Non-null only while this view is waiting for the first active solution.
@@ -98,36 +87,7 @@ public class OpenCodeView extends ViewPart {
 	@Override
 	public void createPartControl(Composite parent) {
 		browser = BrowserFactory.createBrowser(parent);
-		browser.addLocationListener(new org.eclipse.swt.browser.LocationAdapter() {
-			@Override
-			public void changed(org.eclipse.swt.browser.LocationEvent event) {
-				browser.execute(INJECT_CSS_JS);
-				// Seed opencode's Home "opened projects" list with the active
-				// workspace so Home shows the solution's session history (SVY-21363).
-				// Only relevant on the actual opencode app - not the local file://
-				// loading/no-solution/not-enabled pages - and only needs doing once
-				// per workspace per page load.
-				if (event.location != null && event.location.startsWith("http://")) { //$NON-NLS-1$
-					seedOpenedProjectsIfNeeded();
-				}
-			}
-		});
 		initUrl();
-	}
-
-	/**
-	 * Resolves the active workspace and, if it differs from the last one seeded
-	 * during this view's lifetime, injects {@link OpenCodeBranding#buildProjectSeedScript}.
-	 * The underlying script is itself idempotent; this cache just avoids the
-	 * {@code .git}-root filesystem walk and script execution on every navigation
-	 * within the opencode SPA once the current workspace is already seeded.
-	 */
-	private void seedOpenedProjectsIfNeeded() {
-		String worktree = OpenCodeUtil.getActiveProjectPath();
-		if (worktree != null && !worktree.equals(lastSeededWorktree)) {
-			browser.execute(OpenCodeBranding.buildProjectSeedScript(worktree));
-			lastSeededWorktree = worktree;
-		}
 	}
 
 	@Override
@@ -165,7 +125,6 @@ public class OpenCodeView extends ViewPart {
 	// URL initialisation - called on every createPartControl
 	// -----------------------------------------------------------------------
 
-
 	private static boolean isServoyAiConfigured() {
 		String apiKey = System.getProperty(ProviderConfigWriter.ENV_API_KEY);
 		return apiKey != null && !apiKey.isBlank() && SkillsZipExtractor.getSkillsZipSource() != null;
@@ -178,18 +137,20 @@ public class OpenCodeView extends ViewPart {
 	 * <li>Login not yet done - show loading, wait for login event.</li>
 	 * <li>Login done, Servoy AI not configured - show "enable Servoy AI" page.</li>
 	 * <li>Dev/external-server override - use that URL directly.</li>
-	 * <li>No active solution - show "no solution" page, wait for project event.</li>
+	 * <li>No active solution - show "no solution" page, wait for project
+	 * event.</li>
 	 * <li>All conditions met - start opencode (first time) and navigate.</li>
 	 * </ol>
 	 */
 	private void initUrl() {
-		if (browser == null || browser.isDisposed()) return;
+		if (browser == null || browser.isDisposed())
+			return;
 
 		// State 1: waiting for login
 		if (!com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.isLoginComplete()) {
 			browser.setUrl(getPageUrl("/resources/opencode-loading.html")); //$NON-NLS-1$
-			com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.addLoginListener(
-				username -> PlatformUI.getWorkbench().getDisplay().asyncExec(this::initUrl));
+			com.servoy.eclipse.ui.dialogs.ServoyLoginDialog
+					.addLoginListener(username -> PlatformUI.getWorkbench().getDisplay().asyncExec(this::initUrl));
 			return;
 		}
 
@@ -216,12 +177,16 @@ public class OpenCodeView extends ViewPart {
 
 		// State 5: all conditions met - start opencode if not already started
 		Activator activator = Activator.getInstance();
-		if (activator == null) return;
+		if (activator == null)
+			return;
 
 		activator.ensureServerStarting();
 
-		// Always resolve session via the switcher thread - it may need to wait for
-		// server startup AND call the REST API to get/create a session.
+		// Navigate to the Servoy-owned chat UI served by the BFF servlet. The
+		// servlet handles the opencode readiness gate itself, so we can navigate
+		// as soon as the Developer Tomcat URL is known - but we still wait for the
+		// opencode server on a background thread to avoid the servlet holding the
+		// very first request for the whole cold-start window.
 		browser.setUrl(getPageUrl("/resources/opencode-loading.html")); //$NON-NLS-1$
 		startUrlSwitcherThread();
 	}
@@ -246,9 +211,8 @@ public class OpenCodeView extends ViewPart {
 		};
 
 		try {
-			model.getClass()
-					.getMethod("addActiveProjectListener", IActiveProjectListener.class)
-					.invoke(model, activeProjectListener);
+			model.getClass().getMethod("addActiveProjectListener", IActiveProjectListener.class).invoke(model,
+					activeProjectListener);
 		} catch (Exception e) {
 			ServoyLog.logError("OpenCodeView: cannot add active project listener", e);
 			activeProjectListener = null;
@@ -265,16 +229,16 @@ public class OpenCodeView extends ViewPart {
 		if (model == null)
 			return;
 		try {
-			model.getClass()
-					.getMethod("removeActiveProjectListener", IActiveProjectListener.class)
-					.invoke(model, l);
+			model.getClass().getMethod("removeActiveProjectListener", IActiveProjectListener.class).invoke(model, l);
 		} catch (Exception e) {
 			ServoyLog.logError("OpenCodeView: cannot remove active project listener", e);
 		}
 	}
 
-
-	/** Called when a solution is activated - re-enter the state machine on the UI thread. */
+	/**
+	 * Called when a solution is activated - re-enter the state machine on the UI
+	 * thread.
+	 */
 	private void onActiveSolutionAvailable() {
 		PlatformUI.getWorkbench().getDisplay().asyncExec(this::initUrl);
 	}
@@ -284,8 +248,10 @@ public class OpenCodeView extends ViewPart {
 	// -----------------------------------------------------------------------
 
 	private void registerPartVisibleListener() {
-		if (partListener != null) return;
-		if (getSite() == null || getSite().getPage() == null) return;
+		if (partListener != null)
+			return;
+		if (getSite() == null || getSite().getPage() == null)
+			return;
 		partListener = new IPartListener2() {
 			@Override
 			public void partVisible(IWorkbenchPartReference partRef) {
@@ -302,21 +268,22 @@ public class OpenCodeView extends ViewPart {
 
 	private void removePartVisibleListener() {
 		IPartListener2 l = partListener;
-		if (l == null) return;
+		if (l == null)
+			return;
 		partListener = null;
 		if (getSite() != null && getSite().getPage() != null) {
 			getSite().getPage().removePartListener(l);
 		}
 	}
 
-
 	// -----------------------------------------------------------------------
 	// URL-switcher thread (server-starting path)
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Spawns a daemon thread that blocks until the opencode server is ready
-	 * (up to 120 s), then navigates the browser to the correct project URL.
+	 * Spawns a daemon thread that blocks until the opencode server is ready (up to
+	 * 120 s), then navigates the browser to the Servoy AI chat UI served by the BFF
+	 * servlet on the Developer Tomcat.
 	 */
 	private void startUrlSwitcherThread() {
 		Thread switcher = new Thread(() -> {
@@ -325,19 +292,12 @@ public class OpenCodeView extends ViewPart {
 				if (activator == null)
 					return;
 
-				boolean started = activator.waitForServer(120_000);
-				final String targetUrl;
-				if (started) {
-					String projectPath = getActiveProjectPath();
-					targetUrl = projectPath != null
-							? resolveSessionUrl(activator.getServerPort(), projectPath)
-							: "http://127.0.0.1:" + activator.getServerPort() + "/"; //$NON-NLS-1$
-				} else {
-					targetUrl = DEFAULT_SERVER_URL;
-				}
+				activator.waitForServer(120_000);
+				final String targetUrl = resolveChatUiUrl();
 
 				PlatformUI.getWorkbench().getDisplay().asyncExec(() -> {
-					if (getSite() != null && getSite().getPage() != null && getSite().getPage().isPartVisible(OpenCodeView.this)) {
+					if (getSite() != null && getSite().getPage() != null
+							&& getSite().getPage().isPartVisible(OpenCodeView.this)) {
 						Activator.getInstance().logToConsole("loading url: " + targetUrl);
 						setUrl(targetUrl);
 					} else if (getSite() != null && getSite().getPage() != null) {
@@ -358,8 +318,8 @@ public class OpenCodeView extends ViewPart {
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Returns the path to open in opencode for the currently active Servoy
-	 * solution project, walking up to the git root if found.
+	 * Returns the path to open in opencode for the currently active Servoy solution
+	 * project, walking up to the git root if found.
 	 *
 	 * @return the path, or {@code null} if no solution is active
 	 */
@@ -368,55 +328,12 @@ public class OpenCodeView extends ViewPart {
 	}
 
 	/**
-	 * Builds the URL to open for a project. If {@code sessionId} is non-null,
-	 * navigates to that specific session; otherwise opens the new-session view.
+	 * Builds the URL of the Servoy AI chat UI served by {@link OpencodeChatServlet}
+	 * on the Developer's embedded Tomcat.
 	 */
-	private String resolveSessionUrl(int port, String projectPath, String sessionId) {
-		String encoded = Base64.getUrlEncoder().withoutPadding()
-				.encodeToString(projectPath.getBytes(StandardCharsets.UTF_8));
-		String encodedDir = java.net.URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
-		String sessionSegment = sessionId != null ? "/session/" + sessionId : "/session"; //$NON-NLS-1$ //$NON-NLS-2$
-		return "http://127.0.0.1:" + port + "/" + encoded + sessionSegment + "?directory=" + encodedDir; //$NON-NLS-1$ //$NON-NLS-2$
-	}
-
-	private String resolveSessionUrl(int port, String projectPath) {
-		return resolveSessionUrl(port, projectPath, findLastSessionId(port, projectPath));
-	}
-
-	private String findLastSessionId(int port, String projectPath) {
-		try {
-			String encodedDir = java.net.URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
-			java.net.URL url = java.net.URI.create(
-					"http://127.0.0.1:" + port + "/session?directory=" + encodedDir + "&limit=1&roots=true") //$NON-NLS-1$ //$NON-NLS-2$
-					.toURL();
-			Activator.getInstance().logToConsole("querying sessions at: " + url);
-			java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-			conn.setRequestMethod("GET"); //$NON-NLS-1$
-			conn.setConnectTimeout(10000);
-			conn.setReadTimeout(60000);
-			int responseCode = conn.getResponseCode();
-			Activator.getInstance().logToConsole("session list response code: " + responseCode);
-			if (responseCode == 200) {
-				try (java.io.InputStream is = conn.getInputStream()) {
-					String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-					Activator.getInstance().logToConsole("session list response: " + body);
-					int idIdx = body.indexOf("\"id\""); //$NON-NLS-1$
-					if (idIdx >= 0) {
-						int colon = body.indexOf(':', idIdx);
-						int quote1 = body.indexOf('"', colon + 1);
-						int quote2 = body.indexOf('"', quote1 + 1);
-						if (quote1 >= 0 && quote2 > quote1) {
-							String sessionId = body.substring(quote1 + 1, quote2);
-							Activator.getInstance().logToConsole("resuming session: " + sessionId);
-							return sessionId;
-						}
-					}
-				}
-			}
-		} catch (Exception e) {
-			Activator.getInstance().logToConsole("could not query last session: " + e.getMessage());
-		}
-		return null;
+	private static String resolveChatUiUrl() {
+		int tomcatPort = ApplicationServerRegistry.get().getWebServerPort();
+		return "http://127.0.0.1:" + tomcatPort + OpencodeChatServlet.BASE_PATH + "/"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	private String getPageUrl(String bundlePath) {
@@ -428,7 +345,7 @@ public class OpenCodeView extends ViewPart {
 		} catch (IOException e) {
 			ServoyLog.logError(e);
 		}
-		return DEFAULT_SERVER_URL;
+		return resolveChatUiUrl();
 	}
 
 }
