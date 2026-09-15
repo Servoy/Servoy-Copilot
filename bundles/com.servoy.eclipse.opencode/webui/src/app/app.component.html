@@ -9,6 +9,9 @@
   </aside>
 
   <main class="chat">
+    <header class="topbar">
+      <svy-status-panel></svy-status-panel>
+    </header>
     @if (store.error(); as error) {
       <div class="banner">{{ error }}</div>
     }

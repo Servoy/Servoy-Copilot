@@ -86,3 +86,43 @@ export interface SendPart {
   mime?: string;
   url?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Status / health (GET /global/health, GET /mcp, GET /provider)
+// ---------------------------------------------------------------------------
+
+/** Health of the opencode server itself (GET /global/health). */
+export interface HealthStatus {
+  healthy: boolean;
+  version?: string;
+}
+
+/** Connection status of a single MCP server (values from GET /mcp). */
+export type McpConnectionStatus =
+  | 'connected'
+  | 'disabled'
+  | 'failed'
+  | 'needs_auth'
+  | 'needs_client_registration'
+  | string;
+
+/** A single MCP server's status entry (GET /mcp maps name -> this). */
+export interface McpStatus {
+  status: McpConnectionStatus;
+  /** Present for the {@code failed} / {@code needs_client_registration} states. */
+  error?: string;
+}
+
+/** GET /mcp response: a map of server name to its status. */
+export type McpStatusMap = Record<string, McpStatus>;
+
+/**
+ * Provider/model connection status (GET /provider). {@code connected} lists the
+ * provider ids that are authenticated; {@code default} maps each provider id to
+ * its default model id. When {@code connected} is empty no model can be used
+ * (this is the "No accounts" situation surfaced on assistant messages).
+ */
+export interface ProviderStatus {
+  connected: string[];
+  default: Record<string, string>;
+}

@@ -5,6 +5,7 @@ import { ChatStore } from './services/chat-store.service';
 import { ComposerComponent } from './components/composer.component';
 import { MessageListComponent } from './components/message-list.component';
 import { SessionListComponent } from './components/session-list.component';
+import { StatusPanelComponent } from './components/status-panel.component';
 
 /**
  * Root chat surface: a session list drawer beside a scrollable message list
@@ -15,7 +16,7 @@ import { SessionListComponent } from './components/session-list.component';
   selector: 'svy-root',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SessionListComponent, MessageListComponent, ComposerComponent],
+  imports: [SessionListComponent, MessageListComponent, ComposerComponent, StatusPanelComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })

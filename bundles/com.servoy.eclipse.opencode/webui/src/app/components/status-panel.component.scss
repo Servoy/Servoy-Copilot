@@ -1,0 +1,152 @@
+:host {
+  display: block;
+  position: relative;
+}
+
+.status {
+  position: relative;
+}
+
+.status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--svy-border, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: var(--svy-surface, #fff);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.status-toggle:hover {
+  background: var(--svy-surface-hover, rgba(0, 0, 0, 0.04));
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--svy-muted, #9aa0a6);
+  flex: 0 0 auto;
+}
+
+.dot.ok {
+  background: #2ea043;
+}
+
+.dot.warn {
+  background: var(--svy-accent, #f5a623);
+}
+
+.dot.error {
+  background: #d1242f;
+}
+
+.label {
+  color: var(--svy-text, #202124);
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 300px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.6rem;
+  border: 1px solid var(--svy-border, rgba(0, 0, 0, 0.14));
+  border-radius: 8px;
+  background: var(--svy-surface, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  font-size: 0.8rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.refresh {
+  border: none;
+  background: none;
+  color: var(--svy-accent, #f5a623);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.2rem;
+}
+
+.refresh:disabled {
+  color: var(--svy-muted, #9aa0a6);
+  cursor: default;
+}
+
+.section {
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--svy-border, rgba(0, 0, 0, 0.08));
+}
+
+.section:first-of-type {
+  border-top: none;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.count {
+  font-weight: 400;
+  color: var(--svy-muted, #6b7075);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.12rem 0;
+}
+
+.row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-meta {
+  color: var(--svy-muted, #6b7075);
+  font-size: 0.72rem;
+}
+
+.row-error {
+  color: #d1242f;
+  cursor: help;
+}
+
+.error-text {
+  color: #d1242f;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chip {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--svy-surface-hover, rgba(0, 0, 0, 0.06));
+  font-size: 0.74rem;
+}

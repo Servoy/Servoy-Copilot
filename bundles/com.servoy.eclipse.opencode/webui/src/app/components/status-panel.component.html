@@ -1,0 +1,94 @@
+<div class="status">
+  <button
+    type="button"
+    class="status-toggle"
+    [class.ok]="overall() === 'ok'"
+    [class.warn]="overall() === 'warn'"
+    [class.error]="overall() === 'error'"
+    [attr.aria-expanded]="open()"
+    aria-label="Servoy AI status"
+    title="Servoy AI status"
+    (click)="toggle()"
+  >
+    <span class="dot"></span>
+    <span class="label">Status</span>
+  </button>
+
+  @if (open()) {
+    <div class="popover" role="dialog" aria-label="Servoy AI status">
+      <div class="head">
+        <span class="title">Status</span>
+        <button type="button" class="refresh" (click)="refresh()" [disabled]="loading()">
+          {{ loading() ? 'Refreshing…' : 'Refresh' }}
+        </button>
+      </div>
+
+      @if (loadError()) {
+        <div class="section error-text">Could not reach Servoy AI. It may still be starting.</div>
+      } @else {
+        <div class="section">
+          <div class="section-title">Server</div>
+          <div class="row">
+            <span
+              class="dot"
+              [class.ok]="healthy() === true"
+              [class.error]="healthy() === false"
+              [class.warn]="healthy() === null"
+            ></span>
+            <span class="row-label">
+              @if (healthy() === true) {
+                Healthy
+              } @else if (healthy() === false) {
+                Unhealthy
+              } @else {
+                Unknown
+              }
+            </span>
+            @if (version(); as v) {
+              <span class="row-meta">v{{ v }}</span>
+            }
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            Models
+            <span class="count">{{ connectedProviders().length }} connected</span>
+          </div>
+          @if (hasProviders()) {
+            <div class="chips">
+              @for (p of connectedProviders(); track p) {
+                <span class="chip">{{ p }}</span>
+              }
+            </div>
+          } @else {
+            <div class="row error-text">
+              No model provider is connected — sign in to a provider so the assistant can respond.
+            </div>
+          }
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            MCP servers
+            <span class="count">{{ mcpConnectedCount() }}/{{ mcpTotalCount() }} connected</span>
+          </div>
+          @if (mcpTotalCount() === 0) {
+            <div class="row row-meta">No MCP servers reported.</div>
+          } @else {
+            @for (row of mcpRows(); track row.name) {
+              <div class="row">
+                <span class="dot" [class.ok]="row.ok" [class.error]="!row.ok"></span>
+                <span class="row-label">{{ row.name }}</span>
+                <span class="row-meta">{{ row.status }}</span>
+                @if (row.error) {
+                  <span class="row-error" [title]="row.error">⚠</span>
+                }
+              </div>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

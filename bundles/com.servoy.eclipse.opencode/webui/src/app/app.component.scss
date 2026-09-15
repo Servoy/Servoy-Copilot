@@ -21,6 +21,14 @@
   min-height: 0;
 }
 
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--svy-border, rgba(0, 0, 0, 0.08));
+}
+
 .messages {
   flex: 1;
   min-height: 0;
