@@ -29,6 +29,8 @@ import { Attachment, AttachmentBarComponent } from './attachment-bar.component';
 })
 export class ComposerComponent {
   readonly streaming = input(false);
+  /** When true the composer is read-only (e.g. viewing a subagent session). */
+  readonly disabled = input(false);
 
   readonly sendMessage = output<SendPart[]>();
   readonly stop = output<void>();
@@ -46,6 +48,9 @@ export class ComposerComponent {
   }
 
   onKeydown(event: KeyboardEvent): void {
+    if (this.disabled()) {
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       this.submit();
@@ -106,7 +111,7 @@ export class ComposerComponent {
   }
 
   submit(): void {
-    if (this.streaming()) {
+    if (this.streaming() || this.disabled()) {
       return;
     }
     const trimmed = this.text().trim();

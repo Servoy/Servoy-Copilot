@@ -1,8 +1,19 @@
 <div class="composer" (drop)="onDrop($event)" (dragover)="onDragOver($event)">
+  @if (disabled()) {
+    <div class="disabled-hint">You're viewing a subagent session. Open its parent session to chat.</div>
+  }
+
   <svy-attachment-bar [attachments]="attachments()" (remove)="removeAttachment($event)"></svy-attachment-bar>
 
   <div class="input-row">
-    <button type="button" class="attach-btn" (click)="openFilePicker()" title="Attach files" aria-label="Attach files">
+    <button
+      type="button"
+      class="attach-btn"
+      (click)="openFilePicker()"
+      title="Attach files"
+      aria-label="Attach files"
+      [disabled]="disabled()"
+    >
       +
     </button>
 
@@ -10,8 +21,9 @@
       #textarea
       class="input"
       rows="1"
-      placeholder="Ask Servoy AI…"
+      [placeholder]="disabled() ? 'Chatting is disabled for subagent sessions' : 'Ask Servoy AI…'"
       [(ngModel)]="text"
+      [disabled]="disabled()"
       (input)="onInput()"
       (keydown)="onKeydown($event)"
       (paste)="onPaste($event)"
@@ -20,7 +32,14 @@
     @if (streaming()) {
       <button type="button" class="send-btn stop" (click)="onStop()" title="Stop" aria-label="Stop">■</button>
     } @else {
-      <button type="button" class="send-btn" (click)="submit()" title="Send" aria-label="Send">↑</button>
+      <button
+        type="button"
+        class="send-btn"
+        (click)="submit()"
+        title="Send"
+        aria-label="Send"
+        [disabled]="disabled()"
+      >↑</button>
     }
   </div>
 

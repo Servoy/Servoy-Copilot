@@ -8,6 +8,19 @@
   background: var(--svy-composer-bg, transparent);
 }
 
+.disabled-hint {
+  max-width: 860px;
+  margin: 0 auto 0.4rem;
+  font-size: 0.78rem;
+  color: var(--svy-muted, #9aa0a6);
+}
+
+.attach-btn:disabled,
+.send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .input-row {
   display: flex;
   align-items: flex-end;

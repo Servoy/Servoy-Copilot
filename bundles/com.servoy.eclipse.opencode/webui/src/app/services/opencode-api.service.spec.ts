@@ -67,6 +67,33 @@ describe('OpencodeApiService', () => {
     req.flush({ id: 'a/b c' });
   });
 
+  it('updateSessionTitle PATCHes the title', () => {
+    let updated: Session | undefined;
+    service.updateSessionTitle('s1', 'New title').subscribe((s) => (updated = s));
+    const req = httpMock.expectOne('rest_api/session/s1');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ title: 'New title' });
+    req.flush({ id: 's1', title: 'New title' });
+    expect(updated?.title).toBe('New title');
+  });
+
+  it('archiveSession PATCHes a time.archived timestamp', () => {
+    service.archiveSession('s1', 123).subscribe();
+    const req = httpMock.expectOne('rest_api/session/s1');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ time: { archived: 123 } });
+    req.flush({ id: 's1', time: { archived: 123 } });
+  });
+
+  it('deleteSession DELETEs the session', () => {
+    let ok: boolean | undefined;
+    service.deleteSession('s1').subscribe((r) => (ok = r));
+    const req = httpMock.expectOne('rest_api/session/s1');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(true);
+    expect(ok).toBe(true);
+  });
+
   it('listMessages GETs the message endpoint with no limit param by default', () => {
     const msgs: MessageWithParts[] = [
       { info: { id: 'm1', role: 'assistant' }, parts: [] }

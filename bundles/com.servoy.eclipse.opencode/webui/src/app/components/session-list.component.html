@@ -2,18 +2,81 @@
   <button type="button" class="new-session" (click)="onNew()">+ New session</button>
 
   <div class="list">
-    @for (session of sessions(); track session.id) {
-      <button
-        type="button"
+    @for (node of tree(); track node.session.id) {
+      @let session = node.session;
+      <div
         class="session"
         [class.active]="session.id === activeSessionId()"
+        [class.renaming]="session.id === renamingSessionId()"
         (click)="onSelect(session.id)"
+        (contextmenu)="onContextMenu($event, session.id)"
       >
-        <span class="session-title" [title]="title(session)">{{ title(session) }}</span>
-        <span class="session-time">{{ relativeTime(session) }}</span>
-      </button>
+        @if (node.children.length > 0) {
+          <button
+            type="button"
+            class="twisty"
+            [attr.aria-expanded]="isExpanded(session.id)"
+            [attr.aria-label]="isExpanded(session.id) ? 'Collapse subagents' : 'Expand subagents'"
+            (click)="toggleExpand($event, session.id)"
+          >{{ isExpanded(session.id) ? '▾' : '▸' }}</button>
+        } @else {
+          <span class="twisty-spacer"></span>
+        }
+
+        @if (session.id === renamingSessionId()) {
+          <input
+            #renameInput
+            type="text"
+            class="rename-input"
+            [ngModel]="renameText()"
+            (ngModelChange)="renameText.set($event)"
+            (keydown)="onRenameKeydown($event, session.id)"
+            (blur)="commitRename(session.id)"
+            (click)="$event.stopPropagation()"
+          />
+        } @else {
+          <div class="session-main">
+            <span class="session-title" [title]="title(session)">{{ title(session) }}</span>
+            <span class="session-time">{{ relativeTime(session) }}</span>
+          </div>
+          <button
+            type="button"
+            class="session-menu-btn"
+            aria-label="Session actions"
+            title="Session actions"
+            (click)="onMenuButton($event, session.id)"
+          >⋯</button>
+        }
+      </div>
+
+      @if (isExpanded(session.id)) {
+        @for (child of node.children; track child.id) {
+          <div
+            class="session child"
+            [class.active]="child.id === activeSessionId()"
+            (click)="onSelect(child.id)"
+            (contextmenu)="onContextMenu($event, child.id)"
+          >
+            <span class="twisty-spacer"></span>
+            <div class="session-main">
+              <span class="session-title" [title]="title(child)">{{ title(child) }}</span>
+              <span class="session-time">subagent · {{ relativeTime(child) }}</span>
+            </div>
+          </div>
+        }
+      }
     } @empty {
       <div class="empty">No sessions yet</div>
     }
   </div>
 </div>
+
+@if (menuSessionId(); as menuId) {
+  <div class="menu-backdrop" (click)="closeMenu()" (contextmenu)="$event.preventDefault(); closeMenu()"></div>
+  <div class="context-menu" [style.left.px]="menuPosition().x" [style.top.px]="menuPosition().y">
+    <button type="button" class="menu-item" (click)="onRename(menuId)">Rename</button>
+    <button type="button" class="menu-item" (click)="onExport(menuId)">Export</button>
+    <button type="button" class="menu-item" (click)="onArchive(menuId)">Archive</button>
+    <button type="button" class="menu-item danger" (click)="onDelete(menuId)">Delete</button>
+  </div>
+}

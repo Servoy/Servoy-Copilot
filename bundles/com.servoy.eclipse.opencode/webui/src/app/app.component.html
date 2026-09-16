@@ -1,10 +1,14 @@
 <div class="app">
   <aside class="sidebar">
     <svy-session-list
-      [sessions]="store.sessions()"
+      [tree]="store.sessionTree()"
       [activeSessionId]="store.activeSessionId()"
       (select)="onSelectSession($event)"
       (create)="onNewSession()"
+      (rename)="onRenameSession($event)"
+      (export)="onExportSession($event)"
+      (archive)="onArchiveSession($event)"
+      (remove)="onDeleteSession($event)"
     ></svy-session-list>
   </aside>
 
@@ -18,6 +22,7 @@
     <svy-message-list class="messages" [messages]="store.messages()"></svy-message-list>
     <svy-composer
       [streaming]="store.streaming()"
+      [disabled]="store.activeIsSubagent()"
       (sendMessage)="onSend($event)"
       (stop)="onStop()"
     ></svy-composer>

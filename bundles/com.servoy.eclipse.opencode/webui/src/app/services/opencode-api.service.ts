@@ -35,6 +35,27 @@ export class OpencodeApiService {
     return this.http.get<Session>(`${this.base}/session/${encodeURIComponent(id)}`);
   }
 
+  /** Rename a session (opencode {@code PATCH /session/:id}, body {@code { title }}). */
+  updateSessionTitle(id: string, title: string): Observable<Session> {
+    return this.http.patch<Session>(`${this.base}/session/${encodeURIComponent(id)}`, { title });
+  }
+
+  /**
+   * Archive a session by stamping {@code time.archived} (opencode
+   * {@code PATCH /session/:id}). Archived sessions are dropped from
+   * {@code GET /session} server-side, so a list refresh hides them.
+   */
+  archiveSession(id: string, archivedAt: number = Date.now()): Observable<Session> {
+    return this.http.patch<Session>(`${this.base}/session/${encodeURIComponent(id)}`, {
+      time: { archived: archivedAt }
+    });
+  }
+
+  /** Permanently delete a session and all its data (opencode {@code DELETE /session/:id}). */
+  deleteSession(id: string): Observable<boolean> {
+    return this.http.delete<boolean>(`${this.base}/session/${encodeURIComponent(id)}`);
+  }
+
   listMessages(id: string, limit?: number): Observable<MessageWithParts[]> {
     let params = new HttpParams();
     if (limit != null) {

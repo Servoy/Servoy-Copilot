@@ -24,7 +24,8 @@ export class AppComponent implements OnInit {
   readonly store = inject(ChatStore);
 
   ngOnInit(): void {
-    this.store.refreshSessions();
+    // Startup: open the most recent session for this directory, or a fresh draft.
+    this.store.bootstrap();
   }
 
   onSelectSession(id: string): void {
@@ -33,6 +34,22 @@ export class AppComponent implements OnInit {
 
   onNewSession(): void {
     this.store.newSession();
+  }
+
+  onRenameSession(event: { id: string; title: string }): void {
+    this.store.renameSession(event.id, event.title);
+  }
+
+  onExportSession(id: string): void {
+    this.store.exportSession(id);
+  }
+
+  onArchiveSession(id: string): void {
+    this.store.archiveSession(id);
+  }
+
+  onDeleteSession(id: string): void {
+    this.store.deleteSession(id);
   }
 
   onSend(parts: SendPart[]): void {
