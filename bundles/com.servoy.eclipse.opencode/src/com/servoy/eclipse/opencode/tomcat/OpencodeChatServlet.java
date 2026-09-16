@@ -490,7 +490,14 @@ public class OpencodeChatServlet extends HttpServlet {
 		async.addListener(new AsyncListener() {
 			@Override
 			public void onComplete(AsyncEvent event) {
-				closed.set(true);
+				// Also tear down here, not just set closed: if the container completes
+				// the async context on a client disconnect without firing onError, the
+				// pump's blocking upstream read would otherwise stay parked until the
+				// stall watchdog fires (up to SSE_STALL_TIMEOUT_MS later). teardown is
+				// idempotent (guarded by compareAndSet) and safeComplete tolerates an
+				// already-completed context, so running it on every completion path is
+				// safe and releases the upstream immediately.
+				teardown.run();
 			}
 
 			@Override
