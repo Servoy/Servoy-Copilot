@@ -45,7 +45,9 @@
 							<goal>install-node-and-npm</goal>
 						</goals>
 						<configuration>
-							<nodeVersion>v24.11.1</nodeVersion>
+							<!-- Node 24 LTS. Must satisfy the Angular devkit engine
+							     requirement (>= ^24.15.0); v24.11.1 was too old. -->
+							<nodeVersion>v24.21.0</nodeVersion>
 						</configuration>
 					</execution>
 
