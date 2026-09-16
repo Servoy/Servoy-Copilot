@@ -15,6 +15,7 @@
   border: 1px solid var(--svy-border, rgba(0, 0, 0, 0.12));
   border-radius: 6px;
   background: var(--svy-surface, #fff);
+  color: var(--svy-fg, inherit);
   font-size: 0.8rem;
   cursor: pointer;
 }
@@ -31,6 +32,7 @@
   flex: 0 0 auto;
 }
 
+// Popover rows put the state class directly on the .dot span.
 .dot.ok {
   background: #2ea043;
 }
@@ -40,11 +42,26 @@
 }
 
 .dot.error {
-  background: #d1242f;
+  background: var(--svy-danger, #d1242f);
+}
+
+// The toggle button carries the overall state class (.ok/.warn/.error), so the
+// child dot must be coloured via a descendant selector - without this the
+// toggle dot stays grey even when everything is green.
+.status-toggle.ok .dot {
+  background: #2ea043;
+}
+
+.status-toggle.warn .dot {
+  background: var(--svy-accent, #f5a623);
+}
+
+.status-toggle.error .dot {
+  background: var(--svy-danger, #d1242f);
 }
 
 .label {
-  color: var(--svy-text, #202124);
+  color: var(--svy-fg, #202124);
 }
 
 .popover {
@@ -59,6 +76,7 @@
   border: 1px solid var(--svy-border, rgba(0, 0, 0, 0.14));
   border-radius: 8px;
   background: var(--svy-surface, #fff);
+  color: var(--svy-fg, inherit);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   font-size: 0.8rem;
 }
@@ -130,12 +148,12 @@
 }
 
 .row-error {
-  color: #d1242f;
+  color: var(--svy-danger, #d1242f);
   cursor: help;
 }
 
 .error-text {
-  color: #d1242f;
+  color: var(--svy-danger, #d1242f);
 }
 
 .chips {

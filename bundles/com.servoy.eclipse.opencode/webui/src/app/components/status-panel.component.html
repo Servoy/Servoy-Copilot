@@ -52,18 +52,22 @@
 
         <div class="section">
           <div class="section-title">
-            Models
+            Providers
             <span class="count">{{ connectedProviders().length }} connected</span>
           </div>
           @if (hasProviders()) {
-            <div class="chips">
-              @for (p of connectedProviders(); track p) {
-                <span class="chip">{{ p }}</span>
-              }
-            </div>
+            @for (p of providerRows(); track p.name) {
+              <div class="row">
+                <span class="dot ok"></span>
+                <span class="row-label">{{ p.name }}</span>
+                @if (p.defaultModel) {
+                  <span class="row-meta">{{ p.defaultModel }}</span>
+                }
+              </div>
+            }
           } @else {
             <div class="row error-text">
-              No model provider is connected — sign in to a provider so the assistant can respond.
+              No provider is connected — sign in to a provider so the assistant can respond.
             </div>
           }
         </div>
