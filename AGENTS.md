@@ -16,8 +16,9 @@ This Git repository contains the following core projects/plugins:
 
 ### 2. `com.servoy.eclipse.opencode` ⬅ ACTIVE
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
-- **Main Role:** Opencode AI wrapper — installs, configures, and manages the lifecycle of the [opencode](https://opencode.ai) CLI tool embedded in the Servoy Developer IDE.
-- **Key Focus:** Downloads and keeps the `opencode-ai` npm package up to date (`~1.15.x`), starts the opencode HTTP server on a free port, hosts it in an embedded browser view, and merges MCP endpoint contributions from other bundles into `opencode.json`.
+- **Main Role:** Opencode AI wrapper — installs, configures, and manages the lifecycle of the [opencode](https://opencode.ai) CLI tool embedded in the Servoy Developer IDE, **and hosts a custom Angular chat UI** (`webui/`) that talks to the opencode HTTP + SSE API through a same-origin BFF servlet.
+- **Key Focus:** Downloads and keeps the `opencode-ai` npm package up to date (`~1.15.x`), starts the opencode HTTP server on a free port, serves the bundled Angular app in the embedded browser view, and merges MCP endpoint contributions from other bundles into `opencode.json`.
+- **Custom chat UI, not opencode's own web:** The embedded browser no longer points at opencode's built-in web UI. It loads the Angular app served by `OpencodeChatServlet` at `/servoy_ai/`, which proxies opencode's API under `/servoy_ai/rest_api/**` (see the Angular frontend section below). The BFF injects the active project directory server-side and centralises the readiness gate, so the front-end never carries directory state and `EventSource` (SSE) works same-origin.
 - **Crucial Detail:** Requires two system properties to activate: `GENAI_API_KEY` and `SERVOY_SKILLS_ZIP`. Without them the setup job skips entirely and the view shows a "not configured" page.
 - **Key classes:**
 
@@ -34,11 +35,51 @@ This Git repository contains the following core projects/plugins:
   | `ProviderConfigWriter` | Writes `GENAI_API_KEY` env var and ensures `$schema` in `opencode.json` |
   | `SkillsZipExtractor` | Extracts `SERVOY_SKILLS_ZIP` into `~/.servoy/opencode/`; updates `AGENTS.MD` in project root with runtime Servoy/Postgres versions and database names |
   | `OpenCodeUtil` | Static helpers: resolves active project path, walks up to git root |
+  | `OpencodeChatServlet` (`.tomcat`) | Backend-for-frontend (BFF) servlet mounted at `/servoy_ai/*` on the embedded Tomcat. Serves the built Angular app from `/webui-dist/` (with SPA fallback + hashed-asset caching) and proxies opencode's HTTP + SSE API under `/servoy_ai/rest_api/**`, injecting the project directory and holding requests behind a readiness gate while opencode starts |
+  | `ServicesProvider` (`.tomcat`) | Registers the servlet instance mapped to `/servoy_ai/*` on the Servoy web server |
 
 - **State directory:** `{eclipse-state}/opencode/` — contains `package.json`, `node_modules/`, `package_copy.json` (version sentinel), `.fullygenerated` (install marker).
 - **Config directory:** `~/.servoy/opencode/` — contains `opencode.json` (MCP + provider config) and extracted skills zip content.
 - **Update strategy:** On every startup, if the bundle's `package.json` changed → full clean `npm install`; otherwise → `npm update opencode-ai` to pick up the latest `1.15.x` patch. Both steps are non-fatal.
 - **Test bundle:** `com.servoy.eclipse.opencode.tests` — fragment of the opencode bundle, plain JUnit (no OSGi runtime required). Tests `McpConfigWriter` and `OpencodeFolderCreatorJob` helpers, plus the `com.servoy.eclipse.opencode.tomcat` BFF: `OpencodeChatServletTest` (route classification, upstream-path mapping, directory injection incl. spoof-prevention, static-asset path-traversal defense, hashed-asset detection), `OpencodeChatServletGuardTest` (readiness-gate / no-active-solution / port<=0 guards via dynamic-proxy request/response fakes), and `ServicesProviderTest` (`getServletInstances("")` returns one `ServletInstance` mapped to `/servoy_ai/*`; non-root contexts register nothing).
+
+#### Angular chat frontend — `com.servoy.eclipse.opencode/webui/`
+
+The chat UI is a standalone **Angular application** living inside the opencode bundle. It is **not** part of the Eclipse/JDT/OSGi world — treat it as an ordinary Angular project.
+
+- **Stack:** Angular 22, standalone components, **zoneless** change detection (`provideZonelessChangeDetection`), **signals** everywhere, `ChangeDetectionStrategy.OnPush`, SCSS, `marked` + `DOMPurify` + `highlight.js` for markdown, **Vitest** for unit tests.
+- **Build output:** `ng build` writes to `../webui-dist` (the folder `OpencodeChatServlet` serves). `baseHref` is `/servoy_ai/`; all API calls are relative (`rest_api/...`) so the app is location-independent. `webui-dist`, `.angular`, and `node_modules` are **not** committed / not indexed.
+- **Key structure (`webui/src/app/`):**
+  - `services/chat-store.service.ts` — central signal store: active session, messages, streaming state, session tree (with nested subagent children), live updates from the `/event` bus, and `exportSession` (JSON export).
+  - `services/opencode-api.service.ts` — typed wrappers over `rest_api/**`.
+  - `services/event-stream.service.ts` — `EventSource` on `rest_api/event`, parses opencode bus events.
+  - `services/status.service.ts` — health / mcp / provider status endpoints.
+  - `services/part-utils.ts` — decides which message parts render and how (text/reasoning/tool), friendly tool names + argument subtitles, filters synthetic `[system: ...]` / `<system-reminder>` parts.
+  - `services/session-export.ts` — serializes a session to the exact `{ info, messages: [{ info, parts }] }` shape produced by `opencode export`.
+  - `services/theme.service.ts` — reads the `darkmode` query param and applies the light/dark palette before first render.
+  - `components/` — `message-list`, `message-item` (flowing transcript), `session-list` (sidebar tree + context menu), `composer`, `status-panel`, `markdown-renderer`.
+- **Theme:** `OpenCodeView.resolveChatUiUrl()` appends `?darkmode=<true|false>` from the IDE theme; the app mirrors it. No light-to-dark flash because the theme is applied in `main.ts` before bootstrap.
+- **Tools to use in this subtree:** the Eclipse JDT/PDE MCP tools are Java-only and do **not** apply here. For `webui/` use the **Angular CLI MCP tools** (`angular-cli_*`), the generic `read`/`write`/`edit`/`grep`/`glob` file tools, and `npm`/`vitest` via `bash`.
+
+#### Quick debugging of the Angular frontend
+
+Fastest inner loop when iterating on the chat UI:
+
+1. Start a **development watch build** into the served folder (unminified, sourcemaps on, **unhashed** `main.js` so reloads always pick up changes and the browser can show real sources):
+   ```
+   ng build --watch --configuration development
+   ```
+   (run from `bundles/com.servoy.eclipse.opencode/webui`; output lands in `../webui-dist`). Each save rebuilds in ~1 s; the watch log shows compile errors without a full `npm run build`.
+2. Make sure **Servoy Developer is running** and the **Servoy AI view/part is open** (this starts the embedded Tomcat + opencode server on their ports).
+3. In OpenChamber, open the browser to the live app:
+   ```
+   http://127.0.0.1:8183/servoy_ai/
+   ```
+   (Port `8183` is the Servoy web server / Tomcat port shown for that instance — confirm the actual port if it differs.) Reload after each rebuild to see changes; use `browser.snapshot` / `browser.inspect` to read the DOM and computed styles when debugging layout or state.
+4. Run unit tests with `npm test` (Vitest) from the `webui/` folder.
+5. **Before committing**, replace the dev watch output with a clean production build: stop the watch and run `npm run build` (production, hashed, optimized) so `webui-dist` isn't left as a dev bundle. Note `webui-dist` is not committed, but the production build is what ships in the packaged plugin.
+
+---
 
 > The following bundles are **no longer actively developed**. They are kept in the repository for reference only. Do not make changes to them unless explicitly instructed.
 
@@ -153,6 +194,8 @@ Total: **9 integration tests + 2 suites** (require PDE test launcher)
 ## 2. Prioritize Eclipse MCP Tools Over Standard Tools
 
 Since this workspace is a complex, multi-project Eclipse environment, **always prioritize Eclipse-specific MCP/PDE tools** over standard, general-purpose command-line or filesystem tools. This ensures that the Eclipse index, builder, and classpath are kept in sync.
+
+> **Exception — the Angular frontend (`com.servoy.eclipse.opencode/webui/`):** this subtree is a standalone Angular project, not Java/JDT/OSGi. The Eclipse tools below do **not** apply there. Use the `angular-cli_*` MCP tools, the generic `read`/`write`/`edit`/`grep`/`glob` file tools, and `npm`/`vitest`/`ng` via `bash` instead. Everything in this section is about the Java bundles.
 
 - **File Reading:** Use `eclipse-ide_readProjectResource` instead of the generic `read` tool.
 - **File Writing & Creating:** Use `eclipse-coder_createFile` or `eclipse-coder_replaceFileContent` instead of the generic `write` tool.
