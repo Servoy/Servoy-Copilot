@@ -7,6 +7,10 @@
 export interface SessionTime {
   created?: number;
   updated?: number;
+  /** Set (to an epoch millis timestamp) when a session is archived. */
+  archived?: number;
+  /** Set (to an epoch millis timestamp) when an assistant message finished. */
+  completed?: number;
 }
 
 export interface Session {
@@ -59,11 +63,24 @@ export interface ToolState {
 
 export type MessageRole = 'user' | 'assistant' | string;
 
+/**
+ * Error attached to an assistant message when the model turn failed (e.g.
+ * {@code { name: 'UnknownError', data: { message: 'No accounts' } }}). When
+ * present the message often has no parts, so this is the only thing to show.
+ */
+export interface MessageError {
+  name?: string;
+  data?: { message?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
 export interface MessageInfo {
   id: string;
   sessionID?: string;
   role: MessageRole;
   time?: SessionTime;
+  /** Set when the assistant turn errored out. */
+  error?: MessageError;
   [key: string]: unknown;
 }
 

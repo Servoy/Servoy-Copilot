@@ -7,6 +7,9 @@ import {
   isTextPart,
   isToolPart,
   toolLabel,
+  toolDisplayName,
+  toolSubtitle,
+  hasToolOutput,
   upsertPart
 } from './part-utils';
 import { Part } from '../models/opencode.models';
@@ -35,6 +38,15 @@ describe('isSyntheticPart', () => {
 
   it('does not treat a system-reminder mention in the middle of text as synthetic', () => {
     expect(isSyntheticPart(part({ type: 'text', text: 'see <system-reminder> below' }))).toBe(false);
+  });
+
+  it('is true for a bare "[system: ...]" continuation marker', () => {
+    expect(isSyntheticPart(part({ type: 'text', text: '[system: tool calling continues]' }))).toBe(true);
+    expect(isSyntheticPart(part({ type: 'text', text: '  [system: continues]  ' }))).toBe(true);
+  });
+
+  it('does not treat prose merely containing "[system:" as synthetic', () => {
+    expect(isSyntheticPart(part({ type: 'text', text: 'the log line [system: x] appeared' }))).toBe(false);
   });
 });
 
@@ -111,6 +123,55 @@ describe('toolLabel', () => {
   it('falls back to "tool" when the name is missing', () => {
     expect(toolLabel(part({ type: 'tool' }))).toBe('tool');
     expect(toolLabel(part({ type: 'tool', state: { status: 'completed' } }))).toBe('tool · completed');
+  });
+});
+
+describe('toolDisplayName', () => {
+  it('maps known tool ids to friendly names', () => {
+    expect(toolDisplayName(part({ type: 'tool', tool: 'read' }))).toBe('Read File');
+    expect(toolDisplayName(part({ type: 'tool', tool: 'bash' }))).toBe('Shell Command');
+    expect(toolDisplayName(part({ type: 'tool', tool: 'edit' }))).toBe('Edit File');
+  });
+
+  it('maps the skill tool to "Load Skill"', () => {
+    expect(toolDisplayName(part({ type: 'tool', tool: 'skill' }))).toBe('Load Skill');
+  });
+
+  it('title-cases unknown tool ids', () => {
+    expect(toolDisplayName(part({ type: 'tool', tool: 'custom_mcp_tool' }))).toBe('Custom Mcp Tool');
+  });
+
+  it('falls back to "Tool" when no name is present', () => {
+    expect(toolDisplayName(part({ type: 'tool' }))).toBe('Tool');
+  });
+});
+
+describe('toolSubtitle', () => {
+  it('surfaces the most meaningful input argument', () => {
+    expect(toolSubtitle(part({ type: 'tool', tool: 'read', state: { input: { filePath: '/a/b.ts' } } }))).toBe('/a/b.ts');
+    expect(toolSubtitle(part({ type: 'tool', tool: 'bash', state: { input: { command: 'ls -la' } } }))).toBe('ls -la');
+    expect(toolSubtitle(part({ type: 'tool', tool: 'grep', state: { input: { pattern: 'foo' } } }))).toBe('foo');
+    expect(toolSubtitle(part({ type: 'tool', tool: 'skill', state: { input: { name: 'pdf-forms' } } }))).toBe('pdf-forms');
+  });
+
+  it('is empty when there is no usable input', () => {
+    expect(toolSubtitle(part({ type: 'tool', tool: 'read' }))).toBe('');
+    expect(toolSubtitle(part({ type: 'tool', tool: 'read', state: { input: {} } }))).toBe('');
+    expect(toolSubtitle(part({ type: 'tool', tool: 'read', state: { input: 'string' } }))).toBe('');
+  });
+});
+
+describe('hasToolOutput', () => {
+  it('is true only when there is non-empty output', () => {
+    expect(hasToolOutput(part({ type: 'tool', state: { output: 'body' } }))).toBe(true);
+    expect(hasToolOutput(part({ type: 'tool', state: { output: '   ' } }))).toBe(false);
+    expect(hasToolOutput(part({ type: 'tool' }))).toBe(false);
+  });
+
+  it('is false for the skill tool even when it has output (skill content is internal)', () => {
+    expect(
+      hasToolOutput(part({ type: 'tool', tool: 'skill', state: { output: 'the whole skill file' } }))
+    ).toBe(false);
   });
 });
 

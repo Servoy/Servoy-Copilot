@@ -3,18 +3,75 @@
 }
 
 .message {
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
   max-width: 100%;
 
-  &.user {
-    background: var(--svy-user-bg, rgba(245, 166, 35, 0.12));
-    border: 1px solid var(--svy-user-border, rgba(245, 166, 35, 0.35));
-    align-self: flex-end;
+  // Assistant turns flow directly on the conversation background - no bubble,
+  // no separating box - so prose and tool calls read as one continuous stream.
+  &.assistant {
+    padding: 0.15rem 0;
   }
 
-  &.assistant {
-    background: var(--svy-assistant-bg, rgba(127, 127, 127, 0.08));
+  // User turns keep a soft rounded bubble, indented to the right.
+  &.user {
+    margin-left: auto;
+    width: fit-content;
+    max-width: 85%;
+    padding: 0.6rem 0.9rem;
+    border-radius: 14px;
+    background: var(--svy-user-bg, rgba(127, 127, 127, 0.1));
+  }
+
+  &.errored {
+    border-radius: 12px;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--svy-danger, #d1242f);
+  }
+}
+
+.error-notice {
+  color: var(--svy-danger, #d1242f);
+  font-size: 0.85rem;
+  line-height: 1.4;
+
+  &.muted {
+    color: var(--svy-muted, #9aa0a6);
+  }
+}
+
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.15rem 0;
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--svy-muted, #9aa0a6);
+    opacity: 0.35;
+    animation: svy-thinking 1.2s infinite ease-in-out;
+  }
+
+  .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+@keyframes svy-thinking {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
   }
 }
 
@@ -26,38 +83,79 @@
   margin: 0.3rem 0;
 }
 
+// Tool calls: a flowing row (icon-caret + name + muted argument), no box, no
+// border. Expandable rows reveal a caret on hover and indent their output
+// under a vertical guide line.
 .tool {
-  margin: 0.3rem 0;
+  margin: 0.15rem 0;
 }
 
 .tool-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: transparent;
-  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.3));
-  border-radius: 6px;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.82rem;
-  color: var(--svy-muted, #9aa0a6);
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.12rem 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.tool.expandable .tool-row {
   cursor: pointer;
 
-  &:hover {
-    color: var(--svy-fg, inherit);
-    border-color: var(--svy-accent, #f5a623);
+  &:hover .tool-name {
+    color: var(--svy-accent, #f5a623);
   }
 }
 
 .tool-caret {
-  font-size: 0.7rem;
+  flex: 0 0 auto;
+  width: 0.9rem;
+  font-size: 0.75rem;
+  color: var(--svy-muted, #9aa0a6);
+  // Hidden until the row is hovered or open, matching OpenChamber.
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.tool.expandable:hover .tool-caret,
+.tool.expandable.open .tool-caret {
+  opacity: 1;
+}
+
+.tool-name {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--svy-fg, inherit);
+}
+
+.tool-subtitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--svy-muted, #9aa0a6);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-output-wrap {
+  // Indent under the caret column and draw a vertical guide, so expanded
+  // output reads as nested content rather than a detached box.
+  margin: 0.25rem 0 0.35rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+  margin-left: 0.35rem;
 }
 
 .tool-output {
-  margin: 0.35rem 0 0;
-  padding: 0.6rem 0.8rem;
-  background: var(--svy-pre-bg, #1e1e1e);
-  border-radius: 8px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--svy-muted, #6b7178);
   font-size: 0.8rem;
+  line-height: 1.45;
   overflow-x: auto;
   white-space: pre-wrap;
 }
