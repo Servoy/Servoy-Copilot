@@ -28,6 +28,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
 
 import com.servoy.eclipse.core.IActiveProjectListener;
+import com.servoy.eclipse.core.util.UIUtils;
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -333,7 +334,10 @@ public class OpenCodeView extends ViewPart {
 	 */
 	private static String resolveChatUiUrl() {
 		int tomcatPort = ApplicationServerRegistry.get().getWebServerPort();
-		return "http://127.0.0.1:" + tomcatPort + OpencodeChatServlet.BASE_PATH + "/"; //$NON-NLS-1$ //$NON-NLS-2$
+		// Mirror the Eclipse IDE theme into the chat UI: the Angular app reads the
+		// darkmode query param and applies its dark palette when it is true.
+		boolean dark = UIUtils.isDarkThemeSelected(true);
+		return "http://127.0.0.1:" + tomcatPort + OpencodeChatServlet.BASE_PATH + "/?darkmode=" + dark; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	private String getPageUrl(String bundlePath) {

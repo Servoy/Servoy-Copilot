@@ -2,9 +2,14 @@
    Matches the Servoy Developer look (orange accent) natively, replacing the
    runtime CSS injection that OpenCodeBranding used to do. */
 
-@import 'highlight.js/styles/github-dark.css';
-
+/* Theme tokens. Light is the default; the dark palette applies whenever the
+   document root carries data-theme="dark". That attribute is set explicitly at
+   startup (from the Eclipse theme the servlet reports, or a ?darkmode= URL
+   override) - the app does NOT follow the OS prefers-color-scheme, because it
+   must mirror the surrounding Eclipse IDE theme rather than the OS setting. */
 :root {
+  color-scheme: light;
+
   --svy-accent: #f5a623;
   --svy-accent-hover: #d4891e;
   --svy-stop: #b5741a;
@@ -13,18 +18,35 @@
   --svy-muted: #6b7075;
   --svy-border: rgba(127, 127, 127, 0.25);
   --svy-hover: rgba(127, 127, 127, 0.1);
+  --svy-hover-strong: rgba(127, 127, 127, 0.22);
   --svy-active: rgba(245, 166, 35, 0.14);
-  --svy-pre-bg: #1e1e1e;
+  // Code / tool-output blocks follow the theme (light in light mode).
+  --svy-pre-bg: #f3f4f6;
+  --svy-pre-fg: #1f2328;
   --svy-code-bg: rgba(127, 127, 127, 0.14);
+  --svy-danger: #d1242f;
+  // Surfaces sit slightly off the base bg so panels/chips/buttons read as raised.
+  --svy-surface: #ffffff;
+  --svy-surface-hover: rgba(0, 0, 0, 0.04);
   --svy-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --svy-fg: #e6e6e6;
-    --svy-bg: #1b1b1d;
-    --svy-muted: #9aa0a6;
-  }
+:root[data-theme='dark'] {
+  // color-scheme flips native UI (scrollbars, form controls) to dark.
+  color-scheme: dark;
+
+  --svy-fg: #e6e6e6;
+  --svy-bg: #1b1b1d;
+  --svy-muted: #9aa0a6;
+  --svy-border: rgba(160, 160, 160, 0.25);
+  --svy-hover: rgba(200, 200, 200, 0.08);
+  --svy-hover-strong: rgba(200, 200, 200, 0.16);
+  --svy-danger: #f06a6a;
+  --svy-pre-bg: #0d1117;
+  --svy-pre-fg: #c9d1d9;
+  --svy-code-bg: rgba(200, 200, 200, 0.1);
+  --svy-surface: #26282c;
+  --svy-surface-hover: rgba(200, 200, 200, 0.08);
 }
 
 * {
@@ -42,4 +64,169 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   color: var(--svy-fg);
   background: var(--svy-bg);
+}
+
+/* ---------------------------------------------------------------------------
+   highlight.js syntax colors, theme-aware.
+   Light = GitHub light palette (readable on a light code block); dark =
+   GitHub dark palette. We set the token colors ourselves (instead of importing
+   a prebuilt hljs theme, which hardcoded a dark background regardless of theme)
+   so highlighted code follows the app theme like everything else. The code
+   block background/foreground come from --svy-pre-bg / --svy-pre-fg.
+--------------------------------------------------------------------------- */
+.hljs {
+  color: var(--svy-pre-fg);
+  background: var(--svy-pre-bg);
+}
+
+/* Light palette (default). */
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  color: #d73a49;
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  color: #6f42c1;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #005cc5;
+}
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+  color: #032f62;
+}
+.hljs-built_in,
+.hljs-symbol {
+  color: #e36209;
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  color: #6a737d;
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  color: #22863a;
+}
+.hljs-subst {
+  color: #24292e;
+}
+.hljs-section {
+  color: #005cc5;
+  font-weight: bold;
+}
+.hljs-bullet {
+  color: #735c0f;
+}
+.hljs-emphasis {
+  color: #24292e;
+  font-style: italic;
+}
+.hljs-strong {
+  color: #24292e;
+  font-weight: bold;
+}
+.hljs-addition {
+  color: #22863a;
+  background-color: #f0fff4;
+}
+.hljs-deletion {
+  color: #b31d28;
+  background-color: #ffeef0;
+}
+
+/* Dark palette override. */
+:root[data-theme='dark'] {
+  .hljs-doctag,
+  .hljs-keyword,
+  .hljs-meta .hljs-keyword,
+  .hljs-template-tag,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-variable.language_ {
+    color: #ff7b72;
+  }
+  .hljs-title,
+  .hljs-title.class_,
+  .hljs-title.class_.inherited__,
+  .hljs-title.function_ {
+    color: #d2a8ff;
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-literal,
+  .hljs-meta,
+  .hljs-number,
+  .hljs-operator,
+  .hljs-variable,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-id {
+    color: #79c0ff;
+  }
+  .hljs-regexp,
+  .hljs-string,
+  .hljs-meta .hljs-string {
+    color: #a5d6ff;
+  }
+  .hljs-built_in,
+  .hljs-symbol {
+    color: #ffa657;
+  }
+  .hljs-comment,
+  .hljs-code,
+  .hljs-formula {
+    color: #8b949e;
+  }
+  .hljs-name,
+  .hljs-quote,
+  .hljs-selector-tag,
+  .hljs-selector-pseudo {
+    color: #7ee787;
+  }
+  .hljs-subst {
+    color: #c9d1d9;
+  }
+  .hljs-section {
+    color: #1f6feb;
+    font-weight: bold;
+  }
+  .hljs-bullet {
+    color: #f2cc60;
+  }
+  .hljs-emphasis {
+    color: #c9d1d9;
+    font-style: italic;
+  }
+  .hljs-strong {
+    color: #c9d1d9;
+    font-weight: bold;
+  }
+  .hljs-addition {
+    color: #aff5b4;
+    background-color: #033a16;
+  }
+  .hljs-deletion {
+    color: #ffdcd7;
+    background-color: #67060c;
+  }
 }
