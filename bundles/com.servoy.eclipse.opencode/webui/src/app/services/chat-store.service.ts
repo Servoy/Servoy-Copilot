@@ -298,11 +298,63 @@ export class ChatStore {
       case 'session.error':
         if (this.matchesActiveSession(props)) {
           this.streaming.set(false);
+          if (evt.type === 'session.idle') {
+            this.scheduleTitleRefresh();
+          }
         }
         break;
       default:
         break;
     }
+  }
+
+  /**
+   * After a turn goes idle, opencode generates the session title with a
+   * separate small LLM call and only then publishes a {@code session.updated}
+   * carrying it. That publish can land seconds after {@code session.idle},
+   * during a quiet period with no other events to ride on - so the sidebar can
+   * sit on the "New session - <timestamp>" placeholder until the next unrelated
+   * tick. Mirroring OpenChamber's OPE-193 fix, we defer a few short, targeted
+   * session fetches after idle and stop as soon as a real (non-placeholder)
+   * title is in hand, instead of waiting for the periodic status poll.
+   */
+  private scheduleTitleRefresh(): void {
+    const id = this.activeSessionId();
+    if (!id || this.hasRealTitle(id)) {
+      return;
+    }
+    const delays = [800, 1600, 3200, 5000, 9000, 13000];
+    delays.forEach((delay) => {
+      setTimeout(() => {
+        // Session may have changed, been removed, or already got its title.
+        if (this.activeSessionId() !== id || this.hasRealTitle(id)) {
+          return;
+        }
+        this.api.getSession(id).subscribe({
+          next: (session) => {
+            if (session?.id) {
+              this.applySessionUpdate({ info: session });
+            }
+          },
+          error: () => {
+            // Transient - a later scheduled poll (or the periodic one) retries.
+          }
+        });
+      }, delay);
+    });
+  }
+
+  /**
+   * Whether the session already carries a real title, i.e. not the transient
+   * {@code "New session - <ISO timestamp>"} placeholder opencode assigns before
+   * it generates one. Used to stop the post-idle title polling early.
+   */
+  private hasRealTitle(id: string): boolean {
+    const title = this.allSessions().find((s) => s.id === id)?.title?.trim();
+    if (!title) {
+      return false;
+    }
+    return !/^New session - \d{4}-\d{2}-\d{2}T/.test(title);
   }
 
   /**

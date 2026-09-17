@@ -1,5 +1,7 @@
-import { Injectable } from '@angular/core';
+import { Injectable, NgZone, inject } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
+
+import { dbg, debugEnabled } from './debug-log';
 
 /**
  * A parsed opencode bus event. opencode emits events as JSON payloads with a
@@ -21,12 +23,18 @@ export interface OpencodeEvent {
  * which is exactly why the BFF proxy is required - it forwards to opencode's
  * {@code /event} stream on loopback and injects the project directory.
  *
- * The app runs zoneless: parsed events are pushed straight into the signal-based
- * {@code ChatStore}, whose signal writes schedule change detection - so no
- * {@code NgZone} re-entry is required for the UI to reflect streamed parts.
+ * The app runs zoneless. An {@code EventSource} callback fires entirely outside
+ * Angular's reactive context, so signal writes made from it do NOT reliably
+ * schedule change detection: they only get rendered when some other tick happens
+ * to run (an HttpClient poll, a streamed part, a user interaction). That is why
+ * a lazily-generated session title could sit invisible until the next 15s status
+ * poll. Re-entering the Angular zone via {@link NgZone#run} makes the signal
+ * writes schedule a tick immediately, so every bus event - title updates,
+ * {@code session.idle}, etc. - renders as soon as it arrives.
  */
 @Injectable({ providedIn: 'root' })
 export class EventStreamService {
+  private readonly zone = inject(NgZone);
   private eventSource: EventSource | null = null;
   private readonly events$ = new Subject<OpencodeEvent>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +69,27 @@ export class EventStreamService {
         return;
       }
       if (parsed) {
-        this.events$.next(parsed);
+        if (debugEnabled) {
+          // Raw arrival time of every bus event, straight from the EventSource
+          // callback (outside Angular). Only computed when tracing is enabled.
+          const arrivedAt = Date.now();
+          const title =
+            parsed.type === 'session.updated'
+              ? (parsed.properties?.['info'] as { title?: string } | undefined)?.title
+              : undefined;
+          dbg(
+            'sse',
+            `arrive type=${parsed.type} inZone=${NgZone.isInAngularZone()}` +
+              (title !== undefined ? ` title=${JSON.stringify(title)}` : '')
+          );
+          this.zone.run(() => {
+            dbg('sse', `+${Date.now() - arrivedAt}ms dispatch type=${parsed.type}`);
+            this.events$.next(parsed);
+          });
+          return;
+        }
+        // Re-enter Angular so signal writes downstream schedule a render.
+        this.zone.run(() => this.events$.next(parsed));
       }
     };
 
