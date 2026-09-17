@@ -84,6 +84,7 @@
         <setEntry value="com.sun.jna@default:default"/>
         <setEntry value="de.inetsoftware.jlessc@default:default"/>
         <setEntry value="io.modelcontextprotocol.sdk.mcp-core@default:default"/>
+        <setEntry value="io.modelcontextprotocol.sdk.mcp-json-jackson2@default:default"/>
         <setEntry value="io.projectreactor.reactor-core@default:default"/>
         <setEntry value="io.smallrye.jandex@default:default"/>
         <setEntry value="jabsorb@default:default"/>
@@ -147,6 +148,7 @@
         <setEntry value="org.apache.commons.commons-logging@default:default"/>
         <setEntry value="org.apache.commons.commons-pool2@default:default"/>
         <setEntry value="org.apache.commons.lang3@default:default"/>
+        <setEntry value="org.apache.commons.logging@default:default"/>
         <setEntry value="org.apache.commons.text@default:default"/>
         <setEntry value="org.apache.felix.gogo.command@default:default"/>
         <setEntry value="org.apache.felix.gogo.runtime@default:default"/>
@@ -387,6 +389,8 @@
         <setEntry value="org.jspecify.jspecify@default:default"/>
         <setEntry value="org.junit@default:default"/>
         <setEntry value="org.maven.ide.eclipse.grouplayout@default:default"/>
+        <setEntry value="org.mortbay.jasper.apache-el@default:default"/>
+        <setEntry value="org.mortbay.jasper.apache-jsp@default:default"/>
         <setEntry value="org.objectweb.asm.commons@default:default"/>
         <setEntry value="org.objectweb.asm.tree.analysis@default:default"/>
         <setEntry value="org.objectweb.asm.tree@default:default"/>
