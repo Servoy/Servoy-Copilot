@@ -9,6 +9,7 @@ import {
   SendPart,
   Session
 } from '../models/opencode.models';
+import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { OpencodeApiService } from './opencode-api.service';
 import { upsertPart } from './part-utils';
@@ -316,6 +317,9 @@ export class ChatStore {
     if (!info?.id) {
       return;
     }
+    // DEBUG(title-timing): when a session.updated actually reaches the store and
+    // what title it carries. Compare this timestamp to the [sse] arrival log.
+    dbg('store', `applySessionUpdate id=${info.id} title=${JSON.stringify(info.title)}`);
     this.allSessions.update((sessions) => {
       const idx = sessions.findIndex((s) => s.id === info.id);
       if (idx === -1) {

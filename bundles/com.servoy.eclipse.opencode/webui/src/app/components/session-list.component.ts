@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   computed,
+  effect,
   input,
   output,
   signal,
@@ -12,6 +13,7 @@ import { FormsModule } from '@angular/forms';
 
 import { Session } from '../models/opencode.models';
 import { SessionNode } from '../services/chat-store.service';
+import { dbg, debugEnabled } from '../services/debug-log';
 
 /** A rename request carried out of the list. */
 export interface SessionRename {
@@ -66,6 +68,20 @@ export class SessionListComponent {
 
   /** True when there are no top-level sessions to show. */
   readonly isEmpty = computed(() => this.tree().length === 0);
+
+  constructor() {
+    // DEBUG(title-timing): fires whenever the reactive tree the sidebar renders
+    // actually changes. Compare its timestamp to the [store] applySessionUpdate
+    // log: a large gap means the signal wrote but change detection ran late.
+    if (debugEnabled) {
+      effect(() => {
+        const titles = this.tree()
+          .map((n) => n.session.title)
+          .slice(0, 3);
+        dbg('sidebar', `tree effect titles=${JSON.stringify(titles)}`);
+      });
+    }
+  }
 
   onSelect(id: string): void {
     if (this.renamingSessionId() === id) {

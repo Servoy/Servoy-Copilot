@@ -79,6 +79,46 @@ Fastest inner loop when iterating on the chat UI:
 4. Run unit tests with `npm test` (Vitest) from the `webui/` folder.
 5. **Before committing**, replace the dev watch output with a clean production build: stop the watch and run `npm run build` (production, hashed, optimized) so `webui-dist` isn't left as a dev bundle. Note `webui-dist` is not committed, but the production build is what ships in the packaged plugin.
 
+#### Debug view / SSE timing overlay (`?debug_view=true`)
+
+The chat UI ships an opt-in, on-screen trace overlay for diagnosing live event
+timing — especially the SSE bus (`rest_api/event`) → signal store → sidebar
+render path. It is **off by default** and adds no runtime cost unless the flag
+is set, so it can safely stay in the production build.
+
+- **Enable it** by appending `?debug_view=true` (or `=1`) to the app URL, e.g.
+  `http://127.0.0.1:8183/servoy_ai/?debug_view=true`. Anything else (or absent)
+  leaves it fully disabled.
+- **Why it exists:** the app is zoneless, and the raw `EventSource` callback
+  fires *outside* Angular. Signal writes made there only render when a tick
+  happens to run, which made bug symptoms (e.g. a lazily-generated session
+  title appearing many seconds late) hard to reason about. The overlay makes the
+  exact arrival/dispatch/render timeline visible without a debugger — and,
+  crucially, readable from a DOM snapshot when using the OpenChamber browser
+  tools, which have no console access.
+- **How it works:**
+  - `services/debug-log.ts` exposes a `debugEnabled` boolean (read once from the
+    URL) and a `dbg(tag, msg)` function backed by a small ring buffer. When the
+    flag is off, `dbg` is a cheap no-op and nothing is buffered or logged.
+  - Traced points (all guarded by `debugEnabled`): `EventStreamService` logs
+    every bus event's raw arrival time, whether it arrived inside the Angular
+    zone, and the dispatch delta; `ChatStore.applySessionUpdate` logs when a
+    `session.updated` reaches the store and the title it carries; the
+    `SessionListComponent` `effect` logs whenever the rendered session tree
+    actually changes.
+  - `components/debug-overlay.component.ts` renders the ring buffer as a fixed
+    bottom-right panel (`[data-debug-overlay]`), polling every 250 ms. It is
+    only added to the DOM when `debugEnabled` is true.
+- **Reading it with the browser tools:** `browser.snapshot` with selector
+  `[data-debug-overlay]` returns the visible log lines (timestamped, tagged
+  `[sse]` / `[store]` / `[sidebar]`). Poll it repeatedly (e.g. every ~0.5–2 s)
+  after sending a prompt to catch the exact moment a title/idle event lands —
+  the browser tooling exposes no console, so this overlay is the way to read the
+  timeline.
+- **Adding a trace:** import `dbg` from `services/debug-log` and call
+  `dbg('<tag>', '<message>')`. Keep new heavy work behind `if (debugEnabled)` so
+  the disabled path stays free.
+
 ---
 
 > The following bundles are **no longer actively developed**. They are kept in the repository for reference only. Do not make changes to them unless explicitly instructed.

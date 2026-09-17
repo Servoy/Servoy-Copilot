@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/cor
 
 import { SendPart } from './models/opencode.models';
 import { ChatStore } from './services/chat-store.service';
+import { debugEnabled } from './services/debug-log';
 import { ComposerComponent } from './components/composer.component';
+import { DebugOverlayComponent } from './components/debug-overlay.component';
 import { MessageListComponent } from './components/message-list.component';
 import { SessionListComponent } from './components/session-list.component';
 import { StatusPanelComponent } from './components/status-panel.component';
@@ -16,12 +18,21 @@ import { StatusPanelComponent } from './components/status-panel.component';
   selector: 'svy-root',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SessionListComponent, MessageListComponent, ComposerComponent, StatusPanelComponent],
+  imports: [
+    SessionListComponent,
+    MessageListComponent,
+    ComposerComponent,
+    StatusPanelComponent,
+    DebugOverlayComponent
+  ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
 export class AppComponent implements OnInit {
   readonly store = inject(ChatStore);
+
+  /** Renders the debug overlay only when {@code ?debug_view=true}. */
+  readonly debugEnabled = debugEnabled;
 
   ngOnInit(): void {
     // Startup: open the most recent session for this directory, or a fresh draft.

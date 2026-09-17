@@ -27,4 +27,7 @@
       (stop)="onStop()"
     ></svy-composer>
   </main>
+  @if (debugEnabled) {
+    <svy-debug-overlay></svy-debug-overlay>
+  }
 </div>
