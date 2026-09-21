@@ -107,6 +107,32 @@ public class JSUnitRunnerService
 				return result[0];
 			}
 
+			// ALL (or null): run the active solution's own tests in a SINGLE test run, without
+			// descending into its referenced modules. TestTarget(activeSolution, true) sets the
+			// excludeModules flag, which SolutionJSUnitSuiteCodeBuilder honours by skipping the
+			// module-inspection block — so the whole main solution (globals + forms) runs as one
+			// suite/session (the same shape the classic "Run all" produces), just without the
+			// "Modules" sub-suite. This replaces an earlier per-scope/per-form fan-out that
+			// produced one launch per scope/form (fragmented sessions and N cold starts).
+			if (scopeOrAll == null || "ALL".equalsIgnoreCase(scopeOrAll.trim()))
+			{
+				RunResult runResult = runForTarget(new TestTarget(activeSolution), timeoutSeconds);
+
+				if (runResult.session() == null)
+					return "Error: Test run timed out after " + timeoutSeconds + " seconds. " +
+						"Ensure the Servoy Application Server is running and the solution starts in JSUnit mode.";
+
+				String incompleteRunDetails = "";
+				if (!runResult.finishedBeforeTimeout())
+				{
+					incompleteRunDetails = "Error - Timed out while running! Partial results follow:\n";
+				}
+
+				String[] result = new String[1];
+				Display.getDefault().syncExec(() -> result[0] = formatResults(runResult.session()));
+				return incompleteRunDetails + result[0];
+			}
+
 			TestTarget target = buildTestTarget(scopeOrAll, activeProject);
 			RunResult runResult = runForTarget(target, timeoutSeconds);
 
@@ -278,6 +304,11 @@ public class JSUnitRunnerService
 	{
 		Solution activeSolution = activeProject.getSolution();
 
+		// Note: here ALL/null resolves to the whole flattened solution (main + modules) on
+		// purpose — buildTestTarget backs runTestMethod, where the caller wants to locate a named
+		// method anywhere in the solution tree. This is deliberately NOT the same as runTests'
+		// ALL, which narrows to the main solution's own scopes/forms (see runTests). Do not
+		// "unify" the two.
 		if (scopeOrAll == null || "ALL".equalsIgnoreCase(scopeOrAll.trim()))
 			return new TestTarget(activeSolution);
 
@@ -340,6 +371,16 @@ public class JSUnitRunnerService
 	 * The smart client startup (start client + wait for solution to load + runJUnitClass) can take
 	 * significantly longer than a single test's timeout under a cold headless launch, so this waits
 	 * up to a generous ceiling for the session to appear and get populated.
+	 * <p>
+	 * Terminal condition: the run is only reported as finished once the session has <b>children
+	 * AND every planned test has reported a result</b> ({@code startedCount >= totalCount}, with
+	 * {@code totalCount > 0}) — see {@link #isTerminalRun(int, int, int)}. DLTK bridges results
+	 * into the session <i>incrementally</i> for large multi-batch suites, so neither
+	 * {@code ProgressState.COMPLETED} (flips true per sub-suite batch) nor {@code launch}
+	 * termination (only happens after this wait returns) is a reliable whole-run signal; the
+	 * started/total counters are (they are what the Script Unit Test view shows). The
+	 * "children present" guard preserves the SVY-21241 fix (a freshly-created empty session with
+	 * {@code total=0} is not treated as done).
 	 */
 	private RunResult waitForSessionByLaunch(ILaunch launch, long timeoutMs) throws InterruptedException
 	{
@@ -349,14 +390,12 @@ public class JSUnitRunnerService
 		long effectiveTimeout = Math.max(timeoutMs, 30_000L);
 		long deadline = System.currentTimeMillis() + effectiveTimeout;
 
-		// A freshly-created DLTK session reports progressState=COMPLETED with 0 children (an empty
-		// run is "100% done"). The actual runJUnitClass for this launch happens ~15-20s later under
-		// a cold headless start, only then bridging results into the session. So we must NOT treat
-		// "completed + 0 children" as done -- we wait specifically for children to appear.
 		while (System.currentTimeMillis() < deadline)
 		{
 			ITestRunSession[] found = new ITestRunSession[1];
 			int[] childCount = new int[1];
+			// counts: [0]=startedCount, [1]=totalCount
+			int[] counts = new int[2];
 
 			Display.getDefault().syncExec(() -> {
 				ITestRunSession session = DLTKTestingPlugin.getModel().getTestRunSession(launch);
@@ -365,11 +404,26 @@ public class JSUnitRunnerService
 					found[0] = session;
 					ITestElement[] children = session.getChildren();
 					childCount[0] = children == null ? 0 : children.length;
+					// getStartedCount / getTotalCount live on the internal TestRunSession, not the
+					// ITestRunSession interface, so read them reflectively (no hard restriction dep).
+					counts[0] = readIntNoThrow(session, "getStartedCount");
+					counts[1] = readIntNoThrow(session, "getTotalCount");
 				}
 			});
 
-			// Results have been bridged into the session.
-			if (found[0] != null && childCount[0] > 0)
+			// Return only once every planned test has reported a result. The DLTK session's
+			// started/total counters are exactly what the Script Unit Test view shows as
+			// "Runs: started/total"; started>=total (with total>0) is the true end of the WHOLE
+			// run. This was chosen over two signals that proved wrong in practice (SVY-21414):
+			//   - getProgressState()==COMPLETED flips true at the end of EACH sub-suite batch
+			//     (ScriptUnitTestRunNotifier fires testTerminated per notifier), so it read
+			//     COMPLETED mid-run and returned a partial count; and
+			//   - launch.isTerminated() never becomes true during the run (the launch is only
+			//     terminated by this class's own finally, AFTER this wait returns), so waiting on
+			//     it just ran to the timeout and returned partial.
+			// total is known up front and only grows as the tree is bridged, while started climbs
+			// to meet it, so started>=total does not false-trigger early.
+			if (found[0] != null && isTerminalRun(childCount[0], counts[0], counts[1]))
 			{
 				return new RunResult(found[0], true);
 			}
@@ -380,6 +434,65 @@ public class JSUnitRunnerService
 		ITestRunSession[] fallback = new ITestRunSession[1];
 		Display.getDefault().syncExec(() -> fallback[0] = DLTKTestingPlugin.getModel().getTestRunSession(launch));
 		return new RunResult(fallback[0], false);
+	}
+
+	/**
+	 * Pure terminal-condition decision for the poll loop, extracted so it can be unit-tested
+	 * without an Eclipse workbench / DLTK model / {@code Display}.
+	 * <p>
+	 * A run is a terminal success only when the DLTK session has children ({@code childCount > 0})
+	 * AND every planned test has reported a result ({@code totalCount > 0 && startedCount >=
+	 * totalCount}). {@code startedCount}/{@code totalCount} are the same numbers the Script Unit
+	 * Test view shows as "Runs: started/total"; {@code total} is known up front and only grows as
+	 * the suite tree is bridged in, while {@code started} climbs to meet it, so
+	 * {@code started >= total} becomes true only at the true end of the WHOLE run — it does not
+	 * false-trigger between sub-suite batches.
+	 * <p>
+	 * <b>Why not the progress state or the launch (SVY-21414, confirmed by a logged run):</b>
+	 * <ul>
+	 * <li>{@code ProgressState.COMPLETED} flips true at the end of EACH sub-suite batch — the
+	 * Servoy bridge ({@code ScriptUnitTestRunNotifier}) fires {@code testTerminated} per notifier —
+	 * so it read COMPLETED mid-run and returned a partial count (243 of 667).</li>
+	 * <li>{@code launch.isTerminated()} never becomes true during the run: the launch is only
+	 * terminated by this class's own {@code finally}, AFTER this wait returns. A logged 658-test
+	 * run showed {@code launchTerminated=false} for 20+ seconds after {@code started=658/total=658},
+	 * i.e. waiting on it just runs to the timeout and returns partial.</li>
+	 * </ul>
+	 * The {@code childCount > 0} guard also preserves the SVY-21241 fix (a freshly-created empty
+	 * session that reports {@code total=0} must not be treated as done).
+	 *
+	 * @param childCount   number of children currently bridged into the session
+	 * @param startedCount number of tests that have reported a result so far
+	 * @param totalCount   number of planned tests (0 until the tree starts bridging in)
+	 * @return {@code true} if the whole run should be reported as finished now
+	 */
+	static boolean isTerminalRun(int childCount, int startedCount, int totalCount)
+	{
+		if (childCount <= 0)
+			return false;
+		return totalCount > 0 && startedCount >= totalCount; // whole-run done: all planned tests reported
+	}
+
+	/**
+	 * Reflectively reads a zero-arg {@code int}-returning getter (e.g. {@code getStartedCount},
+	 * {@code getTotalCount}) off the DLTK session implementation. The counters are declared on the
+	 * internal {@code org.eclipse.dltk.internal.testing.model.TestRunSession}, not on the
+	 * {@link ITestRunSession} interface, so read them without a hard restriction dependency.
+	 * Returns {@code -1} if the getter is unavailable.
+	 */
+	private static int readIntNoThrow(Object target, String getter)
+	{
+		if (target == null)
+			return -1;
+		try
+		{
+			Object v = target.getClass().getMethod(getter).invoke(target);
+			return v instanceof Integer ? ((Integer)v).intValue() : -1;
+		}
+		catch (Exception ignored)
+		{
+			return -1;
+		}
 	}
 
 	private String formatGroupedResults(String groupType, List<String> names, List<RunResult> moduleRunResults)

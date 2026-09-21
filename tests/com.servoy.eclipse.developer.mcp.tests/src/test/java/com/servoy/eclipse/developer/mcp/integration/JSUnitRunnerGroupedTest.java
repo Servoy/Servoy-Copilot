@@ -9,10 +9,10 @@
 package com.servoy.eclipse.developer.mcp.integration;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -115,12 +115,20 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	 */
 	private static String cachedFormsResult;
 
+	/**
+	 * Cached result of {@code runTests("ALL")} -- computed once per JVM session.
+	 * Used by the SVY-21414 §8 tests: {@code ALL} must fan out over the main solution's own
+	 * scopes and forms only, and must NOT descend into its modules.
+	 */
+	private static String cachedAllResult;
+
 	/** Guards one-time class setup inside @Before (JUnit 4 has no @BeforeClass with instance access). */
 	private static boolean classSetUpDone = false;
 
 	/** Per-test references to the cached results. */
 	private String modulesResult;
 	private String formsResult;
+	private String allResult;
 
 	public JSUnitRunnerGroupedTest() {
 		super(TEST_GROUPED_SOLUTION, SERVOY_RESOURCES);
@@ -153,10 +161,12 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 			ensureActiveProject();
 			cachedModulesResult = runOnBackgroundThread(() -> runner.runTests("MODULES", TIMEOUT_SECONDS));
 			cachedFormsResult = runOnBackgroundThread(() -> runner.runTests("FORMS", TIMEOUT_SECONDS));
+			cachedAllResult = runOnBackgroundThread(() -> runner.runTests("ALL", TIMEOUT_SECONDS));
 		}
 
 		modulesResult = cachedModulesResult;
 		formsResult = cachedFormsResult;
+		allResult = cachedAllResult;
 
 		// Guard: if class setup failed (project activation timed out), both results are
 		// null. Skip gracefully rather than NPE in every test method.
@@ -339,6 +349,106 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		assertEquals(
 			"Expected 0 ignored tests; result:\n" + formsResult,
 			0, extractCount(formsResult, 3));
+	}
+
+	// -----------------------------------------------------------------------
+	// SVY-21414 -- ALL runs the whole active (flattened) solution as a SINGLE
+	// test run, rendered via the single-session formatResults format.
+	//
+	// NOTE: an earlier attempt made ALL exclude modules in the runner (a fan-out,
+	// then a TestTarget.excludeModules engine flag). Both were REVERTED: ALL uses
+	// the original new TestTarget(activeSolution), i.e. the whole flattened
+	// solution INCLUDING modules. "Run all = only the active solution, don't
+	// switch/enumerate other solutions" is now enforced in the agent skill
+	// (skill4servoy), not the Java runner. So ALL here includes the module tests.
+	//
+	// Fixture: test_grouped_suite (main) declares module test_grouped_module
+	// (2 tests: test_module_addition, test_module_string) and contains form
+	// test_form_alpha (2 tests: test_form_alpha_passes, test_form_alpha_string).
+	// Its parent globals.js has NO test_ methods.
+	//
+	// Expected ALL result: 4 passed (2 form + 2 module), 0 failed, 0 errors,
+	// single-session format (NOT a per-target fan-out).
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testGrouped_all_resultIsNotNull()
+	{
+		assertNotNull("runTests(\"ALL\") must not return null", allResult);
+	}
+
+	@Test
+	public void testGrouped_all_resultIsNotError()
+	{
+		assertFalse(
+			"runTests(\"ALL\") must not be a runner-level error; result:\n" +
+				allResult.substring(0, Math.min(allResult.length(), 120)),
+			allResult.startsWith("Error"));
+	}
+
+	/**
+	 * §8.5: ALL runs the whole main solution as a SINGLE test run (excludeModules), so it is
+	 * rendered via the single-session {@code formatResults(...)} format --
+	 * {@code "**JSUnit Test Results**"} with a summary table -- NOT the grouped per-target format.
+	 */
+	@Test
+	public void testGrouped_all_renderedAsSingleSolutionRun()
+	{
+		assertTrue("ALL result must contain the single-run JSUnit results header; result:\n" + allResult,
+			allResult.contains("**JSUnit Test Results**"));
+		assertFalse("ALL must NOT be a grouped fan-out (no per-solution/per-form breakdown); result:\n" + allResult,
+			allResult.contains("**Per solution:**"));
+	}
+
+	@Test
+	public void testGrouped_all_summaryTablePresent()
+	{
+		assertTrue("ALL result must contain the markdown summary table; result:\n" + allResult,
+			allResult.contains("| Passed"));
+	}
+
+	/**
+	 * ALL runs the whole flattened solution as a single session: the main solution's 2 form
+	 * tests PLUS the module's 2 tests = 4 passing. The completion-wait fix (§3) means the full
+	 * count is reported, not a truncated first batch.
+	 */
+	@Test
+	public void testGrouped_all_reportsFullFlattenedCount()
+	{
+		// ALL = new TestTarget(activeSolution) = whole flattened solution (main + modules).
+		// 2 form tests + 2 module tests = 4. (Module exclusion is enforced in the agent skill,
+		// not the runner, so the runner-level ALL includes modules.)
+		assertEquals(
+			"ALL must report the full flattened-solution count (2 form + 2 module); result:\n" + allResult,
+			4, extractPassedCount(allResult));
+	}
+
+	@Test
+	public void testGrouped_all_failedCountIsZero()
+	{
+		assertEquals("ALL must report 0 failures; result:\n" + allResult,
+			0, extractFailedCount(allResult));
+	}
+
+	@Test
+	public void testGrouped_all_errorCountIsZero()
+	{
+		assertEquals("ALL must report 0 errors; result:\n" + allResult,
+			0, extractErrorCount(allResult));
+	}
+
+	/**
+	 * ALL descends into the solution's modules (whole flattened solution). A clean run reports
+	 * only counts, not individual test names, so this asserts the combined count includes the
+	 * module tests: 4 passed = 2 form + 2 module. (Runner-level module exclusion was reverted;
+	 * "only the active solution, don't switch" now lives in the agent skill.)
+	 */
+	@Test
+	public void testGrouped_all_includesModuleTests()
+	{
+		assertEquals(
+			"ALL must include the module tests in the flattened-solution count; result:\n" + allResult,
+			4, extractPassedCount(allResult));
 	}
 
 	// -----------------------------------------------------------------------

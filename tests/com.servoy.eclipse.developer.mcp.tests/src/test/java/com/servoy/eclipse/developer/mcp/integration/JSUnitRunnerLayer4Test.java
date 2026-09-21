@@ -188,6 +188,8 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	@Test
 	public void testLayer4_failedSectionPresent()
 	{
+		// ALL runs the whole main solution as a single test run, so a failing/erroring run renders
+		// the single-session "Failed / Error tests:" section.
 		assertTrue("Output must contain a 'Failed / Error tests:' section when failures exist",
 			allResult.contains("Failed / Error tests:"));
 	}
@@ -221,6 +223,7 @@ public class JSUnitRunnerLayer4Test extends ServoyRunnerTestBase
 	@Test
 	public void testLayer4_outputContainsResultsHeader()
 	{
+		// ALL runs the whole main solution as a single test run, so the header is the single-run variant.
 		assertTrue("Output must start with the JSUnit results header",
 			allResult.contains("**JSUnit Test Results**"));
 	}

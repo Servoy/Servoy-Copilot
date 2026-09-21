@@ -111,7 +111,7 @@ public class ServoyTestingServer
 		"Use this to verify tests pass after creating or modifying test files, or to identify which tests are currently failing. " +
 		"Returns a markdown summary with counts and detailed failure/error traces.", type = "object")
 	public String runJsUnitTests(
-		@ToolParam(name = "scopeOrAll", description = "What to test: a scope/file name (e.g. 'test_utils' or 'test_utils.js'), a form name (e.g. 'tab1' or 'forms/tab1.js'), a module name (e.g. 'calculations_module'), 'MODULES' to run all tests across every module of the active solution, or 'ALL' to run every test in the solution (including all modules)") String scopeOrAll,
+		@ToolParam(name = "scopeOrAll", description = "What to test: a scope/file name (e.g. 'test_utils' or 'test_utils.js'), a form name (e.g. 'tab1' or 'forms/tab1.js'), a module name (e.g. 'calculations_module'), 'MODULES' to run all tests across every module of the active solution, or 'ALL' to run every test in the active solution itself (its own scopes and forms only, NOT its modules)") String scopeOrAll,
 		@ToolParam(name = "timeoutSeconds", description = "Maximum seconds to wait for the test run to complete. Use 60 for a single scope or form, 120 for a full solution run.", type = "integer") int timeoutSeconds)
 	{
 		try

@@ -107,6 +107,8 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 		assertEquals("Expected failed=0", 0, extractFailedCount(result));
 		assertEquals("Expected errors=0", 0, extractErrorCount(result));
 
+		// ALL runs the whole main solution as a single test run (excludeModules), so it renders
+		// via the single-session format with the all-passed footer for a clean run.
 		assertTrue("Output must contain the all-passed footer",
 				result.contains("All 1 test(s) passed!"));
 		assertTrue("Output must contain the markdown table header",
@@ -152,6 +154,7 @@ public class JSUnitRunnerIntegrationTest extends ServoyRunnerTestBase {
 		assertEquals("Expected passed=1 for null-scope (same as ALL)", 1, extractPassedCount(result));
 		assertEquals("Expected failed=0 for null-scope", 0, extractFailedCount(result));
 		assertEquals("Expected errors=0 for null-scope", 0, extractErrorCount(result));
+		// null scope = ALL: single-session output, same as testActiveSolution_runAll.
 		assertTrue("Output must contain the all-passed footer",
 				result.contains("All 1 test(s) passed!"));
 	}
