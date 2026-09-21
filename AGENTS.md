@@ -173,23 +173,36 @@ is set, so it can safely stay in the production build.
 - **Source:** `src/test/java/`
 - Contains both plain unit tests and integration tests that need a running Eclipse workbench.
 
-#### Plain JUnit tests (run with `eclipse-ide_runJUnitTests`)
+#### Plain unit tests (no OSGi / workbench — run with `eclipse-ide_runJUnitTests`)
 
-These tests use no live Eclipse workspace or OSGi container — pure Java, reflection, and mocking:
+These tests use no live Eclipse workspace or OSGi container — pure Java, reflection, and mocking. **This bundle is mixed:** both JUnit 4 (`org.junit.Test` / `org.junit.Assert.*`) and JUnit 5/6 Jupiter (`org.junit.jupiter.api.*`) tests coexist. The MANIFEST imports both APIs (`org.junit;version="4.0.0"` **and** `org.junit.jupiter.api` pinned to `[6.1.0,7.0.0)`, plus `org.junit.jupiter.params`) and requires `junit-platform-suite-engine`.
+
+**For NEW plain unit tests, prefer JUnit 5/6 (Jupiter)** — it is the current standard for this bundle (see the SDD `test-gen` phase, which mandates Jupiter). Only match JUnit 4 when *extending* an existing JUnit 4 class.
+
+There are **two** plain-unit aggregate suites; a new test must be registered in the matching one to run in the aggregate:
+
+- `AllDeveloperMcpTests` — JUnit 4 `@RunWith(Suite.class)` aggregate. Register **JUnit 4** classes here.
+- `AllDeveloperMcpJupiterUnitTests` — JUnit 5 `@Suite` platform suite. Register **Jupiter** classes here (they cannot live in the JUnit 4 suite).
+
+**JUnit 4 plain unit tests** (`org.junit.Test`):
 
 | Package | Classes |
 |---|---|
-| `c.s.e.d.mcp` | `McpServerBuiltinsTest`, `McpServerFactoryTest`, `ToolExecutorTest` |
+| `c.s.e.d.mcp` | `McpServerBuiltinsTest`, `McpServerFactoryTest`, `McpToolLogTest`, `ToolExecutorTest` |
 | `c.s.e.d.mcp.auth` | `BearerTokenAuthenticationFilterTest` |
 | `c.s.e.d.mcp.cache` | `ServoyResourceCacheTest` |
-| `c.s.e.d.mcp.guard` | `ServoyFileGuardTest` |
-| `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `GenerateTestCasesToolTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyDevServerTest`, `ServoyGitServerTest`, `ServoyIdeServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest` |
-| `c.s.e.d.mcp.services` | `FormSpecGeneratorTest`, `FormSpecRunnerTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `TestFileServiceReflectionTest`, `RunCypressFormTestsLauncherTest` |
-| `c.s.e.d.mcp.integration` | `ServoyDevServerIntegrationTest` (despite package name, this is a pure unit test) |
+| `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `DiscoverCypressHelpersTest`, `GenerateTestCasesToolTest`, `McpToolParamValidationTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyDevServerTest`, `ServoyGitServerTest`, `ServoyIdeServerTest`, `ServoyMediaServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest`, `TimeServerTest` |
+| `c.s.e.d.mcp.services` | `DocumentationValidatorServiceTest`, `GitServiceInitTest`, `JSUnitCoverageServiceTest`, `JSUnitRunnerServiceTerminalConditionTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `ServoyScriptResolverTest`, `TestFileServiceReflectionTest`, `WorkspaceServiceFileOutlineTest`, `WpmServiceTest` |
 
-| `c.s.e.d.mcp.servers` | `McpToolParamValidationTest` |
+**JUnit 5/6 (Jupiter) plain unit tests** (`org.junit.jupiter.api.Test`; collected by `AllDeveloperMcpJupiterUnitTests`):
 
-Total: **24 plain JUnit tests**
+| Package | Classes |
+|---|---|
+| `c.s.e.d.mcp.servers` | `ServoyI18nServerTest` |
+| `c.s.e.d.mcp.services` | `CodeEditingServiceTest`, `FormatValidatorServiceTest`, `FormNavigationGraphServiceTest`, `FormPreviewServiceTest`, `GitServiceDiffTest`, `NavigationGraphTest`, `PersistDuplicateServiceTest` |
+| `c.s.e.d.mcp.integration` | `AbstractIntegrationTestBaseTest` (pure unit test despite package) |
+
+> Note: `GitServiceDiffTest` uses the Jupiter `@TempDir` extension and can fail standalone/in-suite with `NoSuchMethodError: TempDir.deletionStrategy()` due to a `junit-jupiter` runtime/classpath mismatch in this fragment — a known pre-existing environment issue, not a test defect.
 
 #### Troubleshooting: JUnit 6 `NoSuchMethodError` (e.g. `Namespace.getParts()`)
 

@@ -104,24 +104,27 @@ public class CodeEditingService
 		try
 		{
 			IFile file = resolveFile(projectName, filePath);
+			String originalContent = readFileContent(file);
+			String eol = detectDominantLineEnding(originalContent);
+			boolean trailingNewline = endsWithNewline(originalContent);
 			List<String> lines = readFileLines(file);
 
 			int effectiveAtLine = atLine - 1;
 			if (effectiveAtLine < 0 || effectiveAtLine > lines.size())
 				throw new RuntimeException("Error: Invalid line number " + atLine + ". File has " + lines.size() + " lines.");
 
-			StringBuilder modified = new StringBuilder();
-			for (int i = 0; i < effectiveAtLine; i++)
-				modified.append(lines.get(i)).append("\n");
-			modified.append(content);
-			if (!content.endsWith("\n")) modified.append("\n");
-			for (int i = effectiveAtLine; i < lines.size(); i++)
-			{
-				modified.append(lines.get(i));
-				if (i < lines.size() - 1) modified.append("\n");
-			}
+			List<String> insertedLines = new ArrayList<>(java.util.Arrays.asList(content.split("\r?\n", -1)));
+			if (!insertedLines.isEmpty() && insertedLines.get(insertedLines.size() - 1).isEmpty())
+				insertedLines.remove(insertedLines.size() - 1);
 
-			writeFile(file, modified.toString());
+			List<String> resultLines = new ArrayList<>();
+			for (int i = 0; i < effectiveAtLine; i++)
+				resultLines.add(lines.get(i));
+			resultLines.addAll(insertedLines);
+			for (int i = effectiveAtLine; i < lines.size(); i++)
+				resultLines.add(lines.get(i));
+
+			writeFile(file, joinLines(resultLines, eol, trailingNewline));
 			return "Success: Content inserted into '" + filePath + "' at line " + atLine + " in project '" + projectName + "'.";
 		}
 		catch (CoreException | IOException e)
@@ -141,6 +144,9 @@ public class CodeEditingService
 		try
 		{
 			IFile file = resolveFile(projectName, filePath);
+			String originalContent = readFileContent(file);
+			String eol = detectDominantLineEnding(originalContent);
+			boolean trailingNewline = endsWithNewline(originalContent);
 			List<String> lines = readFileLines(file);
 			int totalLines = lines.size();
 
@@ -171,17 +177,17 @@ public class CodeEditingService
 
 			String replacedRange = rangeText.replace(oldString, newString);
 
-			StringBuilder modified = new StringBuilder();
+			List<String> resultLines = new ArrayList<>();
 			for (int i = 0; i < effectiveStart; i++)
-				modified.append(lines.get(i)).append("\n");
-			modified.append(replacedRange);
-			if (effectiveEnd < totalLines - 1) modified.append("\n");
+				resultLines.add(lines.get(i));
+			for (String rangeLine : replacedRange.split("\r?\n", -1))
+				resultLines.add(rangeLine);
 			for (int i = effectiveEnd + 1; i < totalLines; i++)
-				modified.append(lines.get(i)).append("\n");
-			if (!modified.toString().endsWith("\n")) modified.append("\n");
+				resultLines.add(lines.get(i));
 
-			String diff = generateSimpleDiff(readFileContent(file), modified.toString(), filePath);
-			writeFile(file, modified.toString());
+			String modifiedContent = joinLines(resultLines, eol, trailingNewline);
+			String diff = generateSimpleDiff(originalContent, modifiedContent, filePath);
+			writeFile(file, modifiedContent);
 
 			return "Success: String replaced in file '" + filePath + "' in project '" + projectName + "'.\n"
 				+ "Changes:\n```diff\n" + diff + "\n```";
@@ -409,6 +415,8 @@ public class CodeEditingService
 		{
 			IFile file = resolveFile(projectName, filePath);
 			String fileContent = new String(file.getContents().readAllBytes(), StandardCharsets.UTF_8);
+			String eol = detectDominantLineEnding(fileContent);
+			boolean trailingNewline = endsWithNewline(fileContent);
 			String[] lines = fileContent.split("\r?\n", -1);
 
 			if (startLine > lines.length)
@@ -416,18 +424,15 @@ public class CodeEditingService
 			if (endLine > lines.length)
 				throw new IllegalArgumentException("End line " + endLine + " is beyond the file length (" + lines.length + " lines).");
 
-			StringBuilder newContent = new StringBuilder();
+			List<String> keptLines = new ArrayList<>();
 			for (int i = 0; i < lines.length; i++)
 			{
 				int lineNum = i + 1;
 				if (lineNum < startLine || lineNum > endLine)
-				{
-					newContent.append(lines[i]);
-					if (i < lines.length - 1) newContent.append("\n");
-				}
+					keptLines.add(lines[i]);
 			}
 
-			byte[] bytes = newContent.toString().getBytes(StandardCharsets.UTF_8);
+			byte[] bytes = joinLines(keptLines, eol, trailingNewline).getBytes(StandardCharsets.UTF_8);
 			try (ByteArrayInputStream source = new ByteArrayInputStream(bytes))
 			{
 				file.setContents(source, IResource.FORCE, null);
@@ -455,19 +460,15 @@ public class CodeEditingService
 		try
 		{
 			IFile file = resolveFile(projectName, filePath);
+			String originalContent = readFileContent(file);
+			String eol = detectDominantLineEnding(originalContent);
+			boolean trailingNewline = endsWithNewline(originalContent);
 			List<String> originalLines = readFileLines(file);
-			List<String> patchedLines = applyUnifiedDiff(originalLines, patch);
+			List<String> driftNotes = new ArrayList<>();
+			List<String> patchedLines = applyUnifiedDiff(originalLines, patch, driftNotes);
 
-			StringBuilder patchedContent = new StringBuilder();
-			for (int i = 0; i < patchedLines.size(); i++)
-			{
-				patchedContent.append(patchedLines.get(i));
-				if (i < patchedLines.size() - 1) patchedContent.append("\n");
-			}
-			if (!patchedContent.toString().endsWith("\n")) patchedContent.append("\n");
-
-			String patchedContentString = patchedContent.toString();
-			String diff = generateSimpleDiff(readFileContent(file), patchedContentString, filePath);
+			String patchedContentString = joinLines(patchedLines, eol, trailingNewline);
+			String diff = generateSimpleDiff(originalContent, patchedContentString, filePath);
 
 			try (ByteArrayInputStream source = new ByteArrayInputStream(
 				patchedContentString.getBytes(Charset.forName(file.getCharset()))))
@@ -475,7 +476,8 @@ public class CodeEditingService
 				file.setContents(source, IResource.FORCE, null);
 			}
 
-			return "Success: Patch applied to file '" + filePath + "' in project '" + projectName + "'.\n"
+			String driftSuffix = driftNotes.isEmpty() ? "" : "\n" + String.join("\n", driftNotes);
+			return "Success: Patch applied to file '" + filePath + "' in project '" + projectName + "'." + driftSuffix + "\n"
 				+ "Changes:\n```diff\n" + diff + "\n```";
 		}
 		catch (CoreException | IOException e)
@@ -620,34 +622,141 @@ public class CodeEditingService
 		}
 	}
 
-	// --- Patch application (ported from AssistAI CodeEditingService) ---
+	// --- Line-ending helpers ---
 
-	private static class DiffHunk
+	/**
+	 * Detects the dominant line ending of the given content, returning {@code "\r\n"},
+	 * {@code "\r"}, or {@code "\n"}. On a CRLF-vs-LF tie, LF is preferred. A content with no
+	 * terminator (empty or a single unterminated line) defaults to the platform-neutral {@code "\n"}.
+	 */
+	static String detectDominantLineEnding(String content)
+	{
+		if (content == null || content.isEmpty()) return "\n";
+
+		int crlf = 0, cr = 0, lf = 0;
+		for (int i = 0; i < content.length(); i++)
+		{
+			char c = content.charAt(i);
+			if (c == '\r')
+			{
+				if (i + 1 < content.length() && content.charAt(i + 1) == '\n')
+				{
+					crlf++;
+					i++;
+				}
+				else
+				{
+					cr++;
+				}
+			}
+			else if (c == '\n')
+			{
+				lf++;
+			}
+		}
+
+		if (crlf == 0 && cr == 0 && lf == 0) return "\n";
+		// On any tie involving LF, prefer LF (resolved open question 3).
+		if (lf >= crlf && lf >= cr) return "\n";
+		if (crlf >= cr) return "\r\n";
+		return "\r";
+	}
+
+	/**
+	 * Returns whether the content ends with a line terminator, so a file that had no trailing
+	 * newline is not given one (and one that did keeps it).
+	 */
+	static boolean endsWithNewline(String content)
+	{
+		return content != null && !content.isEmpty() && (content.endsWith("\n") || content.endsWith("\r"));
+	}
+
+	/**
+	 * Joins the given lines with the supplied line ending, appending a trailing terminator only
+	 * when {@code trailingNewline} is {@code true}.
+	 */
+	static String joinLines(List<String> lines, String eol, boolean trailingNewline)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < lines.size(); i++)
+		{
+			sb.append(lines.get(i));
+			if (i < lines.size() - 1) sb.append(eol);
+		}
+		if (trailingNewline && !lines.isEmpty()) sb.append(eol);
+		return sb.toString();
+	}
+
+	// --- Patch application (ported from AssistAI CodeEditingService, hardened for SVY-21472) ---
+
+	/** Truncation cap for the evidence-rich failure message (resolved open question 1). */
+	private static final int EVIDENCE_CAP = 10;
+
+	/** Ordered whitespace-tolerance tiers, strictest first. */
+	enum MatchTier
+	{
+		EXACT("exact"),
+		TRAILING_WS("trailing whitespace"),
+		STRIP_BOTH("leading/trailing whitespace");
+
+		final String label;
+
+		MatchTier(String label)
+		{
+			this.label = label;
+		}
+	}
+
+	static class DiffHunk
 	{
 		int originalStart;
 		int originalCount;
+		boolean headerParsed;
+		String headerLine;
 		List<String> hunkLines = new ArrayList<>();
 	}
 
-	private static List<DiffHunk> parseHunks(String patch)
+	static List<DiffHunk> parseHunks(String patch)
 	{
 		List<DiffHunk> hunks = new ArrayList<>();
-		String[] lines = patch.split("\n");
+		// Split on \r?\n so a CRLF-delimited patch does not leave a trailing \r on every
+		// line: a stray \r would fail the @@ header regex (flagging every hunk malformed)
+		// and pollute the context/added lines that get spliced into the file.
+		String[] lines = patch.split("\r?\n", -1);
+		// split(..., -1) keeps a trailing empty token produced by the patch's own final
+		// newline. That terminator artifact must NOT become a phantom blank context line:
+		// a spurious trailing " " context line inflates the expected block, desyncs it from
+		// the file, and defeats otherwise-matching hunks (and the tier-4 drop-outer-context
+		// fuzz, which would then drop the phantom instead of the real outermost context).
+		// Only the single trailing empty element is dropped, so genuine blank lines BETWEEN
+		// content (a real " "/empty context line mid-hunk) are preserved.
+		int lineCount = lines.length;
+		if (lineCount > 0 && lines[lineCount - 1].isEmpty()) lineCount--;
 		DiffHunk currentHunk = null;
 
-		for (String line : lines)
+		for (int li = 0; li < lineCount; li++)
 		{
+			String line = lines[li];
 			if (line.startsWith("---") || line.startsWith("+++")) continue;
 
 			if (line.startsWith("@@"))
 			{
 				currentHunk = new DiffHunk();
+				currentHunk.headerLine = line;
 				hunks.add(currentHunk);
 				var matcher = Pattern.compile("@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@.*").matcher(line);
 				if (matcher.matches())
 				{
+					currentHunk.headerParsed = true;
 					currentHunk.originalStart = Integer.parseInt(matcher.group(1));
 					currentHunk.originalCount = matcher.group(2) != null ? Integer.parseInt(matcher.group(2)) : 1;
+				}
+				else
+				{
+					// Malformed header (e.g. "@@ @@"): flag it so applyHunk can reject it
+					// explicitly instead of letting the Java default 0 become a phantom "line 0".
+					currentHunk.headerParsed = false;
+					currentHunk.originalStart = -1;
 				}
 				continue;
 			}
@@ -663,43 +772,402 @@ public class CodeEditingService
 		return hunks;
 	}
 
-	private static List<String> applyUnifiedDiff(List<String> originalLines, String patch)
+	static List<String> applyUnifiedDiff(List<String> originalLines, String patch)
+	{
+		return applyUnifiedDiff(originalLines, patch, null);
+	}
+
+	static List<String> applyUnifiedDiff(List<String> originalLines, String patch, List<String> driftNotesOut)
 	{
 		List<String> result = new ArrayList<>(originalLines);
 		List<DiffHunk> hunks = parseHunks(patch);
 		Collections.reverse(hunks);
 		for (DiffHunk hunk : hunks)
-			result = applyHunk(result, hunk);
+			result = applyHunk(result, hunk, driftNotesOut);
 		return result;
 	}
 
-	private static List<String> applyHunk(List<String> lines, DiffHunk hunk)
+	static List<String> applyHunk(List<String> lines, DiffHunk hunk)
 	{
+		return applyHunk(lines, hunk, null);
+	}
+
+	static List<String> applyHunk(List<String> lines, DiffHunk hunk, List<String> driftNotesOut)
+	{
+		if (!hunk.headerParsed)
+			throw new RuntimeException("Error: Malformed hunk header: `" + hunk.headerLine
+				+ "`. Expected the form `@@ -<start>[,<count>] +<start>[,<count>] @@`.");
+
+		// The full (undropped) expected block: context + removed lines.
 		List<String> expectedLines = new ArrayList<>();
 		for (String hunkLine : hunk.hunkLines)
 			if (hunkLine.startsWith(" ") || hunkLine.startsWith("-"))
 				expectedLines.add(hunkLine.substring(1));
 
-		int matchPos = findMatchPosition(lines, expectedLines, hunk.originalStart - 1);
-		if (matchPos < 0)
-			throw new RuntimeException("Error: Could not find matching context for hunk at line " + hunk.originalStart
-				+ ". The file may have been modified since the diff was generated.");
+		int hint = hunk.originalStart - 1;
 
-		List<String> replacementLines = new ArrayList<>();
-		for (String hunkLine : hunk.hunkLines)
-			if (hunkLine.startsWith(" ") || hunkLine.startsWith("+"))
-				replacementLines.add(hunkLine.substring(1));
+		// Pure insertion (no context/removed lines): keep the original clamp behaviour.
+		if (expectedLines.isEmpty())
+		{
+			int insertPos = Math.max(0, Math.min(hint, lines.size()));
+			List<String> added = new ArrayList<>();
+			for (String hunkLine : hunk.hunkLines)
+				if (hunkLine.startsWith("+")) added.add(hunkLine.substring(1));
+			List<String> result = new ArrayList<>();
+			result.addAll(lines.subList(0, insertPos));
+			result.addAll(added);
+			result.addAll(lines.subList(insertPos, lines.size()));
+			return result;
+		}
+
+		Located located = locate(lines, hunk, expectedLines, hint);
+		if (located == null)
+			throw new RuntimeException(buildEvidenceFailure(lines, expectedLines, hint, hunk));
+
+		return spliceHunk(lines, hunk, located, driftNotesOut);
+	}
+
+	/** Result of locating a hunk: the matched file position, the tier that matched, and how many
+	 *  outer context lines were dropped to achieve the match (GNU-patch-style fuzz). */
+	private static class Located
+	{
+		final int pos;
+		final MatchTier tier;
+		final int droppedLeading;
+		final int droppedTrailing;
+
+		Located(int pos, MatchTier tier, int droppedLeading, int droppedTrailing)
+		{
+			this.pos = pos;
+			this.tier = tier;
+			this.droppedLeading = droppedLeading;
+			this.droppedTrailing = droppedTrailing;
+		}
+	}
+
+	/**
+	 * Locates a hunk's expected block, degrading gracefully: for each tier (strictest first) the
+	 * hint window is tried, then the whole file. A stricter tier is exhausted everywhere before a
+	 * looser one is attempted, so a strict match is always preferred. When a loose tier matches more
+	 * than one location and the header did not disambiguate, an ambiguity error is thrown rather than
+	 * guessing. Only after tiers 1-3 fail everywhere is the outermost context line dropped (tier 4)
+	 * and tiers 1-3 retried. Returns {@code null} when nothing matched.
+	 */
+	private static Located locate(List<String> lines, DiffHunk hunk, List<String> expectedLines, int hint)
+	{
+		for (MatchTier tier : MatchTier.values())
+		{
+			Located found = tryLocateAtTier(lines, expectedLines, hint, tier, 0, 0);
+			if (found != null) return found;
+		}
+		// Tier 4: GNU-patch-style fuzz - drop the OUTERMOST CONTEXT line(s) and retry tiers 1-3.
+		//
+		// Lockstep invariant (do not break): the expected block, the reduced hunk lines, the hint
+		// adjustment, and droppedLeading/droppedTrailing must all be reduced from the SAME source.
+		// expectedLines mixes context (' ') AND removed ('-') lines; reduceHunkLines only ever drops
+		// context lines. A blind subList(1, size-1) here would drop whatever the outermost expected
+		// line happens to be (possibly a '-' removal) while reduceHunkLines drops 0 of that end - the
+		// two desync and the splice deletes the wrong file lines. So we ONLY drop an end when its
+		// outermost EXPECTED line is a context line, and we derive the reduced expected block from the
+		// reduced hunk lines produced by reduceHunkLines - the single source of truth the splice reuses.
+		boolean dropLeading = firstExpectedIsContext(hunk.hunkLines);
+		boolean dropTrailing = lastExpectedIsContext(hunk.hunkLines);
+		if (dropLeading || dropTrailing)
+		{
+			int droppedLeading = dropLeading ? 1 : 0;
+			int droppedTrailing = dropTrailing ? 1 : 0;
+			List<String> reducedHunkLines = reduceHunkLines(hunk.hunkLines, droppedLeading, droppedTrailing);
+			List<String> reducedExpected = expectedBlock(reducedHunkLines);
+			if (!reducedExpected.isEmpty() && reducedExpected.size() < expectedLines.size())
+			{
+				for (MatchTier tier : MatchTier.values())
+				{
+					Located found = tryLocateAtTier(lines, reducedExpected, hint + droppedLeading, tier,
+						droppedLeading, droppedTrailing);
+					if (found != null) return found;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** The context+removed block (' ' and '-' prefixed lines, prefix stripped) of the given hunk lines. */
+	private static List<String> expectedBlock(List<String> hunkLines)
+	{
+		List<String> block = new ArrayList<>();
+		for (String hunkLine : hunkLines)
+			if (hunkLine.startsWith(" ") || hunkLine.startsWith("-"))
+				block.add(hunkLine.substring(1));
+		return block;
+	}
+
+	/** Whether the FIRST expected (context-or-removed) line of the hunk is a context (' ') line -
+	 *  i.e. the leading outer context is droppable. Dropping a removed/added line is never valid fuzz. */
+	private static boolean firstExpectedIsContext(List<String> hunkLines)
+	{
+		for (String hunkLine : hunkLines)
+		{
+			if (hunkLine.startsWith(" ")) return true;
+			if (hunkLine.startsWith("-")) return false;
+		}
+		return false;
+	}
+
+	/** Whether the LAST expected (context-or-removed) line of the hunk is a context (' ') line -
+	 *  i.e. the trailing outer context is droppable. Dropping a removed/added line is never valid fuzz. */
+	private static boolean lastExpectedIsContext(List<String> hunkLines)
+	{
+		for (int i = hunkLines.size() - 1; i >= 0; i--)
+		{
+			String hunkLine = hunkLines.get(i);
+			if (hunkLine.startsWith(" ")) return true;
+			if (hunkLine.startsWith("-")) return false;
+		}
+		return false;
+	}
+
+	/**
+	 * Tries to locate {@code expectedLines} at the given tier: exact hint, then the ±1..50 window,
+	 * then a full-file scan. A unique full-file match is used; multiple matches throw the ambiguity
+	 * error; zero matches return {@code null}. {@code droppedLeading}/{@code droppedTrailing} record
+	 * outer-context fuzz so the splice can compensate.
+	 */
+	private static Located tryLocateAtTier(List<String> lines, List<String> expectedLines, int hint,
+		MatchTier tier, int droppedLeading, int droppedTrailing)
+	{
+		if (expectedLines.isEmpty()) return null;
+
+		if (matchesAtTier(lines, expectedLines, hint, tier))
+			return new Located(hint, tier, droppedLeading, droppedTrailing);
+		int maxSearch = 50;
+		for (int offset = 1; offset <= maxSearch; offset++)
+		{
+			if (matchesAtTier(lines, expectedLines, hint + offset, tier))
+				return new Located(hint + offset, tier, droppedLeading, droppedTrailing);
+			if (matchesAtTier(lines, expectedLines, hint - offset, tier))
+				return new Located(hint - offset, tier, droppedLeading, droppedTrailing);
+		}
+
+		// Full-file scan: collect every position that matches at this tier.
+		List<Integer> matches = new ArrayList<>();
+		int last = lines.size() - expectedLines.size();
+		for (int pos = 0; pos <= last; pos++)
+			if (matchesAtTier(lines, expectedLines, pos, tier)) matches.add(pos);
+
+		if (matches.size() == 1) return new Located(matches.get(0), tier, droppedLeading, droppedTrailing);
+		if (matches.size() > 1)
+		{
+			StringBuilder candidates = new StringBuilder();
+			for (int i = 0; i < matches.size(); i++)
+			{
+				if (i > 0) candidates.append(", ");
+				candidates.append(matches.get(i) + 1);
+			}
+			throw new RuntimeException("Error: The hunk context matches " + matches.size()
+				+ " locations (lines " + candidates + "); the @@ header did not disambiguate. "
+				+ "Re-emit the patch with a correct @@ line number or a longer unique context.");
+		}
+		return null;
+	}
+
+	/**
+	 * Splices a located hunk into the file. For exact matches the hunk's own context/added lines are
+	 * used verbatim. For fuzzy matches (tier 2/3) the file's original context/removed lines are
+	 * reused and added lines are re-indented to the surrounding file indentation, so the patch's
+	 * whitespace is never pasted over the file's real indentation.
+	 */
+	private static List<String> spliceHunk(List<String> lines, DiffHunk hunk, Located located, List<String> driftNotesOut)
+	{
+		// The reduced hunk lines (dropping the outermost context line(s) when tier-4 fuzz was used).
+		List<String> effectiveHunkLines = reduceHunkLines(hunk.hunkLines, located.droppedLeading, located.droppedTrailing);
+
+		int expectedSpan = 0;
+		for (String hunkLine : effectiveHunkLines)
+			if (hunkLine.startsWith(" ") || hunkLine.startsWith("-")) expectedSpan++;
+
+		List<String> replacement = new ArrayList<>();
+		if (located.tier == MatchTier.EXACT)
+		{
+			for (String hunkLine : effectiveHunkLines)
+				if (hunkLine.startsWith(" ") || hunkLine.startsWith("+"))
+					replacement.add(hunkLine.substring(1));
+		}
+		else
+		{
+			// Content-match write-back: retained context/removed lines come from the FILE; added
+			// lines are re-indented to match the surrounding file indentation.
+			int filePtr = located.pos;
+			String lastExpectedIndent = null;
+			String lastFileIndent = null;
+			for (String hunkLine : effectiveHunkLines)
+			{
+				char kind = hunkLine.charAt(0);
+				String text = hunkLine.substring(1);
+				if (kind == ' ')
+				{
+					String fileLine = lines.get(filePtr);
+					replacement.add(fileLine);
+					lastExpectedIndent = leadingWhitespace(text);
+					lastFileIndent = leadingWhitespace(fileLine);
+					filePtr++;
+				}
+				else if (kind == '-')
+				{
+					String fileLine = lines.get(filePtr);
+					lastExpectedIndent = leadingWhitespace(text);
+					lastFileIndent = leadingWhitespace(fileLine);
+					filePtr++;
+				}
+				else if (kind == '+')
+				{
+					replacement.add(reindentAddedLine(text, lastExpectedIndent, lastFileIndent));
+				}
+			}
+		}
 
 		List<String> result = new ArrayList<>();
-		for (int i = 0; i < matchPos; i++)
-			result.add(lines.get(i));
-		result.addAll(replacementLines);
-		for (int i = matchPos + expectedLines.size(); i < lines.size(); i++)
-			result.add(lines.get(i));
+		result.addAll(lines.subList(0, located.pos));
+		result.addAll(replacement);
+		result.addAll(lines.subList(located.pos + expectedSpan, lines.size()));
+
+		// A drop-outer-context match records the base tier of the REDUCED block, which can be EXACT,
+		// so also treat any dropped outer context as drift so a tier-4 success still reports fuzz.
+		boolean droppedContext = located.droppedLeading > 0 || located.droppedTrailing > 0;
+		if (driftNotesOut != null && (located.tier != MatchTier.EXACT || droppedContext))
+		{
+			int actualExpectedCount = 0;
+			for (String hunkLine : hunk.hunkLines)
+				if (hunkLine.startsWith(" ") || hunkLine.startsWith("-")) actualExpectedCount++;
+			StringBuilder note = new StringBuilder();
+			note.append("Applied with fuzzy matching (tier: ").append(located.tier.label).append(") \u2014 ")
+				.append("the file had drifted from the patch context; re-read the affected region (around line ")
+				.append(located.pos + 1).append(") to verify.");
+			if (hunk.originalCount != actualExpectedCount)
+				note.append(" (Header count ").append(hunk.originalCount)
+					.append(" disagreed with the actual context+removed line count ").append(actualExpectedCount)
+					.append(".)");
+			driftNotesOut.add(note.toString());
+		}
+
 		return result;
 	}
 
-	private static int findMatchPosition(List<String> lines, List<String> expectedLines, int hintPosition)
+	/**
+	 * Drops the outermost <em>expected context</em> line(s) from the hunk line list: for the leading
+	 * side it removes the first context (' '-prefixed) line only when that is the first
+	 * context-or-removed line (skipping any leading '+' added lines, which are kept); for the trailing
+	 * side likewise. A removed ('-') outermost line is never dropped. This mirrors the
+	 * {@link #firstExpectedIsContext}/{@link #lastExpectedIsContext} guards in {@link #locate} so the
+	 * reduced hunk lines and the reduced expected block stay in lockstep with the splice offsets.
+	 */
+	private static List<String> reduceHunkLines(List<String> hunkLines, int droppedLeading, int droppedTrailing)
+	{
+		if (droppedLeading == 0 && droppedTrailing == 0) return hunkLines;
+		List<String> result = new ArrayList<>(hunkLines);
+		for (int dropped = 0; dropped < droppedLeading; dropped++)
+		{
+			int idx = firstExpectedContextIndex(result);
+			if (idx < 0) break;
+			result.remove(idx);
+		}
+		for (int dropped = 0; dropped < droppedTrailing; dropped++)
+		{
+			int idx = lastExpectedContextIndex(result);
+			if (idx < 0) break;
+			result.remove(idx);
+		}
+		return result;
+	}
+
+	/** Index of the first context (' ') line, but only if it precedes any removed ('-') line; else -1. */
+	private static int firstExpectedContextIndex(List<String> hunkLines)
+	{
+		for (int i = 0; i < hunkLines.size(); i++)
+		{
+			String hunkLine = hunkLines.get(i);
+			if (hunkLine.startsWith(" ")) return i;
+			if (hunkLine.startsWith("-")) return -1;
+		}
+		return -1;
+	}
+
+	/** Index of the last context (' ') line, but only if it follows any removed ('-') line; else -1. */
+	private static int lastExpectedContextIndex(List<String> hunkLines)
+	{
+		for (int i = hunkLines.size() - 1; i >= 0; i--)
+		{
+			String hunkLine = hunkLines.get(i);
+			if (hunkLine.startsWith(" ")) return i;
+			if (hunkLine.startsWith("-")) return -1;
+		}
+		return -1;
+	}
+
+	private static String leadingWhitespace(String line)
+	{
+		int i = 0;
+		while (i < line.length() && (line.charAt(i) == ' ' || line.charAt(i) == '\t')) i++;
+		return line.substring(0, i);
+	}
+
+	/**
+	 * Re-indents an added line so its indentation matches the surrounding file context rather than
+	 * the patch's. When the added line's own indent starts with the indentation the hunk expected at
+	 * the splice point, that prefix is swapped for the file's actual indentation. When there is no
+	 * adjacent context to relate to, the added line is left unchanged.
+	 */
+	private static String reindentAddedLine(String added, String expectedIndent, String fileIndent)
+	{
+		if (expectedIndent == null || fileIndent == null) return added;
+		if (added.startsWith(expectedIndent))
+			return fileIndent + added.substring(expectedIndent.length());
+		return added;
+	}
+
+	/** Builds the evidence-rich failure message: searched range, expected block, and the file's
+	 *  actual lines at the hint, each bounded, plus an originalCount discrepancy note when relevant. */
+	private static String buildEvidenceFailure(List<String> lines, List<String> expectedLines, int hint, DiffHunk hunk)
+	{
+		int windowLow = Math.max(0, hint - 50);
+		int windowHigh = Math.min(lines.size(), hint + 50);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("Error: Could not find matching context for hunk near line ").append(hint + 1).append(". ");
+		sb.append("Searched the hint \u00b1 50 lines (lines ").append(windowLow + 1).append(" to ").append(windowHigh)
+			.append(") and then the whole file, including whitespace-tolerant matching; none matched.\n");
+
+		sb.append("Expected block (context + removed lines");
+		if (expectedLines.size() > EVIDENCE_CAP) sb.append(", first ").append(EVIDENCE_CAP).append(" of ").append(expectedLines.size());
+		sb.append("):\n");
+		for (int i = 0; i < Math.min(EVIDENCE_CAP, expectedLines.size()); i++)
+			sb.append("  ").append(expectedLines.get(i)).append("\n");
+
+		int actualStart = Math.max(0, Math.min(hint, Math.max(0, lines.size() - 1)));
+		int actualEnd = Math.min(lines.size(), actualStart + EVIDENCE_CAP);
+		sb.append("Actual lines at the hint (from line ").append(actualStart + 1).append("):\n");
+		if (actualStart >= lines.size())
+		{
+			sb.append("  (hint is beyond the end of the file, which has ").append(lines.size()).append(" lines)\n");
+		}
+		else
+		{
+			for (int i = actualStart; i < actualEnd; i++)
+				sb.append("  ").append(lines.get(i)).append("\n");
+		}
+
+		int actualExpectedCount = 0;
+		for (String hunkLine : hunk.hunkLines)
+			if (hunkLine.startsWith(" ") || hunkLine.startsWith("-")) actualExpectedCount++;
+		if (hunk.headerParsed && hunk.originalCount != actualExpectedCount)
+			sb.append("Note: the @@ header count (").append(hunk.originalCount)
+				.append(") disagrees with the actual context+removed line count (").append(actualExpectedCount)
+				.append("), so the hunk may be truncated.\n");
+
+		sb.append("The file may have been modified since the diff was generated.");
+		return sb.toString();
+	}
+
+	static int findMatchPosition(List<String> lines, List<String> expectedLines, int hintPosition)
 	{
 		if (expectedLines.isEmpty()) return Math.min(hintPosition, lines.size());
 		if (matchesAt(lines, expectedLines, hintPosition)) return hintPosition;
@@ -712,11 +1180,40 @@ public class CodeEditingService
 		return -1;
 	}
 
-	private static boolean matchesAt(List<String> lines, List<String> expectedLines, int position)
+	static boolean matchesAt(List<String> lines, List<String> expectedLines, int position)
+	{
+		return matchesAtTier(lines, expectedLines, position, MatchTier.EXACT);
+	}
+
+	/**
+	 * Whitespace-tolerant line-block comparison. {@code originalCount} is intentionally NOT validated
+	 * here: measured over real patches it disagrees with the actual block size in 83% of cases, so
+	 * gating on it would reject far more good patches than it protects against. It is used only as a
+	 * soft hint in failure diagnostics (see {@link #buildEvidenceFailure}).
+	 */
+	private static boolean matchesAtTier(List<String> lines, List<String> expectedLines, int position, MatchTier tier)
 	{
 		if (position < 0 || position + expectedLines.size() > lines.size()) return false;
 		for (int i = 0; i < expectedLines.size(); i++)
-			if (!lines.get(position + i).equals(expectedLines.get(i))) return false;
+		{
+			String actual = lines.get(position + i);
+			String expected = expectedLines.get(i);
+			boolean eq;
+			switch (tier)
+			{
+				case TRAILING_WS:
+					eq = actual.stripTrailing().equals(expected.stripTrailing());
+					break;
+				case STRIP_BOTH:
+					eq = actual.strip().equals(expected.strip());
+					break;
+				case EXACT:
+				default:
+					eq = actual.equals(expected);
+					break;
+			}
+			if (!eq) return false;
+		}
 		return true;
 	}
 }

@@ -22,6 +22,7 @@ import org.junit.platform.suite.api.SuiteDisplayName;
 
 import com.servoy.eclipse.developer.mcp.integration.AbstractIntegrationTestBaseTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
+import com.servoy.eclipse.developer.mcp.services.CodeEditingServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
@@ -32,6 +33,7 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 @SuiteDisplayName("Developer MCP - Jupiter unit tests")
 @SelectClasses({
 		// services
+		CodeEditingServiceTest.class,
 		FormatValidatorServiceTest.class,
 		FormNavigationGraphServiceTest.class,
 		FormPreviewServiceTest.class,
