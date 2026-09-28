@@ -465,6 +465,34 @@ describe('ChatStore', () => {
     expect(store.error()).toBeNull();
   });
 
+  it('send optimistically renders the user message (opencode pushes no prompt event)', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.sendPrompt.mockReturnValue(of<void>(undefined));
+    store.openSession('s1');
+
+    store.send([{ type: 'text', text: 'zeg even test' }]);
+
+    const userMsgs = store.messages().filter((m) => m.info.role === 'user');
+    expect(userMsgs).toHaveLength(1);
+    expect(userMsgs[0].parts[0].type).toBe('text');
+    expect(userMsgs[0].parts[0].text).toBe('zeg even test');
+  });
+
+  it('send renders file attachments in the optimistic user message', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.sendPrompt.mockReturnValue(of<void>(undefined));
+    store.openSession('s1');
+
+    store.send([
+      { type: 'text', text: 'see file' },
+      { type: 'file', filename: 'a.txt', mime: 'text/plain', url: 'a.txt' }
+    ]);
+
+    const userMsg = store.messages().find((m) => m.info.role === 'user');
+    expect(userMsg?.parts.map((p) => p.type)).toEqual(['text', 'file']);
+    expect(userMsg?.parts[1].filename).toBe('a.txt');
+  });
+
   it('send creates a session first when there is no active session', () => {
     api.createSession.mockReturnValue(of<Session>({ id: 'created' }));
     api.listSessions.mockReturnValue(of<Session[]>([]));

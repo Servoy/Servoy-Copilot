@@ -353,12 +353,55 @@ export class ChatStore {
   private dispatch(id: string, parts: SendPart[]): void {
     this.error.set(null);
     this.streaming.set(true);
+    // Optimistically render the user's own message. opencode V2 does not push a
+    // bus event for the prompt itself (only the assistant's streamed text /
+    // reasoning / tool events follow), so without this the user's message would
+    // not appear in the transcript until a reload re-seeds from GET /message.
+    this.appendOptimisticUserMessage(id, parts);
     this.api.sendPrompt(id, parts).subscribe({
       error: (err) => {
         this.streaming.set(false);
         this.error.set(this.describe(err));
       }
     });
+  }
+
+  /**
+   * Appends a locally-rendered user message for a just-sent prompt. It is keyed
+   * with a synthetic {@code local-user-*} id so a later reload (which re-seeds
+   * from {@code GET /message} with the server's real message) does not produce a
+   * duplicate: {@link openSession} replaces the whole list, dropping these
+   * optimistic entries.
+   */
+  private appendOptimisticUserMessage(sessionID: string, parts: SendPart[]): void {
+    const text = parts
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text)
+      .join('\n');
+    const messageID = `local-user-${Date.now()}`;
+    const fileParts: Part[] = parts
+      .filter((p) => p.type === 'file' && p.url)
+      .map((p, i) => ({
+        id: `${messageID}#file-${i}`,
+        type: 'file',
+        filename: p.filename,
+        mime: p.mime,
+        url: p.url,
+        sessionID
+      }));
+    if (!text && fileParts.length === 0) {
+      return;
+    }
+    const messageParts: Part[] = [];
+    if (text) {
+      messageParts.push({ id: `${messageID}#text`, type: 'text', text, messageID, sessionID });
+    }
+    messageParts.push(...fileParts);
+    const message: ChatMessage = {
+      info: { id: messageID, sessionID, role: 'user' },
+      parts: messageParts
+    };
+    this.messages.update((msgs) => [...msgs, message]);
   }
 
   // -----------------------------------------------------------------------
