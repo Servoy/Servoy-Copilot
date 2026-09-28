@@ -170,7 +170,10 @@ export class ChatStore {
     this.error.set(null);
     this.pendingFormSig.set(null);
     this.api.listMessages(id).subscribe({
-      next: (msgs) => this.messages.set((msgs ?? []).map((m) => this.toChatMessage(m))),
+      next: (msgs) =>
+        this.messages.set(
+          (msgs ?? []).filter((m) => this.isRenderableMessage(m)).map((m) => this.toChatMessage(m))
+        ),
       error: (err) => this.error.set(this.describe(err))
     });
     // Recover a form still pending on the server (e.g. after a reload, when the
@@ -944,6 +947,22 @@ export class ChatStore {
 
   private toChatMessage(m: MessageWithParts): ChatMessage {
     return { info: m.info, parts: m.parts ?? [] };
+  }
+
+  /**
+   * Whether a seeded V2 message should appear in the transcript. opencode emits
+   * bookkeeping messages with no user-facing content - notably {@code idle}
+   * markers (role {@code idle}) that carry no parts and no completion timestamp.
+   * Those must be dropped: otherwise {@code MessageItemComponent} treats them as
+   * an in-flight assistant turn and renders the "thinking" dots mid-transcript
+   * next to already-answered messages. Keep every user message, and keep any
+   * message that actually has renderable parts.
+   */
+  private isRenderableMessage(m: MessageWithParts): boolean {
+    if (m.info.role === 'user') {
+      return true;
+    }
+    return (m.parts ?? []).length > 0;
   }
 
   private describe(err: unknown): string {

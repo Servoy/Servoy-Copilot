@@ -191,6 +191,29 @@ describe('ChatStore', () => {
     expect(store.sessions()).toEqual([]);
   });
 
+  it('openSession drops empty idle/bookkeeping messages so no stray "thinking" dots render', () => {
+    const msgs: MessageWithParts[] = [
+      { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] },
+      { info: { id: 'a1', role: 'assistant' }, parts: [{ type: 'text', text: 'hello' } as Part] },
+      // opencode idle marker: no parts, not a user message -> must be filtered.
+      { info: { id: 'idle1', role: 'idle' }, parts: [] }
+    ];
+    api.listMessages.mockReturnValue(of(msgs));
+
+    store.openSession('s1');
+
+    expect(store.messages().map((m) => m.info.id)).toEqual(['u1', 'a1']);
+  });
+
+  it('openSession keeps a user message even when it has no parts', () => {
+    const msgs: MessageWithParts[] = [{ info: { id: 'u1', role: 'user' }, parts: [] }];
+    api.listMessages.mockReturnValue(of(msgs));
+
+    store.openSession('s1');
+
+    expect(store.messages().map((m) => m.info.id)).toEqual(['u1']);
+  });
+
   it('openSession seeds messages from GET /message', () => {
     const msgs: MessageWithParts[] = [
       { info: { id: 'm1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] }
