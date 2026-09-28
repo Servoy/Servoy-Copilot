@@ -31,6 +31,8 @@ export class ComposerComponent {
   readonly streaming = input(false);
   /** When true the composer is read-only (e.g. viewing a subagent session). */
   readonly disabled = input(false);
+  /** Explains why the composer is disabled; shown above the input when set. */
+  readonly disabledHint = input('You\'re viewing a subagent session. Open its parent session to chat.');
 
   readonly sendMessage = output<SendPart[]>();
   readonly stop = output<void>();

@@ -68,7 +68,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   list: 'List Directory',
   todowrite: 'Update Todos',
   task: 'Task',
-  skill: 'Load Skill'
+  skill: 'Load Skill',
+  question: 'Question'
 };
 
 /** A human-friendly display name for a tool part (e.g. "read" -> "Read File"). */

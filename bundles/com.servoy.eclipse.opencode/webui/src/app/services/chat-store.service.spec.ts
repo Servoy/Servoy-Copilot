@@ -5,7 +5,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { ChatStore } from './chat-store.service';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { OpencodeApiService } from './opencode-api.service';
-import { MessageWithParts, Part, SendPart, Session } from '../models/opencode.models';
+import { FormInfo, MessageWithParts, Part, SendPart, Session } from '../models/opencode.models';
 
 class FakeEventStream {
   readonly subject = new Subject<OpencodeEvent>();
@@ -29,7 +29,10 @@ function apiMock() {
     sendPrompt: vi.fn(),
     interrupt: vi.fn(),
     findFiles: vi.fn(),
-    readFile: vi.fn()
+    readFile: vi.fn(),
+    listPendingForms: vi.fn(),
+    replyToForm: vi.fn(),
+    cancelForm: vi.fn()
   };
 }
 
@@ -49,6 +52,9 @@ describe('ChatStore', () => {
       ]
     });
     store = TestBed.inject(ChatStore);
+    // openSession/bootstrap now recover pending forms; default to none so the
+    // existing session-focused tests are unaffected.
+    api.listPendingForms.mockReturnValue(of<FormInfo[]>([]));
   });
 
   it('refreshSessions populates the session list', () => {
@@ -510,5 +516,169 @@ describe('ChatStore', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
     expect(store.hasActiveSession()).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Interactive forms (V2 Form exchange)
+  // -------------------------------------------------------------------------
+
+  const sampleForm = (sessionID = 's1', id = 'frm_1'): FormInfo => ({
+    id,
+    sessionID,
+    title: 'Questions',
+    fields: [
+      {
+        key: 'q0',
+        type: 'string',
+        options: [{ value: 'Apple', label: 'Apple' }],
+        custom: true
+      }
+    ]
+  });
+
+  it('form.created sets the pending form for the active session', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    expect(store.pendingForm()?.id).toBe('frm_1');
+  });
+
+  it('form.created for a non-active session is ignored', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+
+    events.fire({ type: 'form.created', data: { form: sampleForm('OTHER') } });
+
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('form.replied clears the matching pending form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    events.fire({ type: 'form.replied', data: { id: 'frm_1', sessionID: 's1' } });
+
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('form.cancelled clears the matching pending form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    events.fire({ type: 'form.cancelled', data: { id: 'frm_1', sessionID: 's1' } });
+
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('a settle event for a different form id does not clear the pending form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1', 'frm_1') } });
+
+    events.fire({ type: 'form.replied', data: { id: 'frm_OTHER', sessionID: 's1' } });
+
+    expect(store.pendingForm()?.id).toBe('frm_1');
+  });
+
+  it('openSession recovers a pending form via listPendingForms', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.listPendingForms.mockReturnValue(of<FormInfo[]>([sampleForm('s1')]));
+
+    store.openSession('s1');
+
+    expect(api.listPendingForms).toHaveBeenCalledWith('s1');
+    expect(store.pendingForm()?.id).toBe('frm_1');
+  });
+
+  it('openSession clears a stale pending form when the session has none', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+    expect(store.pendingForm()).not.toBeNull();
+
+    // Switching to a session with no pending form clears it.
+    api.listPendingForms.mockReturnValue(of<FormInfo[]>([]));
+    store.openSession('s2');
+
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('newSession clears any pending form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.newSession();
+
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('submitForm replies with the answer and clears the form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.replyToForm.mockReturnValue(of<void>(undefined));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.submitForm({ q0: 'Apple' });
+
+    expect(api.replyToForm).toHaveBeenCalledWith('s1', 'frm_1', { q0: 'Apple' });
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('submitForm treats a 409 (already settled) as success and clears the form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.replyToForm.mockReturnValue(throwError(() => ({ status: 409 })));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.submitForm({ q0: 'Apple' });
+
+    expect(store.pendingForm()).toBeNull();
+    expect(store.error()).toBeNull();
+  });
+
+  it('submitForm surfaces a non-409 error and keeps the form pending', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.replyToForm.mockReturnValue(throwError(() => ({ status: 500 })));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.submitForm({ q0: 'Apple' });
+
+    expect(store.error()).not.toBeNull();
+    expect(store.pendingForm()?.id).toBe('frm_1');
+  });
+
+  it('submitForm is a no-op when no form is pending', () => {
+    store.submitForm({ q0: 'Apple' });
+    expect(api.replyToForm).not.toHaveBeenCalled();
+  });
+
+  it('cancelPendingForm cancels via the api and clears the form', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.cancelForm.mockReturnValue(of<void>(undefined));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.cancelPendingForm();
+
+    expect(api.cancelForm).toHaveBeenCalledWith('s1', 'frm_1');
+    expect(store.pendingForm()).toBeNull();
+  });
+
+  it('cancelPendingForm treats a 409 (already settled) as success and clears', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.cancelForm.mockReturnValue(throwError(() => ({ status: 409 })));
+    store.openSession('s1');
+    events.fire({ type: 'form.created', data: { form: sampleForm('s1') } });
+
+    store.cancelPendingForm();
+
+    expect(store.pendingForm()).toBeNull();
+    expect(store.error()).toBeNull();
   });
 });

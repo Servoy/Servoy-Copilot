@@ -3,6 +3,8 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { forkJoin } from 'rxjs';
 
 import {
+  FormAnswer,
+  FormInfo,
   MessageInfo,
   MessageWithParts,
   Part,
@@ -55,6 +57,18 @@ export class ChatStore {
   readonly messages = signal<ChatMessage[]>([]);
   readonly streaming = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  /**
+   * The interactive form the active session is currently blocked on, or
+   * {@code null}. Set from a {@code form.created} bus event (or recovered on
+   * session open via {@link OpencodeApiService#listPendingForms}), cleared when
+   * the form is replied to, cancelled, or the session changes. The composer is
+   * disabled and a form card is shown while this is non-null. Only one pending
+   * form per session is tracked (the server only surfaces one at a time for the
+   * question flow).
+   */
+  private readonly pendingFormSig = signal<FormInfo | null>(null);
+  readonly pendingForm = this.pendingFormSig.asReadonly();
 
   readonly hasActiveSession = computed(() => this.activeSessionId() !== null);
 
@@ -154,9 +168,22 @@ export class ChatStore {
     this.activeSessionId.set(id);
     this.messages.set([]);
     this.error.set(null);
+    this.pendingFormSig.set(null);
     this.api.listMessages(id).subscribe({
       next: (msgs) => this.messages.set((msgs ?? []).map((m) => this.toChatMessage(m))),
       error: (err) => this.error.set(this.describe(err))
+    });
+    // Recover a form still pending on the server (e.g. after a reload, when the
+    // form.created event was missed). Only apply if this session is still active.
+    this.api.listPendingForms(id).subscribe({
+      next: (forms) => {
+        if (this.activeSessionId() === id && forms.length > 0) {
+          this.pendingFormSig.set(forms[0]);
+        }
+      },
+      error: () => {
+        // Non-fatal: no form recovery, the user can still chat.
+      }
     });
   }
 
@@ -171,6 +198,7 @@ export class ChatStore {
     this.activeSessionId.set(null);
     this.messages.set([]);
     this.error.set(null);
+    this.pendingFormSig.set(null);
   }
 
   /** Rename a session, then refresh the list so the new title shows. */
@@ -229,6 +257,7 @@ export class ChatStore {
     if (this.activeSessionId() === id) {
       this.activeSessionId.set(null);
       this.messages.set([]);
+      this.pendingFormSig.set(null);
     }
     this.refreshSessions();
   }
@@ -265,6 +294,60 @@ export class ChatStore {
       next: () => this.streaming.set(false),
       error: (err) => this.error.set(this.describe(err))
     });
+  }
+
+  /**
+   * Answer the pending form and clear it. The reply unblocks the waiting agent
+   * turn, which then resumes streaming via the normal {@code session.*} events.
+   * A 409 (form already settled elsewhere) is treated as success - the form is
+   * gone either way.
+   */
+  submitForm(answer: FormAnswer): void {
+    const form = this.pendingFormSig();
+    if (!form) {
+      return;
+    }
+    this.error.set(null);
+    this.api.replyToForm(form.sessionID, form.id, answer).subscribe({
+      next: () => this.clearForm(form.id),
+      error: (err) => {
+        if (this.isAlreadySettled(err)) {
+          this.clearForm(form.id);
+          return;
+        }
+        this.error.set(this.describe(err));
+      }
+    });
+  }
+
+  /** Cancel the pending form (aborts the waiting turn) and clear it. */
+  cancelPendingForm(): void {
+    const form = this.pendingFormSig();
+    if (!form) {
+      return;
+    }
+    this.api.cancelForm(form.sessionID, form.id).subscribe({
+      next: () => this.clearForm(form.id),
+      error: (err) => {
+        if (this.isAlreadySettled(err)) {
+          this.clearForm(form.id);
+          return;
+        }
+        this.error.set(this.describe(err));
+      }
+    });
+  }
+
+  /** Clears the pending form if it still matches {@code formID}. */
+  private clearForm(formID: string): void {
+    if (this.pendingFormSig()?.id === formID) {
+      this.pendingFormSig.set(null);
+    }
+  }
+
+  /** True when an HTTP error is a 409 (form already replied/cancelled). */
+  private isAlreadySettled(err: unknown): boolean {
+    return !!err && typeof err === 'object' && (err as { status?: number }).status === 409;
   }
 
   private dispatch(id: string, parts: SendPart[]): void {
@@ -347,6 +430,15 @@ export class ChatStore {
         break;
       case 'session.tool.error':
         this.onToolResult(props, 'error');
+        break;
+
+      // --- interactive forms (V2 Form flow) ---
+      case 'form.created':
+        this.onFormCreated(props);
+        break;
+      case 'form.replied':
+      case 'form.cancelled':
+        this.onFormSettled(props);
         break;
 
       // --- V1-style fallbacks (kept so an older/proxy build still renders) ---
@@ -710,6 +802,57 @@ export class ChatStore {
         this.streaming.set(true);
       }
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Interactive forms
+  // -----------------------------------------------------------------------
+
+  /**
+   * A {@code form.created} event: the agent asked a question and the turn is now
+   * blocked on the user. The payload carries the full {@link FormInfo} under
+   * {@code form} (its own {@code sessionID} identifies which session it belongs
+   * to). Only show it if it targets the active session.
+   */
+  private onFormCreated(props: Record<string, unknown>): void {
+    const form = this.extractForm(props);
+    if (!form) {
+      return;
+    }
+    const active = this.activeSessionId();
+    if (!active || form.sessionID !== active) {
+      return;
+    }
+    dbg('store', `form.created id=${form.id} fields=${form.fields?.length ?? 0}`);
+    this.pendingFormSig.set(form);
+  }
+
+  /**
+   * A {@code form.replied} / {@code form.cancelled} event: the form is settled
+   * (possibly by another client). Clear it if it matches the pending one.
+   */
+  private onFormSettled(props: Record<string, unknown>): void {
+    const id =
+      (props['id'] as string | undefined) ??
+      (this.extractForm(props)?.id as string | undefined);
+    if (id) {
+      this.clearForm(id);
+    }
+  }
+
+  /** Extracts a {@link FormInfo} from a form event payload. */
+  private extractForm(props: Record<string, unknown>): FormInfo | null {
+    const nested = props['form'] as FormInfo | undefined;
+    if (nested?.id) {
+      return nested;
+    }
+    // Some builds may put the fields directly on `data`.
+    const id = props['id'] as string | undefined;
+    const sessionID = props['sessionID'] as string | undefined;
+    if (id && sessionID && Array.isArray(props['fields'])) {
+      return props as unknown as FormInfo;
+    }
+    return null;
   }
 
   private matchesActiveSession(props: Record<string, unknown>): boolean {

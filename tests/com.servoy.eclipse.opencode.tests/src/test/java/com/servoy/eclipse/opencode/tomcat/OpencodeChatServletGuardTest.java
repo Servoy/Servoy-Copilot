@@ -126,7 +126,8 @@ class OpencodeChatServletGuardTest {
 	private static OpencodeChatServlet servlet(IntSupplier port, BooleanSupplier ready,
 			OpencodeChatServlet.WaitForServer wait, Supplier<String> projectPath) {
 		Function<String, URL> noResources = p -> null;
-		return new OpencodeChatServlet(port, ready, wait, projectPath, noResources);
+		Supplier<String> noPassword = () -> null;
+		return new OpencodeChatServlet(port, noPassword, ready, wait, projectPath, noResources);
 	}
 
 	private static String invokeService(HttpServlet servlet, HttpServletRequest req, HttpServletResponse resp)

@@ -20,9 +20,21 @@
       <div class="banner">{{ error }}</div>
     }
     <svy-message-list class="messages" [messages]="store.messages()"></svy-message-list>
+    @if (store.pendingForm(); as form) {
+      <svy-form-card
+        [form]="form"
+        (submitForm)="onFormSubmit($event)"
+        (cancelForm)="onFormCancel()"
+      ></svy-form-card>
+    }
     <svy-composer
       [streaming]="store.streaming()"
-      [disabled]="store.activeIsSubagent()"
+      [disabled]="store.activeIsSubagent() || !!store.pendingForm()"
+      [disabledHint]="
+        store.pendingForm()
+          ? 'Answer the question above to continue.'
+          : 'You\'re viewing a subagent session. Open its parent session to chat.'
+      "
       (sendMessage)="onSend($event)"
       (stop)="onStop()"
     ></svy-composer>

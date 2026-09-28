@@ -5,6 +5,8 @@ import { map } from 'rxjs/operators';
 
 import {
   FileMatch,
+  FormAnswer,
+  FormInfo,
   MessageWithParts,
   SendPart,
   Session
@@ -140,5 +142,40 @@ export class OpencodeApiService {
     return this.http.get(`${this.base}/fs/read/${encoded}`, {
       responseType: 'text'
     });
+  }
+
+  /**
+   * List a session's pending interactive forms (V2
+   * {@code GET /session/:id/form} -> {@code { data }}). Used to recover a form
+   * that is still open after a reload, since {@code form.created} may have been
+   * missed while the page was gone.
+   */
+  listPendingForms(sessionID: string): Observable<FormInfo[]> {
+    return this.http
+      .get<{ data?: FormInfo[] }>(`${this.base}/session/${encodeURIComponent(sessionID)}/form`)
+      .pipe(map((r) => r?.data ?? []));
+  }
+
+  /**
+   * Answer a pending form (V2 {@code POST /session/:id/form/:formID/reply}, body
+   * {@code { answer }}). The answer is keyed by each field's {@code key}. V2
+   * returns 204 No Content, so this resolves to {@code void}; answering unblocks
+   * the waiting agent turn.
+   */
+  replyToForm(sessionID: string, formID: string, answer: FormAnswer): Observable<void> {
+    return this.http.post<void>(
+      `${this.base}/session/${encodeURIComponent(sessionID)}/form/${encodeURIComponent(formID)}/reply`,
+      { answer }
+    );
+  }
+
+  /**
+   * Cancel a pending form (V2 {@code DELETE /session/:id/form/:formID}, 204).
+   * Cancelling aborts the waiting turn.
+   */
+  cancelForm(sessionID: string, formID: string): Observable<void> {
+    return this.http.delete<void>(
+      `${this.base}/session/${encodeURIComponent(sessionID)}/form/${encodeURIComponent(formID)}`
+    );
   }
 }

@@ -1,0 +1,178 @@
+<div #card class="form-card" role="group" [attr.aria-label]="form().title" (keydown)="onKeydown($event)">
+  <div class="form-title">{{ form().title }}</div>
+
+  <div class="fields">
+    @for (field of evaluation().visibleFields; track fieldKey($index, field)) {
+      <div class="field" [class.has-error]="!!fieldError(field)">
+        @if (field.type !== 'boolean' && field.type !== 'external') {
+          <label class="field-label" [attr.for]="controlId(field)">
+            {{ field.title || field.key }}
+            @if (field.required) {
+              <span class="required" aria-hidden="true">*</span>
+            }
+          </label>
+        }
+        @if (field.description && field.type !== 'external') {
+          <div class="field-desc">{{ field.description }}</div>
+        }
+
+        <!-- string with options: single choice, optionally with free text -->
+        @if (field.type === 'string' && field.options && field.options.length > 0) {
+          <div class="options" role="radiogroup" [attr.aria-label]="field.title || field.key">
+            @for (option of field.options; track optionKey($index, option)) {
+              <button
+                type="button"
+                class="option"
+                role="radio"
+                [class.selected]="isOptionSelected(field, option)"
+                [attr.aria-checked]="isOptionSelected(field, option)"
+                (click)="selectOption(field, option)"
+              >
+                <span class="option-label">{{ option.label }}</span>
+                @if (option.description) {
+                  <span class="option-desc">{{ option.description }}</span>
+                }
+              </button>
+            }
+          </div>
+          @if (field.custom) {
+            <input
+              type="text"
+              class="text-input"
+              [id]="controlId(field)"
+              placeholder="Or type your own…"
+              [ngModel]="stringValue(field)"
+              (ngModelChange)="onStringInput(field, $event)"
+              [attr.aria-describedby]="fieldError(field) ? errorId(field) : null"
+            />
+          }
+        }
+
+        <!-- plain string: free text -->
+        @else if (field.type === 'string') {
+          <input
+            type="text"
+            class="text-input"
+            [id]="controlId(field)"
+            [placeholder]="field.placeholder || ''"
+            [ngModel]="stringValue(field)"
+            (ngModelChange)="onStringInput(field, $event)"
+            [attr.aria-required]="field.required || null"
+            [attr.aria-invalid]="!!fieldError(field)"
+            [attr.aria-describedby]="fieldError(field) ? errorId(field) : null"
+          />
+        }
+
+        <!-- number / integer -->
+        @else if (field.type === 'number' || field.type === 'integer') {
+          <input
+            type="number"
+            class="text-input"
+            [id]="controlId(field)"
+            [attr.min]="field.minimum ?? null"
+            [attr.max]="field.maximum ?? null"
+            [attr.step]="field.type === 'integer' ? 1 : null"
+            [ngModel]="numberValue(field)"
+            (ngModelChange)="onNumberInput(field, $event)"
+            [attr.aria-required]="field.required || null"
+            [attr.aria-invalid]="!!fieldError(field)"
+            [attr.aria-describedby]="fieldError(field) ? errorId(field) : null"
+          />
+        }
+
+        <!-- boolean -->
+        @else if (field.type === 'boolean') {
+          <label class="checkbox-row" [attr.for]="controlId(field)">
+            <input
+              type="checkbox"
+              [id]="controlId(field)"
+              [ngModel]="booleanValue(field)"
+              (ngModelChange)="onBooleanToggle(field, $event)"
+            />
+            <span>
+              {{ field.title || field.key }}
+              @if (field.required) {
+                <span class="required" aria-hidden="true">*</span>
+              }
+            </span>
+          </label>
+          @if (field.description) {
+            <div class="field-desc">{{ field.description }}</div>
+          }
+        }
+
+        <!-- multiselect -->
+        @else if (field.type === 'multiselect') {
+          <div class="checkboxes" role="group" [attr.aria-label]="field.title || field.key">
+            @for (option of field.options; track optionKey($index, option)) {
+              <label class="checkbox-row">
+                <input
+                  type="checkbox"
+                  [checked]="isMultiSelected(field, option)"
+                  (change)="toggleMultiOption(field, option, $any($event.target).checked)"
+                />
+                <span>
+                  {{ option.label }}
+                  @if (option.description) {
+                    <span class="option-desc">{{ option.description }}</span>
+                  }
+                </span>
+              </label>
+            }
+            @for (custom of customSelections($any(field)); track custom) {
+              <label class="checkbox-row">
+                <input type="checkbox" [checked]="true" (change)="removeCustomValue($any(field), custom)" />
+                <span>{{ custom }}</span>
+              </label>
+            }
+          </div>
+          @if (field.custom) {
+            <div class="custom-add">
+              <input
+                type="text"
+                class="text-input"
+                [id]="controlId(field)"
+                placeholder="Add your own…"
+                [ngModel]="customDraft(field)"
+                (ngModelChange)="onCustomDraftInput(field, $event)"
+                (keydown.enter)="$event.preventDefault(); $event.stopPropagation(); addCustomValue($any(field))"
+              />
+              <button type="button" class="add-btn" (click)="addCustomValue($any(field))">Add</button>
+            </div>
+          }
+        }
+
+        <!-- external: acknowledge a link -->
+        @else if (field.type === 'external') {
+          <div class="external">
+            <a class="external-link" [href]="field.url" target="_blank" rel="noopener noreferrer">
+              {{ field.title || field.url }}
+            </a>
+            @if (field.description) {
+              <div class="field-desc">{{ field.description }}</div>
+            }
+            <button
+              type="button"
+              class="ack-btn"
+              [class.acknowledged]="isAcknowledged(field)"
+              (click)="acknowledgeExternal(field)"
+            >
+              {{ isAcknowledged(field) ? '✓ Done' : "I've done this" }}
+            </button>
+          </div>
+        }
+
+        @if (fieldError(field); as err) {
+          <div class="field-error" [id]="errorId(field)" role="alert">{{ err }}</div>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="actions">
+    <button type="button" class="btn cancel" (click)="onCancel()">Cancel</button>
+    <button type="button" class="btn submit" [disabled]="!evaluation().valid" (click)="onSubmit()">
+      Send
+    </button>
+  </div>
+</div>

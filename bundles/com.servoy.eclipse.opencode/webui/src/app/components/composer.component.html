@@ -1,6 +1,6 @@
 <div class="composer" (drop)="onDrop($event)" (dragover)="onDragOver($event)">
   @if (disabled()) {
-    <div class="disabled-hint">You're viewing a subagent session. Open its parent session to chat.</div>
+    <div class="disabled-hint">{{ disabledHint() }}</div>
   }
 
   <svy-attachment-bar [attachments]="attachments()" (remove)="removeAttachment($event)"></svy-attachment-bar>

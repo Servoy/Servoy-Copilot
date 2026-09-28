@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import { OpencodeApiService } from './opencode-api.service';
-import { FileMatch, MessageWithParts, SendPart, Session } from '../models/opencode.models';
+import { FileMatch, FormInfo, MessageWithParts, SendPart, Session } from '../models/opencode.models';
 
 /**
  * Tests for the V2 ({@code @opencode/cli} 2.x) API wrappers: the front-end keeps
@@ -200,6 +200,50 @@ describe('OpencodeApiService', () => {
     req.flush('file body');
 
     expect(content).toBe('file body');
+  });
+
+  it('listPendingForms GETs the form endpoint and unwraps the { data } envelope', () => {
+    const forms: FormInfo[] = [
+      { id: 'frm_1', sessionID: 's1', title: 'Q', fields: [{ key: 'q0', type: 'string' }] }
+    ];
+    let result: FormInfo[] | undefined;
+    service.listPendingForms('s1').subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne('rest_api/session/s1/form');
+    expect(req.request.method).toBe('GET');
+    req.flush({ data: forms });
+
+    expect(result).toEqual(forms);
+  });
+
+  it('listPendingForms tolerates a missing data field (returns [])', () => {
+    let result: FormInfo[] | undefined;
+    service.listPendingForms('s1').subscribe((r) => (result = r));
+    const req = httpMock.expectOne('rest_api/session/s1/form');
+    req.flush({});
+    expect(result).toEqual([]);
+  });
+
+  it('replyToForm POSTs { answer } to the reply endpoint (V2 returns 204)', () => {
+    service.replyToForm('s1', 'frm_1', { q0: 'Banana' }).subscribe();
+    const req = httpMock.expectOne('rest_api/session/s1/form/frm_1/reply');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ answer: { q0: 'Banana' } });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('replyToForm URL-encodes the session and form ids', () => {
+    service.replyToForm('a/b', 'f/c', { q0: 'x' }).subscribe();
+    const req = httpMock.expectOne('rest_api/session/a%2Fb/form/f%2Fc/reply');
+    expect(req.request.method).toBe('POST');
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('cancelForm DELETEs the form endpoint (V2 returns 204)', () => {
+    service.cancelForm('s1', 'frm_1').subscribe();
+    const req = httpMock.expectOne('rest_api/session/s1/form/frm_1');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
   it('propagates a 503 error to the subscriber (upstream restarting)', () => {

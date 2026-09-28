@@ -54,7 +54,8 @@ class OpencodeChatServletTest {
 
 		@ParameterizedTest
 		@ValueSource(strings = { "/rest_api", "/rest_api/", "/rest_api/session", "/rest_api/session/abc/message",
-				"/rest_api/event" })
+				"/rest_api/event", "/rest_api/session/ses_x/form", "/rest_api/session/ses_x/form/frm_y/reply",
+				"/rest_api/session/ses_x/form/frm_y" })
 		@DisplayName("paths under the API prefix are API requests")
 		void apiPrefixedPathsAreApi(String pathInfo) {
 			assertTrue(OpencodeChatServlet.isApiRequest(pathInfo));
@@ -91,21 +92,24 @@ class OpencodeChatServletTest {
 	class UpstreamPathMapping {
 		@ParameterizedTest
 		@NullSource
-		@DisplayName("null path-info maps to root upstream path")
+		@DisplayName("null path-info maps to the upstream API root '/api'")
 		void nullMapsToRoot(String pathInfo) {
-			assertEquals("/", OpencodeChatServlet.toUpstreamPath(pathInfo));
+			assertEquals("/api", OpencodeChatServlet.toUpstreamPath(pathInfo));
 		}
 
 		@Test
-		@DisplayName("bare '/rest_api' strips to root upstream path")
+		@DisplayName("bare '/rest_api' maps to the upstream API root '/api'")
 		void barePrefixStripsToRoot() {
-			assertEquals("/", OpencodeChatServlet.toUpstreamPath("/rest_api"));
+			assertEquals("/api", OpencodeChatServlet.toUpstreamPath("/rest_api"));
 		}
 
 		@ParameterizedTest
-		@CsvSource({ "/rest_api/session,/session", "/rest_api/session/abc/message,/session/abc/message",
-				"/rest_api/event,/event", "/rest_api/find/file,/find/file" })
-		@DisplayName("API prefix is stripped, remainder preserved")
+		@CsvSource({ "/rest_api/session,/api/session", "/rest_api/session/abc/message,/api/session/abc/message",
+				"/rest_api/event,/api/event", "/rest_api/find/file,/api/find/file",
+				"/rest_api/session/ses_x/form,/api/session/ses_x/form",
+				"/rest_api/session/ses_x/form/frm_y/reply,/api/session/ses_x/form/frm_y/reply",
+				"/rest_api/session/ses_x/form/frm_y,/api/session/ses_x/form/frm_y" })
+		@DisplayName("API prefix is rewritten to the upstream '/api' prefix, remainder preserved")
 		void prefixIsStripped(String pathInfo, String expected) {
 			assertEquals(expected, OpencodeChatServlet.toUpstreamPath(pathInfo));
 		}

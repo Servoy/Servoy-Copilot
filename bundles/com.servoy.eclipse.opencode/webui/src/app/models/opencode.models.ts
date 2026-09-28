@@ -138,6 +138,125 @@ export interface SendPart {
 }
 
 // ---------------------------------------------------------------------------
+// Interactive forms (opencode V2 Form flow)
+// ---------------------------------------------------------------------------
+
+/**
+ * The opencode V2 interactive Form exchange, which replaced V1's {@code question}
+ * tool. When an agent needs a decision it creates a Form; the server emits a
+ * {@code form.created} bus event carrying a {@link FormInfo}, blocks the turn,
+ * and waits for {@code POST /session/:id/form/:formID/reply}. {@code form.replied}
+ * / {@code form.cancelled} events (and a 204 from reply) settle it.
+ *
+ * These types mirror the V2 OpenAPI {@code Form.*} schemas and the live-captured
+ * question-form shape ({@code metadata.kind === 'question'}). Kept loose - the
+ * server may add fields.
+ */
+
+/** A selectable option for a {@code string} / {@code multiselect} field. */
+export interface FormOption {
+  value: string;
+  label: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * A conditional-visibility clause: the field is shown only when the answer for
+ * {@code key} satisfies {@code op} against {@code value}. A field's {@code when}
+ * array is ANDed (all clauses must hold).
+ */
+export interface FormWhen {
+  key: string;
+  op: 'eq' | 'neq' | string;
+  value: string | number | boolean;
+  [key: string]: unknown;
+}
+
+/** Fields common to every non-{@code external} form field. */
+export interface FormFieldBase {
+  key: string;
+  type: string;
+  title?: string;
+  description?: string;
+  required?: boolean;
+  hidden?: boolean;
+  when?: FormWhen[];
+  [key: string]: unknown;
+}
+
+export interface FormStringField extends FormFieldBase {
+  type: 'string';
+  format?: 'email' | 'uri' | 'date' | 'date-time' | string;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  placeholder?: string;
+  default?: string;
+  options?: FormOption[];
+  /** Allow a free-text entry alongside {@code options}. */
+  custom?: boolean;
+}
+
+export interface FormNumberField extends FormFieldBase {
+  type: 'number' | 'integer';
+  minimum?: number;
+  maximum?: number;
+  /** May serialize as the string sentinels {@code "Infinity"}/{@code "-Infinity"}/{@code "NaN"}. */
+  default?: number | string;
+}
+
+export interface FormBooleanField extends FormFieldBase {
+  type: 'boolean';
+  default?: boolean;
+}
+
+export interface FormMultiselectField extends FormFieldBase {
+  type: 'multiselect';
+  options: FormOption[];
+  minItems?: number;
+  maxItems?: number;
+  custom?: boolean;
+  default?: string[];
+}
+
+/** An external link the user must acknowledge; carries no answer value. */
+export interface FormExternalField extends FormFieldBase {
+  type: 'external';
+  url: string;
+}
+
+/** Discriminated union of all form field kinds. */
+export type FormField =
+  | FormStringField
+  | FormNumberField
+  | FormBooleanField
+  | FormMultiselectField
+  | FormExternalField;
+
+/** A pending form as delivered by {@code form.created} / {@code GET .../form}. */
+export interface FormInfo {
+  id: string;
+  sessionID: string;
+  title: string;
+  /** e.g. {@code { kind: 'question', tool: { messageID, id } }}. */
+  metadata?: { kind?: string; tool?: { messageID?: string; id?: string }; [key: string]: unknown };
+  fields: FormField[];
+  [key: string]: unknown;
+}
+
+/** A single answered value. */
+export type FormValue = string | number | boolean | string[];
+
+/** The answer map, keyed by each field's {@code key}. */
+export type FormAnswer = Record<string, FormValue>;
+
+/** The reply body for {@code POST .../reply}. */
+export interface FormReply {
+  answer: FormAnswer;
+}
+
+// ---------------------------------------------------------------------------
 // Status / health
 // ---------------------------------------------------------------------------
 

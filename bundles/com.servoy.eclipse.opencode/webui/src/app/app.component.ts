@@ -3,8 +3,10 @@ import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/cor
 import { SendPart } from './models/opencode.models';
 import { ChatStore } from './services/chat-store.service';
 import { debugEnabled } from './services/debug-log';
+import { FormAnswer } from './models/opencode.models';
 import { ComposerComponent } from './components/composer.component';
 import { DebugOverlayComponent } from './components/debug-overlay.component';
+import { FormCardComponent } from './components/form-card.component';
 import { MessageListComponent } from './components/message-list.component';
 import { SessionListComponent } from './components/session-list.component';
 import { StatusPanelComponent } from './components/status-panel.component';
@@ -22,6 +24,7 @@ import { StatusPanelComponent } from './components/status-panel.component';
     SessionListComponent,
     MessageListComponent,
     ComposerComponent,
+    FormCardComponent,
     StatusPanelComponent,
     DebugOverlayComponent
   ],
@@ -69,5 +72,13 @@ export class AppComponent implements OnInit {
 
   onStop(): void {
     this.store.abort();
+  }
+
+  onFormSubmit(answer: FormAnswer): void {
+    this.store.submitForm(answer);
+  }
+
+  onFormCancel(): void {
+    this.store.cancelPendingForm();
   }
 }
