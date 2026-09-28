@@ -5,3 +5,4 @@ bundles/application_server/
 .opencode/opencode.json
 **/webui-dist/
 **/.angular/
+*.openchamber.backup

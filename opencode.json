@@ -1,49 +1,85 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "command": {
+  "commands": {
     "sdd": {
       "description": "Run full Spec-Driven Development pipeline for a Jira issue",
       "template": "Load the 'sdd' skill and execute the full SDD pipeline for: $ARGUMENTS"
     }
   },
   "mcp": {
-    "angular-cli": {
-      "type": "local",
-      "enabled": true,
-      "command": ["npx", "-y", "@angular/cli@22", "mcp"],
-      "cwd": "bundles/com.servoy.eclipse.opencode/webui"
-    },
-    "eclipse-ide": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-ide",
-    },
-    "time": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/time",
-    },
-    "memory": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/memory",
-    },
-    "eclipse-coder": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-coder",
-    },
-    "eclipse-runner": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-runner",
-    },
-    "eclipse-context": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-context",
-    },
-    "eclipse-git": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-git",
-    },
-    "eclipse-pde": {
-      "type": "remote",
-      "url": "http://localhost:8087/mcp/eclipse-pde",
+    "servers": {
+      "angular-cli": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@angular/cli@22",
+          "mcp"
+        ],
+        "cwd": "bundles/com.servoy.eclipse.opencode/webui"
+      },
+      "time": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/time"
+      },
+      "eclipse-runner": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-runner"
+      },
+      "memory": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/memory",
+        "codemode": false
+      },
+      "memory_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/memory"
+      },
+      "eclipse-coder": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-coder",
+        "codemode": false
+      },
+      "eclipse-coder_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-coder"
+      },
+      "eclipse-ide": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-ide",
+        "codemode": false
+      },
+      "eclipse-ide_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-ide"
+      },
+      "eclipse-git": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-git",
+        "codemode": false
+      },
+      "eclipse-git_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-git"
+      },
+      "eclipse-pde": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-pde",
+        "codemode": false
+      },
+      "eclipse-pde_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-pde"
+      },
+      "eclipse-context": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-context",
+        "codemode": false
+      },
+      "eclipse-context_codemode": {
+        "type": "remote",
+        "url": "http://localhost:8087/mcp/eclipse-context"
+      }
     }
   }
 }
