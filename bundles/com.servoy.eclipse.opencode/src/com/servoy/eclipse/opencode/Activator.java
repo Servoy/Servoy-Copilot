@@ -187,6 +187,19 @@ public class Activator extends Plugin {
 		return serverState.getServerPort();
 	}
 
+	/**
+	 * Records the basic-auth password used to secure the embedded opencode server.
+	 * Called by {@link RunOpencodeCommand} once it has generated the credential.
+	 */
+	void setServerPassword(String password) {
+		serverState.setServerPassword(password);
+	}
+
+	/** @return the opencode server basic-auth password, or {@code null} if unset */
+	public String getServerPassword() {
+		return serverState.getServerPassword();
+	}
+
 	public boolean isServerReady() {
 		return serverState.isReady();
 	}

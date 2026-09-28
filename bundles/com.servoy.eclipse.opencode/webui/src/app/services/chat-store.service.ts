@@ -7,7 +7,8 @@ import {
   MessageWithParts,
   Part,
   SendPart,
-  Session
+  Session,
+  ToolState
 } from '../models/opencode.models';
 import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
@@ -260,7 +261,7 @@ export class ChatStore {
     if (!id) {
       return;
     }
-    this.api.abort(id).subscribe({
+    this.api.interrupt(id).subscribe({
       next: () => this.streaming.set(false),
       error: (err) => this.error.set(this.describe(err))
     });
@@ -269,7 +270,7 @@ export class ChatStore {
   private dispatch(id: string, parts: SendPart[]): void {
     this.error.set(null);
     this.streaming.set(true);
-    this.api.sendPromptAsync(id, parts).subscribe({
+    this.api.sendPrompt(id, parts).subscribe({
       error: (err) => {
         this.streaming.set(false);
         this.error.set(this.describe(err));
@@ -282,30 +283,302 @@ export class ChatStore {
   // -----------------------------------------------------------------------
 
   private onEvent(evt: OpencodeEvent): void {
-    const props = evt.properties ?? {};
+    // V2 puts the payload on `data`; older builds used `properties`.
+    const props = evt.data ?? evt.properties ?? {};
     switch (evt.type) {
-      case 'message.updated':
-      case 'message.part.updated':
-        this.applyMessageEvent(evt.type, props);
-        break;
+      // --- session list / lifecycle ---
+      case 'session.created':
       case 'session.updated':
         this.applySessionUpdate(props);
         break;
       case 'session.deleted':
         this.applySessionDeleted(props);
         break;
+
+      // --- turn lifecycle ---
+      case 'session.execution.started':
+        if (this.matchesActiveSession(props)) {
+          this.streaming.set(true);
+        }
+        break;
       case 'session.idle':
+      case 'session.execution.succeeded':
+      case 'session.execution.failed':
       case 'session.error':
         if (this.matchesActiveSession(props)) {
           this.streaming.set(false);
-          if (evt.type === 'session.idle') {
+          if (evt.type === 'session.idle' || evt.type === 'session.execution.succeeded') {
             this.scheduleTitleRefresh();
           }
         }
         break;
+
+      // --- streamed assistant text ---
+      case 'session.text.started':
+        this.onTextStarted(props);
+        break;
+      case 'session.text.delta':
+        this.onTextDelta(props);
+        break;
+      case 'session.text.ended':
+        this.onTextEnded(props);
+        break;
+
+      // --- streamed reasoning ---
+      case 'session.reasoning.started':
+        this.onReasoningStarted(props);
+        break;
+      case 'session.reasoning.delta':
+        this.onReasoningDelta(props);
+        break;
+      case 'session.reasoning.ended':
+        this.onReasoningEnded(props);
+        break;
+
+      // --- tool calls ---
+      case 'session.tool.input.started':
+        this.onToolStarted(props);
+        break;
+      case 'session.tool.called':
+        this.onToolCalled(props);
+        break;
+      case 'session.tool.success':
+        this.onToolResult(props, 'completed');
+        break;
+      case 'session.tool.error':
+        this.onToolResult(props, 'error');
+        break;
+
+      // --- V1-style fallbacks (kept so an older/proxy build still renders) ---
+      case 'message.updated':
+      case 'message.part.updated':
+        this.applyMessageEvent(evt.type, props);
+        break;
       default:
         break;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // V2 streaming: text
+  // -----------------------------------------------------------------------
+
+  private onTextStarted(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    this.streaming.set(true);
+    this.upsertStreamPart(props, 'text', { text: '' });
+  }
+
+  private onTextDelta(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const delta = typeof props['delta'] === 'string' ? (props['delta'] as string) : '';
+    this.appendStreamText(props, 'text', delta);
+    this.streaming.set(true);
+  }
+
+  private onTextEnded(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const finalText = typeof props['text'] === 'string' ? (props['text'] as string) : undefined;
+    if (finalText != null) {
+      this.upsertStreamPart(props, 'text', { text: finalText });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // V2 streaming: reasoning
+  // -----------------------------------------------------------------------
+
+  private onReasoningStarted(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    this.upsertStreamPart(props, 'reasoning', { text: '' });
+  }
+
+  private onReasoningDelta(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const delta = typeof props['delta'] === 'string' ? (props['delta'] as string) : '';
+    this.appendStreamText(props, 'reasoning', delta);
+  }
+
+  private onReasoningEnded(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const finalText = typeof props['text'] === 'string' ? (props['text'] as string) : undefined;
+    if (finalText != null) {
+      this.upsertStreamPart(props, 'reasoning', { text: finalText });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // V2 streaming: tools
+  // -----------------------------------------------------------------------
+
+  /**
+   * A tool part is keyed by its opencode tool-call {@code id} (e.g.
+   * {@code toolu_...}), not by {@code ordinal}, because the input/called/result
+   * events for one call all carry that same id but no ordinal.
+   */
+  private onToolStarted(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    this.streaming.set(true);
+    const name = typeof props['name'] === 'string' ? (props['name'] as string) : 'tool';
+    this.upsertToolPart(props, { tool: name, state: { status: 'running' } });
+  }
+
+  private onToolCalled(props: Record<string, unknown>): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const input = props['input'];
+    this.upsertToolPart(props, { state: { status: 'running', input } });
+  }
+
+  private onToolResult(props: Record<string, unknown>, status: 'completed' | 'error'): void {
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    const output = this.flattenContent(props['content']);
+    // Only carry fields this event actually provides; the tool-state merge in
+    // upsertToolPart preserves the input/name captured by the earlier
+    // tool.called/input events (a success event has no `input`).
+    const state: Partial<ToolState> = { status, output };
+    if (props['input'] !== undefined) {
+      state.input = props['input'];
+    }
+    this.upsertToolPart(props, { state: state as ToolState });
+  }
+
+  /** Flattens a V2 {@code content: [{ type:'text', text }]} array into a string. */
+  private flattenContent(content: unknown): string {
+    if (!Array.isArray(content)) {
+      return '';
+    }
+    return content
+      .map((b) =>
+        b && typeof b === 'object' && typeof (b as Record<string, unknown>)['text'] === 'string'
+          ? ((b as Record<string, unknown>)['text'] as string)
+          : ''
+      )
+      .filter((t) => t.length > 0)
+      .join('\n');
+  }
+
+  /**
+   * The assistant message id a streamed event belongs to. V2 uses
+   * {@code assistantMessageID} on all delta/tool events.
+   */
+  private streamMessageId(props: Record<string, unknown>): string | null {
+    const id = props['assistantMessageID'];
+    return typeof id === 'string' ? id : null;
+  }
+
+  /** Ensures an assistant message exists, then applies {@code fn} to its parts. */
+  private withAssistantMessage(
+    props: Record<string, unknown>,
+    fn: (parts: Part[]) => Part[]
+  ): void {
+    const messageID = this.streamMessageId(props);
+    if (!messageID) {
+      return;
+    }
+    const sessionID = props['sessionID'] as string | undefined;
+    this.messages.update((msgs) => {
+      const idx = msgs.findIndex((m) => m.info.id === messageID);
+      if (idx === -1) {
+        const info: MessageInfo = { id: messageID, sessionID, role: 'assistant' };
+        return [...msgs, { info, parts: fn([]) }];
+      }
+      const next = msgs.slice();
+      next[idx] = { ...next[idx], parts: fn(next[idx].parts) };
+      return next;
+    });
+  }
+
+  /**
+   * Creates or replaces a text/reasoning part identified by
+   * {@code <assistantMessageID>#<ordinal>#<type>}.
+   */
+  private upsertStreamPart(
+    props: Record<string, unknown>,
+    type: 'text' | 'reasoning',
+    patch: Partial<Part>
+  ): void {
+    const messageID = this.streamMessageId(props);
+    if (!messageID) {
+      return;
+    }
+    const ordinal = props['ordinal'];
+    const partId = `${messageID}#${ordinal ?? 0}#${type}`;
+    const sessionID = props['sessionID'] as string | undefined;
+    this.withAssistantMessage(props, (parts) =>
+      upsertPart(parts, { id: partId, messageID, sessionID, type, ...patch })
+    );
+  }
+
+  /** Appends streamed delta text onto an existing text/reasoning part. */
+  private appendStreamText(
+    props: Record<string, unknown>,
+    type: 'text' | 'reasoning',
+    delta: string
+  ): void {
+    const messageID = this.streamMessageId(props);
+    if (!messageID || !delta) {
+      return;
+    }
+    const ordinal = props['ordinal'];
+    const partId = `${messageID}#${ordinal ?? 0}#${type}`;
+    this.withAssistantMessage(props, (parts) => {
+      const idx = parts.findIndex((p) => p.id === partId);
+      if (idx === -1) {
+        const sessionID = props['sessionID'] as string | undefined;
+        return [...parts, { id: partId, messageID, sessionID, type, text: delta }];
+      }
+      const next = parts.slice();
+      next[idx] = { ...next[idx], text: (next[idx].text ?? '') + delta };
+      return next;
+    });
+  }
+
+  /** Creates or merges a tool part identified by its opencode tool-call id. */
+  private upsertToolPart(props: Record<string, unknown>, patch: Partial<Part>): void {
+    const toolCallId = typeof props['id'] === 'string' ? (props['id'] as string) : null;
+    if (!toolCallId) {
+      return;
+    }
+    const partId = `tool#${toolCallId}`;
+    const messageID = this.streamMessageId(props) ?? undefined;
+    const sessionID = props['sessionID'] as string | undefined;
+    this.withAssistantMessage(props, (parts) => {
+      const idx = parts.findIndex((p) => p.id === partId);
+      if (idx === -1) {
+        return [
+          ...parts,
+          { id: partId, messageID, sessionID, type: 'tool', ...patch } as Part
+        ];
+      }
+      const next = parts.slice();
+      const prev = next[idx];
+      next[idx] = {
+        ...prev,
+        ...patch,
+        // Merge tool state rather than replacing, so a later result keeps the
+        // earlier input/name.
+        state: { ...prev.state, ...patch.state }
+      };
+      return next;
+    });
   }
 
   /**
@@ -365,7 +638,11 @@ export class ChatStore {
    * reload, since {@link send} refreshes the list once before the title exists.
    */
   private applySessionUpdate(props: Record<string, unknown>): void {
-    const info = props['info'] as Session | undefined;
+    // V2 session.created/updated carry the session fields directly on `data`
+    // (with the id under `sessionID`), and lazy-title fetches pass it under
+    // `info`. Accept either. A fresh session.created may only carry
+    // `sessionID`, so refetch the full record to obtain the title/timestamps.
+    const info = this.extractSessionInfo(props);
     if (!info?.id) {
       return;
     }
@@ -381,6 +658,26 @@ export class ChatStore {
       next[idx] = { ...next[idx], ...info };
       return next;
     });
+  }
+
+  /**
+   * Extracts a {@link Session} from a session event payload. Handles the V2
+   * shapes (fields on {@code data} with the id in {@code sessionID}, or a full
+   * session under {@code info}) and the plain {@code info} object used by the
+   * lazy-title refetch.
+   */
+  private extractSessionInfo(props: Record<string, unknown>): Session | null {
+    const nested = props['info'] as Session | undefined;
+    if (nested?.id) {
+      return nested;
+    }
+    const id = (props['sessionID'] as string | undefined) ?? (props['id'] as string | undefined);
+    if (!id) {
+      return null;
+    }
+    // The rest of `data` (title, time, location, ...) belongs to the session.
+    const { sessionID, ...rest } = props as Record<string, unknown> & { sessionID?: string };
+    return { ...(rest as object), id } as Session;
   }
 
   /** Drop a session removed on the server (from a {@code session.deleted} event). */

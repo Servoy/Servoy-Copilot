@@ -4,13 +4,22 @@ import { Observable, Subject } from 'rxjs';
 import { dbg, debugEnabled } from './debug-log';
 
 /**
- * A parsed opencode bus event. opencode emits events as JSON payloads with a
- * {@code type} discriminator (e.g. {@code message.updated},
- * {@code message.part.updated}, {@code session.updated}). The full payload is
- * kept in {@code properties}.
+ * A parsed opencode bus event.
+ *
+ * opencode V2 emits flat events: a {@code type} discriminator (e.g.
+ * {@code message.updated}, {@code message.part.updated}, {@code session.updated},
+ * {@code session.idle}, {@code session.error}, {@code session.created},
+ * {@code session.deleted}) plus a top-level {@code data} object with the
+ * payload, an {@code id}, and an optional {@code location}. This differs from
+ * V1, which nested the payload under {@code properties}. The store reads
+ * {@code data} (falling back to {@code properties} for safety), so both shapes
+ * work.
  */
 export interface OpencodeEvent {
   type: string;
+  /** V2 payload container. */
+  data?: Record<string, unknown>;
+  /** V1 payload container (kept as a fallback). */
   properties?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -73,9 +82,10 @@ export class EventStreamService {
           // Raw arrival time of every bus event, straight from the EventSource
           // callback (outside Angular). Only computed when tracing is enabled.
           const arrivedAt = Date.now();
+          const payload = parsed.data ?? parsed.properties;
           const title =
             parsed.type === 'session.updated'
-              ? (parsed.properties?.['info'] as { title?: string } | undefined)?.title
+              ? (payload?.['info'] as { title?: string } | undefined)?.title
               : undefined;
           dbg(
             'sse',

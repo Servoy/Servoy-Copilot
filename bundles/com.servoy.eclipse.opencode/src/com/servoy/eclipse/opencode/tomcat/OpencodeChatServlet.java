@@ -89,6 +89,21 @@ public class OpencodeChatServlet extends HttpServlet {
 	/** Sub-path under the mount reserved for the proxied opencode API. */
 	static final String API_PREFIX = "/rest_api";
 
+	/**
+	 * Prefix opencode 2.x expects on every HTTP API path (e.g.
+	 * {@code /api/session}). The front-end keeps using the stable
+	 * {@link #API_PREFIX} paths; the servlet rewrites them to this upstream prefix
+	 * so the Angular app stays version-agnostic.
+	 */
+	static final String UPSTREAM_API_PREFIX = "/api";
+
+	/**
+	 * Fixed HTTP basic-auth username opencode uses when
+	 * {@code OPENCODE_SERVER_PASSWORD} is set (see opencode docs). The password is
+	 * supplied per launch by {@link #passwordSupplier}.
+	 */
+	static final String SERVER_AUTH_USER = "opencode";
+
 	/** Bundle-relative directory that holds the built Angular application. */
 	private static final String WEBUI_DIST = "/webui-dist";
 
@@ -127,6 +142,7 @@ public class OpencodeChatServlet extends HttpServlet {
 			"content-length", "content-encoding");
 
 	private final IntSupplier portSupplier;
+	private final Supplier<String> serverPasswordSupplier;
 	private final BooleanSupplier serverReadySupplier;
 	private final transient WaitForServer waitForServer;
 	private final Supplier<String> projectPathSupplier;
@@ -157,6 +173,9 @@ public class OpencodeChatServlet extends HttpServlet {
 	/**
 	 * @param portSupplier        resolves the opencode loopback port (lazily, per
 	 *                            request, as it is only known after startup)
+	 * @param serverPasswordSupplier resolves the opencode basic-auth password
+	 *                            (lazily, as it is only known after the server
+	 *                            launches), or {@code null} when unsecured
 	 * @param serverReadySupplier whether the opencode server is ready now
 	 * @param waitForServer       blocks until the server is ready (readiness gate)
 	 * @param projectPathSupplier resolves the single active Servoy project
@@ -166,10 +185,11 @@ public class OpencodeChatServlet extends HttpServlet {
 	 *                            the argument is the path (e.g.
 	 *                            {@code /webui-dist/index.html})
 	 */
-	public OpencodeChatServlet(IntSupplier portSupplier, BooleanSupplier serverReadySupplier,
-			WaitForServer waitForServer, Supplier<String> projectPathSupplier,
+	public OpencodeChatServlet(IntSupplier portSupplier, Supplier<String> serverPasswordSupplier,
+			BooleanSupplier serverReadySupplier, WaitForServer waitForServer, Supplier<String> projectPathSupplier,
 			java.util.function.Function<String, URL> resourceResolver) {
 		this.portSupplier = portSupplier;
+		this.serverPasswordSupplier = serverPasswordSupplier;
 		this.serverReadySupplier = serverReadySupplier;
 		this.waitForServer = waitForServer;
 		this.projectPathSupplier = projectPathSupplier;
@@ -201,16 +221,19 @@ public class OpencodeChatServlet extends HttpServlet {
 	}
 
 	/**
-	 * Strips the {@link #API_PREFIX} from the servlet path-info, yielding the
-	 * upstream opencode path (always starting with {@code /}).
+	 * Strips the front-end {@link #API_PREFIX} from the servlet path-info and
+	 * prepends the opencode 2.x {@link #UPSTREAM_API_PREFIX}, yielding the upstream
+	 * opencode path (always starting with {@code /}). For example
+	 * {@code /rest_api/session} maps to {@code /api/session} and bare
+	 * {@code /rest_api} maps to {@code /api}.
 	 */
 	static String toUpstreamPath(String pathInfo) {
 		if (pathInfo == null)
-			return "/";
+			return UPSTREAM_API_PREFIX;
 		String rest = pathInfo.substring(API_PREFIX.length());
 		if (rest.isEmpty())
-			return "/";
-		return rest;
+			return UPSTREAM_API_PREFIX;
+		return UPSTREAM_API_PREFIX + rest;
 	}
 
 	/**
@@ -231,6 +254,19 @@ public class OpencodeChatServlet extends HttpServlet {
 		String encoded = URLEncoder.encode(directory, StandardCharsets.UTF_8);
 		String sep = q >= 0 ? (query.isEmpty() ? "" : "&") : "?";
 		return upstreamPath + sep + "directory=" + encoded;
+	}
+
+	/**
+	 * Builds the {@code Authorization: Basic ...} header value for the opencode
+	 * server from the {@link #SERVER_AUTH_USER} username and the supplied password,
+	 * or {@code null} when no password is set (unsecured server).
+	 */
+	static String basicAuthHeader(String password) {
+		if (password == null || password.isEmpty())
+			return null;
+		String credentials = SERVER_AUTH_USER + ":" + password;
+		return "Basic " + java.util.Base64.getEncoder()
+				.encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
 	}
 
 	private static boolean hasDirectoryParam(String query) {
@@ -408,6 +444,9 @@ public class OpencodeChatServlet extends HttpServlet {
 		// query param so directory-scoping is unconditional.
 		builder.header("x-opencode-directory", directory);
 		builder.header("accept-encoding", "identity");
+		String auth = basicAuthHeader(serverPasswordSupplier != null ? serverPasswordSupplier.get() : null);
+		if (auth != null)
+			builder.header("authorization", auth);
 
 		HttpResponse<InputStream> upstream;
 		try {
@@ -459,9 +498,13 @@ public class OpencodeChatServlet extends HttpServlet {
 
 		CompletableFuture<HttpResponse<InputStream>> upstreamFuture;
 		try {
-			HttpRequest request = HttpRequest.newBuilder(target).timeout(Duration.ofDays(1))
+			HttpRequest.Builder sseBuilder = HttpRequest.newBuilder(target).timeout(Duration.ofDays(1))
 					.header("accept", "text/event-stream").header("cache-control", "no-cache")
-					.header("x-opencode-directory", directory).GET().build();
+					.header("x-opencode-directory", directory);
+			String auth = basicAuthHeader(serverPasswordSupplier != null ? serverPasswordSupplier.get() : null);
+			if (auth != null)
+				sseBuilder.header("authorization", auth);
+			HttpRequest request = sseBuilder.GET().build();
 			upstreamFuture = client().sendAsync(request, BodyHandlers.ofInputStream());
 		} catch (RuntimeException e) {
 			ServoyLog.logError("OpencodeChatServlet: SSE upstream request build failed for " + target, e);

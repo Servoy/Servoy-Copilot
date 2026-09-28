@@ -48,7 +48,7 @@ public class ServicesProvider implements IServicesProvider {
 		if ("".equals(context)) {
 			HashSet<ServletInstance> set = new HashSet<>();
 			set.add(new ServletInstance(new OpencodeChatServlet(ServicesProvider::resolvePort,
-					ServicesProvider::isServerReady, ServicesProvider::waitForServer,
+					ServicesProvider::resolvePassword, ServicesProvider::isServerReady, ServicesProvider::waitForServer,
 					OpenCodeUtil::getActiveProjectPath, ServicesProvider::resolveBundleResource),
 					OpencodeChatServlet.BASE_PATH + "/*"));
 			return set;
@@ -59,6 +59,11 @@ public class ServicesProvider implements IServicesProvider {
 	private static int resolvePort() {
 		Activator activator = Activator.getInstance();
 		return activator != null ? activator.getServerPort() : -1;
+	}
+
+	private static String resolvePassword() {
+		Activator activator = Activator.getInstance();
+		return activator != null ? activator.getServerPassword() : null;
 	}
 
 	private static boolean isServerReady() {

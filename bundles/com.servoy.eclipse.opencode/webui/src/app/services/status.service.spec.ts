@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { StatusService } from './status.service';
 
+/**
+ * Tests for the V2 status adapters. V2 has no {@code /global/health} route, so
+ * health is derived from {@code GET /info}; {@code /mcp} and {@code /provider}
+ * now return {@code { location, data: [...] }} arrays that the service folds
+ * back into the compact maps the status panel renders.
+ */
 describe('StatusService', () => {
   let service: StatusService;
   let httpMock: HttpTestingController;
@@ -21,37 +27,60 @@ describe('StatusService', () => {
     httpMock.verify();
   });
 
-  it('requests server health from ./rest_api/global/health', () => {
+  it('derives health from ./rest_api/info (version present => healthy)', () => {
     let result: unknown;
     service.health().subscribe((r) => (result = r));
 
-    const req = httpMock.expectOne('rest_api/global/health');
+    const req = httpMock.expectOne('rest_api/info');
     expect(req.request.method).toBe('GET');
-    req.flush({ healthy: true, version: '1.18.31' });
+    req.flush({ version: '2.0.18', pid: 123 });
 
-    expect(result).toEqual({ healthy: true, version: '1.18.31' });
+    expect(result).toEqual({ healthy: true, version: '2.0.18' });
   });
 
-  it('requests the MCP status map from ./rest_api/mcp', () => {
+  it('reports unhealthy when /info carries no version', () => {
+    let result: unknown;
+    service.health().subscribe((r) => (result = r));
+    const req = httpMock.expectOne('rest_api/info');
+    req.flush({});
+    expect(result).toEqual({ healthy: false, version: undefined });
+  });
+
+  it('folds the V2 /mcp data array into a name -> status map', () => {
     let result: unknown;
     service.mcp().subscribe((r) => (result = r));
 
     const req = httpMock.expectOne('rest_api/mcp');
     expect(req.request.method).toBe('GET');
-    const body = { time: { status: 'connected' }, 'servoy-git': { status: 'failed', error: 'boom' } };
-    req.flush(body);
+    req.flush({
+      location: { directory: '/proj' },
+      data: [
+        { name: 'servoy-editor', status: { status: 'connected' } },
+        { name: 'servoy-git', status: { status: 'failed', error: 'boom' } }
+      ]
+    });
 
-    expect(result).toEqual(body);
+    expect(result).toEqual({
+      'servoy-editor': { status: 'connected' },
+      'servoy-git': { status: 'failed', error: 'boom' }
+    });
   });
 
-  it('requests provider status from ./rest_api/provider', () => {
+  it('derives connected providers from the V2 /provider activation field', () => {
     let result: unknown;
     service.providers().subscribe((r) => (result = r));
 
     const req = httpMock.expectOne('rest_api/provider');
     expect(req.request.method).toBe('GET');
-    req.flush({ connected: ['kiro', 'opencode'], default: { kiro: 'claude-sonnet-4-6' } });
+    req.flush({
+      location: { directory: '/proj' },
+      data: [
+        { id: 'opencode', activation: 'enabled' },
+        { id: 'kiro', activation: 'auto' },
+        { id: 'disabledone', activation: 'disabled' }
+      ]
+    });
 
-    expect(result).toEqual({ connected: ['kiro', 'opencode'], default: { kiro: 'claude-sonnet-4-6' } });
+    expect(result).toEqual({ connected: ['opencode', 'kiro'], default: {} });
   });
 });

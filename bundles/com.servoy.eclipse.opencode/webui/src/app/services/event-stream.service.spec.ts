@@ -67,23 +67,20 @@ describe('EventStreamService', () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 
-  it('parses a JSON message and dispatches the typed event', () => {
+  it('parses a V2 JSON event and dispatches it with its data payload', () => {
     const received: OpencodeEvent[] = [];
     service.events().subscribe((e) => received.push(e));
 
     const payload = {
-      type: 'message.part.updated',
-      properties: { part: { id: 'p1', type: 'text', text: 'hi' } }
+      id: 'evt_1',
+      type: 'session.text.delta',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0, delta: 'hi' }
     };
     FakeEventSource.instances[0].emit(JSON.stringify(payload));
 
     expect(received).toHaveLength(1);
-    expect(received[0].type).toBe('message.part.updated');
-    expect((received[0].properties as Record<string, unknown>)['part']).toEqual({
-      id: 'p1',
-      type: 'text',
-      text: 'hi'
-    });
+    expect(received[0].type).toBe('session.text.delta');
+    expect((received[0].data as Record<string, unknown>)['delta']).toBe('hi');
   });
 
   it('ignores non-JSON keep-alive/heartbeat lines without emitting or throwing', () => {

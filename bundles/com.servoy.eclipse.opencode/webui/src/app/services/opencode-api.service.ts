@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 import {
   FileMatch,
@@ -8,13 +9,18 @@ import {
   SendPart,
   Session
 } from '../models/opencode.models';
+import { mapV2Message } from './v2-mapping';
 
 /**
- * Typed wrappers over the BFF servlet's {@code ./rest_api/**} endpoints.
+ * Typed wrappers over the BFF servlet's {@code ./rest_api/**} endpoints, which
+ * proxy the opencode (V2, {@code @opencode/cli} 2.x) HTTP API under
+ * {@code /api/**} (the servlet rewrites {@code rest_api/x} to {@code /api/x} and
+ * injects the project directory + basic-auth server-side).
  *
- * All calls are relative to the Angular base href ({@code /servoy_ai/}) so the
- * app is location-independent; the servlet injects the project directory
- * server-side, so no directory argument is ever passed from here.
+ * V2 wraps every response in an envelope ({@code { data }} or
+ * {@code { location, data }}); these wrappers unwrap it so callers keep seeing
+ * plain values. All calls are relative to the Angular base href
+ * ({@code /servoy_ai/}) so the app is location-independent.
  */
 @Injectable({ providedIn: 'root' })
 export class OpencodeApiService {
@@ -23,71 +29,115 @@ export class OpencodeApiService {
   /** Base for all API calls, relative to the app base href. */
   private readonly base = 'rest_api';
 
+  /** List root + subagent sessions (V2 {@code GET /session} -> {@code { data }}). */
   listSessions(): Observable<Session[]> {
-    return this.http.get<Session[]>(`${this.base}/session`);
+    return this.http
+      .get<{ data?: Session[] }>(`${this.base}/session`)
+      .pipe(map((r) => r?.data ?? []));
   }
 
+  /** Create a session (V2 {@code POST /session} -> {@code { data }}). */
   createSession(title?: string): Observable<Session> {
-    return this.http.post<Session>(`${this.base}/session`, title ? { title } : {});
+    return this.http
+      .post<{ data: Session }>(`${this.base}/session`, title ? { title } : {})
+      .pipe(map((r) => r.data));
   }
 
+  /** Fetch one session (V2 {@code GET /session/:id} -> {@code { data }}). */
   getSession(id: string): Observable<Session> {
-    return this.http.get<Session>(`${this.base}/session/${encodeURIComponent(id)}`);
-  }
-
-  /** Rename a session (opencode {@code PATCH /session/:id}, body {@code { title }}). */
-  updateSessionTitle(id: string, title: string): Observable<Session> {
-    return this.http.patch<Session>(`${this.base}/session/${encodeURIComponent(id)}`, { title });
+    return this.http
+      .get<{ data: Session }>(`${this.base}/session/${encodeURIComponent(id)}`)
+      .pipe(map((r) => r.data));
   }
 
   /**
-   * Archive a session by stamping {@code time.archived} (opencode
-   * {@code PATCH /session/:id}). Archived sessions are dropped from
+   * Rename a session (V2 {@code PATCH /session/:id}, body {@code { title }}).
+   * V2 returns 204 No Content, so this resolves to {@code void}.
+   */
+  updateSessionTitle(id: string, title: string): Observable<void> {
+    return this.http.patch<void>(`${this.base}/session/${encodeURIComponent(id)}`, { title });
+  }
+
+  /**
+   * Archive a session by stamping {@code time.archived} (V2
+   * {@code PATCH /session/:id}, 204). Archived sessions are dropped from
    * {@code GET /session} server-side, so a list refresh hides them.
    */
-  archiveSession(id: string, archivedAt: number = Date.now()): Observable<Session> {
-    return this.http.patch<Session>(`${this.base}/session/${encodeURIComponent(id)}`, {
+  archiveSession(id: string, archivedAt: number = Date.now()): Observable<void> {
+    return this.http.patch<void>(`${this.base}/session/${encodeURIComponent(id)}`, {
       time: { archived: archivedAt }
     });
   }
 
-  /** Permanently delete a session and all its data (opencode {@code DELETE /session/:id}). */
-  deleteSession(id: string): Observable<boolean> {
-    return this.http.delete<boolean>(`${this.base}/session/${encodeURIComponent(id)}`);
+  /** Permanently delete a session (V2 {@code DELETE /session/:id}, 204). */
+  deleteSession(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/session/${encodeURIComponent(id)}`);
   }
 
+  /**
+   * List a session's messages (V2 {@code GET /session/:id/message} ->
+   * {@code { data, cursor }}). Each raw V2 message is normalised into the
+   * {@link MessageWithParts} shape the store renders. V2 returns newest-first
+   * (desc); the store expects chronological order, so we reverse.
+   */
   listMessages(id: string, limit?: number): Observable<MessageWithParts[]> {
     let params = new HttpParams();
     if (limit != null) {
       params = params.set('limit', String(limit));
     }
-    return this.http.get<MessageWithParts[]>(
-      `${this.base}/session/${encodeURIComponent(id)}/message`,
-      { params }
-    );
+    return this.http
+      .get<{ data?: unknown[] }>(`${this.base}/session/${encodeURIComponent(id)}/message`, {
+        params
+      })
+      .pipe(map((r) => (r?.data ?? []).map(mapV2Message).reverse()));
   }
 
-  /** Send a prompt without waiting for the full response (streams on /event). */
-  sendPromptAsync(id: string, parts: SendPart[]): Observable<void> {
+  /**
+   * Send a prompt (V2 {@code POST /session/:id/prompt}, body {@code { text }}).
+   * V2 has a single {@code text} field rather than a {@code parts} array; the
+   * text parts are concatenated. Streaming continues on {@code /event}.
+   */
+  sendPrompt(id: string, parts: SendPart[]): Observable<void> {
+    const text = parts
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text)
+      .join('\n');
+    const files = parts
+      .filter((p) => p.type === 'file' && p.url)
+      .map((p) => ({ filename: p.filename, mime: p.mime, url: p.url }));
+    const body: Record<string, unknown> = { text };
+    if (files.length > 0) {
+      body['files'] = files;
+    }
     return this.http.post<void>(
-      `${this.base}/session/${encodeURIComponent(id)}/prompt_async`,
-      { parts }
+      `${this.base}/session/${encodeURIComponent(id)}/prompt`,
+      body
     );
   }
 
-  abort(id: string): Observable<void> {
-    return this.http.post<void>(`${this.base}/session/${encodeURIComponent(id)}/abort`, {});
+  /**
+   * Interrupt the running turn (V2 {@code POST /session/:id/interrupt},
+   * replacing V1's {@code /abort}).
+   */
+  interrupt(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/session/${encodeURIComponent(id)}/interrupt`, {});
   }
 
+  /** Search files (V2 {@code GET /fs/find?query=} -> {@code { location, data }}). */
   findFiles(query: string): Observable<FileMatch[]> {
     const params = new HttpParams().set('query', query);
-    return this.http.get<FileMatch[]>(`${this.base}/find/file`, { params });
+    return this.http
+      .get<{ data?: FileMatch[] }>(`${this.base}/fs/find`, { params })
+      .pipe(map((r) => r?.data ?? []));
   }
 
+  /**
+   * Read a file's text (V2 {@code GET /fs/read/<path>}). The path is a URL
+   * path segment, not a query param, in V2.
+   */
   readFile(path: string): Observable<string> {
-    const params = new HttpParams().set('path', path);
-    return this.http.get(`${this.base}/file/content`, {
-      params,
+    const encoded = path.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+    return this.http.get(`${this.base}/fs/read/${encoded}`, {
       responseType: 'text'
     });
   }

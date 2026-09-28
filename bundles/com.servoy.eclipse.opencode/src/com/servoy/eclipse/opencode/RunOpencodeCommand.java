@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
@@ -113,13 +114,23 @@ public class RunOpencodeCommand extends Job {
 		if (projectPath != null) {
 			env.put("PWD", projectPath);
 		}
-		serverCommand.setExtraEnvironment(Collections.unmodifiableMap(env));
 
 		Activator activator = Activator.getInstance();
 		if (activator == null) {
 			ServoyLog.logError("OpenCode: Activator not available - cannot start server.", null);
 			return new Status(IStatus.ERROR, Activator.PLUGIN_ID, "Activator not available");
 		}
+
+		// opencode 2.x secures its HTTP API with HTTP basic auth when
+		// OPENCODE_SERVER_PASSWORD is set (username defaults to "opencode"). Generate
+		// a fresh random password each launch and hand it to the Activator so the BFF
+		// servlet can authenticate every proxied request. Without this the V2 server
+		// answers every /api/** call with 401.
+		String serverPassword = UUID.randomUUID().toString();
+		env.put("OPENCODE_SERVER_PASSWORD", serverPassword);
+		activator.setServerPassword(serverPassword);
+
+		serverCommand.setExtraEnvironment(Collections.unmodifiableMap(env));
 
 		serverCommand.setOutputStream(activator.getConsole().outputStream());
 

@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 class OpencodeServerState {
 	private final CountDownLatch serverReady = new CountDownLatch(1);
 	private volatile int serverPort;
+	private volatile String serverPassword;
 
 	OpencodeServerState(int defaultPort) {
 		this.serverPort = defaultPort;
@@ -45,7 +46,7 @@ class OpencodeServerState {
 
 	/**
 	 * Called by {@link RunOpencodeCommand} (or its watchdog) once the server is
-	 * accepting HTTP connections. Idempotent â?? subsequent calls are no-ops for
+	 * accepting HTTP connections. Idempotent ï¿½?? subsequent calls are no-ops for
 	 * the
 	 * latch but will update {@code serverPort} if called again (guarded externally
 	 * by
@@ -69,6 +70,20 @@ class OpencodeServerState {
 	/** @return the port the server is (or will be) listening on */
 	int getServerPort() {
 		return serverPort;
+	}
+
+	/**
+	 * Records the HTTP basic-auth password that {@link RunOpencodeCommand} passed
+	 * to the opencode server via {@code OPENCODE_SERVER_PASSWORD}. The BFF servlet
+	 * uses it to authenticate every proxied request.
+	 */
+	void setServerPassword(String password) {
+		this.serverPassword = password;
+	}
+
+	/** @return the opencode server basic-auth password, or {@code null} if unset */
+	String getServerPassword() {
+		return serverPassword;
 	}
 
 	/** @return {@code true} once {@link #serverStarted(int)} has been called */

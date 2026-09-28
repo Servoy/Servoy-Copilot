@@ -26,8 +26,8 @@ function apiMock() {
     archiveSession: vi.fn(),
     deleteSession: vi.fn(),
     listMessages: vi.fn(),
-    sendPromptAsync: vi.fn(),
-    abort: vi.fn(),
+    sendPrompt: vi.fn(),
+    interrupt: vi.fn(),
     findFiles: vi.fn(),
     readFile: vi.fn()
   };
@@ -133,7 +133,7 @@ describe('ChatStore', () => {
 
     store.send([{ type: 'text', text: 'hi' }]);
 
-    expect(api.sendPromptAsync).not.toHaveBeenCalled();
+    expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(api.createSession).not.toHaveBeenCalled();
   });
 
@@ -207,53 +207,88 @@ describe('ChatStore', () => {
     expect(store.messages()).toEqual([]);
   });
 
-  it('a streamed message.part.updated upserts a part into the active message', () => {
-    api.listMessages.mockReturnValue(
-      of<MessageWithParts[]>([{ info: { id: 'm1', role: 'assistant' }, parts: [] }])
-    );
+  it('accumulates V2 session.text.delta events into a streamed assistant text part', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
 
     events.fire({
-      type: 'message.part.updated',
-      properties: {
-        sessionID: 's1',
-        part: { id: 'p1', messageID: 'm1', sessionID: 's1', type: 'text', text: 'hello' } as Part
-      }
+      type: 'session.text.started',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0 }
+    });
+    events.fire({
+      type: 'session.text.delta',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0, delta: 'Hel' }
+    });
+    events.fire({
+      type: 'session.text.delta',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0, delta: 'lo' }
     });
 
-    const msg = store.messages().find((m) => m.info.id === 'm1');
+    const msg = store.messages().find((m) => m.info.id === 'mA');
+    expect(msg).toBeTruthy();
+    expect(msg?.info.role).toBe('assistant');
     expect(msg?.parts).toHaveLength(1);
-    expect(msg?.parts[0].text).toBe('hello');
+    expect(msg?.parts[0].type).toBe('text');
+    expect(msg?.parts[0].text).toBe('Hello');
     expect(store.streaming()).toBe(true);
   });
 
-  it('creates a placeholder message when a part arrives before its message.updated', () => {
+  it('session.text.ended replaces the streamed text with the final value', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
 
     events.fire({
-      type: 'message.part.updated',
-      properties: {
-        part: { id: 'p1', messageID: 'mX', sessionID: 's1', type: 'text', text: 'first' } as Part
+      type: 'session.text.delta',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0, delta: 'partial' }
+    });
+    events.fire({
+      type: 'session.text.ended',
+      data: { sessionID: 's1', assistantMessageID: 'mA', ordinal: 0, text: 'the full answer' }
+    });
+
+    const msg = store.messages().find((m) => m.info.id === 'mA');
+    expect(msg?.parts[0].text).toBe('the full answer');
+  });
+
+  it('builds a tool part from V2 tool.input/called/success events keyed by tool-call id', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+
+    events.fire({
+      type: 'session.tool.input.started',
+      data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_1', name: 'read' }
+    });
+    events.fire({
+      type: 'session.tool.called',
+      data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_1', input: { path: 'a.js' } }
+    });
+    events.fire({
+      type: 'session.tool.success',
+      data: {
+        sessionID: 's1',
+        assistantMessageID: 'mA',
+        id: 'toolu_1',
+        content: [{ type: 'text', text: 'file body' }]
       }
     });
 
-    const msg = store.messages().find((m) => m.info.id === 'mX');
-    expect(msg).toBeTruthy();
-    expect(msg?.info.role).toBe('assistant');
-    expect(msg?.parts[0].text).toBe('first');
+    const msg = store.messages().find((m) => m.info.id === 'mA');
+    expect(msg?.parts).toHaveLength(1);
+    const tool = msg?.parts[0];
+    expect(tool?.type).toBe('tool');
+    expect(tool?.tool).toBe('read');
+    expect(tool?.state?.status).toBe('completed');
+    expect(tool?.state?.input).toEqual({ path: 'a.js' });
+    expect(tool?.state?.output).toBe('file body');
   });
 
-  it('ignores events for a session that is not active', () => {
+  it('ignores streamed events for a session that is not active', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
 
     events.fire({
-      type: 'message.part.updated',
-      properties: {
-        sessionID: 'OTHER',
-        part: { id: 'p1', messageID: 'm1', sessionID: 'OTHER', type: 'text', text: 'no' } as Part
-      }
+      type: 'session.text.delta',
+      data: { sessionID: 'OTHER', assistantMessageID: 'm1', ordinal: 0, delta: 'no' }
     });
 
     expect(store.messages()).toHaveLength(0);
@@ -264,7 +299,17 @@ describe('ChatStore', () => {
     store.openSession('s1');
     store.streaming.set(true);
 
-    events.fire({ type: 'session.idle', properties: { sessionID: 's1' } });
+    events.fire({ type: 'session.idle', data: { sessionID: 's1' } });
+
+    expect(store.streaming()).toBe(false);
+  });
+
+  it('clears the streaming flag on session.execution.succeeded for the active session', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    store.streaming.set(true);
+
+    events.fire({ type: 'session.execution.succeeded', data: { sessionID: 's1' } });
 
     expect(store.streaming()).toBe(false);
   });
@@ -274,7 +319,7 @@ describe('ChatStore', () => {
     store.openSession('s1');
     store.streaming.set(true);
 
-    events.fire({ type: 'session.error', properties: { sessionID: 's1' } });
+    events.fire({ type: 'session.error', data: { sessionID: 's1' } });
 
     expect(store.streaming()).toBe(false);
   });
@@ -284,9 +329,18 @@ describe('ChatStore', () => {
     store.openSession('s1');
     store.streaming.set(true);
 
-    events.fire({ type: 'session.idle', properties: { sessionID: 'other' } });
+    events.fire({ type: 'session.idle', data: { sessionID: 'other' } });
 
     expect(store.streaming()).toBe(true);
+  });
+
+  it('adds a new session from a V2 session.created event (id under sessionID)', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    events.fire({
+      type: 'session.created',
+      data: { sessionID: 'sNew', slug: 'happy-otter', title: 'New session - 2026-01-01T00:00:00' }
+    });
+    expect(store.sessions().map((s) => s.id)).toContain('sNew');
   });
 
   it('newSession starts a draft without creating a session on the server', () => {
@@ -394,13 +448,13 @@ describe('ChatStore', () => {
 
   it('send dispatches to the active session and sets streaming', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
-    api.sendPromptAsync.mockReturnValue(of<void>(undefined));
+    api.sendPrompt.mockReturnValue(of<void>(undefined));
     store.openSession('s1');
 
     const parts: SendPart[] = [{ type: 'text', text: 'hello' }];
     store.send(parts);
 
-    expect(api.sendPromptAsync).toHaveBeenCalledWith('s1', parts);
+    expect(api.sendPrompt).toHaveBeenCalledWith('s1', parts);
     expect(store.streaming()).toBe(true);
     expect(store.error()).toBeNull();
   });
@@ -408,18 +462,18 @@ describe('ChatStore', () => {
   it('send creates a session first when there is no active session', () => {
     api.createSession.mockReturnValue(of<Session>({ id: 'created' }));
     api.listSessions.mockReturnValue(of<Session[]>([]));
-    api.sendPromptAsync.mockReturnValue(of<void>(undefined));
+    api.sendPrompt.mockReturnValue(of<void>(undefined));
 
     store.send([{ type: 'text', text: 'hi' }]);
 
     expect(api.createSession).toHaveBeenCalled();
     expect(store.activeSessionId()).toBe('created');
-    expect(api.sendPromptAsync).toHaveBeenCalledWith('created', [{ type: 'text', text: 'hi' }]);
+    expect(api.sendPrompt).toHaveBeenCalledWith('created', [{ type: 'text', text: 'hi' }]);
   });
 
   it('send clears streaming and records a friendly error on dispatch failure', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
-    api.sendPromptAsync.mockReturnValue(throwError(() => ({ status: 503 })));
+    api.sendPrompt.mockReturnValue(throwError(() => ({ status: 503 })));
     store.openSession('s1');
 
     store.send([{ type: 'text', text: 'hi' }]);
@@ -428,21 +482,21 @@ describe('ChatStore', () => {
     expect(store.error()).toContain('starting');
   });
 
-  it('abort calls the api and clears streaming', () => {
+  it('abort calls interrupt and clears streaming', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
-    api.abort.mockReturnValue(of<void>(undefined));
+    api.interrupt.mockReturnValue(of<void>(undefined));
     store.openSession('s1');
     store.streaming.set(true);
 
     store.abort();
 
-    expect(api.abort).toHaveBeenCalledWith('s1');
+    expect(api.interrupt).toHaveBeenCalledWith('s1');
     expect(store.streaming()).toBe(false);
   });
 
   it('abort is a no-op when there is no active session', () => {
     store.abort();
-    expect(api.abort).not.toHaveBeenCalled();
+    expect(api.interrupt).not.toHaveBeenCalled();
   });
 
   it('describes a generic error when the api fails with an unknown error', () => {

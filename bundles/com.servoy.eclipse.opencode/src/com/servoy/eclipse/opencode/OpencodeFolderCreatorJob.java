@@ -161,19 +161,19 @@ public class OpencodeFolderCreatorJob extends Job {
 				return new Status(IStatus.WARNING, Activator.PLUGIN_ID, msg);
 			}
 		} else {
-			// Already installed — check for a newer patch release within the ~1.15.x range
-			IRunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "opencode-ai")); //$NON-NLS-1$
+			// Already installed — check for a newer patch release within the ~2.0.x range
+			IRunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "@opencode/cli")); //$NON-NLS-1$
 			update.setOutputStream(activator.getConsole().outputStream());
 			try {
 				update.runCommand(monitor);
 				if (update.getExitCode() == 0) {
-					activator.logToConsole("opencode-ai update check complete.");
+					activator.logToConsole("@opencode/cli update check complete.");
 				} else {
 					activator.logToConsole(
-							"npm update opencode-ai exited with code " + update.getExitCode() + " (non-fatal).");
+							"npm update @opencode/cli exited with code " + update.getExitCode() + " (non-fatal).");
 				}
 			} catch (IOException | InterruptedException e) {
-				activator.logToConsole("npm update opencode-ai failed (non-fatal): " + e.getMessage());
+				activator.logToConsole("npm update @opencode/cli failed (non-fatal): " + e.getMessage());
 			}
 		}
 

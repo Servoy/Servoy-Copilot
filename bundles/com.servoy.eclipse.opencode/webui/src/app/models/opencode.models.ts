@@ -1,7 +1,20 @@
 /**
- * Type definitions mirroring the subset of the opencode-cli HTTP API used by
- * the Servoy AI chat UI. These are intentionally loose - opencode evolves its
- * schema and the BFF proxies payloads verbatim, so unknown fields are tolerated.
+ * Type definitions mirroring the subset of the opencode (V2, {@code @opencode/cli}
+ * 2.x) HTTP API used by the Servoy AI chat UI.
+ *
+ * V2 notes that shape these types:
+ * - Every REST response wraps its payload in an envelope: {@code { data }} or
+ *   {@code { location, data }}. The API service unwraps it, so the models below
+ *   describe the already-unwrapped values.
+ * - A message is a discriminated union on {@code type} ({@code user},
+ *   {@code assistant}, {@code idle}, ...) and carries its rendered blocks in a
+ *   {@code content} array (V1 called these {@code parts} and split the message
+ *   into {@code info} + {@code parts}). The store keeps working with a
+ *   normalised {@link MessageWithParts} ({@code info} + {@code parts}); the API
+ *   service maps each raw V2 message into that shape.
+ *
+ * These are intentionally loose - opencode evolves its schema and unknown fields
+ * are tolerated.
  */
 
 export interface SessionTime {
@@ -11,13 +24,16 @@ export interface SessionTime {
   archived?: number;
   /** Set (to an epoch millis timestamp) when an assistant message finished. */
   completed?: number;
+  /** V2 assistant message streaming timestamp. */
+  streamed?: number;
 }
 
 export interface Session {
   id: string;
   parentID?: string;
   title?: string;
-  directory?: string;
+  /** V2 nests the working directory under {@code location.directory}. */
+  location?: { directory?: string; [key: string]: unknown };
   time?: SessionTime;
   [key: string]: unknown;
 }
@@ -32,6 +48,11 @@ export type PartType =
   | 'snapshot'
   | string;
 
+/**
+ * A single rendered block of a message. This is the normalised shape the UI
+ * renders; the API service derives it from a V2 message {@code content} entry
+ * (or from a streamed {@code message.part.updated} event).
+ */
 export interface Part {
   id?: string;
   messageID?: string;
@@ -39,7 +60,7 @@ export interface Part {
   type: PartType;
   /** text / reasoning parts */
   text?: string;
-  /** tool parts */
+  /** tool parts: the tool name (V2 field is {@code name}). */
   tool?: string;
   callID?: string;
   state?: ToolState;
@@ -54,9 +75,14 @@ export interface Part {
 }
 
 export interface ToolState {
-  status?: 'pending' | 'running' | 'completed' | 'error' | string;
+  status?: 'pending' | 'running' | 'streaming' | 'completed' | 'error' | string;
   title?: string;
   input?: unknown;
+  /**
+   * Rendered tool output. V1 exposed this as a plain {@code output} string; V2
+   * carries a {@code content} array of {@code { type, text }} blocks, which the
+   * API service flattens into this string.
+   */
   output?: string;
   [key: string]: unknown;
 }
@@ -64,9 +90,10 @@ export interface ToolState {
 export type MessageRole = 'user' | 'assistant' | string;
 
 /**
- * Error attached to an assistant message when the model turn failed (e.g.
- * {@code { name: 'UnknownError', data: { message: 'No accounts' } }}). When
- * present the message often has no parts, so this is the only thing to show.
+ * Error attached to an assistant message when the model turn failed. V2 surfaces
+ * turn failure through the message {@code outcome}/{@code finish} fields and a
+ * {@code session.error} event; this keeps the loose V1-compatible shape the UI
+ * already renders.
  */
 export interface MessageError {
   name?: string;
@@ -84,18 +111,24 @@ export interface MessageInfo {
   [key: string]: unknown;
 }
 
-/** A message with its ordered parts, as returned by GET /session/:id/message. */
+/**
+ * A message with its ordered parts - the normalised shape the store holds.
+ * Derived by the API service from a raw V2 message (its {@code content} array
+ * becomes {@code parts}, everything else becomes {@code info}).
+ */
 export interface MessageWithParts {
   info: MessageInfo;
   parts: Part[];
 }
 
-/** File search result from GET /find/file. */
+/** File search result (V2 {@code GET /fs/find} returns {@code { path, type }}). */
 export interface FileMatch {
   path: string;
+  /** V2 entry kind, e.g. {@code file} or {@code directory}. */
+  type?: string;
 }
 
-/** A part to send with a prompt. */
+/** A part to send with a prompt (retained for the composer/attachment API). */
 export interface SendPart {
   type: 'text' | 'file';
   text?: string;
@@ -105,39 +138,44 @@ export interface SendPart {
 }
 
 // ---------------------------------------------------------------------------
-// Status / health (GET /global/health, GET /mcp, GET /provider)
+// Status / health
 // ---------------------------------------------------------------------------
 
-/** Health of the opencode server itself (GET /global/health). */
+/**
+ * Health of the opencode server itself. V2 has no dedicated health route; the
+ * status service derives this from {@code GET /info}, which returns the running
+ * server {@code version} (its presence means the server is up).
+ */
 export interface HealthStatus {
   healthy: boolean;
   version?: string;
 }
 
-/** Connection status of a single MCP server (values from GET /mcp). */
+/** Connection status of a single MCP server. */
 export type McpConnectionStatus =
   | 'connected'
   | 'disabled'
   | 'failed'
+  | 'pending'
   | 'needs_auth'
   | 'needs_client_registration'
   | string;
 
-/** A single MCP server's status entry (GET /mcp maps name -> this). */
+/** A single MCP server's status entry. */
 export interface McpStatus {
   status: McpConnectionStatus;
-  /** Present for the {@code failed} / {@code needs_client_registration} states. */
+  /** Present for the {@code failed} / {@code needs_auth} states. */
   error?: string;
 }
 
-/** GET /mcp response: a map of server name to its status. */
+/** Map of MCP server name to its status (derived from V2 {@code GET /mcp}). */
 export type McpStatusMap = Record<string, McpStatus>;
 
 /**
- * Provider/model connection status (GET /provider). {@code connected} lists the
- * provider ids that are authenticated; {@code default} maps each provider id to
- * its default model id. When {@code connected} is empty no model can be used
- * (this is the "No accounts" situation surfaced on assistant messages).
+ * Provider/model connection status. {@code connected} lists the provider ids
+ * that are enabled/authenticated; {@code default} maps each provider id to its
+ * default model id. Derived from V2 {@code GET /provider}, whose {@code data} is
+ * an array of provider descriptors with an {@code activation} field.
  */
 export interface ProviderStatus {
   connected: string[];
