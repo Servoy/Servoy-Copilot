@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.pde.ui.JunitLaunchConfig">
+    <booleanAttribute key="add_console" value="false"/>
     <booleanAttribute key="append.args" value="true"/>
     <booleanAttribute key="askclear" value="false"/>
     <booleanAttribute key="automaticAdd" value="true"/>
@@ -10,6 +11,7 @@
     <booleanAttribute key="clearConfig" value="true"/>
     <booleanAttribute key="clearws" value="false"/>
     <booleanAttribute key="clearwslog" value="false"/>
+    <listAttribute key="com.github.gradusnikov.eclipse.assistai.selectedJUnitPluginTests.testClasses"/>
     <stringAttribute key="configLocation" value="${workspace_loc}/.metadata/.plugins/org.eclipse.pde.core/AllDeveloperMcpIntegrationTests"/>
     <booleanAttribute key="default" value="false"/>
     <setAttribute key="deselected_workspace_bundles">
@@ -28,20 +30,21 @@
     <stringAttribute key="location" value="${workspace_loc}/../tests-mcp-developer-integration"/>
     <booleanAttribute key="org.eclipse.debug.core.ATTR_FORCE_SYSTEM_CONSOLE_ENCODING" value="false"/>
     <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
-        <listEntry value="/com.servoy.eclipse.developer.mcp.tests/src/test/java/com/servoy/eclipse/developer/mcp/AllDeveloperMcpIntegrationTests.java"/>
+        <listEntry value="/com.servoy.eclipse.developer.mcp.tests"/>
     </listAttribute>
     <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_TYPES">
-        <listEntry value="1"/>
+        <listEntry value="4"/>
     </listAttribute>
-    <stringAttribute key="org.eclipse.jdt.junit.CONTAINER" value=""/>
+    <booleanAttribute key="org.eclipse.debug.ui.ATTR_BUILD_BEFORE_LAUNCH" value="false"/>
+    <stringAttribute key="org.eclipse.jdt.junit.CONTAINER" value="=com.servoy.eclipse.developer.mcp.tests"/>
     <booleanAttribute key="org.eclipse.jdt.junit.KEEPRUNNING_ATTR" value="false"/>
     <stringAttribute key="org.eclipse.jdt.junit.TESTNAME" value=""/>
-    <stringAttribute key="org.eclipse.jdt.junit.TEST_KIND" value="org.eclipse.jdt.junit.loader.junit4"/>
+    <stringAttribute key="org.eclipse.jdt.junit.TEST_KIND" value="org.eclipse.jdt.junit.loader.junit5"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_ATTR_USE_ARGFILE" value="false"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_SHOW_CODEDETAILS_IN_EXCEPTION_MESSAGES" value="true"/>
     <booleanAttribute key="org.eclipse.jdt.launching.ATTR_USE_START_ON_FIRST_THREAD" value="true"/>
     <stringAttribute key="org.eclipse.jdt.launching.JRE_CONTAINER" value="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-21"/>
-    <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="com.servoy.eclipse.developer.mcp.AllDeveloperMcpIntegrationTests"/>
+    <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value=""/>
     <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="-os ${target.os} -ws ${target.ws} -arch ${target.arch} -nl ${target.nl}"/>
     <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="com.servoy.eclipse.developer.mcp.tests"/>
     <stringAttribute key="org.eclipse.jdt.launching.SOURCE_PATH_PROVIDER" value="org.eclipse.pde.ui.workbenchClasspathProvider"/>
@@ -285,6 +288,7 @@
         <setEntry value="org.eclipse.jdt.junit.core@default:default"/>
         <setEntry value="org.eclipse.jdt.junit.runtime@default:default"/>
         <setEntry value="org.eclipse.jdt.junit4.runtime@default:default"/>
+        <setEntry value="org.eclipse.jdt.junit5.runtime@default:default"/>
         <setEntry value="org.eclipse.jdt.junit@default:default"/>
         <setEntry value="org.eclipse.jdt.launching@default:default"/>
         <setEntry value="org.eclipse.jdt.ui@default:default"/>
@@ -324,7 +328,6 @@
         <setEntry value="org.eclipse.search.core@default:default"/>
         <setEntry value="org.eclipse.search@default:default"/>
         <setEntry value="org.eclipse.swt.svg@default:false"/>
-        <setEntry value="org.eclipse.swt.win32.win32.x86_64@default:false"/>
         <setEntry value="org.eclipse.swt@default:default"/>
         <setEntry value="org.eclipse.team.core@default:default"/>
         <setEntry value="org.eclipse.team.ui@default:default"/>
@@ -431,20 +434,28 @@
         <setEntry value="com.servoy.eclipse.designer@default:default"/>
         <setEntry value="com.servoy.eclipse.developer.mcp.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.developer.mcp@default:default"/>
+        <setEntry value="com.servoy.eclipse.docgenerator.client@default:default"/>
+        <setEntry value="com.servoy.eclipse.docgenerator.ui@default:default"/>
+        <setEntry value="com.servoy.eclipse.docgenerator@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.mobile@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.ngdesktop@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.solution@default:default"/>
         <setEntry value="com.servoy.eclipse.exporter.war@default:default"/>
         <setEntry value="com.servoy.eclipse.extension.compatibility@default:default"/>
+        <setEntry value="com.servoy.eclipse.jre.win32.aarch64@default:default"/>
         <setEntry value="com.servoy.eclipse.jre.win32.x86_64@default:default"/>
         <setEntry value="com.servoy.eclipse.jsunit@default:default"/>
         <setEntry value="com.servoy.eclipse.model.exporter.mobile@default:default"/>
         <setEntry value="com.servoy.eclipse.model@default:default"/>
+        <setEntry value="com.servoy.eclipse.ngclient.ui.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.ngclient.ui@default:default"/>
         <setEntry value="com.servoy.eclipse.ngclient@default:default"/>
+        <setEntry value="com.servoy.eclipse.nodejs.win32.win32.aarch64@default:default"/>
         <setEntry value="com.servoy.eclipse.nodejs.win32.win32.x86_64@default:default"/>
         <setEntry value="com.servoy.eclipse.notification@default:default"/>
         <setEntry value="com.servoy.eclipse.opencode@default:default"/>
+        <setEntry value="com.servoy.eclipse.tests@default:false"/>
+        <setEntry value="com.servoy.eclipse.ui.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.ui.tweaks@3:true"/>
         <setEntry value="com.servoy.eclipse.ui@default:default"/>
         <setEntry value="j2db_documentation@default:default"/>
@@ -457,8 +468,6 @@
         <setEntry value="servoy_base@default:default"/>
         <setEntry value="servoy_debug@default:default"/>
         <setEntry value="servoy_headless_client@default:default"/>
-        <setEntry value="servoy_mcp@default:default"/>
-        <setEntry value="servoy_mcp_tests@default:false"/>
         <setEntry value="servoy_ngclient@default:default"/>
         <setEntry value="servoy_shared@default:default"/>
         <setEntry value="servoy_smart_client@default:default"/>

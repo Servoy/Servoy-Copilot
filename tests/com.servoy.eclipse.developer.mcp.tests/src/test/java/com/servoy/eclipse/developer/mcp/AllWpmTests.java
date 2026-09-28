@@ -16,22 +16,24 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
-import org.junit.runner.RunWith;
-import org.junit.runners.Suite;
-import org.junit.runners.Suite.SuiteClasses;
+import org.junit.platform.suite.api.SelectClasses;
+import org.junit.platform.suite.api.Suite;
+import org.junit.platform.suite.api.SuiteDisplayName;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
 import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 
 /**
- * Focused JUnit 4 suite for the Servoy Package Manager (servoy-wpm) tooling only.
+ * Focused Jupiter platform {@link Suite} for the Servoy Package Manager
+ * (servoy-wpm) tooling only.
  * <p>
  * Lets the WPM changes be verified quickly without running the whole
- * {@link AllDeveloperMcpTests} suite. Run via the {@code WpmTests_mac.launch}
- * configuration (Run As - JUnit Plug-in Test).
+ * {@link AllDeveloperMcpJupiterUnitTests} suite. Run via the
+ * {@code WpmTests_mac.launch} configuration (Run As - JUnit Plug-in Test).
  */
-@RunWith(Suite.class)
-@SuiteClasses({
+@Suite
+@SuiteDisplayName("Developer MCP - WPM tests")
+@SelectClasses({
 	WpmServiceTest.class,
 	ServoyWpmServerTest.class,
 })

@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -16,11 +16,11 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,8 +31,8 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.console.MessageConsole;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.actions.CypressConsoleUtil;
@@ -52,7 +52,7 @@ import com.servoy.j2db.server.shared.IApplicationServerSingleton;
  * generateSpec -> testForm (Cypress run).
  *
  * These tests require a running Servoy application server and an active
- * solution. They are skipped (via Assume) when the environment is not
+ * solution. They fail fast when the environment is not
  * available.
  */
 public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
@@ -70,17 +70,17 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
 
-	@org.junit.BeforeClass
+	@org.junit.jupiter.api.BeforeAll
 	public static void adjustTitaniumBuildJobEnablementForThisClass() throws Exception
 	{
 		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
 		waitForWorkspaceBuildJobs();
 
-		// Cypress tests need the node install extracted and the titanium client built — re-enable the copy/npm cycle.
+		// Cypress tests need the node install extracted and the titanium client built â€” re-enable the copy/npm cycle.
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		testingServer = new ServoyTestingServer();
 		specGenerator = new FormSpecGenerator();
@@ -1069,7 +1069,7 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 		return false;
 	}
 
-	// AC1: showFormInBrowser never blocks — JS errors appear as Warning: text only
+	// AC1: showFormInBrowser never blocks â€” JS errors appear as Warning: text only
 	@Test
 	public void testShowFormInBrowser_formWithJSMarkerErrors_opensSuccessfully() throws Exception {
 		String invalidFormName = "cypressInvalidBrowserForm";
@@ -1089,7 +1089,7 @@ public class CypressFormTestingIntegrationTest extends AbstractIntegrationTest {
 
 		String result = testingServer.showFormInBrowser(invalidFormName, false);
 		assertNotNull("showFormInBrowser result should not be null", result);
-		// AC1: showFormInBrowser must never block — must not return a bare "Error:" response
+		// AC1: showFormInBrowser must never block â€” must not return a bare "Error:" response
 		assertFalse("showFormInBrowser must never return a blocking Error: response for JS-only markers (AC1): " + result,
 				result.startsWith("Error:"));
 		// The result should report the form was opened, possibly with a Warning: about the JS errors

@@ -16,10 +16,10 @@
  */
 package com.servoy.eclipse.developer.mcp.services;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.util.Collections;
 import java.util.List;
@@ -46,8 +46,8 @@ import org.eclipse.dltk.javascript.typeinfo.model.ParameterKind;
 import org.eclipse.dltk.javascript.typeinfo.model.Type;
 import org.eclipse.dltk.javascript.typeinfo.model.TypeKind;
 import org.eclipse.dltk.javascript.typeinfo.model.Visibility;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,7 +69,7 @@ public class ResolvedElementsProcessorTest
 	private ResolvedElementsProcessor processor;
 	private ArrayNode resolvedElements;
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		processor = ResolvedElementsProcessor.getInstance();

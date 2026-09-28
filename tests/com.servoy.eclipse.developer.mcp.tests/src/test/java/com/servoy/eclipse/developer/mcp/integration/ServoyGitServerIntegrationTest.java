@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -16,9 +16,9 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -34,10 +34,10 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.egit.core.op.ConnectProviderOperation;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Repository;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.services.GitService;
@@ -50,14 +50,14 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBase {
 	private IProject project;
 	private Repository repository;
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
 			IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(PROJECT_NAME);
@@ -87,7 +87,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBase {
 		gitServer = new ServoyGitServer(new GitService());
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 		

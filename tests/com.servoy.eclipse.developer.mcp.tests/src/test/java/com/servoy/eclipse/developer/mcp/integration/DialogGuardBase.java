@@ -16,25 +16,24 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import org.junit.Rule;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Minimal base class for all PDE integration tests.
  * <p>
- * Installs {@link DialogGuardRule} as a JUnit 4 {@code @Rule} so that any SWT
- * dialog that appears unexpectedly during a test causes an immediate, informative
- * failure instead of hanging the test runner indefinitely.
+ * Registers {@link DialogGuardRule} as a JUnit 5 (Jupiter) extension so that any
+ * SWT dialog that appears unexpectedly during a test causes an immediate,
+ * informative failure instead of hanging the test runner indefinitely.
  * <p>
  * {@link TestUtilitiesClass} extends this class, so every test that extends
  * {@code TestUtilitiesClass} (or its subclasses {@code AbstractIntegrationTest}
- * and {@code ServoyRunnerTestBase}) gets the guard for free.
+ * and {@code ServoyRunnerTestBase}) gets the guard for free — the
+ * {@code @ExtendWith} annotation is inherited by subclasses.
  * <p>
  * Tests that do not extend {@code TestUtilitiesClass} should extend this class
  * directly.
  */
+@ExtendWith(DialogGuardRule.class)
 public class DialogGuardBase
 {
-	/** Intercepts unexpected SWT dialogs and fails the test instead of hanging. */
-	@Rule
-	public DialogGuardRule dialogGuard = new DialogGuardRule();
 }

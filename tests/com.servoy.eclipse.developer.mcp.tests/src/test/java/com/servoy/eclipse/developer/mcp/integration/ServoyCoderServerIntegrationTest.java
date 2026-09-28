@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -16,10 +16,10 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -32,10 +32,10 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
@@ -49,14 +49,14 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBase {
 	private ServoyDevServer devServer;
 	private IProject project;
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		coderServer = new ServoyCoderServer(new CodeEditingService());
 		devServer = new ServoyDevServer();
@@ -77,7 +77,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBase {
 		assertTrue("Test project should be open", project.isOpen());
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		if (project != null && project.exists()) {
 			try {

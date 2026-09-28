@@ -1,8 +1,8 @@
 package com.servoy.eclipse.developer.mcp.services;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -11,21 +11,21 @@ import java.nio.file.Path;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class GitServiceInitTest
 {
 	private Path tempDir;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		tempDir = Files.createTempDirectory("git-init-test");
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception
 	{
 		if (tempDir != null)

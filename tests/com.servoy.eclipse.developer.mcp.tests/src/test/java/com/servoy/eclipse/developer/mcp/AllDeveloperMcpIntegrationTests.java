@@ -16,9 +16,9 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
-import org.junit.runner.RunWith;
-import org.junit.runners.Suite;
-import org.junit.runners.Suite.SuiteClasses;
+import org.junit.platform.suite.api.SelectClasses;
+import org.junit.platform.suite.api.Suite;
+import org.junit.platform.suite.api.SuiteDisplayName;
 
 import com.servoy.eclipse.developer.mcp.integration.AddTestMethodIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.CodeAnalysisIntegrationTest;
@@ -46,9 +46,9 @@ import com.servoy.eclipse.developer.mcp.integration.ServoyGitServerIntegrationTe
 import com.servoy.eclipse.developer.mcp.integration.ServoyI18nServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerReadIntegrationTest;
-import com.servoy.eclipse.developer.mcp.integration.ServoyScriptResolverIntegrationTest;
-import com.servoy.eclipse.developer.mcp.integration.ServoyMediaServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyIdeServerWorkspaceIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyMediaServerIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.ServoyScriptResolverIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoySolutionServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyWpmServerIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ShowFormInBrowserIntegrationTest;
@@ -58,7 +58,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyDevServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 
 /**
- * JUnit 4 test suite for all Servoy Developer MCP integration tests.
+ * Jupiter platform {@link Suite} for all Servoy Developer MCP integration tests.
  * <p>
  * These tests require a running Servoy Application Server, a configured Eclipse
  * workspace with Servoy projects, and (for some tests) the NG client runtime.
@@ -67,8 +67,9 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
  * <p>
  * Run via: Run As - JUnit Plug-in Test (using AllDeveloperMcpIntegrationTests.launch)
  */
-@RunWith(Suite.class)
-@SuiteClasses({ AddTestMethodIntegrationTest.class, CodeAnalysisIntegrationTest.class,
+@Suite
+@SuiteDisplayName("Developer MCP - integration tests")
+@SelectClasses({ AddTestMethodIntegrationTest.class, CodeAnalysisIntegrationTest.class,
 		CodeContextServiceIntegrationTest.class, ContextServerHistoryIntegrationTest.class,
 		CreateArtifactsIntegrationTest.class,
 		CreateSolutionIntegrationTest.class, CreateTestFileIntegrationTest.class,
@@ -81,6 +82,8 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyMediaServerIntegrationTest.class, ServoySolutionServiceIntegrationTest.class,
 		ServoyWpmServerIntegrationTest.class, ShowFormInBrowserIntegrationTest.class, ServoyCoderServerTest.class,
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class, McpServerBuiltinsTest.class,
-		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class, ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class, GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class, })
+		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class,
+		ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class,
+		GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class, })
 public class AllDeveloperMcpIntegrationTests {
 }

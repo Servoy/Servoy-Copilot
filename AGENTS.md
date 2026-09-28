@@ -172,59 +172,85 @@ is set, so it can safely stay in the production build.
 - **Type:** OSGi Fragment of `com.servoy.eclipse.developer.mcp`
 - **Source:** `src/test/java/`
 - Contains both plain unit tests and integration tests that need a running Eclipse workbench.
+- **Pure JUnit 5/6 (Jupiter).** There is no JUnit 4 left in this bundle: no `org.junit.Test` / `org.junit.Assert.*` / `@RunWith` / `@Before(Class)` / `@After(Class)` / `org.junit.rules`, and the MANIFEST imports only `org.junit.jupiter.*` + `org.junit.platform.suite.api` (no `org.junit`/`org.junit.rules`). **Always write new tests as Jupiter** (`org.junit.jupiter.api.*`).
 
-#### Plain unit tests (no OSGi / workbench — run with `eclipse-ide_runJUnitTests`)
+#### Assertions: the message-first `Assert` facade
 
-These tests use no live Eclipse workspace or OSGi container — pure Java, reflection, and mocking. **This bundle is mixed:** both JUnit 4 (`org.junit.Test` / `org.junit.Assert.*`) and JUnit 5/6 Jupiter (`org.junit.jupiter.api.*`) tests coexist. The MANIFEST imports both APIs (`org.junit;version="4.0.0"` **and** `org.junit.jupiter.api` pinned to `[6.1.0,7.0.0)`, plus `org.junit.jupiter.params`) and requires `junit-platform-suite-engine`.
+The bundle keeps a large body of assertion calls written with the JUnit 4 **message-first** argument order (`assertEquals("msg", expected, actual)`). Rather than reorder ~1500 call sites, those static imports point at a small in-bundle facade, `com.servoy.eclipse.developer.mcp.junit.Assert`, which forwards to `org.junit.jupiter.api.Assertions` (moving the message to the last position). This is pure Jupiter at runtime.
+- **New code should prefer `org.junit.jupiter.api.Assertions` directly** (message-last).
+- If you extend an existing test that uses the facade, you may keep using the facade for consistency.
 
-**For NEW plain unit tests, prefer JUnit 5/6 (Jupiter)** — it is the current standard for this bundle (see the SDD `test-gen` phase, which mandates Jupiter). Only match JUnit 4 when *extending* an existing JUnit 4 class.
+#### Conventions for new Jupiter tests
 
-There are **two** plain-unit aggregate suites; a new test must be registered in the matching one to run in the aggregate:
+- `@DisplayName` ONLY on `@Test`/`@ParameterizedTest`/`@Nested` **methods**, never on the top-level test class (class-level display names break Jenkins/Tycho-surefire grouping — tests land in `(root)`).
+- No `public` modifier needed on classes/methods.
+- No silent skips (`Assumptions`/`assumeXxx`) — fix setup or fail loudly.
+- `@Test(expected=…)` → `assertThrows(...)`; `@Rule`/`ExternalResource` → a JUnit 5 extension registered with `@ExtendWith`.
 
-- `AllDeveloperMcpTests` — JUnit 4 `@RunWith(Suite.class)` aggregate. Register **JUnit 4** classes here.
-- `AllDeveloperMcpJupiterUnitTests` — JUnit 5 `@Suite` platform suite. Register **Jupiter** classes here (they cannot live in the JUnit 4 suite).
+#### SWT dialog guard (JUnit 5 extension)
 
-**JUnit 4 plain unit tests** (`org.junit.Test`):
+`DialogGuardRule` is a JUnit 5 extension (`BeforeEachCallback`/`AfterEachCallback`) that fails a test if an unexpected SWT dialog appears (instead of hanging). It is applied via `@ExtendWith(DialogGuardRule.class)` on `DialogGuardBase`; `TestUtilitiesClass` extends `DialogGuardBase`, so every integration test inherits the guard automatically (annotations are inherited by subclasses). Tests that intentionally open a dialog push a `DialogExpectation` via `TestDialogInterceptor.expect(...)` first.
+
+#### Aggregation suites (Jupiter `@Suite`)
+
+All aggregate suites are JUnit Platform `@Suite` classes (`org.junit.platform.suite.api`). Register a new class in the matching suite:
+
+- `AllDeveloperMcpJupiterUnitTests` — all plain unit tests (no workbench needed).
+- `AllDeveloperMcpIntegrationTests` — all PDE integration tests (need workbench + Servoy).
+- `AllWpmTests` — focused servoy-wpm subset.
+
+> These `@Suite` classes are for running inside the **IDE** (`eclipse-ide_runJUnitTests` / `eclipse-pde_runJUnitPluginTests`). **Maven/Tycho cannot expand a JUnit Platform `@Suite`** (see the surefire note below), so the `pom.xml` enumerates the concrete test classes in `<test>` instead — keep the suite `@SelectClasses` and the pom `<test>` lists in sync when adding classes.
+
+**Plain unit tests** (run in the IDE with `eclipse-ide_runJUnitTests`; run headless with `mvn verify`):
 
 | Package | Classes |
 |---|---|
 | `c.s.e.d.mcp` | `McpServerBuiltinsTest`, `McpServerFactoryTest`, `McpToolLogTest`, `ToolExecutorTest` |
 | `c.s.e.d.mcp.auth` | `BearerTokenAuthenticationFilterTest` |
 | `c.s.e.d.mcp.cache` | `ServoyResourceCacheTest` |
-| `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `DiscoverCypressHelpersTest`, `GenerateTestCasesToolTest`, `McpToolParamValidationTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyDevServerTest`, `ServoyGitServerTest`, `ServoyIdeServerTest`, `ServoyMediaServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest`, `TimeServerTest` |
-| `c.s.e.d.mcp.services` | `DocumentationValidatorServiceTest`, `GitServiceInitTest`, `JSUnitCoverageServiceTest`, `JSUnitRunnerServiceTerminalConditionTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `ServoyScriptResolverTest`, `TestFileServiceReflectionTest`, `WorkspaceServiceFileOutlineTest`, `WpmServiceTest` |
-
-**JUnit 5/6 (Jupiter) plain unit tests** (`org.junit.jupiter.api.Test`; collected by `AllDeveloperMcpJupiterUnitTests`):
-
-| Package | Classes |
-|---|---|
-| `c.s.e.d.mcp.servers` | `ServoyI18nServerTest` |
-| `c.s.e.d.mcp.services` | `CodeEditingServiceTest`, `FormatValidatorServiceTest`, `FormNavigationGraphServiceTest`, `FormPreviewServiceTest`, `GitServiceDiffTest`, `NavigationGraphTest`, `PersistDuplicateServiceTest` |
+| `c.s.e.d.mcp.servers` | `AnalyzeCodeToolTest`, `DiscoverCypressHelpersTest`, `GenerateTestCasesToolTest`, `McpToolParamValidationTest`, `MemoryServerTest`, `ServoyCoderServerTest`, `ServoyContextServerTest`, `ServoyGitServerTest`, `ServoyI18nServerTest`, `ServoyIdeServerTest`, `ServoyMediaServerTest`, `ServoyTestingServerTest`, `ServoyWpmServerTest`, `ShowFormInBrowserToolTest`, `TimeServerTest` |
+| `c.s.e.d.mcp.services` | `CodeEditingServiceTest`, `DocumentationValidatorServiceTest`, `FormatValidatorServiceTest`, `GitServiceDiffTest`, `GitServiceInitTest`, `JSUnitCoverageServiceTest`, `JSUnitRunnerServiceTerminalConditionTest`, `NavigationGraphTest`, `PersistDuplicateServiceTest`, `PersistRenameServiceTest`, `ResolvedElementsProcessorTest`, `ServoyScriptResolverTest`, `TestFileServiceReflectionTest`, `WorkspaceServiceFileOutlineTest`, `WpmServiceTest` |
 | `c.s.e.d.mcp.integration` | `AbstractIntegrationTestBaseTest` (pure unit test despite package) |
 
-> Note: `GitServiceDiffTest` uses the Jupiter `@TempDir` extension and can fail standalone/in-suite with `NoSuchMethodError: TempDir.deletionStrategy()` due to a `junit-jupiter` runtime/classpath mismatch in this fragment — a known pre-existing environment issue, not a test defect.
+> **Needs the Eclipse platform even though they look like unit tests:** `FormNavigationGraphServiceTest`, `FormPreviewServiceTest` and `AbstractIntegrationTestBaseTest` reference `ServoyModelManager` / `IDeveloperServoyModel` / the `Activator` toggle, so they only pass with the workbench running. They are therefore listed in the **integration** surefire `<test>` block in `pom.xml`, not the headless default block, even though the IDE unit suite still includes them.
+>
+> Note: `GitServiceDiffTest` uses the Jupiter `@TempDir` extension and can fail standalone with `NoSuchMethodError: TempDir.deletionStrategy()` if an older `junit-jupiter-api` shadows the target platform's — see the rhino `test-libs` note below.
 
-#### Troubleshooting: JUnit 6 `NoSuchMethodError` (e.g. `Namespace.getParts()`)
+#### How Maven/Tycho runs these tests (important)
 
-If a JUnit 6 (Jupiter) test fails at runtime with:
+`mvn verify` runs the headless default surefire config; `mvn verify -Pintegration` runs the integration config (UI harness + Servoy app server). Two things are required for a **pure-Jupiter** `eclipse-test-plugin` here and are already wired in `pom.xml`:
+
+1. **`<providerHint>junit6</providerHint>`** on `tycho-surefire-plugin` (both the default and the `integration` config). The Eclipse target platform always contributes JUnit 4 (`org.junit`, `org.hamcrest`) to the test runtime, so Tycho's automatic framework detection otherwise selects the `junit4` provider and reports **`No tests found`** for Jupiter tests. Forcing `junit6` selects the JUnit Platform provider.
+2. **Enumerated `<test>` class lists** instead of `<testClass>` pointing at a `@Suite` — Tycho cannot expand a JUnit Platform `@Suite`, so a suite `<testClass>` also yields `No tests found`.
+
+The Jenkins pipeline runs `clean install` then `verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests -am` under Xvfb; it extracts the Servoy app server from a tarball into `testresources/servoy_lts_extracted` via the antrun step. Locally you can point at an existing install with `-Dservoy_install=<path-to-parent-of-application_server>` (e.g. `-Dservoy_install=c:/installs/2026.3.1_final`).
+
+Cheap ways to run from the command line:
+- Headless unit tests: `mvn -B clean verify -pl tests/com.servoy.eclipse.developer.mcp.tests -am "-Dtycho.localArtifacts=ignore" "-Dmaven.test.failure.ignore=true"`
+- Integration tests: add `-Pintegration "-Dservoy_install=<...>"`.
+- If the target artifact isn't in `~/.m2` yet, first `mvn -B -pl launch_target_aiplugin install "-Dtycho.localArtifacts=ignore"`.
+
+> The `com.servoy.eclipse.developer.mcp.tests` fragment does **not** need its own `Require-Bundle: com.servoy.eclipse.cypress`: the integration tests that import `com.servoy.eclipse.cypress.*` compile because a fragment inherits the `Require-Bundle` visibility of its host (`com.servoy.eclipse.developer.mcp` requires cypress). Cypress does not contribute JUnit.
+
+#### Troubleshooting: JUnit 6 `NoSuchMethodError` (e.g. `Namespace.getParts()` / `TempDir.deletionStrategy()`)
+
+If a Jupiter test fails at runtime with something like:
 ```
 java.lang.NoSuchMethodError: 'java.util.List org.junit.jupiter.api.extension.ExtensionContext$Namespace.getParts()'
 ```
 
-**Root cause:** The `org.eclipse.dltk.javascript.rhino` workspace project bundles an older `junit-jupiter-api-5.x.jar` in its `test-libs/` folder. When PDE builds the flat classpath for a plain JUnit launch, it includes all workspace project dependencies — including rhino's test-libs. The older 5.x API jar appears earlier on the classpath than the target platform's 6.x jar, causing version conflicts.
+**Root cause:** The `org.eclipse.dltk.javascript.rhino` workspace project bundles an older `junit-jupiter-api-5.x.jar` in its `test-libs/` folder. When PDE builds the flat classpath for a plain JUnit launch inside the IDE, it can include that older 5.x API jar ahead of the target platform's 6.x jar, causing version conflicts. (This affects IDE launches only; the Maven/Tycho build uses the target platform's jars.)
 
-**Fix:** Open `org.eclipse.dltk.javascript.rhino` → Java Build Path → Libraries tab → remove or uncheck the `test-libs/junit-jupiter-api-*.jar`, `test-libs/junit-4.*.jar`, and `test-libs/hamcrest-*.jar` entries. Alternatively, remove the `test-libs` folder from rhino's `.classpath` entirely. The test sources can also be removed from the Source tab if rhino tests are not being developed.
+**Fix:** Open `org.eclipse.dltk.javascript.rhino` → Java Build Path → Libraries tab → remove or uncheck the `test-libs/junit-jupiter-api-*.jar`, `test-libs/junit-4.*.jar`, and `test-libs/hamcrest-*.jar` entries (or remove the `test-libs` folder from rhino's `.classpath`).
 
-#### Plugin tests (run with `eclipse-pde_runJUnitPluginTests`)
+#### Plugin / integration tests (run with `eclipse-pde_runJUnitPluginTests` in the IDE, or `mvn verify -Pintegration`)
 
-These tests require a running Eclipse workbench + Servoy App Server. They use `ResourcesPlugin`, `Display`, `ServoyModelManager`, etc.
+These tests require a running Eclipse workbench + Servoy App Server. They use `ResourcesPlugin`, `Display`, `ServoyModelManager`, etc. They extend `TestUtilitiesClass` (→ `DialogGuardBase`, → `AbstractIntegrationTest` / `ServoyRunnerTestBase`) and use its helpers (`pumpEventsUntil`, `waitForWorkspaceBuildJobs`, `waitForTitaniumuildJobs`, …) — never raw `Thread.sleep`. Each class cleans its workspace projects in a `@BeforeAll deleteProjectsBeforeClass()` because the workspace is reused between runs.
 
 | Package | Classes |
 |---|---|
-| `c.s.e.d.mcp.integration` | `AddTestMethodIntegrationTest`, `CreateTestFileIntegrationTest`, `CypressFormTestingIntegrationTest`, `JSUnitRunnerGroupedTest`, `JSUnitRunnerIntegrationTest`, `JSUnitRunnerLayer4Test`, `RenamePersistIntegrationTest`, `ServoyIdeServerIntegrationTest`, `ShowFormInBrowserIntegrationTest` |
-| `c.s.e.d.mcp` | `AllDeveloperMcpTests` (suite), `AllDeveloperMcpIntegrationTests` (suite) |
-
-Total: **9 integration tests + 2 suites** (require PDE test launcher)
+| `c.s.e.d.mcp.integration` | `AddTestMethodIntegrationTest`, `CodeAnalysisIntegrationTest`, `CodeContextServiceIntegrationTest`, `ContextServerHistoryIntegrationTest`, `CreateArtifactsIntegrationTest`, `CreateSolutionIntegrationTest`, `CreateTestFileIntegrationTest`, `CypressFormTestingIntegrationTest`, `DatabaseToolsIntegrationTest`, `DocumentationToolsIntegrationTest`, `E2EToolsIntegrationTest`, `FormNavigationGraphServiceIntegrationTest`, `GetNavigationPathIntegrationTest`, `JSUnitRunnerGroupedTest`, `JSUnitRunnerIntegrationTest`, `JSUnitRunnerLayer4Test`, `MenuToolsIntegrationTest`, `PersistDuplicateIntegrationTest`, `RenamePersistIntegrationTest`, `RunTestMethodIntegrationTest`, `ScriptContextServiceIntegrationTest`, `SecurityToolsIntegrationTest`, `ServoyCoderServerIntegrationTest`, `ServoyDevServerIntegrationTest`, `ServoyGitServerIntegrationTest`, `ServoyI18nServerIntegrationTest`, `ServoyIdeServerIntegrationTest`, `ServoyIdeServerReadIntegrationTest`, `ServoyIdeServerWorkspaceIntegrationTest`, `ServoyMediaServerIntegrationTest`, `ServoyScriptResolverIntegrationTest`, `ServoySolutionServiceIntegrationTest`, `ServoyWpmServerIntegrationTest`, `ShowFormInBrowserIntegrationTest`, `ValidationToolsIntegrationTest` |
+| `c.s.e.d.mcp` | `AllDeveloperMcpIntegrationTests` (Jupiter `@Suite`) |
 
 #### How to run integration tests from the `c.s.e.d.mcp.integration` package
 

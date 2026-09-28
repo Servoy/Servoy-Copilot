@@ -8,16 +8,16 @@
 */
 package com.servoy.eclipse.developer.mcp.services;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Pure-logic unit tests for {@link WpmService} version helpers. These do not require the

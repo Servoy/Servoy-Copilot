@@ -16,13 +16,13 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertSame;
 
 import java.lang.reflect.InvocationTargetException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * JUnit 4 tests for {@link McpToolLog}'s classification of expected

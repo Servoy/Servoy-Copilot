@@ -30,8 +30,41 @@
                     <useUIHarness>false</useUIHarness>
                     <application>
                         org.eclipse.pde.junit.runtime.coretestapplication</application>
-                    <testClass>
-                        com.servoy.eclipse.developer.mcp.AllDeveloperMcpTests</testClass>
+                    <!-- Force the JUnit Platform (junit6) provider. The Eclipse target platform
+                         always contributes org.junit (JUnit 4) to the test runtime, so Tycho's
+                         automatic framework detection would otherwise pick the junit4 provider
+                         and report "No tests found" for these pure-Jupiter tests. -->
+                    <providerHint>junit6</providerHint>
+                    <!-- Plain unit tests (mirror of AllDeveloperMcpJupiterUnitTests, which is
+                         kept for use inside the IDE). NOTE: do NOT point <test> at a JUnit
+                         Platform @Suite class - Tycho cannot expand it. List concrete classes. -->
+                    <test>
+                        ToolExecutorTest,
+                        BearerTokenAuthenticationFilterTest,
+                        ServoyResourceCacheTest,
+                        AnalyzeCodeToolTest,
+                        GenerateTestCasesToolTest,
+                        MemoryServerTest,
+                        ServoyCoderServerTest,
+                        ServoyContextServerTest,
+                        ServoyGitServerTest,
+                        ServoyI18nServerTest,
+                        ServoyMediaServerTest,
+                        ServoyTestingServerTest,
+                        ServoyWpmServerTest,
+                        ShowFormInBrowserToolTest,
+                        TimeServerTest,
+                        CodeEditingServiceTest,
+                        DocumentationValidatorServiceTest,
+                        FormatValidatorServiceTest,
+                        JSUnitCoverageServiceTest,
+                        NavigationGraphTest,
+                        PersistDuplicateServiceTest,
+                        PersistRenameServiceTest,
+                        ResolvedElementsProcessorTest,
+                        TestFileServiceReflectionTest,
+                        WpmServiceTest
+                    </test>
                     <argLine>
                         -Xms128m -Xmx512m -ea
                         --add-exports=java.base/sun.security.x509=ALL-UNNAMED
@@ -166,8 +199,55 @@
                         <artifactId>tycho-surefire-plugin</artifactId>
                         <version>${tycho-version}</version>
                         <configuration>
-                            <testClass>
-                                com.servoy.eclipse.developer.mcp.AllDeveloperMcpIntegrationTests</testClass>
+                            <!-- Force the JUnit Platform (junit6) provider; the Eclipse target
+                                 platform always contributes JUnit 4, so auto-detection would
+                                 otherwise pick junit4 and find no tests. Enumerate concrete
+                                 classes in <test> - Tycho cannot expand the Jupiter @Suite
+                                 (AllDeveloperMcpIntegrationTests, kept for IDE use). -->
+                            <providerHint>junit6</providerHint>
+                            <test>
+                                AddTestMethodIntegrationTest,
+                                CodeAnalysisIntegrationTest,
+                                CodeContextServiceIntegrationTest,
+                                ContextServerHistoryIntegrationTest,
+                                CreateArtifactsIntegrationTest,
+                                CreateSolutionIntegrationTest,
+                                CreateTestFileIntegrationTest,
+                                DatabaseToolsIntegrationTest,
+                                DocumentationToolsIntegrationTest,
+                                JSUnitRunnerIntegrationTest,
+                                JSUnitRunnerGroupedTest,
+                                JSUnitRunnerLayer4Test,
+                                PersistDuplicateIntegrationTest,
+                                RenamePersistIntegrationTest,
+                                RunTestMethodIntegrationTest,
+                                SecurityToolsIntegrationTest,
+                                ServoyCoderServerIntegrationTest,
+                                ServoyDevServerIntegrationTest,
+                                ServoyGitServerIntegrationTest,
+                                ServoyI18nServerIntegrationTest,
+                                ServoyIdeServerIntegrationTest,
+                                ServoyIdeServerWorkspaceIntegrationTest,
+                                ServoyMediaServerIntegrationTest,
+                                ServoySolutionServiceIntegrationTest,
+                                ServoyWpmServerIntegrationTest,
+                                ShowFormInBrowserIntegrationTest,
+                                ServoyCoderServerTest,
+                                ServoyDevServerTest,
+                                ServoyIdeServerTest,
+                                McpServerFactoryTest,
+                                McpServerBuiltinsTest,
+                                ValidationToolsIntegrationTest,
+                                MenuToolsIntegrationTest,
+                                ServoyIdeServerReadIntegrationTest,
+                                ScriptContextServiceIntegrationTest,
+                                FormNavigationGraphServiceIntegrationTest,
+                                GetNavigationPathIntegrationTest,
+                                ServoyScriptResolverIntegrationTest,
+                                FormNavigationGraphServiceTest,
+                                FormPreviewServiceTest,
+                                AbstractIntegrationTestBaseTest
+                            </test>
                             <useUIHarness>true</useUIHarness>
                             <useUIThread>false</useUIThread>
                             <product>com.servoy.eclipse.core.ide</product>

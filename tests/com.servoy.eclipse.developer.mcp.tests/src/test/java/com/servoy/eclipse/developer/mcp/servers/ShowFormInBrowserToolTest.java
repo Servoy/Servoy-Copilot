@@ -8,14 +8,14 @@
 */
 package com.servoy.eclipse.developer.mcp.servers;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.lang.reflect.Method;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 
@@ -30,7 +30,7 @@ public class ShowFormInBrowserToolTest
 {
 	private Class<ServoyTestingServer> serverClass;
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		serverClass = ServoyTestingServer.class;

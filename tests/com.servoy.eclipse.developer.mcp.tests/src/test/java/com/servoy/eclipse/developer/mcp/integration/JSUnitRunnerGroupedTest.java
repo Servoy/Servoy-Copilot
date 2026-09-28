@@ -8,11 +8,11 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -20,9 +20,9 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.swt.widgets.Display;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.j2db.util.UUID;
@@ -122,7 +122,7 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 	 */
 	private static String cachedAllResult;
 
-	/** Guards one-time class setup inside @Before (JUnit 4 has no @BeforeClass with instance access). */
+	/** Guards one-time class setup inside @BeforeEach (JUnit 4 has no @BeforeAll with instance access). */
 	private static boolean classSetUpDone = false;
 
 	/** Per-test references to the cached results. */
@@ -134,14 +134,14 @@ public class JSUnitRunnerGroupedTest extends ServoyRunnerTestBase
 		super(TEST_GROUPED_SOLUTION, SERVOY_RESOURCES);
 	}
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		deleteProjects(TEST_GROUPED_SOLUTION, TEST_GROUPED_MODULE, SERVOY_RESOURCES);
 		waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		runner = new JSUnitRunnerService();

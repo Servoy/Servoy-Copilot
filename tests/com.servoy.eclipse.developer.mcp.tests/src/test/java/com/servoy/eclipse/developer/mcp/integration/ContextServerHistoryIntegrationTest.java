@@ -1,8 +1,9 @@
-package com.servoy.eclipse.developer.mcp.integration;
+﻿package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,10 +15,10 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
 import com.servoy.eclipse.developer.mcp.services.LocalHistoryService;
@@ -30,14 +31,14 @@ public class ContextServerHistoryIntegrationTest extends DialogGuardBase {
 	private IProject project;
 	private String testFileName;
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		contextServer = new ServoyContextServer(new LocalHistoryService());
 
@@ -59,7 +60,7 @@ public class ContextServerHistoryIntegrationTest extends DialogGuardBase {
 		createFileWithHistory(testFileName);
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		if (project != null && project.exists()) {
 			try {
@@ -86,9 +87,9 @@ public class ContextServerHistoryIntegrationTest extends DialogGuardBase {
 		assertFalse(result.contains("Error"));
 	}
 
-	@Test(expected = RuntimeException.class)
+	@Test
 	public void testGetFileHistory_nonExistentFile() {
-		contextServer.getFileHistory(PROJECT_NAME, "nonexistent.txt", null);
+		assertThrows(RuntimeException.class, () -> contextServer.getFileHistory(PROJECT_NAME, "nonexistent.txt", null));
 	}
 
 	@Test
@@ -121,9 +122,9 @@ public class ContextServerHistoryIntegrationTest extends DialogGuardBase {
 		}
 	}
 
-	@Test(expected = RuntimeException.class)
+	@Test
 	public void testCompareWithHistory_nonExistentFile() {
-		contextServer.compareWithHistory(PROJECT_NAME, "no_such_file.txt", "0");
+		assertThrows(RuntimeException.class, () -> contextServer.compareWithHistory(PROJECT_NAME, "no_such_file.txt", "0"));
 	}
 
 	private void createFileWithHistory(String path) {

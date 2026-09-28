@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -16,17 +16,17 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.widgets.Display;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.CodeAnalysisService;
@@ -63,14 +63,14 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 		super(TEST_SOLUTION, SERVOY_RESOURCES);
 	}
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
 		waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		service = new CodeAnalysisService();
@@ -86,7 +86,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 	}
 
 	// -----------------------------------------------------------------------
-	// getTypeHierarchy — positive tests
+	// getTypeHierarchy â€” positive tests
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -175,7 +175,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 	}
 
 	// -----------------------------------------------------------------------
-	// findReferences — positive tests
+	// findReferences â€” positive tests
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -201,7 +201,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 			
 			assertNotNull(result);
 			// Verify the element was actually resolved (not a "Could not resolve" error)
-			assertTrue("Method should be resolved — should not return 'Could not resolve': " + result,
+			assertTrue("Method should be resolved â€” should not return 'Could not resolve': " + result,
 					!result.contains("Could not resolve"));
 			// The output must be the structured references header, not a "No active solution" error
 			assertTrue("Should return structured references output: " + result,
@@ -233,7 +233,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 
 			assertNotNull(result);
 			// Verify the element was actually resolved
-			assertTrue("Variable should be resolved — should not return 'Could not resolve': " + result,
+			assertTrue("Variable should be resolved â€” should not return 'Could not resolve': " + result,
 				!result.contains("Could not resolve"));
 			assertTrue("Should return structured references output: " + result,
 				result.startsWith("# References to variable"));
@@ -241,7 +241,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 	}
 
 	// -----------------------------------------------------------------------
-	// getMethodCallHierarchy — positive tests
+	// getMethodCallHierarchy â€” positive tests
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -266,8 +266,8 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 			String result = service.getMethodCallHierarchy("forms." + formName, methodName, null, "2");
 
 			assertNotNull(result);
-			// Verify the method was actually resolved — not a "Could not resolve" error
-			assertTrue("Method should be resolved — should not return 'Could not resolve': " + result,
+			// Verify the method was actually resolved â€” not a "Could not resolve" error
+			assertTrue("Method should be resolved â€” should not return 'Could not resolve': " + result,
 				!result.contains("Could not resolve"));
 			// The output must be the structured call hierarchy header
 			assertTrue("Should return structured call hierarchy output: " + result,
@@ -302,7 +302,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 	}
 
 	// -----------------------------------------------------------------------
-	// executeQuickFix — positive test
+	// executeQuickFix â€” positive test
 	// -----------------------------------------------------------------------
 
 	/**
@@ -351,7 +351,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 
 		long markerId = foundMarker[0].getId();
 
-		// List mode — should show the "Remove module" resolution
+		// List mode â€” should show the "Remove module" resolution
 		String listResult = service.executeQuickFix(markerId, -1);
 		assertNotNull(listResult);
 		assertTrue("List mode should return proposal list: " + listResult,
@@ -359,7 +359,7 @@ public class CodeAnalysisIntegrationTest extends TestUtilitiesClass
 		assertTrue("Should not return not-found for a real marker: " + listResult,
 			!listResult.contains("not found"));
 
-		// Apply mode — apply proposal [0] (Remove the fake module)
+		// Apply mode â€” apply proposal [0] (Remove the fake module)
 		String applyResult = service.executeQuickFix(markerId, 0);
 		assertNotNull(applyResult);
 		assertTrue("Apply should report success: " + applyResult,

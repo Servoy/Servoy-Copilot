@@ -20,28 +20,81 @@ import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 import org.junit.platform.suite.api.SuiteDisplayName;
 
+import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilterTest;
+import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCacheTest;
 import com.servoy.eclipse.developer.mcp.integration.AbstractIntegrationTestBaseTest;
+import com.servoy.eclipse.developer.mcp.servers.AnalyzeCodeToolTest;
+import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
+import com.servoy.eclipse.developer.mcp.servers.MemoryServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyWpmServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ShowFormInBrowserToolTest;
+import com.servoy.eclipse.developer.mcp.servers.TimeServerTest;
 import com.servoy.eclipse.developer.mcp.services.CodeEditingServiceTest;
+import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewServiceTest;
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorServiceTest;
+import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageServiceTest;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraphTest;
 import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
+import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
+import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
+import com.servoy.eclipse.developer.mcp.services.TestFileServiceReflectionTest;
+import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 
+/**
+ * Jupiter platform {@link Suite} aggregating ALL plain unit tests in the
+ * Servoy Developer MCP test project. These tests do NOT require a running
+ * Eclipse workbench or Servoy app server — they are pure unit tests using
+ * reflection and mocking.
+ * <p>
+ * Run via: Run As &gt; JUnit Test (NOT JUnit Plug-in Test).
+ * <p>
+ * For integration tests requiring the Eclipse + Servoy runtime, see
+ * {@link AllDeveloperMcpIntegrationTests}.
+ */
 @Suite
 @SuiteDisplayName("Developer MCP - Jupiter unit tests")
 @SelectClasses({
+		// root package
+		ToolExecutorTest.class,
+		// auth
+		BearerTokenAuthenticationFilterTest.class,
+		// cache
+		ServoyResourceCacheTest.class,
+		// servers
+		AnalyzeCodeToolTest.class,
+		GenerateTestCasesToolTest.class,
+		MemoryServerTest.class,
+		ServoyCoderServerTest.class,
+		ServoyContextServerTest.class,
+		ServoyGitServerTest.class,
+		ServoyI18nServerTest.class,
+		ServoyMediaServerTest.class,
+		ServoyTestingServerTest.class,
+		ServoyWpmServerTest.class,
+		ShowFormInBrowserToolTest.class,
+		TimeServerTest.class,
 		// services
 		CodeEditingServiceTest.class,
+		DocumentationValidatorServiceTest.class,
 		FormatValidatorServiceTest.class,
 		FormNavigationGraphServiceTest.class,
 		FormPreviewServiceTest.class,
+		JSUnitCoverageServiceTest.class,
 		NavigationGraphTest.class,
 		PersistDuplicateServiceTest.class,
-		// servers
-		ServoyI18nServerTest.class,
-		// integration base
+		PersistRenameServiceTest.class,
+		ResolvedElementsProcessorTest.class,
+		TestFileServiceReflectionTest.class,
+		WpmServiceTest.class,
+		// integration base (pure unit test despite package)
 		AbstractIntegrationTestBaseTest.class,
 })
 public class AllDeveloperMcpJupiterUnitTests {

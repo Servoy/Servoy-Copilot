@@ -19,17 +19,18 @@ package com.servoy.eclipse.developer.mcp.integration;
 import java.util.List;
 
 import org.eclipse.swt.widgets.Display;
-import org.junit.rules.ExternalResource;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
 import com.servoy.eclipse.developer.mcp.integration.TestDialogInterceptor.UnexpectedDialogFailure;
 
 /**
- * JUnit 4 {@code @Rule} that guards integration tests against unexpected SWT dialogs.
+ * JUnit 5 (Jupiter) extension that guards integration tests against unexpected SWT dialogs.
  * <p>
  * Install on any test class (or on {@link TestUtilitiesClass} to cover all subclasses):
  * <pre>
- *   {@literal @}Rule
- *   public DialogGuardRule dialogGuard = new DialogGuardRule();
+ *   {@literal @}ExtendWith(DialogGuardRule.class)
  * </pre>
  * <p>
  * <b>Before each test:</b> activates the {@link TestDialogInterceptor} SWT display filter
@@ -46,16 +47,16 @@ import com.servoy.eclipse.developer.mcp.integration.TestDialogInterceptor.Unexpe
  * via {@link TestDialogInterceptor#expect(DialogExpectation)} <em>before</em> the call
  * that causes the dialog to appear.
  */
-public class DialogGuardRule extends ExternalResource
+public class DialogGuardRule implements BeforeEachCallback, AfterEachCallback
 {
 	@Override
-	protected void before()
+	public void beforeEach(ExtensionContext context)
 	{
 		TestDialogInterceptor.beginTest();
 	}
 
 	@Override
-	protected void after()
+	public void afterEach(ExtensionContext context)
 	{
 		// Drain any asyncExec callbacks that the filter may have posted during the
 		// very last operation of the test.  We pump for up to 2 s or until the

@@ -1,9 +1,9 @@
-package com.servoy.eclipse.developer.mcp.integration;
+﻿package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,10 +19,10 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 import com.servoy.eclipse.developer.mcp.services.IdeStateService;
@@ -37,14 +37,14 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 	private ServoyIdeServer server;
 	private IProject project;
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		TestUtilitiesClass.deleteProjects(PROJECT_NAME);
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		server = new ServoyIdeServer(new ProjectService(), new WorkspaceService(), new MarkdownService(),
 				new IdeStateService());
@@ -70,7 +70,7 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 		createTestFile("data/config.xml", "<config><key>value</key></config>");
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		if (project != null && project.exists()) {
 			project.delete(true, true, new NullProgressMonitor());

@@ -1,9 +1,9 @@
-package com.servoy.eclipse.developer.mcp.integration;
+﻿package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;

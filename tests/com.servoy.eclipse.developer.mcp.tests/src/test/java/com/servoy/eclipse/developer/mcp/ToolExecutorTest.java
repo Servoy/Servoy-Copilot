@@ -16,11 +16,12 @@
 */
 package com.servoy.eclipse.developer.mcp;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertArrayEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -28,7 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -202,9 +203,9 @@ public class ToolExecutorTest
 		assertTrue(map.isEmpty());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testToMap_oddLengthArray()
 	{
-		executor.toMap(new String[]{"key1", "val1", "key2"});
+		assertThrows(IllegalArgumentException.class, () -> executor.toMap(new String[]{"key1", "val1", "key2"}));
 	}
 }

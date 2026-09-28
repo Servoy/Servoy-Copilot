@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -8,10 +8,10 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -26,10 +26,10 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.services.TestFileService;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -63,14 +63,14 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	private TestFileService service;  
 	private ServoyProject servoyProject;
 
-	@BeforeClass
+	@BeforeAll
 	public static void deleteProjectsBeforeClass() throws Exception
 	{
 		TestUtilitiesClass.deleteProjects(SOLUTION_NAME);
 		TestUtilitiesClass.waitForWorkspaceBuildJobs();
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		service = TestFileService.getInstance();
@@ -105,8 +105,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 			e.printStackTrace(System.err);
 			servoyProject = null;
 		}
-		assumeNotNull("Failed to create test project in workspace - skipping Layer 2 tests",
-			servoyProject);
+		assertNotNull("Failed to create test project in workspace", servoyProject);
 
 		// Clean slate: OS-level delete then refresh, consistent with CreateTestFileIntegrationTest.
 		deleteFileIfExists(TEST_FILE_NAME);
@@ -115,7 +114,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
 	}
 
-	@After
+	@AfterEach
 	public void tearDown()
 	{
 		deleteFileIfExists(TEST_FILE_NAME);
@@ -158,7 +157,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	}
 
 	// -----------------------------------------------------------------------
-	// Body wrapping (unittest.txt §2: testCode is body-only; tool adds declaration)
+	// Body wrapping (unittest.txt Â§2: testCode is body-only; tool adds declaration)
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -192,7 +191,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	@Test
 	public void testAddTestMethod_completeFunctionPassedAsCode_noNestedDeclaration() throws Exception
 	{
-		// unittest.txt §2: if AI accidentally passes a complete function declaration
+		// unittest.txt Â§2: if AI accidentally passes a complete function declaration
 		// instead of body-only, the service must extract the body and NOT create
 		// a nested "function test_x() { function test_x() { ... } }" structure.
 		String fullFunction = "function test_defarg() {\n    jsunit.assertEquals(\"x\", 1, 1);\n}";
@@ -206,7 +205,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	}
 
 	// -----------------------------------------------------------------------
-	// @properties annotation (unittest.txt §4: typeid:24, UUID format, uniqueness)
+	// @properties annotation (unittest.txt Â§4: typeid:24, UUID format, uniqueness)
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -277,7 +276,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	@Test
 	public void testAddTestMethod_multiLineBody_allLinesPresent() throws Exception
 	{
-		// unittest.txt §2: Arrange-Act-Assert pattern with multi-line body
+		// unittest.txt Â§2: Arrange-Act-Assert pattern with multi-line body
 		String body = "    // Arrange\n" +
 			"    var x = 5;\n" +
 			"    // Act\n" +
@@ -299,7 +298,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	@Test
 	public void testAddTestMethod_bodyWithNestedBraces_braceMatchingCorrect() throws Exception
 	{
-		// unittest.txt §2: body can contain if/else blocks with nested braces
+		// unittest.txt Â§2: body can contain if/else blocks with nested braces
 		String body = "    var result;\n" +
 			"    if (true) {\n" +
 			"        result = 1;\n" +
@@ -421,7 +420,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	}
 
 	// -----------------------------------------------------------------------
-	// Error conditions (unittest.txt §5)
+	// Error conditions (unittest.txt Â§5)
 	// -----------------------------------------------------------------------
 
 	@Test
@@ -440,7 +439,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	public void testAddTestMethod_setUpNotAllowed_returnsError() throws Exception
 	{
 		// 'setUp' is a valid JSUnit special function, but addTestMethod requires the
-		// test_ prefix.  This enforces the rule from unittest.txt §3.
+		// test_ prefix.  This enforces the rule from unittest.txt Â§3.
 		String result = service.addTestMethod(TEST_FILE_NAME, "setUp",
 			"    // initialization code", SOLUTION_NAME);
 
@@ -452,7 +451,7 @@ public class AddTestMethodIntegrationTest extends DialogGuardBase
 	@Test
 	public void testAddTestMethod_onNonExistentFile_returnsError() throws Exception
 	{
-		// unittest.txt §2: the test file must already exist (created by createTestFile)
+		// unittest.txt Â§2: the test file must already exist (created by createTestFile)
 		String result = service.addTestMethod("test_doesnotexist.js", "test_something",
 			"    jsunit.assertTrue(true);", SOLUTION_NAME);
 

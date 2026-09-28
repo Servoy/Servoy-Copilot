@@ -1,24 +1,24 @@
 package com.servoy.eclipse.developer.mcp.services;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService.OutlineEntry;
 
 public class WorkspaceServiceFileOutlineTest {
 	private WorkspaceService service;
 
-	@Before
+	@BeforeEach
 	public void setUp() {
 		service = new WorkspaceService();
 	}

@@ -1,9 +1,9 @@
 package com.servoy.eclipse.developer.mcp.servers;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -14,9 +14,9 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests for the private {@code discoverCypressHelpers} method in
@@ -29,7 +29,7 @@ public class DiscoverCypressHelpersTest {
 	private ServoyTestingServer server;
 	private Path tempDir;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		discoverMethod = ServoyTestingServer.class.getDeclaredMethod("discoverCypressHelpers",
 				java.nio.file.Path.class);
@@ -38,7 +38,7 @@ public class DiscoverCypressHelpersTest {
 		tempDir = Files.createTempDirectory("discover-helpers-test");
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		if (tempDir != null && Files.exists(tempDir)) {
 			Files.walkFileTree(tempDir, new SimpleFileVisitor<Path>() {

@@ -8,13 +8,13 @@
 */
 package com.servoy.eclipse.developer.mcp.servers;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertEquals;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNull;
 
 import java.lang.reflect.Method;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for the private static {@code extractFunctionName} helper
@@ -27,7 +27,7 @@ public class AnalyzeCodeToolTest
 {
 	private Method extractFunctionName;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		extractFunctionName = ServoyTestingServer.class.getDeclaredMethod("extractFunctionName",

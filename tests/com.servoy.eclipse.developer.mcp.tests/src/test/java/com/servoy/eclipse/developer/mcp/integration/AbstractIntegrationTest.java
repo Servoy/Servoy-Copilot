@@ -1,4 +1,4 @@
-/*
+﻿/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -16,8 +16,8 @@
 */
 package com.servoy.eclipse.developer.mcp.integration;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -29,10 +29,10 @@ import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
 /**
  * Base class for integration tests that activate Servoy solutions.
  * <p>
- * Uses JUnit 4 {@code @BeforeClass}/{@code @AfterClass} because the integration
+ * Uses JUnit 4 {@code @BeforeAll}/{@code @AfterAll} because the integration
  * tests in this suite use JUnit 4. If this class is ever migrated to JUnit 5
  * {@code @BeforeAll}/{@code @AfterAll}, the lifecycle methods must remain
- * {@code static} and {@code public} — and
+ * {@code static} and {@code public} â€” and
  * {@code AbstractIntegrationTestBaseTest} relies on calling them directly.
  * </p>
  * <p>
@@ -55,7 +55,7 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	 * Disables the node folder copy/npm cycle before any test in this class runs.
 	 * Override in subclasses that require the node folder to be set up.
 	 */
-	@BeforeClass
+	@BeforeAll
 	public static void adjustTitaniumBuildJobEnablementForThisClass() throws Exception {
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 	}
@@ -64,7 +64,7 @@ public abstract class AbstractIntegrationTest extends TestUtilitiesClass {
 	 * Restores the default (enabled) state after all tests in this class have run,
 	 * so subsequent test classes are unaffected.
 	 */
-	@AfterClass
+	@AfterAll
 	public static void restoreTitaniumBuildJobEnablementToDefault() {
 		Activator.setNodeExtractionAndTitaniumBuildDisabled(true);
 		waitForTitaniumuildJobs(); // just to make sure we are not in the middle of a titanium build when continuing with next test class

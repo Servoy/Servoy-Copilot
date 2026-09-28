@@ -16,16 +16,16 @@
 */
 package com.servoy.eclipse.developer.mcp.servers;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertFalse;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertNotNull;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.assertTrue;
+import static com.servoy.eclipse.developer.mcp.junit.Assert.fail;
 
 import java.lang.reflect.Field;
 import java.util.Map;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.cache.CachedEntry;
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
@@ -45,7 +45,7 @@ import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
 public class ServoyContextServerTest {
 	private ServoyContextServer server;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		server = new ServoyContextServer(new com.servoy.eclipse.developer.mcp.services.LocalHistoryService());
 		// Clear the singleton cache between tests
