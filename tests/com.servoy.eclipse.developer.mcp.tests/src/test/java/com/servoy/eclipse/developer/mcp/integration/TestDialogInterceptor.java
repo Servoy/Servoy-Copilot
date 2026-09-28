@@ -44,6 +44,13 @@ import org.eclipse.swt.widgets.Text;
  * {@link DialogGuardRule} can fail the test at the end of the test method with the
  * UI-thread stack trace captured at dialog-open time.
  * <p>
+ * A dialog that is not really asking anyone anything - platform noise such as the
+ * "blocked jobs" progress dialog Eclipse pops up while the UI thread waits on a build -
+ * can be registered once via {@link #ignoreAlways(DialogExpectation)} instead. An
+ * ignored dialog is left completely alone: it is neither closed nor treated as a
+ * failure, so it dismisses itself the moment the platform is done with it (e.g. once the
+ * build it was reporting on finishes), exactly as it would outside a test.
+ * <p>
  * <b>Threading note:</b> Integration tests run on a background thread; dialogs open
  * on the SWT UI thread. Expectations are therefore stored in a plain
  * {@link ConcurrentLinkedDeque} (not a {@code ThreadLocal}), and tests are assumed to
@@ -69,6 +76,13 @@ public class TestDialogInterceptor
 
 	/** Expectations pushed by the test thread, consumed by the UI thread. */
 	private static final ConcurrentLinkedDeque<DialogExpectation> expectations = new ConcurrentLinkedDeque<>();
+
+	/**
+	 * Dialog patterns that are never a failure and never touched, across every test in the
+	 * JVM - see {@link #ignoreAlways(DialogExpectation)}. Unlike {@link #expectations}, these
+	 * are not consumed on match and not cleared between tests.
+	 */
+	private static final CopyOnWriteArrayList<DialogExpectation> permanentIgnores = new CopyOnWriteArrayList<>();
 
 	/** Failures recorded by the UI thread, read by the test thread in endTest(). */
 	private static final CopyOnWriteArrayList<UnexpectedDialogFailure> failures = new CopyOnWriteArrayList<>();
@@ -98,6 +112,25 @@ public class TestDialogInterceptor
 	public static void expect(DialogExpectation expectation)
 	{
 		expectations.addLast(expectation);
+	}
+
+	/**
+	 * Registers a dialog pattern that should always be left alone: not closed, not filled
+	 * in, not counted as a failure - for every test in this JVM, not just the current one.
+	 * Use this for platform dialogs that are not really prompting anyone for anything, such
+	 * as Eclipse's "blocked jobs" progress dialog that appears while the UI thread waits on
+	 * a build or other job. Matching (substring, case-insensitive on title and/or message)
+	 * is the same as for {@link #expect(DialogExpectation)}.
+	 */
+	public static void ignoreAlways(DialogExpectation.Builder builder)
+	{
+		ignoreAlways(builder.build());
+	}
+
+	/** @see #ignoreAlways(DialogExpectation.Builder) */
+	public static void ignoreAlways(DialogExpectation expectation)
+	{
+		permanentIgnores.add(expectation);
 	}
 
 	// -------------------------------------------------------------------------
@@ -145,7 +178,22 @@ public class TestDialogInterceptor
 			{
 				display.syncExec(() -> doInstall(display));
 			}
+			registerDefaultIgnores();
 		}
+	}
+
+	/**
+	 * Registers the platform dialogs that are never a real failure, regardless of which
+	 * test triggers them. Currently just the "blocked jobs" progress dialog
+	 * ({@code org.eclipse.ui.internal.progress.BlockedJobsDialog}) that Eclipse pops up
+	 * whenever the UI thread blocks on a {@code Job.join()} (e.g. waiting for a workspace
+	 * build): it is informational, dismisses itself once the job it names completes, and
+	 * takes no input - not the kind of dialog a test failing on it would ever be pointing
+	 * at a real bug.
+	 */
+	private static void registerDefaultIgnores()
+	{
+		ignoreAlways(DialogExpectation.withTitleContaining("User Operation is Waiting"));
 	}
 
 	private static void doInstall(Display display)
@@ -176,6 +224,12 @@ public class TestDialogInterceptor
 				if (match != null)
 				{
 					applyExpectation(shell, match);
+				}
+				else if (isPermanentlyIgnored(title, message))
+				{
+					// Not a failure and not ours to answer - leave it exactly as the platform
+					// made it, so it dismisses itself on its own schedule (e.g. once the build
+					// it is reporting on finishes).
 				}
 				else
 				{
@@ -222,6 +276,15 @@ public class TestDialogInterceptor
 		if (e.titleContains != null && !containsIgnoreCase(title, e.titleContains)) return false;
 		if (e.messageContains != null && !containsIgnoreCase(message, e.messageContains)) return false;
 		return true;
+	}
+
+	private static boolean isPermanentlyIgnored(String title, String message)
+	{
+		for (DialogExpectation e : permanentIgnores)
+		{
+			if (matches(e, title, message)) return true;
+		}
+		return false;
 	}
 
 	private static boolean containsIgnoreCase(String haystack, String needle)
