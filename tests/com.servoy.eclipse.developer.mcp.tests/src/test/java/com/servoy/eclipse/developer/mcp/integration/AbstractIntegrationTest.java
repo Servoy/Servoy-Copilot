@@ -29,11 +29,9 @@ import com.servoy.eclipse.ngclient.ui.NodeFolderCreatorJob;
 /**
  * Base class for integration tests that activate Servoy solutions.
  * <p>
- * Uses JUnit 4 {@code @BeforeAll}/{@code @AfterAll} because the integration
- * tests in this suite use JUnit 4. If this class is ever migrated to JUnit 5
- * {@code @BeforeAll}/{@code @AfterAll}, the lifecycle methods must remain
- * {@code static} and {@code public} â€” and
- * {@code AbstractIntegrationTestBaseTest} relies on calling them directly.
+ * Uses JUnit 5 (Jupiter) {@code @BeforeAll}/{@code @AfterAll}. These lifecycle
+ * methods must remain {@code static} and {@code public} because
+ * {@code AbstractIntegrationTestBaseTest} calls them directly.
  * </p>
  * <p>
  * Disables {@link NodeFolderCreatorJob} before the test class runs and restores

@@ -245,8 +245,7 @@
                                 GetNavigationPathIntegrationTest,
                                 ServoyScriptResolverIntegrationTest,
                                 FormNavigationGraphServiceTest,
-                                FormPreviewServiceTest,
-                                AbstractIntegrationTestBaseTest
+                                FormPreviewServiceTest
                             </test>
                             <useUIHarness>true</useUIHarness>
                             <useUIThread>false</useUIThread>
