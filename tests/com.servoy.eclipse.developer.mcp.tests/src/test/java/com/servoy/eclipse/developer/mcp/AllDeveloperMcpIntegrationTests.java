@@ -29,6 +29,7 @@ import com.servoy.eclipse.developer.mcp.integration.CreateSolutionIntegrationTes
 import com.servoy.eclipse.developer.mcp.integration.CreateTestFileIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DatabaseToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.DocumentationToolsIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.EvaluateToolIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.FormNavigationGraphServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.GetNavigationPathIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.JSUnitRunnerGroupedTest;
@@ -84,6 +85,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ServoyDevServerTest.class, ServoyIdeServerTest.class, McpServerFactoryTest.class, McpServerBuiltinsTest.class,
 		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class,
 		ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class,
-		GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class, })
+		GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class,
+		EvaluateToolIntegrationTest.class, })
 public class AllDeveloperMcpIntegrationTests {
 }

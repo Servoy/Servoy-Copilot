@@ -43,6 +43,7 @@
                         BearerTokenAuthenticationFilterTest,
                         ServoyResourceCacheTest,
                         AnalyzeCodeToolTest,
+                        EvaluateToolTest,
                         GenerateTestCasesToolTest,
                         MemoryServerTest,
                         ServoyCoderServerTest,
@@ -244,6 +245,7 @@
                                 FormNavigationGraphServiceIntegrationTest,
                                 GetNavigationPathIntegrationTest,
                                 ServoyScriptResolverIntegrationTest,
+                                EvaluateToolIntegrationTest,
                                 FormNavigationGraphServiceTest,
                                 FormPreviewServiceTest
                             </test>

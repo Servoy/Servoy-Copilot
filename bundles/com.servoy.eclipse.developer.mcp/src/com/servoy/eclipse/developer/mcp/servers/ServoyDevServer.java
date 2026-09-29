@@ -47,7 +47,6 @@ import org.eclipse.swt.widgets.Display;
 import com.servoy.base.persistence.IBaseColumn;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
-import com.servoy.j2db.persistence.TableChangeHandler;
 import com.servoy.eclipse.core.util.EclipseDatabaseUtils;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -56,16 +55,17 @@ import com.servoy.eclipse.developer.mcp.dto.DocumentationItem;
 import com.servoy.eclipse.developer.mcp.dto.IdentifierContext;
 import com.servoy.eclipse.developer.mcp.services.CodeContextService;
 import com.servoy.eclipse.developer.mcp.services.DocumentationValidatorService;
+import com.servoy.eclipse.developer.mcp.services.ExpressionEvaluationService;
 import com.servoy.eclipse.developer.mcp.services.FilePathResolver;
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorService;
+import com.servoy.eclipse.developer.mcp.services.GitService;
 import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
+import com.servoy.eclipse.developer.mcp.services.MenuService;
 import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
+import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
-import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
-import com.servoy.eclipse.developer.mcp.services.MenuService;
-import com.servoy.eclipse.developer.mcp.services.GitService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.DataModelManager;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -84,6 +84,7 @@ import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.ScriptNameValidator;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.SolutionMetaData;
+import com.servoy.j2db.persistence.TableChangeHandler;
 import com.servoy.j2db.persistence.ValidatorSearchContext;
 import com.servoy.j2db.query.ColumnType;
 import com.servoy.j2db.server.ngclient.less.resources.ThemeResourceLoader;
@@ -116,6 +117,7 @@ public class ServoyDevServer {
 	private final FormatValidatorService formatValidatorService = new FormatValidatorService();
 	private final MenuService menuService = new MenuService();
 	private final GitService gitService = new GitService();
+	private final ExpressionEvaluationService expressionEvaluationService = new ExpressionEvaluationService();
 
 	public ServoyDevServer() {
 	}
@@ -1917,6 +1919,53 @@ public class ServoyDevServer {
 		} finally {
 			Utils.closeConnection(connection);
 		}
+	}
+
+	@Tool(name = "evaluate", description = "Runs a JavaScript expression in the developer's already-running debug client for the "
+			+ "active solution and returns its value, console output and any error. Address it with Servoy top-level scopes: "
+			+ "scopes.<s>.<fn>(), forms.<f>.<fn>(), forms.<f>.foundset, globals.x, databaseManager.*. Multiple statements are "
+			+ "allowed; the value of the last expression is returned. This executes arbitrary, mutating solution code against the "
+			+ "developer's database - it can write records. It is NOT a substitute for a JSUnit test: an evaluation is what you do "
+			+ "before you know what the test should assert. It leaves no artifact and proves nothing to the next run. Requires a "
+			+ "running debug client for the target; if none is running it returns a message naming the action to take, never a timeout.", type = "object")
+	public String evaluate(
+			@ToolParam(name = "expression", description = "The JavaScript expression or multi-statement script to evaluate. The value of the last expression is returned.", required = true) String expression,
+			@ToolParam(name = "solutionName", description = "Optional solution to target; when omitted the active solution is used. Must match a running debug client's loaded solution.", required = false) String solutionName,
+			@ToolParam(name = "timeoutSeconds", description = "Optional bounded wait in seconds before a timeout error is returned (default 15). The expression may keep running on the event thread.", required = false) String timeoutSeconds) {
+		try {
+			int timeout = ExpressionEvaluationService.DEFAULT_TIMEOUT_SECONDS;
+			if (timeoutSeconds != null && !timeoutSeconds.isBlank()) {
+				try {
+					int parsed = Integer.parseInt(timeoutSeconds.trim());
+					if (parsed > 0)
+						timeout = parsed;
+				} catch (NumberFormatException nfe) {
+					// keep the default when unparseable
+				}
+			}
+
+			ExpressionEvaluationService.EvaluationResult result = expressionEvaluationService.evaluate(expression,
+					solutionName, timeout);
+
+			StringBuilder sb = new StringBuilder("{");
+			sb.append("\"value\":").append(jsonValue(result.value));
+			if (result.valueFile != null) {
+				sb.append(",\"valueFile\":\"").append(escapeJson(result.valueFile)).append("\"");
+			}
+			sb.append(",\"console\":").append(jsonValue(result.console));
+			sb.append(",\"error\":").append(jsonValue(result.error));
+			sb.append("}");
+			return sb.toString();
+		} catch (Exception e) {
+			ServoyLog.logError("evaluate failed", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	private String jsonValue(String s) {
+		if (s == null)
+			return "null";
+		return "\"" + escapeJson(s) + "\"";
 	}
 
 	@Tool(name = "addColumn", description = "Adds a new column to an existing database or in-memory table and saves the change immediately. "
