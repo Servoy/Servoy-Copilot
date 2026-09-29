@@ -39,6 +39,7 @@ import com.servoy.eclipse.developer.mcp.integration.MenuToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.PersistDuplicateIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RenamePersistIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.RunTestMethodIntegrationTest;
+import com.servoy.eclipse.developer.mcp.integration.RunningClientExecutionIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ScriptContextServiceIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.SecurityToolsIntegrationTest;
 import com.servoy.eclipse.developer.mcp.integration.ServoyCoderServerIntegrationTest;
@@ -86,6 +87,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServerTest;
 		ValidationToolsIntegrationTest.class, MenuToolsIntegrationTest.class, ServoyIdeServerReadIntegrationTest.class,
 		ScriptContextServiceIntegrationTest.class, FormNavigationGraphServiceIntegrationTest.class,
 		GetNavigationPathIntegrationTest.class, ServoyScriptResolverIntegrationTest.class,
-		EvaluateToolIntegrationTest.class, })
+		EvaluateToolIntegrationTest.class,
+		RunningClientExecutionIntegrationTest.class,})
 public class AllDeveloperMcpIntegrationTests {
 }

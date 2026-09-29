@@ -28,6 +28,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServer;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDebugServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServer;
@@ -52,7 +53,7 @@ public class McpServerBuiltins {
 	public static final Class<?>[] BUILT_IN_SERVER_CLASSES = { TimeServer.class, MemoryServer.class,
 			ServoyContextServer.class, ServoyCoderServer.class, ServoyIdeServer.class, ServoyGitServer.class,
 			ServoyDevServer.class, ServoyTestingServer.class, ServoyWpmServer.class, ServoyMediaServer.class,
-			ServoyI18nServer.class, };
+			ServoyI18nServer.class, ServoyDebugServer.class, };
 
 	/**
 	 * Instantiates one instance of each registered server class using E4 DI. Falls

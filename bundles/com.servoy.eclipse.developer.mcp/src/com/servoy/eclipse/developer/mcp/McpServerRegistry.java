@@ -140,6 +140,11 @@ public class McpServerRegistry {
 			super(token, delegate);
 		}
 	}
+	public static class ServoyDebugServlet extends BearerTokenAuthenticationFilter {
+		public ServoyDebugServlet(String token, HttpServlet delegate) {
+			super(token, delegate);
+		}
+	}
 
 	/** Maps server name - named servlet class to use as the Tomcat wrapper. */
 	private static final Map<String, java.util.function.BiFunction<String, HttpServlet, BearerTokenAuthenticationFilter>> SERVLET_FACTORIES;
@@ -157,6 +162,7 @@ public class McpServerRegistry {
 		SERVLET_FACTORIES.put("servoy-wpm", (t, d) -> new ServoyWpmServlet(t, d));
 		SERVLET_FACTORIES.put("servoy-media", (t, d) -> new ServoyMediaServlet(t, d));
 		SERVLET_FACTORIES.put("servoy-i18n", (t, d) -> new ServoyI18nServlet(t, d));
+		SERVLET_FACTORIES.put("servoy-debug", (t, d) -> new ServoyDebugServlet(t, d));
 	}
 
 	private static volatile McpServerRegistry instance;

@@ -29,6 +29,7 @@ import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServerTest;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDebugServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyMediaServerTest;
@@ -46,6 +47,7 @@ import com.servoy.eclipse.developer.mcp.services.NavigationGraphTest;
 import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
 import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
+import com.servoy.eclipse.developer.mcp.services.RunningClientExecutionServiceTest;
 import com.servoy.eclipse.developer.mcp.services.TestFileServiceReflectionTest;
 import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 
@@ -76,6 +78,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 		MemoryServerTest.class,
 		ServoyCoderServerTest.class,
 		ServoyContextServerTest.class,
+		ServoyDebugServerTest.class,
 		ServoyGitServerTest.class,
 		ServoyI18nServerTest.class,
 		ServoyMediaServerTest.class,
@@ -94,6 +97,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 		PersistDuplicateServiceTest.class,
 		PersistRenameServiceTest.class,
 		ResolvedElementsProcessorTest.class,
+		RunningClientExecutionServiceTest.class,
 		TestFileServiceReflectionTest.class,
 		WpmServiceTest.class,
 		// integration base (pure unit test despite package)
