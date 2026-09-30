@@ -16,6 +16,10 @@
 */
 package com.servoy.eclipse.developer.mcp.services;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.RhinoException;
+import org.mozilla.javascript.ScriptStackElement;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.Wrapper;
@@ -33,12 +38,17 @@ import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.j2db.IApplication;
 import com.servoy.j2db.IDebugClient;
 import com.servoy.j2db.IDebugClientHandler;
+import com.servoy.j2db.dataprocessing.IDataSet;
+import com.servoy.j2db.dataprocessing.IFoundSet;
+import com.servoy.j2db.dataprocessing.IRecord;
+import com.servoy.j2db.dataprocessing.JSDataSet;
 import com.servoy.j2db.debug.DebugUtils;
 import com.servoy.j2db.persistence.IRootObject;
 import com.servoy.j2db.persistence.ScriptVariable;
 import com.servoy.j2db.scripting.GlobalScope;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 import com.servoy.j2db.util.Pair;
+import com.servoy.j2db.util.Utils;
 
 /**
  * Runs solution JavaScript in a live, already-running Servoy debug client and captures both the evaluated value/error and the
@@ -65,6 +75,17 @@ public class RunningClientExecutionService
 	 * Marker returned by the executed value serializer when the evaluated result is JavaScript {@code null}/{@code undefined}.
 	 */
 	static final String NULL_MARKER = "(null)";
+
+	/**
+	 * Hard cap on the rendered result value; anything larger is truncated in the result and the full value is spilled to a temp file
+	 * whose path is reported alongside.
+	 */
+	private static final int VALUE_SIZE_CAP = 8000;
+
+	/**
+	 * Number of rows shown when a foundset / record / dataset return is described rather than dumped whole.
+	 */
+	private static final int DESCRIBE_ROW_LIMIT = 10;
 
 	/**
 	 * Runs an ad-hoc script and/or a named method in the current debug-ready client and returns a formatted markdown result containing
@@ -221,7 +242,10 @@ public class RunningClientExecutionService
 		{
 			outputText = capturedOutput.toString();
 		}
-		return formatResult(clientDescription, serializeResult(result[0]), outputText);
+		StringBuilder valueFileOut = new StringBuilder();
+		String resultText = applyValueCap(serializeResult(result[0]), valueFileOut);
+		String valueFile = valueFileOut.length() > 0 ? valueFileOut.toString() : null;
+		return formatResult(clientDescription, resultText, valueFile, outputText);
 	}
 
 	/**
@@ -327,11 +351,174 @@ public class RunningClientExecutionService
 		}
 		try
 		{
+			// Render Rhino/Servoy values the way the running client would print them (arrays as [1,2,3], objects as JSON-like), and
+			// describe a foundset / record / dataset by datasource + first rows rather than dumping it whole, so a caller reads a usable
+			// value instead of an opaque Java reference such as "[Ljava.lang.Object;@a6b0d09" that String.valueOf would produce.
+			String rendered = renderValue(value);
+			if (rendered != null)
+			{
+				return rendered;
+			}
 			return String.valueOf(value);
 		}
 		catch (Exception e)
 		{
 			return value.getClass().getName() + " (could not be converted to string: " + e.getMessage() + ")";
+		}
+	}
+
+	/**
+	 * Renders an evaluated value: a {@link IFoundSet} / {@link IRecord} / {@link IDataSet} / {@link JSDataSet} is described (datasource,
+	 * size, first {@value #DESCRIBE_ROW_LIMIT} rows) rather than dumped whole; anything else is rendered the way the client would print it.
+	 */
+	private static String renderValue(Object value)
+	{
+		if (value instanceof IFoundSet foundSet)
+		{
+			return describeFoundSet(foundSet);
+		}
+		if (value instanceof IRecord record)
+		{
+			return describeRecord(record);
+		}
+		if (value instanceof JSDataSet dataSet)
+		{
+			return describeDataSet(dataSet.getDataSet());
+		}
+		if (value instanceof IDataSet dataSet)
+		{
+			return describeDataSet(dataSet);
+		}
+		return Utils.getScriptableString(value);
+	}
+
+	private static String describeFoundSet(IFoundSet foundSet)
+	{
+		StringBuilder sb = new StringBuilder();
+		int size = foundSet.getSize();
+		sb.append("JSFoundSet[dataSource=").append(foundSet.getDataSource()).append(", size=").append(size).append("]");
+		int shown = Math.min(size, DESCRIBE_ROW_LIMIT);
+		if (shown > 0)
+		{
+			sb.append("\nfirst ").append(shown).append(" record(s):");
+			for (int i = 0; i < shown; i++)
+			{
+				IRecord record = foundSet.getRecord(i);
+				sb.append("\n  [").append(i).append("] ").append(renderRecordRow(record));
+			}
+		}
+		if (size > shown)
+		{
+			sb.append("\n  ... (").append(size - shown).append(" more)");
+		}
+		return sb.toString();
+	}
+
+	private static String describeRecord(IRecord record)
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append("JSRecord[dataSource=").append(record.getDataSource()).append("]");
+		sb.append("\n  ").append(renderRecordRow(record));
+		return sb.toString();
+	}
+
+	private static String renderRecordRow(IRecord record)
+	{
+		if (record == null)
+		{
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("{");
+		try
+		{
+			IFoundSet parent = record.getParentFoundSet();
+			String[] names = parent != null ? parent.getDataProviderNames(0) : null;
+			if (names == null || names.length == 0)
+			{
+				names = record.getPK() != null ? new String[0] : null;
+			}
+			if (names != null && names.length > 0)
+			{
+				boolean first = true;
+				for (String name : names)
+				{
+					if (!first)
+					{
+						sb.append(", ");
+					}
+					Object v = record.getValue(name);
+					sb.append(name).append('=').append(Utils.getScriptableString(v));
+					first = false;
+				}
+			}
+			else
+			{
+				Object[] pk = record.getPK();
+				sb.append("pk=").append(Utils.getScriptableString(pk));
+			}
+		}
+		catch (Exception e)
+		{
+			sb.append("<error rendering record: ").append(e.getMessage()).append('>');
+		}
+		sb.append('}');
+		return sb.toString();
+	}
+
+	private static String describeDataSet(IDataSet dataSet)
+	{
+		StringBuilder sb = new StringBuilder();
+		int rowCount = dataSet.getRowCount();
+		String[] cols = dataSet.getColumnNames();
+		sb.append("JSDataSet[rowCount=").append(rowCount).append(", columns=");
+		sb.append(cols != null ? String.join(",", cols) : "").append("]");
+		int shown = Math.min(rowCount, DESCRIBE_ROW_LIMIT);
+		if (shown > 0)
+		{
+			sb.append("\nfirst ").append(shown).append(" row(s):");
+			for (int i = 0; i < shown; i++)
+			{
+				Object[] row = dataSet.getRow(i);
+				sb.append("\n  [").append(i).append("] ").append(Utils.getScriptableString(row));
+			}
+		}
+		if (rowCount > shown)
+		{
+			sb.append("\n  ... (").append(rowCount - shown).append(" more)");
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * Applies the {@value #VALUE_SIZE_CAP}-char cap to a rendered result: when it fits it is returned unchanged and {@code valueFile}
+	 * stays null; when it does not, the full text is spilled to a temp file and a truncated form is returned. Package-private for tests.
+	 */
+	static String applyValueCap(String rendered, StringBuilder valueFileOut)
+	{
+		if (rendered == null || rendered.length() <= VALUE_SIZE_CAP)
+		{
+			return rendered;
+		}
+		String valueFile = spillToTempFile(rendered);
+		if (valueFile != null && valueFileOut != null)
+		{
+			valueFileOut.append(valueFile);
+		}
+		return rendered.substring(0, VALUE_SIZE_CAP) + "... [truncated, " + rendered.length() + " chars]";
+	}
+
+	private static String spillToTempFile(String content)
+	{
+		try
+		{
+			Path file = Files.createTempFile("svy-debug-exec-", ".txt");
+			Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+			return file.toAbsolutePath().toString();
+		}
+		catch (IOException e)
+		{
+			ServoyLog.logError("executeInRunningClient: failed to spill over-cap value to a temp file", e);
+			return null;
 		}
 	}
 
@@ -344,10 +531,41 @@ public class RunningClientExecutionService
 		{
 			String rhinoMessage = rhino.getMessage() != null ? rhino.getMessage() : rhino.getClass().getSimpleName();
 			StringBuilder sb = new StringBuilder("Error: ").append(rhinoMessage);
-			String scriptStack = rhino.getScriptStackTrace();
-			if (scriptStack != null && !scriptStack.isBlank())
+			// Render solution-relative Servoy frames (<module>/<scope>.js:<line>) rather than the Rhino/Java trace, and elide the
+			// internal wrapper frame we synthesise around the script.
+			ScriptStackElement[] stack = null;
+			try
 			{
-				sb.append('\n').append(scriptStack.stripTrailing());
+				stack = rhino.getScriptStack();
+			}
+			catch (Exception ignore)
+			{
+				// fall through to the plain script stack text
+			}
+			if (stack != null && stack.length > 0)
+			{
+				for (ScriptStackElement frame : stack)
+				{
+					if (frame.fileName != null && frame.fileName.startsWith("servoy-debug"))
+					{
+						continue;
+					}
+					sb.append('\n');
+					frame.renderJavaStyle(sb);
+				}
+			}
+			else
+			{
+				String scriptStack = rhino.getScriptStackTrace();
+				if (scriptStack != null && !scriptStack.isBlank())
+				{
+					sb.append('\n').append(scriptStack.stripTrailing());
+				}
+			}
+			String hint = bareIdentifierHint(rhinoMessage);
+			if (hint != null)
+			{
+				sb.append('\n').append(hint);
 			}
 			return sb.toString();
 		}
@@ -369,6 +587,52 @@ public class RunningClientExecutionService
 			}
 		}
 		return sb.toString();
+	}
+
+	/**
+	 * Enriches an error message only when it clearly names a bare form-context identifier used outside a form scope. Package-private for
+	 * unit testing.
+	 */
+	static String bareIdentifierHint(String message)
+	{
+		if (message == null)
+		{
+			return null;
+		}
+		String lower = message.toLowerCase();
+		boolean referenceLike = lower.contains("is not defined") || lower.contains("not found") || lower.contains("referenceerror");
+		if (!referenceLike)
+		{
+			return null;
+		}
+		for (String id : new String[] { "foundset", "controller", "currentcontroller", "elements" })
+		{
+			if (namesIdentifier(message, id))
+			{
+				return "'foundset' is not addressable without a form context - use forms.<formName>.foundset. " +
+					"Likewise controller / currentcontroller / elements require a forms.<formName>.<...> qualifier.";
+			}
+		}
+		return null;
+	}
+
+	private static boolean namesIdentifier(String message, String identifier)
+	{
+		int idx = message.toLowerCase().indexOf(identifier.toLowerCase());
+		while (idx >= 0)
+		{
+			boolean leftOk = idx == 0 || !Character.isLetterOrDigit(message.charAt(idx - 1));
+			int end = idx + identifier.length();
+			boolean rightOk = end >= message.length() || !Character.isLetterOrDigit(message.charAt(end));
+			// Avoid matching a qualified form (forms.x.foundset): a preceding '.' means it is qualified.
+			boolean notQualified = idx == 0 || message.charAt(idx - 1) != '.';
+			if (leftOk && rightOk && notQualified)
+			{
+				return true;
+			}
+			idx = message.toLowerCase().indexOf(identifier.toLowerCase(), idx + 1);
+		}
+		return false;
 	}
 
 	/**
@@ -394,14 +658,27 @@ public class RunningClientExecutionService
 	}
 
 	/**
-	 * Formats the two-section markdown result. Package-private for unit testing.
+	 * Formats the two-section markdown result without a spilled-value file. Package-private for unit testing.
 	 */
 	static String formatResult(String clientDescription, String resultText, String outputText)
+	{
+		return formatResult(clientDescription, resultText, null, outputText);
+	}
+
+	/**
+	 * Formats the two-section markdown result. When {@code valueFile} is non-null the full (over-cap) value was spilled to that file and
+	 * its path is reported under the truncated result. Package-private for unit testing.
+	 */
+	static String formatResult(String clientDescription, String resultText, String valueFile, String outputText)
 	{
 		StringBuilder sb = new StringBuilder();
 		sb.append("**servoy-debug: executeInRunningClient**\n\n");
 		sb.append("Client: ").append(clientDescription != null ? clientDescription : "unknown").append("\n\n");
 		sb.append("Result:\n").append(resultText == null || resultText.isBlank() ? NULL_MARKER : resultText).append("\n\n");
+		if (valueFile != null)
+		{
+			sb.append("Full value written to: ").append(valueFile).append("\n\n");
+		}
 		sb.append("Console output:\n").append(outputText == null || outputText.isBlank() ? "(no output)" : outputText.stripTrailing());
 		return sb.toString();
 	}

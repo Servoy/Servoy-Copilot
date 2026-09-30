@@ -245,7 +245,6 @@
                                 FormNavigationGraphServiceIntegrationTest,
                                 GetNavigationPathIntegrationTest,
                                 ServoyScriptResolverIntegrationTest,
-                                EvaluateToolIntegrationTest,
                                 FormNavigationGraphServiceTest,
                                 FormPreviewServiceTest
                             </test>

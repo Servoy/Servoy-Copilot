@@ -24,7 +24,6 @@ import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilterTest
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCacheTest;
 import com.servoy.eclipse.developer.mcp.integration.AbstractIntegrationTestBaseTest;
 import com.servoy.eclipse.developer.mcp.servers.AnalyzeCodeToolTest;
-import com.servoy.eclipse.developer.mcp.servers.EvaluateToolTest;
 import com.servoy.eclipse.developer.mcp.servers.GenerateTestCasesToolTest;
 import com.servoy.eclipse.developer.mcp.servers.MemoryServerTest;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServerTest;
@@ -73,7 +72,6 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 		ServoyResourceCacheTest.class,
 		// servers
 		AnalyzeCodeToolTest.class,
-		EvaluateToolTest.class,
 		GenerateTestCasesToolTest.class,
 		MemoryServerTest.class,
 		ServoyCoderServerTest.class,

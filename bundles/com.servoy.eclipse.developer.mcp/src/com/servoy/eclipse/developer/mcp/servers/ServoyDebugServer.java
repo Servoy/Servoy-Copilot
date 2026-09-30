@@ -54,8 +54,9 @@ public class ServoyDebugServer
 		"Provide 'script' (an ad-hoc snippet like \"forms.myForm.myMethod(1,2); application.output('done')\") and/or 'methodName' (a named method like 'forms.customers.recalcTotals' or 'scopes.globals.doThing' with optional JSON 'args'). At least one is required. " +
 		"When both are given, 'script' is evaluated first and then methodName(args) is invoked, and the method's return value is reported. " +
 		"Note: 'methodName' is evaluated as JavaScript (it is turned into a methodName(args) call), so a 'methodName' that contains ';' or other statements is by-design treated as script. " +
-		"Requires a running debug client: if none is running, this returns a message asking you to run the solution first (it will NOT start a client for you). " +
-		"A thrown JS error is returned as a readable message, not a tool failure.", type = "object")
+		"A returned JSFoundSet / JSRecord / JSDataSet is described (datasource, size and the first rows) rather than dumped whole, and a very large value is truncated with the full text written to a temp file whose path is reported. " +
+		"A thrown JS error is returned as a readable message with a solution-relative script stack, not a tool failure; a bare 'foundset'/'controller'/'elements' used outside a form is answered with the qualified rewrite to use. " +
+		"Requires a running debug client: if none is running, this returns a message asking you to run the solution first (it will NOT start a client for you).", type = "object")
 	public String executeInRunningClient(
 		@ToolParam(name = "script", description = "An ad-hoc JavaScript snippet to evaluate in the running client's global scope, exactly like the Servoy Command Console (e.g. \"application.output('hello'); forms.myForm.refresh()\"). Optional if 'methodName' is provided.", required = false) String script,
 		@ToolParam(name = "methodName", description = "A named method to invoke, e.g. 'forms.customers.recalcTotals' or 'scopes.globals.doThing'. Optional if 'script' is provided. If both are given, it runs after 'script'.", required = false) String methodName,

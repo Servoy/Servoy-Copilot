@@ -111,6 +111,15 @@ public class RunningClientExecutionServiceTest {
 				client, result, output);
 	}
 
+	private static String bareIdentifierHint(String message) throws Exception {
+		return (String) invokeStatic("bareIdentifierHint", new Class<?>[] { String.class }, message);
+	}
+
+	private static String applyValueCap(String rendered, StringBuilder valueFileOut) throws Exception {
+		return (String) invokeStatic("applyValueCap", new Class<?>[] { String.class, StringBuilder.class }, rendered,
+				valueFileOut);
+	}
+
 	// =======================================================================
 	// buildArgumentList
 	// =======================================================================
@@ -283,6 +292,29 @@ public class RunningClientExecutionServiceTest {
 			assertTrue(result.contains("could not be converted to string"),
 					"a throwing toString() must be reported, not propagated: " + result);
 			assertTrue(result.contains("boom"), "the underlying failure message should be surfaced: " + result);
+		}
+
+		@Test
+		void nativeArray_isRenderedAsJsArray_notAnOpaqueJavaReference() throws Exception {
+			Context cx = Context.enter();
+			try {
+				Scriptable scope = cx.initStandardObjects();
+				Object array = cx.newArray(scope, new Object[] { Integer.valueOf(1), Integer.valueOf(2), Integer.valueOf(3) });
+				String result = serializeResult(array);
+				assertEquals("[1,2,3]", result,
+						"a NativeArray must render as its JS form, not a '[Ljava...' reference: " + result);
+			} finally {
+				Context.exit();
+			}
+		}
+
+		@Test
+		void objectArray_isRenderedAsJsArray_notAnOpaqueJavaReference() throws Exception {
+			Object[] array = new Object[] { Integer.valueOf(5), Integer.valueOf(4), Integer.valueOf(5) };
+			String result = serializeResult(array);
+			assertFalse(result.startsWith("[Ljava"),
+					"an Object[] must not be rendered as its Java toString reference: " + result);
+			assertEquals("[5,4,5]", result, "an Object[] must render as a JS array: " + result);
 		}
 	}
 
@@ -471,6 +503,88 @@ public class RunningClientExecutionServiceTest {
 		void trailingWhitespaceInOutput_isStripped() throws Exception {
 			String out = formatResult("c", "5", "line\n\n");
 			assertTrue(out.endsWith("line"), "trailing blank lines in output should be stripped: [" + out + "]");
+		}
+	}
+
+	// =======================================================================
+	// bareIdentifierHint - the form-context teaching (ported from evaluate)
+	// =======================================================================
+
+	@Nested
+	@DisplayName("bareIdentifierHint")
+	class BareIdentifierHint {
+
+		@Test
+		void nullMessage_returnsNull() throws Exception {
+			assertNull(bareIdentifierHint(null));
+		}
+
+		@Test
+		void nonReferenceError_returnsNull() throws Exception {
+			assertNull(bareIdentifierHint("TypeError: cannot read property x of undefined"));
+		}
+
+		@Test
+		void bareFoundsetInReferenceError_returnsHint() throws Exception {
+			String hint = bareIdentifierHint("ReferenceError: \"foundset\" is not defined");
+			assertNotNull(hint, "a bare foundset reference error should be enriched");
+			assertTrue(hint.contains("forms.<formName>.foundset"),
+					"the hint should teach the qualified rewrite: " + hint);
+		}
+
+		@Test
+		void bareControllerInReferenceError_returnsHint() throws Exception {
+			assertNotNull(bareIdentifierHint("controller is not defined"));
+		}
+
+		@Test
+		void qualifiedFoundset_isNotFlagged() throws Exception {
+			// forms.customers.foundset is already qualified: a '.foundset' must not trigger the hint.
+			assertNull(bareIdentifierHint("forms.customers.foundset is not defined"));
+		}
+
+		@Test
+		void identifierAsSubstringOfAnotherWord_isNotFlagged() throws Exception {
+			// "elementsCount" contains "elements" but is a different identifier.
+			assertNull(bareIdentifierHint("elementsCount is not defined"));
+		}
+	}
+
+	// =======================================================================
+	// applyValueCap - size cap + temp-file spill (ported from evaluate)
+	// =======================================================================
+
+	@Nested
+	@DisplayName("applyValueCap")
+	class ApplyValueCap {
+
+		@Test
+		void nullValue_isReturnedUnchanged_noSpill() throws Exception {
+			StringBuilder valueFile = new StringBuilder();
+			assertNull(applyValueCap(null, valueFile));
+			assertEquals(0, valueFile.length(), "null must not spill a file");
+		}
+
+		@Test
+		void smallValue_isReturnedUnchanged_noSpill() throws Exception {
+			StringBuilder valueFile = new StringBuilder();
+			String result = applyValueCap("small", valueFile);
+			assertEquals("small", result);
+			assertEquals(0, valueFile.length(), "an under-cap value must not spill a file");
+		}
+
+		@Test
+		void overCapValue_isTruncatedAndSpilled() throws Exception {
+			StringBuilder valueFile = new StringBuilder();
+			String big = "x".repeat(9000);
+			String result = applyValueCap(big, valueFile);
+			assertTrue(result.length() < big.length(), "an over-cap value must be truncated: " + result.length());
+			assertTrue(result.contains("truncated, 9000 chars"),
+					"the truncation notice should report the full length: " + result);
+			assertTrue(valueFile.length() > 0, "an over-cap value must spill to a temp file");
+			assertTrue(java.nio.file.Files.exists(java.nio.file.Path.of(valueFile.toString())),
+					"the spilled temp file should exist");
+			java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(valueFile.toString()));
 		}
 	}
 
