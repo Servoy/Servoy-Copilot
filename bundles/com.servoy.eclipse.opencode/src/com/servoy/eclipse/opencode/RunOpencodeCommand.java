@@ -38,19 +38,25 @@ import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
 /**
- * Long-running Eclipse Job that starts the opencode server via
- * {@code npm exec}.
+ * Long-running Eclipse Job that starts the opencode server.
+ * <p>
+ * The opencode CLI ships as a native executable, so it is launched directly
+ * (see {@link #resolveOpencodeExecutable(File)} and {@link RunExecutableCommand})
+ * with the Servoy project root as its working directory. That working directory
+ * matters: opencode derives a new session's location from {@code process.cwd()},
+ * so launching in the project root is what makes a created session belong to the
+ * project (and show up in the directory-scoped session list) rather than to the
+ * managed install/state folder. Launching the executable directly also avoids an
+ * intermediate npm/shell process, so the child tracked for shutdown is the
+ * opencode process itself. If the executable cannot be resolved, the job falls
+ * back to the original {@code npm exec} launch via
+ * {@link com.servoy.eclipse.ngclient.ui.Activator#createNPMCommand(File, List)}.
+ * </p>
  * <p>
  * Before launching, {@link #findFreePort(int)} scans upward from
  * {@link #DEFAULT_PORT} to find the first TCP port that is not already bound.
  * This handles the common case of a second Eclipse instance (or any other
  * process) already occupying the default port.
- * </p>
- * <p>
- * Delegates all node/npm path setup to
- * {@code com.servoy.eclipse.ngclient.ui.Activator} via
- * {@link com.servoy.eclipse.ngclient.ui.Activator#createNPMCommand(File, List)}.
- * No direct knowledge of where node is extracted is needed here.
  * </p>
  * <p>
  * The job blocks until the opencode process exits. On unexpected exit it
@@ -104,13 +110,30 @@ public class RunOpencodeCommand extends Job {
 			ServoyLog.logInfo("OpenCode: port " + DEFAULT_PORT + " in use, using port " + port + " instead.");
 		}
 
-		// Use npm exec - ngclient.ui resolves node/npm paths and waits for
-		// extraction internally.
-		IRunNPMCommand serverCommand = ngActivator.createNPMCommand(opencodeDir,
-				List.of("exec", "--", "opencode", "serve", "--port", String.valueOf(port), "--hostname", "127.0.0.1"));
+		String projectPath = OpenCodeUtil.getActiveProjectPath();
+
+		// opencode ships as a native executable. Launch it directly (rather than
+		// via `npm exec`) so its working directory can be the Servoy project root:
+		// opencode derives a new session's location from process.cwd(), so this is
+		// what makes a created session land under the project instead of the
+		// install/state folder. Running the executable directly also removes the
+		// intermediate npm/shell process, so the child we track for shutdown is the
+		// opencode process itself. If the executable cannot be resolved (unexpected
+		// install layout) we fall back to the original `npm exec` launch.
+		File opencodeExe = resolveOpencodeExecutable(opencodeDir);
+		File serverCwd = (projectPath != null && !projectPath.isEmpty()) ? new File(projectPath) : opencodeDir;
+		List<String> serveArgs = List.of("serve", "--port", String.valueOf(port), "--hostname", "127.0.0.1");
+		IRunNPMCommand serverCommand;
+		if (opencodeExe != null) {
+			serverCommand = new RunExecutableCommand(opencodeExe, serveArgs, serverCwd);
+		} else {
+			ServoyLog.logInfo(
+					"OpenCode: opencode executable not found under install dir; falling back to npm exec launch.");
+			serverCommand = ngActivator.createNPMCommand(opencodeDir, List.of("exec", "--", "opencode", "serve",
+					"--port", String.valueOf(port), "--hostname", "127.0.0.1"));
+		}
 		Map<String, String> env = new HashMap<>(buildServoyXdgEnv());
 		env.putAll(additionalEnvVars);
-		String projectPath = OpenCodeUtil.getActiveProjectPath();
 		if (projectPath != null) {
 			env.put("PWD", projectPath);
 		}
@@ -245,6 +268,35 @@ public class RunOpencodeCommand extends Job {
 	 * @param startPort the preferred port (normally {@link #DEFAULT_PORT})
 	 * @return the first free port found, or {@code startPort} as a last resort
 	 */
+	/**
+	 * Resolves the native opencode executable inside the managed install
+	 * directory. The opencode CLI is published as a platform-specific native
+	 * binary under {@code node_modules/@opencode/cli/bin/}, named
+	 * {@code opencode.exe} on Windows and {@code opencode} elsewhere. The first
+	 * existing candidate is returned so a future layout tweak (or a fallback to
+	 * the {@code .bin} shim directory) does not silently break the launch.
+	 *
+	 * @param opencodeDir the managed install directory ({@code {state}/opencode})
+	 * @return the executable {@link File}, or {@code null} if none was found (the
+	 *         caller then falls back to the {@code npm exec} launch)
+	 */
+	static File resolveOpencodeExecutable(File opencodeDir) {
+		if (opencodeDir == null) {
+			return null;
+		}
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		String exeName = isWindows ? "opencode.exe" : "opencode";
+		File cliBin = new File(opencodeDir, "node_modules/@opencode/cli/bin/" + exeName);
+		if (cliBin.isFile()) {
+			return cliBin;
+		}
+		File shimBin = new File(opencodeDir, "node_modules/.bin/" + exeName);
+		if (shimBin.isFile()) {
+			return shimBin;
+		}
+		return null;
+	}
+
 	static int findFreePort(int startPort) {
 		for (int port = startPort; port < startPort + 100; port++) {
 			try (ServerSocket ss = new ServerSocket(port)) {

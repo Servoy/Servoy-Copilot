@@ -279,6 +279,96 @@ public class OpencodeChatServlet extends HttpServlet {
 		return false;
 	}
 
+	/**
+	 * True for the POST endpoints that carry the target directory in their JSON
+	 * body ({@code location.directory}) instead of the query string. Unlike
+	 * {@code session.list} - which reads {@code ?directory=} and is handled by
+	 * {@link #injectDirectory} - opencode's {@code session.create} and
+	 * {@code session.import} ignore the query/header and default a missing
+	 * {@code location} to the server's own working directory. Without body
+	 * injection a created session lands under opencode's state folder rather than
+	 * the project, so it never matches the directory-scoped list and appears to
+	 * vanish. See {@code packages/protocol/src/groups/session.ts} (create takes a
+	 * {@code location} payload) and the handler default
+	 * {@code ctx.payload.location ?? { directory: process.cwd() }}.
+	 *
+	 * @param upstreamPath the upstream path with the {@link #UPSTREAM_API_PREFIX},
+	 *                     possibly with a query string
+	 * @return {@code true} if a {@code location} should be ensured in the body
+	 */
+	static boolean isBodyLocationEndpoint(String upstreamPath) {
+		if (upstreamPath == null)
+			return false;
+		int q = upstreamPath.indexOf('?');
+		String path = q >= 0 ? upstreamPath.substring(0, q) : upstreamPath;
+		return path.equals(UPSTREAM_API_PREFIX + "/session")
+				|| path.equals(UPSTREAM_API_PREFIX + "/experimental/session/import");
+	}
+
+	/**
+	 * Ensures the JSON request body carries {@code "location":{"directory":...}}
+	 * so directory-scoped POST endpoints (see {@link #isBodyLocationEndpoint})
+	 * create their session under the active project rather than opencode's own
+	 * working directory.
+	 * <p>
+	 * A body that already mentions {@code "location"} is returned unchanged (the
+	 * caller's choice wins). An empty or blank body becomes a fresh object with
+	 * just the location. Otherwise the location member is spliced in after the
+	 * opening brace. This deliberately avoids a full JSON parse: the bodies here
+	 * are small, flat opencode payloads, and a minimal top-level splice keeps the
+	 * proxy dependency-free and off the Jackson hot path. The directory is emitted
+	 * as a JSON string with the mandatory escaping (notably the backslashes in a
+	 * Windows path).
+	 *
+	 * @param body      the original request body bytes (may be {@code null}/empty)
+	 * @param directory the project directory to inject (must be non-empty)
+	 * @return the body bytes with a location ensured, UTF-8 encoded
+	 */
+	static byte[] ensureBodyLocation(byte[] body, String directory) {
+		String json = (body == null || body.length == 0) ? "" : new String(body, StandardCharsets.UTF_8);
+		String trimmed = json.trim();
+		String locationMember = "\"location\":{\"directory\":\"" + jsonEscape(directory) + "\"}";
+		if (trimmed.isEmpty()) {
+			return ("{" + locationMember + "}").getBytes(StandardCharsets.UTF_8);
+		}
+		// Respect an explicit location the client already set.
+		if (trimmed.contains("\"location\"")) {
+			return body;
+		}
+		int brace = trimmed.indexOf('{');
+		if (brace < 0) {
+			// Not a JSON object we understand - leave it alone.
+			return body;
+		}
+		String afterBrace = trimmed.substring(brace + 1).trim();
+		String sep = afterBrace.startsWith("}") ? "" : ",";
+		String result = trimmed.substring(0, brace + 1) + locationMember + sep + trimmed.substring(brace + 1);
+		return result.getBytes(StandardCharsets.UTF_8);
+	}
+
+	/** Minimal JSON string escaping for the characters that occur in file paths. */
+	static String jsonEscape(String value) {
+		StringBuilder sb = new StringBuilder(value.length() + 8);
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			switch (c) {
+				case '\\' -> sb.append("\\\\");
+				case '"' -> sb.append("\\\"");
+				case '\n' -> sb.append("\\n");
+				case '\r' -> sb.append("\\r");
+				case '\t' -> sb.append("\\t");
+				default -> {
+					if (c < 0x20) {
+						sb.append(String.format("\\u%04x", (int) c));
+					} else {
+						sb.append(c);
+					}
+				}
+			}
+		}
+		return sb.toString();
+	}
+
 	// -----------------------------------------------------------------------
 	// HttpServlet entry points
 	// -----------------------------------------------------------------------
@@ -433,6 +523,14 @@ public class OpencodeChatServlet extends HttpServlet {
 
 		byte[] body = readBody(req);
 		String method = req.getMethod().toUpperCase(Locale.ROOT);
+		// session.create / session.import read their target directory from the JSON
+		// body (location.directory), not the query/header the proxy injects, so
+		// splice it in - otherwise the session lands under opencode's own working
+		// directory and never matches the directory-scoped session list.
+		if ("POST".equals(method) && directory != null && !directory.isEmpty()
+				&& isBodyLocationEndpoint(target.getRawPath())) {
+			body = ensureBodyLocation(body, directory);
+		}
 		if ("GET".equals(method) || "HEAD".equals(method) || body == null || body.length == 0) {
 			builder.method(method, BodyPublishers.noBody());
 		} else {

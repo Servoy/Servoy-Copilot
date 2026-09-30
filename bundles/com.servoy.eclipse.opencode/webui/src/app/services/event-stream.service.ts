@@ -1,4 +1,4 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { ApplicationRef, Injectable, inject } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 
 import { dbg, debugEnabled } from './debug-log';
@@ -37,17 +37,22 @@ export interface OpencodeEvent {
  * schedule change detection: they only get rendered when some other tick happens
  * to run (an HttpClient poll, a streamed part, a user interaction). That is why
  * a lazily-generated session title could sit invisible until the next 15s status
- * poll. Re-entering the Angular zone via {@link NgZone#run} makes the signal
- * writes schedule a tick immediately, so every bus event - title updates,
- * {@code session.idle}, etc. - renders as soon as it arrives.
+ * poll. {@link NgZone#run} does nothing here - zoneless apps have no
+ * zone-driven change detection - so instead we explicitly run one
+ * {@link ApplicationRef#tick} after dispatching, coalesced onto a microtask so a
+ * burst of events (e.g. streamed parts) triggers a single render. Every bus
+ * event - title updates, {@code session.idle}, a newly created session - now
+ * renders as soon as it arrives.
  */
 @Injectable({ providedIn: 'root' })
 export class EventStreamService {
-  private readonly zone = inject(NgZone);
+  private readonly appRef = inject(ApplicationRef);
   private eventSource: EventSource | null = null;
   private readonly events$ = new Subject<OpencodeEvent>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
+  /** Guards against scheduling more than one coalesced tick at a time. */
+  private tickScheduled = false;
 
   /** Stream of parsed opencode bus events for the whole server. */
   events(): Observable<OpencodeEvent> {
@@ -79,9 +84,6 @@ export class EventStreamService {
       }
       if (parsed) {
         if (debugEnabled) {
-          // Raw arrival time of every bus event, straight from the EventSource
-          // callback (outside Angular). Only computed when tracing is enabled.
-          const arrivedAt = Date.now();
           const payload = parsed.data ?? parsed.properties;
           const title =
             parsed.type === 'session.updated'
@@ -89,17 +91,14 @@ export class EventStreamService {
               : undefined;
           dbg(
             'sse',
-            `arrive type=${parsed.type} inZone=${NgZone.isInAngularZone()}` +
+            `arrive type=${parsed.type}` +
               (title !== undefined ? ` title=${JSON.stringify(title)}` : '')
           );
-          this.zone.run(() => {
-            dbg('sse', `+${Date.now() - arrivedAt}ms dispatch type=${parsed.type}`);
-            this.events$.next(parsed);
-          });
-          return;
         }
-        // Re-enter Angular so signal writes downstream schedule a render.
-        this.zone.run(() => this.events$.next(parsed));
+        this.events$.next(parsed);
+        // Signal writes made by subscribers ran outside Angular; force a
+        // (coalesced) render so the UI reflects them immediately.
+        this.scheduleTick();
       }
     };
 
@@ -110,6 +109,27 @@ export class EventStreamService {
         this.scheduleReconnect();
       }
     };
+  }
+
+  /**
+   * Run one change-detection pass, coalescing a burst of events into a single
+   * render. Deferred to a microtask so it never re-enters an in-progress tick,
+   * and guarded so streamed parts arriving back-to-back don't each force a
+   * separate synchronous render.
+   */
+  private scheduleTick(): void {
+    if (this.tickScheduled) {
+      return;
+    }
+    this.tickScheduled = true;
+    queueMicrotask(() => {
+      this.tickScheduled = false;
+      try {
+        this.appRef.tick();
+      } catch {
+        // A tick already in progress rendered our changes anyway.
+      }
+    });
   }
 
   private scheduleReconnect(): void {

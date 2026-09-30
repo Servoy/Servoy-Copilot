@@ -184,6 +184,88 @@ class OpencodeChatServletTest {
 	}
 
 	@Nested
+	class BodyLocationInjection {
+		private static String utf8(byte[] bytes) {
+			return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+		}
+
+		private static byte[] bytes(String s) {
+			return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		}
+
+		@Test
+		@DisplayName("only session.create and session.import carry the directory in the body")
+		void endpointDetection() {
+			assertAll(
+					() -> assertTrue(OpencodeChatServlet.isBodyLocationEndpoint("/api/session"),
+							"session.create must be a body-location endpoint"),
+					() -> assertTrue(OpencodeChatServlet.isBodyLocationEndpoint("/api/session?directory=%2Fx"),
+							"a query string must not defeat detection"),
+					() -> assertTrue(
+							OpencodeChatServlet.isBodyLocationEndpoint("/api/experimental/session/import"),
+							"session.import must be a body-location endpoint"),
+					() -> assertFalse(OpencodeChatServlet.isBodyLocationEndpoint("/api/session/ses_1"),
+							"a per-session endpoint (session.get) must not be treated as create"),
+					() -> assertFalse(OpencodeChatServlet.isBodyLocationEndpoint("/api/session/ses_1/fork"),
+							"session.fork must not be treated as create"),
+					() -> assertFalse(OpencodeChatServlet.isBodyLocationEndpoint("/api/config"),
+							"unrelated endpoints must not be affected"),
+					() -> assertFalse(OpencodeChatServlet.isBodyLocationEndpoint(null)));
+		}
+
+		@Test
+		@DisplayName("empty or null body becomes a fresh object carrying only the location")
+		void emptyBodyGetsLocation() {
+			String expected = "{\"location\":{\"directory\":\"/home/proj\"}}";
+			assertAll(
+					() -> assertEquals(expected, utf8(OpencodeChatServlet.ensureBodyLocation(null, "/home/proj"))),
+					() -> assertEquals(expected,
+							utf8(OpencodeChatServlet.ensureBodyLocation(new byte[0], "/home/proj"))),
+					() -> assertEquals(expected,
+							utf8(OpencodeChatServlet.ensureBodyLocation(bytes("   "), "/home/proj"))));
+		}
+
+		@Test
+		@DisplayName("empty object body gets a location with no stray comma")
+		void emptyObjectGetsLocation() {
+			assertEquals("{\"location\":{\"directory\":\"/home/proj\"}}",
+					utf8(OpencodeChatServlet.ensureBodyLocation(bytes("{}"), "/home/proj")));
+		}
+
+		@Test
+		@DisplayName("location is spliced in before existing members")
+		void existingMembersPreserved() {
+			assertEquals("{\"location\":{\"directory\":\"/home/proj\"},\"title\":\"hi\"}",
+					utf8(OpencodeChatServlet.ensureBodyLocation(bytes("{\"title\":\"hi\"}"), "/home/proj")));
+		}
+
+		@Test
+		@DisplayName("a body that already sets location is left untouched")
+		void explicitLocationRespected() {
+			String original = "{\"location\":{\"directory\":\"/other\"}}";
+			assertEquals(original, utf8(OpencodeChatServlet.ensureBodyLocation(bytes(original), "/home/proj")));
+		}
+
+		@Test
+		@DisplayName("Windows backslashes in the directory are JSON-escaped")
+		void windowsPathEscaped() {
+			String result = utf8(OpencodeChatServlet.ensureBodyLocation(bytes("{}"), "C:\\temp\\ws"));
+			assertAll(
+					() -> assertTrue(result.contains("C:\\\\temp\\\\ws"),
+							"backslashes must be doubled for valid JSON; got: " + result),
+					() -> assertFalse(result.contains("C:\\temp\\ws\""),
+							"a raw single backslash would make the body invalid JSON; got: " + result));
+		}
+
+		@Test
+		@DisplayName("jsonEscape escapes quotes and backslashes")
+		void jsonEscapeBasics() {
+			assertAll(() -> assertEquals("C:\\\\x", OpencodeChatServlet.jsonEscape("C:\\x")),
+					() -> assertEquals("a\\\"b", OpencodeChatServlet.jsonEscape("a\"b")));
+		}
+	}
+
+	@Nested
 	class StaticAssetPathResolution {
 		@ParameterizedTest
 		@ValueSource(strings = { "", "/" })

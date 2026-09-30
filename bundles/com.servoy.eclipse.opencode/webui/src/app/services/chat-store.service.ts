@@ -94,6 +94,12 @@ export class ChatStore {
       (b.time?.updated ?? b.time?.created ?? 0) - (a.time?.updated ?? a.time?.created ?? 0);
     return all
       .filter((s) => !s.parentID)
+      // Sort top-level sessions newest-first too, not just children. Without
+      // this the sidebar order followed the raw array order, so a session
+      // appended live via a session.updated event (see applySessionUpdate)
+      // showed up at the bottom until a full reload re-fetched the list in the
+      // server's newest-first order.
+      .sort(byRecency)
       .map((session) => ({
         session,
         children: (childrenByParent.get(session.id) ?? []).sort(byRecency)
@@ -117,10 +123,38 @@ export class ChatStore {
     this.eventStream.events().subscribe((evt) => this.onEvent(evt));
   }
 
+  /**
+   * Reconcile the session list with the server, MERGING rather than replacing.
+   *
+   * opencode's {@code GET /session} does not return a freshly created session
+   * for a while (its list index lags, though {@code GET /session/:id} finds it),
+   * so a blind {@code set(serverList)} would drop sessions we just created and
+   * are actively showing - they would appear to vanish and only "come back"
+   * after their title event re-added them. Merging keeps any locally known
+   * session the server list omits; explicit removals ({@link afterRemoval}) and
+   * {@code session.deleted} events are what prune the list.
+   */
   refreshSessions(): void {
     this.api.listSessions().subscribe({
-      next: (sessions) => this.allSessions.set(sessions ?? []),
+      next: (sessions) => {
+        const server = sessions ?? [];
+        const serverIds = new Set(server.map((s) => s.id));
+        this.allSessions.update((local) => [...server, ...local.filter((s) => !serverIds.has(s.id))]);
+      },
       error: (err) => this.error.set(this.describe(err))
+    });
+  }
+
+  /** Insert or replace a session in the list by id (kept for the sidebar tree). */
+  private upsertSession(session: Session): void {
+    this.allSessions.update((sessions) => {
+      const i = sessions.findIndex((s) => s.id === session.id);
+      if (i === -1) {
+        return [session, ...sessions];
+      }
+      const next = sessions.slice();
+      next[i] = { ...next[i], ...session };
+      return next;
     });
   }
 
@@ -262,6 +296,10 @@ export class ChatStore {
       this.messages.set([]);
       this.pendingFormSig.set(null);
     }
+    // Drop it locally first so the merging refreshSessions() can't re-add it
+    // (the server list no longer returns it, and merge preserves local-only
+    // entries - which is exactly what we do NOT want for a removed session).
+    this.allSessions.update((sessions) => sessions.filter((s) => s.id !== id));
     this.refreshSessions();
   }
 
@@ -281,7 +319,12 @@ export class ChatStore {
       next: (session) => {
         this.activeSessionId.set(session.id);
         this.messages.set([]);
-        this.refreshSessions();
+        // Add the new session to the list directly. We must NOT refreshSessions()
+        // here: the server's list index does not include a just-created session
+        // yet, so refreshing would immediately drop it (and any other session
+        // created since the last full load). Its title arrives later via a
+        // session.updated event, which upserts in place.
+        this.upsertSession(session);
         this.dispatch(session.id, parts);
       },
       error: (err) => this.error.set(this.describe(err))
