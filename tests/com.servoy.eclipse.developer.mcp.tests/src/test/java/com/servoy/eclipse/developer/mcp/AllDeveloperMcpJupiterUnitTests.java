@@ -66,6 +66,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 @SelectClasses({
 		// root package
 		ToolExecutorTest.class,
+		McpToolResultTest.class,
 		// auth
 		BearerTokenAuthenticationFilterTest.class,
 		// cache

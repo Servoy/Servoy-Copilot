@@ -256,26 +256,12 @@ public class McpServerFactory
 		try
 		{
 			Object result = executor.call(tool.name(), args).get();
-
-			// A tool may return an McpToolResult to attach an image alongside its text; every
-			// other tool returns a plain value that is rendered as a single text content part.
-			if (result instanceof McpToolResult toolResult)
+			var builder = McpSchema.CallToolResult.builder().isError(false);
+			for (McpSchema.Content content : toContents(result))
 			{
-				var textContent = new McpSchema.TextContent(
-					new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0), toolResult.text());
-				var builder = McpSchema.CallToolResult.builder().addContent(textContent);
-				if (toolResult.hasImage())
-				{
-					builder.addContent(
-						McpSchema.ImageContent.builder(toolResult.imageData(), toolResult.imageMimeType()).build());
-				}
-				return builder.isError(false).build();
+				builder.addContent(content);
 			}
-
-			String text = Optional.ofNullable(result).map(Object::toString).orElse("");
-			var content = new McpSchema.TextContent(
-				new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0), text);
-			return McpSchema.CallToolResult.builder().addContent(content).isError(false).build();
+			return builder.build();
 		}
 		catch (Exception e)
 		{
@@ -290,6 +276,36 @@ public class McpServerFactory
 			var content = new McpSchema.TextContent("Error: " + cause);
 			return McpSchema.CallToolResult.builder().addContent(content).isError(true).build();
 		}
+	}
+
+	/**
+	 * Maps a tool method's return value to the MCP content parts of a successful result.
+	 * <p>
+	 * A tool that returns an {@link McpToolResult} yields a text content part plus, when it
+	 * carries an image, an image content part; any other return value (the common case) yields a
+	 * single text content part from its {@code toString()} (or the empty string when
+	 * {@code null}). Package-visible and static so it can be unit-tested without an MCP runtime.
+	 * </p>
+	 *
+	 * @param result the value returned by the tool method
+	 * @return the ordered content parts to attach to the {@link CallToolResult}
+	 */
+	static List<McpSchema.Content> toContents(Object result)
+	{
+		var annotations = new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0);
+		if (result instanceof McpToolResult toolResult)
+		{
+			var contents = new ArrayList<McpSchema.Content>(2);
+			contents.add(new McpSchema.TextContent(annotations, toolResult.text()));
+			if (toolResult.hasImage())
+			{
+				contents.add(
+					McpSchema.ImageContent.builder(toolResult.imageData(), toolResult.imageMimeType()).build());
+			}
+			return contents;
+		}
+		String text = Optional.ofNullable(result).map(Object::toString).orElse("");
+		return List.of(new McpSchema.TextContent(annotations, text));
 	}
 
 	private void requireMcpServerAnnotation(Object serverImpl)

@@ -403,8 +403,10 @@ All in `com.servoy.eclipse.developer.mcp` unless noted. **No `IBrowser` / `Chrom
    JSON and the PNG; `tempDir()` = plugin state area `temp/`. Signature
    `getFormLayout(formName, selector, screenshot, timeoutSeconds)`; result holder
    `FormLayoutResult { json, resultFile, screenshotFile, imageBase64, error }`.
-2. **`McpToolResult`** (new record, bundle root) + **`McpServerFactory.executeCallTool`** change —
-   the backward-compatible text+image pipeline extension (3.7).
+2. **`McpToolResult`** (new record, bundle root) + **`McpServerFactory`** change — the
+   backward-compatible text+image pipeline extension (3.7). The expansion is a package-visible
+   static `McpServerFactory.toContents(Object)` (called by `executeCallTool`) so it is
+   unit-testable headlessly (§5).
 3. **`ServoyFormServer`** (`servers/`) — `@McpServer(name = "servoy-form")` with the
    `@Tool getFormLayout(formName, selector?, screenshot?, timeoutSeconds?)` returning `Object`,
    delegating to the service (parse `timeoutSeconds` default 15 and `screenshot` default true;
@@ -427,10 +429,40 @@ All in `com.servoy.eclipse.developer.mcp` unless noted. **No `IBrowser` / `Chrom
 
 ## 5. Tests (this repo's conventions)
 
-Follow AGENTS.md. The pure output shaping now lives in the injected JS (runs only in a browser),
-so there is **no headless-unit-testable formatter** — the tool's behaviour is verified by a **PDE
-integration test**. (An earlier `FormLayoutProjectionFormatter` + its unit test were removed when
-the design moved to returning the DOM verbatim.)
+Follow AGENTS.md. The rendering + DOM read is welded to a real `Display`/`IBrowser`, and the
+integration/CI PDE harness **has no browser backend** (the `integration` tycho-surefire profile
+does not include `com.equo.chromium`/CEF and sets `-Dchromium.integration.eclipse.disable=true`,
+so `BrowserFactory` falls to the plain SWT `Browser` → headless WebKit-GTK → `SWTError`). So the
+real render round-trip **cannot** run in CI, and faking the browser would not escape the `Display`
+dependency (and would be a vacuous test). The coverage is therefore split:
+
+1. **Headless unit test — `McpToolResultTest` (runs in CI).** Covers the reusable text+image
+   pipeline (the shared-plumbing change), which is pure and has no `Display`/browser/core
+   dependency. To make it testable, `McpServerFactory` exposes a package-visible static
+   **`toContents(Object)`** (used by `executeCallTool`). Asserts: a plain `String` → exactly one
+   `TextContent` (backward-compatible); `null` → one empty `TextContent`; a text-only
+   `McpToolResult` → one `TextContent`; an `McpToolResult` with image → a `TextContent` **then** an
+   `ImageContent` carrying the exact base64 + `image/png`; and the `McpToolResult`
+   factories/`hasImage()` edge cases (empty/null image data → no image). Registered in the headless
+   `pom.xml` `<test>` block **and** `AllDeveloperMcpJupiterUnitTests.@SelectClasses`.
+2. **PDE integration test — `FormLayoutToolIntegrationTest` (developer/IDE only, NOT in CI).** The
+   real render + read round-trip. Extends `TestUtilitiesClass`, uses the repo's wait/pump helpers
+   (never `Thread.sleep`), cleans projects in `@BeforeAll`. The tool returns `Object`, so it calls
+   `getFormLayout(form, selector, "false", timeout)` (screenshot off, for deterministic
+   DOM/appearance assertions) and treats the result as a `String` (`assertInstanceOf`). Asserts:
+   whole-form read (`form`/`selector`/`viewport`, `html` has `svy-form` + the component name,
+   non-empty `appearance` with `box`+`styles`); a `data-cy` **selector** returns only the matched
+   subtree; the **B1 regression** (two consecutive different forms each return their own DOM); and
+   the **not-found / blank-name** named messages. Because it needs the `/formtemplate` route + a
+   real browser (Equo Chromium in a running Developer), it is **kept in the
+   `AllDeveloperMcpIntegrationTests.@Suite`** (run inside the IDE, which has Chromium) but
+   **removed from the CI `pom.xml` `<test>` block**. This deliberately avoids a silent
+   `Assumptions` skip (forbidden by AGENTS.md): CI runs what it can (the pipeline unit test) and
+   the render round-trip is verified on a developer machine (verified live during development).
+
+> No fake-`IBrowser` unit test: the driver's `Display`/`syncExec` coupling means a fake would not
+> run truly headless and would test nothing real; the `NO_BROWSER` degradation path is exercised
+> in the developer integration run.
 
 1. **PDE integration test (Jupiter, `*IntegrationTest`)** —
    `tests/.../integration/FormLayoutToolIntegrationTest.java`, extending `TestUtilitiesClass`

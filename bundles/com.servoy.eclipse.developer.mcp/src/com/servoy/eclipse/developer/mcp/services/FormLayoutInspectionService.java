@@ -265,6 +265,13 @@ public class FormLayoutInspectionService
 					return FormLayoutResult.error(
 						"Selector '" + cssSelector + "' matched no element in the rendered form '" + formName + "'.");
 				}
+				if ("NO_BROWSER".equals(reason))
+				{
+					return FormLayoutResult.error(
+						"No browser backend is available to render the form in this environment " +
+							"(the embedded Chromium / WebKit browser is not present). This tool needs a running " +
+							"Servoy Developer with the embedded browser; it cannot render in a headless build.");
+				}
 				return FormLayoutResult.error("Error rendering form '" + formName + "': " + reason);
 			}
 
@@ -309,16 +316,22 @@ public class FormLayoutInspectionService
 		String readinessJs = String.format(READINESS_JS_TEMPLATE, formNameLiteral, selectorLiteral);
 		String readJs = String.format(READ_JS_TEMPLATE, formNameLiteral, selectorLiteral);
 
-		// create (first call) + clear the previous document so no stale form/marker survives
+		// create (first call) + clear the previous document so no stale form/marker survives.
+		// Catch Throwable, not just Exception: when there is no browser backend (e.g. a headless
+		// environment with no Equo Chromium and no WebKit-GTK), BrowserFactory/SWT throws an
+		// SWTError (an Error, not an Exception). Translate any creation failure into the NO_BROWSER
+		// reason so the caller emits a clean named message instead of leaking a raw SWT stack.
 		display.syncExec(() -> {
 			try
 			{
 				BrowserHandle h = ensureHandle(display);
 				h.browser.setUrl("about:blank");
 			}
-			catch (Exception e)
+			catch (Throwable t)
 			{
-				failure.set(e.getMessage() != null ? e.getMessage() : e.toString());
+				failure.set("NO_BROWSER");
+				ServoyLog.logWarning("FormLayoutInspectionService: could not create a browser to render forms " +
+					"(no Chromium/WebKit backend available in this environment)", t);
 			}
 		});
 		if (failure.get() != null)

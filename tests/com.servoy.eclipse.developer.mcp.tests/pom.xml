@@ -40,6 +40,7 @@
                          Platform @Suite class - Tycho cannot expand it. List concrete classes. -->
                     <test>
                         ToolExecutorTest,
+                        McpToolResultTest,
                         BearerTokenAuthenticationFilterTest,
                         ServoyResourceCacheTest,
                         AnalyzeCodeToolTest,
@@ -245,7 +246,6 @@
                                 FormNavigationGraphServiceIntegrationTest,
                                 GetNavigationPathIntegrationTest,
                                 ServoyScriptResolverIntegrationTest,
-                                FormLayoutToolIntegrationTest,
                                 FormNavigationGraphServiceTest,
                                 FormPreviewServiceTest
                             </test>
