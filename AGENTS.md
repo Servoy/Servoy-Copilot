@@ -371,9 +371,13 @@ Before creating any Git commit, the following steps are **mandatory**:
 
 ---
 
-## Jira API
+## Jira
 
-When asked to create, update, or link Jira issues, load the instructions from `JIRA.md` in this repository.
+For anything Jira — reading, creating, updating, commenting on, linking, searching (JQL),
+assigning or transitioning issues — load the **`servoy-jira`** skill and follow its
+instructions. It holds the connection details (base URL, `ATLASSIAN_AUTH_BASIC` auth), the
+per-OS command recipes and the ADF templates. Always load the skill first rather than
+hand-rolling the REST calls.
 
 ---
 
