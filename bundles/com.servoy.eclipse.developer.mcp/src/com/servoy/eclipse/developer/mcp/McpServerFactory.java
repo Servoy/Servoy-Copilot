@@ -256,6 +256,22 @@ public class McpServerFactory
 		try
 		{
 			Object result = executor.call(tool.name(), args).get();
+
+			// A tool may return an McpToolResult to attach an image alongside its text; every
+			// other tool returns a plain value that is rendered as a single text content part.
+			if (result instanceof McpToolResult toolResult)
+			{
+				var textContent = new McpSchema.TextContent(
+					new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0), toolResult.text());
+				var builder = McpSchema.CallToolResult.builder().addContent(textContent);
+				if (toolResult.hasImage())
+				{
+					builder.addContent(
+						McpSchema.ImageContent.builder(toolResult.imageData(), toolResult.imageMimeType()).build());
+				}
+				return builder.isError(false).build();
+			}
+
 			String text = Optional.ofNullable(result).map(Object::toString).orElse("");
 			var content = new McpSchema.TextContent(
 				new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0), text);

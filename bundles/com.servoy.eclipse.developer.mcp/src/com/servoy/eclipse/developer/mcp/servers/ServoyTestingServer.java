@@ -179,10 +179,14 @@ public class ServoyTestingServer
 		}
 	}
 
-	@Tool(name = "showFormInBrowser", description = "Opens a specific Servoy form in an external browser for preview/testing. " +
+	@Tool(name = "showFormInBrowser", description = "DEPRECATED for visual inspection - prefer servoy-form_getFormLayout to see " +
+		"how a form looks (it renders design-time with no running client and returns the DOM, resolved styles and a screenshot). " +
+		"This tool opens the form in an EXTERNAL browser window (a real popup for a human) and needs the running client; it does " +
+		"not return anything the model can inspect. Only use it to open a form in a visible browser for a human, or to prepare a " +
+		"Cypress spec. " +
+		"Opens a specific Servoy form in an external browser for preview/testing. " +
 		"Bypasses authentication and shows the form directly without requiring login. " +
-		"Auto-generates a .spec.cy.js test file if one doesn't exist for the form. " +
-		"Use this to visually inspect a form or to prepare for running Cypress tests against it. " + "Returns the URL that was opened.", type = "object")
+		"Auto-generates a .spec.cy.js test file if one doesn't exist for the form. " + "Returns the URL that was opened.", type = "object")
 	public String showFormInBrowser(
 		@ToolParam(name = "formName", description = "The name of the form to show in the browser (e.g. 'mainForm', 'orderDetails')") String formName)
 	{
@@ -212,9 +216,13 @@ public class ServoyTestingServer
 		}
 	}
 
-	@Tool(name = "screenshotForm", description = "Takes a screenshot of a specific Servoy form rendered in a headless browser. " +
-		"Bypasses authentication and captures the form as it appears at runtime. " + "Returns the file path of the saved screenshot PNG. " +
-		"Use this to visually verify form layout, check element positioning, or capture the current state of a form. " +
+	@Tool(name = "screenshotForm", description = "DEPRECATED - prefer servoy-form_getFormLayout for verifying how a form looks. " +
+		"getFormLayout is faster (no running client, no Cypress), returns the rendered DOM + resolved styles AND an attached " +
+		"screenshot image the model can see directly, whereas this tool only writes a PNG to disk and returns its file path. " +
+		"Only use screenshotForm when you specifically need the form captured WITH LIVE DATA in the running NG client (which " +
+		"getFormLayout, being design-time/data-free, does not show). " +
+		"Takes a screenshot of a specific Servoy form rendered in a headless browser (running client + Cypress). " +
+		"Bypasses authentication and captures the form as it appears at runtime. Returns the file path of the saved screenshot PNG. " +
 		"If the form has property type mismatches that prevent it from rendering, returns a text error listing them instead of taking a screenshot. " +
 		"Problem markers on the form's files (unresolved methods, dataproviders, script errors) do not block the screenshot - they are reported as a warning alongside the saved image.", type = "object")
 	public String screenshotForm(
