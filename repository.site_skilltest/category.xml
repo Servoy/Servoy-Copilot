@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="com.servoy.eclipse.opencode.skilltest.feature">
+      <category name="servoy.pilot.skilltest"/>
+   </feature>
+   <category-def name="servoy.pilot.skilltest" label="Servoy AI Skill Tests (internal)"/>
+</site>

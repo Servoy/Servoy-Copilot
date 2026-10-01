@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="com.servoy.eclipse.opencode.skilltest.feature"
+      label="Servoy AI Skill Tests (internal)"
+      version="2026.3.1.qualifier"
+      provider-name="Servoy"
+      os="linux,macosx,win32"
+      arch="aarch64,x86_64">
+
+   <description url="https://servoy.com">
+      Internal-only tooling for recording and replaying Servoy AI skill-test
+      baselines. NOT part of the customer Servoy AI Copilot distribution.
+   </description>
+
+   <copyright url="https://servoy.com">
+      Copyright 1997-2026 Servoy BV. All rights reserved.
+   </copyright>
+
+   <license url="https://www.eclipse.org/org/documents/epl-2.0/EPL-2.0.txt">
+      Eclipse Public License - v 2.0
+   </license>
+
+   <requires>
+      <import feature="com.servoy.eclipse.servoypilot.feature" version="2026.3.1" match="compatible"/>
+   </requires>
+
+   <plugin
+         id="com.servoy.eclipse.opencode.skilltest"
+         download-size="0"
+         install-size="0"
+         version="2026.3.1.qualifier"
+         unpack="false"/>
+
+</feature>

@@ -1,0 +1,11 @@
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.servoy</groupId>
+        <artifactId>com.servoy.eclipse.servoypilot.parent</artifactId>
+        <version>2026.3.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>com.servoy.eclipse.opencode.skilltest.site</artifactId>
+    <packaging>eclipse-repository</packaging>
+</project>

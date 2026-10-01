@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.2"?>
+<plugin>
+   <extension
+         point="org.eclipse.core.runtime.applications"
+         id="skillTestRunner"
+         name="Servoy AI Skill Test Runner">
+      <application cardinality="singleton-global" thread="main" visible="true">
+         <run class="com.servoy.eclipse.opencode.skilltest.headless.SkillTestHeadlessRunner"/>
+      </application>
+   </extension>
+   <extension
+         point="org.eclipse.core.runtime.applications"
+         id="mcpProbe"
+         name="Servoy AI MCP Probe">
+      <application cardinality="singleton-global" thread="main" visible="true">
+         <run class="com.servoy.eclipse.opencode.skilltest.headless.McpProbeApplication"/>
+      </application>
+   </extension>
+   <extension
+         point="org.eclipse.ui.startup">
+      <startup class="com.servoy.eclipse.opencode.skilltest.headless.McpProbeStartup"/>
+      <startup class="com.servoy.eclipse.opencode.skilltest.headless.SkillTestStartup"/>
+   </extension>
+
+   <extension
+         point="org.eclipse.ui.views">
+      <view
+            category="com.servoy.eclipse.ui"
+            class="com.servoy.eclipse.opencode.skilltest.SkillTestView"
+            icon="icons/skilltest_run.png"
+            id="com.servoy.eclipse.opencode.skilltest.SkillTestView"
+            name="Servoy AI Skill Tests"
+            restorable="true">
+      </view>
+   </extension>
+   <extension
+         point="org.eclipse.ui.commands">
+      <command
+            id="com.servoy.eclipse.opencode.skilltest.openView"
+            name="Servoy AI Skill Tests">
+      </command>
+   </extension>
+   <extension
+         point="org.eclipse.ui.handlers">
+      <handler
+            class="com.servoy.eclipse.opencode.skilltest.OpenSkillTestViewHandler"
+            commandId="com.servoy.eclipse.opencode.skilltest.openView">
+      </handler>
+   </extension>
+   <extension
+         point="org.eclipse.ui.menus">
+      <menuContribution
+            locationURI="toolbar:com.servoy.eclipse.opencode.OpenCodeView">
+         <command
+               commandId="com.servoy.eclipse.opencode.skilltest.openView"
+               icon="icons/skilltest_run.png"
+               tooltip="Open the Servoy AI Skill Tests view"
+               style="push">
+         </command>
+      </menuContribution>
+   </extension>
+</plugin>
