@@ -181,6 +181,13 @@ public class OpenCodeView extends ViewPart {
 		if (activator == null)
 			return;
 
+		// Keep the opencode codebase-index folder (.opencode/index) out of git and
+		// out of the Eclipse workspace. Done here as well as at server start-up so a
+		// project that is activated later (and only then is seen to hold .opencode)
+		// still gets the resource filter that stops Eclipse refreshing on the index
+		// worker's heartbeat file (SVY-21507).
+		OpencodeIndexIgnorer.apply(java.nio.file.Path.of(projectPath));
+
 		activator.ensureServerStarting();
 
 		// Navigate to the Servoy-owned chat UI served by the BFF servlet. The

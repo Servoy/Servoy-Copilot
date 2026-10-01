@@ -38,7 +38,6 @@ import org.eclipse.core.runtime.jobs.Job;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
-import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
 /**
  * One-shot Eclipse Job that ensures the opencode npm package is installed in
@@ -238,6 +237,14 @@ public class OpencodeFolderCreatorJob extends Job {
 
 		Map<String, String> allEnvVars = new HashMap<>(mcpEnvVars);
 		allEnvVars.putAll(ProviderConfigWriter.buildProviderEnvVars());
+
+		// Keep the opencode codebase-index folder (.opencode/index) out of git and
+		// out of the Eclipse workspace. The index plugin writes it into the project /
+		// git root once opencode runs there; it is machine-local, regenerable state.
+		String activeProjectPath = OpenCodeUtil.getActiveProjectPath();
+		if (activeProjectPath != null) {
+			OpencodeIndexIgnorer.apply(Path.of(activeProjectPath));
+		}
 
 		// Start the opencode server
 		new RunOpencodeCommand(opencodeDir, Collections.unmodifiableMap(allEnvVars)).schedule();
