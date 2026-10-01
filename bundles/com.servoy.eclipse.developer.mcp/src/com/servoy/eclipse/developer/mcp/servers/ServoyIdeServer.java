@@ -19,8 +19,6 @@ package com.servoy.eclipse.developer.mcp.servers;
 import java.util.List;
 import java.util.Optional;
 
-import jakarta.inject.Inject;
-
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
@@ -35,6 +33,9 @@ import com.servoy.eclipse.developer.mcp.services.ServoyScriptResolver;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchAndReplaceResult;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResult;
+import com.servoy.eclipse.developer.mcp.services.WorkspaceService.SearchResults;
+
+import jakarta.inject.Inject;
 
 /**
  * MCP server providing IDE integration tools for the Servoy Developer MCP
@@ -252,21 +253,25 @@ public class ServoyIdeServer {
 		return result.toString();
 	}
 
-	@Tool(name = "fileSearch", description = "Searches for a plain substring in workspace files using Eclipse's text search engine.", type = "object")
+	@Tool(name = "fileSearch", description = "Searches for a plain substring in workspace files using Eclipse's text search engine. Results are capped (default 500) to avoid memory exhaustion on very common terms; when the cap is reached the response states that more matches exist and were truncated.", type = "object")
 	public String fileSearch(
 			@ToolParam(name = "containingText", description = "Text that must be contained in a line (plain substring, not regex)", required = true) String containingText,
-			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
+			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns,
+			@ToolParam(name = "maxResults", description = "Maximum number of matches to return (default: 500). Results are capped to avoid memory exhaustion on very common terms; when the cap is reached the response says more matches exist and were truncated.", required = false) String maxResults) {
 		String[] patterns = parsePatterns(fileNamePatterns);
-		List<SearchResult> results = workspaceService.fileSearch(containingText, patterns);
+		int max = parseMaxResults(maxResults);
+		SearchResults results = workspaceService.fileSearch(containingText, max, patterns);
 		return formatSearchResults(results);
 	}
 
-	@Tool(name = "fileSearchRegExp", description = "Searches workspace files using a Java regular expression via Eclipse's text search engine.", type = "object")
+	@Tool(name = "fileSearchRegExp", description = "Searches workspace files using a Java regular expression via Eclipse's text search engine. Results are capped (default 500) to avoid memory exhaustion on very common terms; when the cap is reached the response states that more matches exist and were truncated.", type = "object")
 	public String fileSearchRegExp(
 			@ToolParam(name = "pattern", description = "Java regular expression", required = true) String pattern,
-			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns) {
+			@ToolParam(name = "fileNamePatterns", description = "Comma-separated file name patterns (e.g. '*.java,*.xml'). If omitted, all files are searched.", required = false) String fileNamePatterns,
+			@ToolParam(name = "maxResults", description = "Maximum number of matches to return (default: 500). Results are capped to avoid memory exhaustion on very common terms; when the cap is reached the response says more matches exist and were truncated.", required = false) String maxResults) {
 		String[] patterns = parsePatterns(fileNamePatterns);
-		List<SearchResult> results = workspaceService.fileSearchRegExp(pattern, patterns);
+		int max = parseMaxResults(maxResults);
+		SearchResults results = workspaceService.fileSearchRegExp(pattern, max, patterns);
 		return formatSearchResults(results);
 	}
 
@@ -350,6 +355,22 @@ public class ServoyIdeServer {
 
 	// --- Private helpers ---
 
+	/**
+	 * Parses the optional {@code maxResults} tool argument. A null, blank or
+	 * non-numeric value falls back to {@link WorkspaceService#SEARCH_MAX_RESULTS_DEFAULT}
+	 * rather than throwing, so a malformed caller value never crashes the search.
+	 */
+	private static int parseMaxResults(String maxResults) {
+		if (maxResults == null || maxResults.isBlank())
+			return WorkspaceService.SEARCH_MAX_RESULTS_DEFAULT;
+		try {
+			return Integer.parseInt(maxResults.trim());
+		}
+		catch (NumberFormatException e) {
+			return WorkspaceService.SEARCH_MAX_RESULTS_DEFAULT;
+		}
+	}
+
 	private static String[] parsePatterns(String fileNamePatterns) {
 		if (fileNamePatterns == null || fileNamePatterns.isBlank())
 			return new String[0];
@@ -360,12 +381,18 @@ public class ServoyIdeServer {
 		return trimmed;
 	}
 
-	private static String formatSearchResults(List<SearchResult> results) {
+	private static String formatSearchResults(SearchResults searchResults) {
+		List<SearchResult> results = searchResults.matches();
 		if (results.isEmpty())
 			return "No matches found.";
 
 		StringBuilder sb = new StringBuilder();
-		sb.append("# Search Results (").append(results.size()).append(" match(es))\n\n");
+		if (searchResults.truncated()) {
+			sb.append("# Search Results (first ").append(results.size())
+					.append(" match(es) shown — more matches exist, results truncated; narrow your pattern or pass a larger maxResults)\n\n");
+		} else {
+			sb.append("# Search Results (").append(results.size()).append(" match(es))\n\n");
+		}
 		for (SearchResult r : results) {
 			sb.append("- ").append(r.filePath()).append(":").append(r.lineNumber());
 			sb.append(" - ").append(r.lineContent().trim()).append("\n");

@@ -64,6 +64,7 @@
                         PersistRenameServiceTest,
                         ResolvedElementsProcessorTest,
                         TestFileServiceReflectionTest,
+                        WorkspaceServiceSearchTest,
                         WpmServiceTest
                     </test>
                     <argLine>

@@ -157,7 +157,7 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 
 	@Test
 	public void testFileSearch_findsTextInFile() {
-		String result = server.fileSearch("Hello World", null);
+		String result = server.fileSearch("Hello World", null, null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("hello.txt"));
@@ -165,7 +165,7 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 
 	@Test
 	public void testFileSearch_noMatch() {
-		String result = server.fileSearch("nonexistent_string_xyz_12345", null);
+		String result = server.fileSearch("nonexistent_string_xyz_12345", null, null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("No") || result.isEmpty() || !result.contains("hello.txt"));
@@ -173,7 +173,7 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 
 	@Test
 	public void testFileSearchRegExp_findsPattern() {
-		String result = server.fileSearchRegExp("Hello\\s+World", null);
+		String result = server.fileSearchRegExp("Hello\\s+World", null, null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("hello.txt"));
@@ -181,7 +181,7 @@ public class ServoyIdeServerWorkspaceIntegrationTest extends DialogGuardBase {
 
 	@Test
 	public void testFileSearchRegExp_withFilePattern() {
-		String result = server.fileSearchRegExp("public", "*.java");
+		String result = server.fileSearchRegExp("public", "*.java", null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("Main.java"));

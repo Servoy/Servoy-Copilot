@@ -137,7 +137,7 @@ public class ServoyIdeServerTest
 	{
 		try
 		{
-			server.fileSearch(null, null);
+			server.fileSearch(null, null, null);
 			fail("Should throw on null containingText");
 		}
 		catch (IllegalArgumentException e)
@@ -151,7 +151,7 @@ public class ServoyIdeServerTest
 	{
 		try
 		{
-			server.fileSearch("   ", null);
+			server.fileSearch("   ", null, null);
 			fail("Should throw on blank containingText");
 		}
 		catch (IllegalArgumentException e)
@@ -165,7 +165,7 @@ public class ServoyIdeServerTest
 	{
 		try
 		{
-			server.fileSearchRegExp(null, null);
+			server.fileSearchRegExp(null, null, null);
 			fail("Should throw on null pattern");
 		}
 		catch (IllegalArgumentException e)

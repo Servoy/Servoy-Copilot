@@ -225,7 +225,9 @@ public class WorkspaceService
 
 	// --- getFileInfo ---
 
-	public record FileInfo(String fullPath, String projectName, String fileName, long sizeBytes, int lineCount, boolean exists) {}
+	public record FileInfo(String fullPath, String projectName, String fileName, long sizeBytes, int lineCount, boolean exists)
+	{
+	}
 
 	public FileInfo getFileInfo(String projectName, String resourcePath)
 	{
@@ -255,7 +257,9 @@ public class WorkspaceService
 
 	// --- readFileRanges ---
 
-	public record RangeResult(int startLine, int endLine, String content) {}
+	public record RangeResult(int startLine, int endLine, String content)
+	{
+	}
 
 	/**
 	 * Reads multiple non-contiguous line ranges from a file in a single call.
@@ -309,25 +313,47 @@ public class WorkspaceService
 		}
 	}
 
-	public record SearchResult(String filePath, int lineNumber, String lineContent) {}
+	public record SearchResult(String filePath, int lineNumber, String lineContent)
+	{
+	}
 
-	public List<SearchResult> fileSearch(String containingText, String... fileNamePatterns)
+	/** Result of a text search: the matches found and whether the search was capped (more matches exist). */
+	public record SearchResults(List<SearchResult> matches, boolean truncated)
+	{
+	}
+
+	/** Default cap on the number of text-search matches accumulated, to avoid heap exhaustion on very common terms. */
+	public static final int SEARCH_MAX_RESULTS_DEFAULT = 500;
+
+	public SearchResults fileSearch(String containingText, int maxResults, String... fileNamePatterns)
 	{
 		if (containingText == null || containingText.isBlank())
 			throw new IllegalArgumentException("containingText must not be null/blank");
-		return search(Pattern.compile(Pattern.quote(containingText)), fileNamePatterns);
+		return search(Pattern.compile(Pattern.quote(containingText)), maxResults, fileNamePatterns);
 	}
 
-	public List<SearchResult> fileSearchRegExp(String pattern, String... fileNamePatterns)
+	public SearchResults fileSearch(String containingText, String... fileNamePatterns)
+	{
+		return fileSearch(containingText, SEARCH_MAX_RESULTS_DEFAULT, fileNamePatterns);
+	}
+
+	public SearchResults fileSearchRegExp(String pattern, int maxResults, String... fileNamePatterns)
 	{
 		if (pattern == null || pattern.isBlank())
 			throw new IllegalArgumentException("pattern must not be null/blank");
-		return search(Pattern.compile(pattern), fileNamePatterns);
+		return search(Pattern.compile(pattern), maxResults, fileNamePatterns);
+	}
+
+	public SearchResults fileSearchRegExp(String pattern, String... fileNamePatterns)
+	{
+		return fileSearchRegExp(pattern, SEARCH_MAX_RESULTS_DEFAULT, fileNamePatterns);
 	}
 
 	// --- searchAndReplace ---
 
-	public record SearchAndReplaceResult(String filePath, int matchesFound, int replacementsMade) {}
+	public record SearchAndReplaceResult(String filePath, int matchesFound, int replacementsMade)
+	{
+	}
 
 	public List<SearchAndReplaceResult> searchAndReplace(String containingText, String replacementText,
 		String... fileNamePatterns)
@@ -402,7 +428,9 @@ public class WorkspaceService
 	 * @param centerLine   1-based line to center the window on
 	 * @param windowSize   number of lines before and after centerLine (default 30)
 	 */
-	public record FileContextResult(String fullPath, int totalLines, int centerLine, int windowSize, int startLine, int endLine, String content) {}
+	public record FileContextResult(String fullPath, int totalLines, int centerLine, int windowSize, int startLine, int endLine, String content)
+	{
+	}
 
 	public FileContextResult readFileContext(String projectName, String resourcePath, int centerLine, int windowSize)
 	{
@@ -445,7 +473,9 @@ public class WorkspaceService
 
 	// --- getFileOutline ---
 
-	public record OutlineEntry(int lineNumber, String functionName) {}
+	public record OutlineEntry(int lineNumber, String functionName)
+	{
+	}
 
 	/**
 	 * Extracts function/method names with their starting line numbers using regex.
@@ -516,7 +546,9 @@ public class WorkspaceService
 
 	// --- readFunction ---
 
-	public record FunctionResult(String fullPath, String functionName, int startLine, int endLine, String content) {}
+	public record FunctionResult(String fullPath, String functionName, int startLine, int endLine, String content)
+	{
+	}
 
 	/**
 	 * Reads a complete function body by name using brace matching.
@@ -542,8 +574,8 @@ public class WorkspaceService
 			List<String> lines = readFileLines(file);
 			Pattern functionPattern = Pattern.compile(
 				"^\\s*(?:(?:async\\s+)?function\\s+" + Pattern.quote(functionName) +
-				"|(?:var|let|const)\\s+" + Pattern.quote(functionName) + "\\s*=\\s*(?:async\\s+)?function" +
-				"|" + Pattern.quote(functionName) + "\\s*:\\s*(?:async\\s+)?function)");
+					"|(?:var|let|const)\\s+" + Pattern.quote(functionName) + "\\s*=\\s*(?:async\\s+)?function" +
+					"|" + Pattern.quote(functionName) + "\\s*:\\s*(?:async\\s+)?function)");
 
 			int startLine = -1;
 			for (int i = 0; i < lines.size(); i++)
@@ -566,10 +598,21 @@ public class WorkspaceService
 			{
 				for (char c : lines.get(i).toCharArray())
 				{
-					if (c == '{') { braceCount++; inFunction = true; }
-					else if (c == '}') { braceCount--; }
+					if (c == '{')
+					{
+						braceCount++;
+						inFunction = true;
+					}
+					else if (c == '}')
+					{
+						braceCount--;
+					}
 				}
-				if (inFunction && braceCount == 0) { endLine = i; break; }
+				if (inFunction && braceCount == 0)
+				{
+					endLine = i;
+					break;
+				}
 			}
 
 			StringBuilder content = new StringBuilder();
@@ -586,40 +629,90 @@ public class WorkspaceService
 	}
 
 
-	private List<SearchResult> search(Pattern pattern, String... fileNamePatterns)
+	private SearchResults search(Pattern pattern, int maxResults, String... fileNamePatterns)
 	{
+		int limit = maxResults <= 0 ? SEARCH_MAX_RESULTS_DEFAULT : maxResults;
+
 		IResource[] roots = getOpenProjectsAsRoots();
-		if (roots.length == 0) return List.of();
+		if (roots.length == 0) return new SearchResults(List.of(), false);
 
 		Pattern fileNamePattern = globPatternsToRegex(fileNamePatterns);
 		TextSearchScope scope = TextSearchScope.newSearchScope(roots, fileNamePattern, true);
 		TextSearchEngine engine = TextSearchEngine.createDefault();
 
 		List<SearchResult> results = new ArrayList<>();
+		// Single-element holder so the requestor can flag truncation back to this method.
+		boolean[] truncated = new boolean[] { false };
 
 		TextSearchRequestor requestor = new TextSearchRequestor()
 		{
+			// Per-file one-time cache of the current file's lines, so a file is read at most once per search
+			// and only one file's lines are ever held in memory. This keeps the reported line number and
+			// trimmed line content identical to the previous getLineInfo/readFileLines behaviour.
+			private IFile currentFile;
+			private List<String> currentFileLines;
+
 			@Override
 			public boolean acceptFile(IFile file) throws CoreException
 			{
-				return file != null && file.isAccessible();
+				// Release the previous file's lines before moving on.
+				currentFile = null;
+				currentFileLines = null;
+				return results.size() < limit && file != null && file.isAccessible();
 			}
 
 			@Override
 			public boolean acceptPatternMatch(TextSearchMatchAccess matchAccess) throws CoreException
 			{
+				if (results.size() >= limit)
+				{
+					truncated[0] = true;
+					return false;
+				}
 				IFile file = matchAccess.getFile();
 				int offset = matchAccess.getMatchOffset();
-				LineInfo info = getLineInfo(file, offset);
+				LineInfo info = lineInfoFor(file, offset);
 				results.add(new SearchResult(file.getFullPath().toString(), info.lineNumber(), info.lineContent()));
+				if (results.size() >= limit)
+				{
+					truncated[0] = true;
+					return false;
+				}
 				return true;
+			}
+
+			private LineInfo lineInfoFor(IFile file, int offset)
+			{
+				if (file == null) return new LineInfo(-1, "");
+				if (file != currentFile)
+				{
+					currentFile = file;
+					try
+					{
+						currentFileLines = readFileLines(file);
+					}
+					catch (CoreException | IOException e)
+					{
+						currentFileLines = null;
+					}
+				}
+				if (currentFileLines == null) return new LineInfo(-1, "");
+				int charCount = 0;
+				for (int i = 0; i < currentFileLines.size(); i++)
+				{
+					String line = currentFileLines.get(i);
+					int nextCharCount = charCount + line.length() + 1;
+					if (offset < nextCharCount) return new LineInfo(i + 1, line);
+					charCount = nextCharCount;
+				}
+				return new LineInfo(-1, "");
 			}
 		};
 
 		try
 		{
 			engine.search(scope, requestor, pattern, null);
-			return results;
+			return new SearchResults(results, truncated[0]);
 		}
 		catch (Exception e)
 		{
@@ -627,28 +720,8 @@ public class WorkspaceService
 		}
 	}
 
-	private record LineInfo(int lineNumber, String lineContent) {}
-
-	private static LineInfo getLineInfo(IFile file, int offset)
+	private record LineInfo(int lineNumber, String lineContent)
 	{
-		if (file == null) return new LineInfo(-1, "");
-		try
-		{
-			List<String> lines = readFileLines(file);
-			int charCount = 0;
-			for (int i = 0; i < lines.size(); i++)
-			{
-				String line = lines.get(i);
-				int nextCharCount = charCount + line.length() + 1;
-				if (offset < nextCharCount) return new LineInfo(i + 1, line);
-				charCount = nextCharCount;
-			}
-			return new LineInfo(-1, "");
-		}
-		catch (CoreException | IOException e)
-		{
-			return new LineInfo(-1, "");
-		}
 	}
 
 	private static int replaceInFile(IFile file, String containingText, String replacementText)
@@ -745,12 +818,28 @@ public class WorkspaceService
 			char c = g.charAt(i);
 			switch (c)
 			{
-				case '*': out.append(".*"); break;
-				case '?': out.append('.'); break;
-				case '.': case '^': case '$': case '+': case '{': case '}':
-				case '[': case ']': case '(': case ')': case '|': case '\\':
-					out.append('\\').append(c); break;
-				default: out.append(c);
+				case '*' :
+					out.append(".*");
+					break;
+				case '?' :
+					out.append('.');
+					break;
+				case '.' :
+				case '^' :
+				case '$' :
+				case '+' :
+				case '{' :
+				case '}' :
+				case '[' :
+				case ']' :
+				case '(' :
+				case ')' :
+				case '|' :
+				case '\\' :
+					out.append('\\').append(c);
+					break;
+				default :
+					out.append(c);
 			}
 		}
 		return out.toString();
