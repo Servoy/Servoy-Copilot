@@ -138,7 +138,6 @@
         <module>repository.site_aiplugin</module>
         <module>repository.site_skilltest</module>
         <module>tests/com.servoy.eclipse.opencode.tests</module>
-        <module>tests/com.servoy.eclipse.opencode.skilltest.tests</module>
         <module>tests/com.servoy.eclipse.developer.mcp.tests</module>
     </modules>
 </project>
