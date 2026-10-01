@@ -69,7 +69,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   todowrite: 'Update Todos',
   task: 'Task',
   skill: 'Load Skill',
-  question: 'Question'
+  question: 'Question',
+  execute: 'Script'
 };
 
 /** A human-friendly display name for a tool part (e.g. "read" -> "Read File"). */
@@ -85,6 +86,61 @@ export function toolDisplayName(part: Part): string {
 }
 
 /**
+ * The source code of a Code Mode {@code execute} ("Script") tool part, taken
+ * from its {@code input.code}. Empty string for any other tool or when no code
+ * was captured yet.
+ */
+export function toolScript(part: Part): string {
+  const input = part.state?.input;
+  if (!input || typeof input !== 'object') {
+    return '';
+  }
+  const code = (input as Record<string, unknown>)['code'];
+  return typeof code === 'string' ? code : '';
+}
+
+/** True for the Code Mode {@code execute} tool, which runs a script. */
+export function isScriptTool(part: Part): boolean {
+  return part.type === 'tool' && part.tool === 'execute';
+}
+
+/**
+ * A compact summary of the MCP tool calls a Code Mode script makes, e.g.
+ * {@code "eclipse-ide.getCompilationErrors"} - mirroring OpenChamber's inline
+ * Script summary. Scans the script for {@code tools["server"].method(} and
+ * {@code tools.server.method(} call sites, de-duplicates them in order, drops a
+ * {@code _codemode} suffix from the server name, and caps the list so the row
+ * stays short. Returns '' when the script makes no recognizable tool call.
+ */
+export function scriptToolSummary(code: string): string {
+  if (!code) {
+    return '';
+  }
+  const re = /tools(?:\[\s*["']([^"']+)["']\s*\]|\.([A-Za-z0-9_$]+))\.([A-Za-z0-9_$]+)\s*\(/g;
+  const seen: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    const server = (match[1] ?? match[2] ?? '').replace(/_codemode$/, '');
+    const method = match[3] ?? '';
+    if (!server || !method) {
+      continue;
+    }
+    const label = `${server}.${method}`;
+    if (!seen.includes(label)) {
+      seen.push(label);
+    }
+  }
+  if (seen.length === 0) {
+    return '';
+  }
+  const MAX = 2;
+  if (seen.length <= MAX) {
+    return seen.join(', ');
+  }
+  return `${seen.slice(0, MAX).join(', ')} +${seen.length - MAX}`;
+}
+
+/**
  * A short, muted subtitle for a tool part: the most meaningful single argument
  * from the tool input (a file path, a command, a query). Returns '' when there
  * is nothing worth showing inline. Mirrors OpenChamber's inline tool summary.
@@ -93,6 +149,11 @@ export function toolSubtitle(part: Part): string {
   const input = part.state?.input;
   if (!input || typeof input !== 'object') {
     return '';
+  }
+  // A Code Mode script has no single meaningful argument; summarize the tool
+  // calls it makes instead (like OpenChamber's "Script eclipse-ide.foo").
+  if (isScriptTool(part)) {
+    return scriptToolSummary(toolScript(part));
   }
   const args = input as Record<string, unknown>;
   const candidate =
@@ -123,6 +184,15 @@ export function hasToolOutput(part: Part): boolean {
     return false;
   }
   return !!part.state?.output && part.state.output.trim().length > 0;
+}
+
+/**
+ * Whether a tool row can be expanded to reveal more. True when there is output
+ * worth showing, or - for a Code Mode script - when there is script source to
+ * reveal even before any output exists.
+ */
+export function isToolExpandable(part: Part): boolean {
+  return hasToolOutput(part) || (isScriptTool(part) && toolScript(part).trim().length > 0);
 }
 
 /**

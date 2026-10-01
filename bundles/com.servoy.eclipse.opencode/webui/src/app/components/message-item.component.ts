@@ -2,12 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 
 import { MessageError, Part } from '../models/opencode.models';
 import {
-  hasToolOutput,
   isReasoningPart,
   isRenderablePart,
+  isScriptTool,
   isTextPart,
+  isToolExpandable,
   isToolPart,
   toolDisplayName,
+  toolScript,
   toolSubtitle
 } from '../services/part-utils';
 import { MarkdownRendererComponent } from './markdown-renderer.component';
@@ -94,9 +96,24 @@ export class MessageItemComponent {
     return toolSubtitle(part);
   }
 
-  /** Whether this tool part has output that can be expanded. */
+  /** Whether this tool part has output (or a script) that can be expanded. */
   canExpand(part: Part): boolean {
-    return hasToolOutput(part);
+    return isToolExpandable(part);
+  }
+
+  /** True for the Code Mode {@code execute} ("Script") tool. */
+  isScript(part: Part): boolean {
+    return isScriptTool(part);
+  }
+
+  /**
+   * The script source of an {@code execute} part, wrapped as a fenced
+   * TypeScript code block so the markdown renderer highlights it. Empty string
+   * when there is no script.
+   */
+  scriptMarkdown(part: Part): string {
+    const code = toolScript(part);
+    return code ? '```ts\n' + code + '\n```' : '';
   }
 
   partKey(part: Part, index: number): string {

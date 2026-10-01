@@ -20,10 +20,20 @@
             <span class="tool-subtitle">{{ subtitle }}</span>
           }
         </div>
-        @if (isExpanded(part, $index) && toolOutput(part)) {
-          <div class="tool-output-wrap">
-            <pre class="tool-output">{{ toolOutput(part) }}</pre>
-          </div>
+        @if (isExpanded(part, $index)) {
+          @if (isScript(part) && scriptMarkdown(part); as script) {
+            <div class="tool-script-wrap">
+              <svy-markdown [content]="script"></svy-markdown>
+            </div>
+          }
+          @if (toolOutput(part); as output) {
+            <div class="tool-output-wrap">
+              @if (isScript(part)) {
+                <div class="tool-output-label">Result</div>
+              }
+              <pre class="tool-output">{{ output }}</pre>
+            </div>
+          }
         }
       </div>
     }

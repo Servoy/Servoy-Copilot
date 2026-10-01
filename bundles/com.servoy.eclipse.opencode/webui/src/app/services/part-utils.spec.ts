@@ -3,13 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   isReasoningPart,
   isRenderablePart,
+  isScriptTool,
   isSyntheticPart,
   isTextPart,
+  isToolExpandable,
   isToolPart,
   toolLabel,
   toolDisplayName,
+  toolScript,
   toolSubtitle,
   hasToolOutput,
+  scriptToolSummary,
   upsertPart
 } from './part-utils';
 import { Part } from '../models/opencode.models';
@@ -158,6 +162,58 @@ describe('toolSubtitle', () => {
     expect(toolSubtitle(part({ type: 'tool', tool: 'read' }))).toBe('');
     expect(toolSubtitle(part({ type: 'tool', tool: 'read', state: { input: {} } }))).toBe('');
     expect(toolSubtitle(part({ type: 'tool', tool: 'read', state: { input: 'string' } }))).toBe('');
+  });
+});
+
+describe('Code Mode script (execute) tool', () => {
+  const scriptPart = (code: string, extra: Partial<Part> = {}) =>
+    part({ type: 'tool', tool: 'execute', state: { input: { code }, ...(extra.state ?? {}) }, ...extra });
+
+  it('labels the execute tool as "Script"', () => {
+    expect(toolDisplayName(part({ type: 'tool', tool: 'execute' }))).toBe('Script');
+  });
+
+  it('detects a script tool', () => {
+    expect(isScriptTool(part({ type: 'tool', tool: 'execute' }))).toBe(true);
+    expect(isScriptTool(part({ type: 'tool', tool: 'read' }))).toBe(false);
+    expect(isScriptTool(part({ type: 'text', text: 'x' }))).toBe(false);
+  });
+
+  it('extracts the script source from input.code', () => {
+    expect(toolScript(scriptPart('const x = 1;'))).toBe('const x = 1;');
+    expect(toolScript(part({ type: 'tool', tool: 'execute', state: { input: {} } }))).toBe('');
+    expect(toolScript(part({ type: 'tool', tool: 'read', state: { input: { filePath: '/a' } } }))).toBe('');
+  });
+
+  it('summarizes bracket-style tool calls and drops the _codemode suffix', () => {
+    const code = 'const r = await tools["eclipse-ide"].getCompilationErrors({ projectName: "x" });\nreturn r.summaryText;';
+    expect(scriptToolSummary(code)).toBe('eclipse-ide.getCompilationErrors');
+  });
+
+  it('summarizes dot-style tool calls and de-duplicates in order', () => {
+    const code = 'await tools.memory_codemode.think("a"); await tools.memory_codemode.think("b");';
+    expect(scriptToolSummary(code)).toBe('memory.think');
+  });
+
+  it('caps the summary and reports the overflow count', () => {
+    const code = 'tools.a_codemode.one(); tools.b_codemode.two(); tools.c_codemode.three();';
+    expect(scriptToolSummary(code)).toBe('a.one, b.two +1');
+  });
+
+  it('is empty when the script makes no recognizable tool call', () => {
+    expect(scriptToolSummary('const x = 1 + 2;')).toBe('');
+    expect(scriptToolSummary('')).toBe('');
+  });
+
+  it('uses the script summary as the subtitle for an execute part', () => {
+    const code = 'await tools["eclipse-git"].gitStatus({ projectName: "p" });';
+    expect(toolSubtitle(scriptPart(code))).toBe('eclipse-git.gitStatus');
+  });
+
+  it('makes a script row expandable from its source even before any output', () => {
+    expect(isToolExpandable(scriptPart('tools.x_codemode.y();'))).toBe(true);
+    // A non-script tool with no output is not expandable.
+    expect(isToolExpandable(part({ type: 'tool', tool: 'read' }))).toBe(false);
   });
 });
 

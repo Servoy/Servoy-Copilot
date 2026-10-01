@@ -139,13 +139,32 @@
   white-space: nowrap;
 }
 
-.tool-output-wrap {
+.tool-output-wrap,
+.tool-script-wrap {
   // Indent under the caret column and draw a vertical guide, so expanded
-  // output reads as nested content rather than a detached box.
+  // content reads as nested rather than a detached box.
   margin: 0.25rem 0 0.35rem;
   padding-left: 0.85rem;
   border-left: 2px solid var(--svy-border, rgba(127, 127, 127, 0.25));
   margin-left: 0.35rem;
+}
+
+// The script source sits above its result; keep the code block compact and let
+// the markdown renderer's highlighting carry the colors.
+.tool-script-wrap {
+  font-size: 0.8rem;
+
+  :where(pre) {
+    margin: 0;
+  }
+}
+
+.tool-output-label {
+  color: var(--svy-muted, #9aa0a6);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
 }
 
 .tool-output {
