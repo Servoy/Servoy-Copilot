@@ -274,6 +274,41 @@ These tests require a running Eclipse workbench + Servoy App Server. They use `R
 
 ---
 
+## 1c. Resolving solution objects — ALWAYS use the flattened solution
+
+When a tool (or any feature code) needs to look up a **root object of the active solution** — a
+form, relation, valuelist, menu, media, scope/global, etc. — it MUST resolve it against the
+active project's **editing flattened solution**, NOT the active solution's own editing solution.
+A Servoy solution is almost always a main solution plus **modules**, and most of a project's
+forms/relations/valuelists live in those modules. Looking up only in the active solution's own
+objects wrongly reports things as "not found" whenever they live in a module — and the Servoy
+runtime, the designer, and the `/formtemplate` render route all operate on the flattened
+solution, so a tool that doesn't will be inconsistent with everything else.
+
+**Do this:**
+```java
+ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+FlattenedSolution fs = activeProject.getEditingFlattenedSolution(); // includes all modules
+Form form = fs.getForm(formName);          // and fs.getRelation(...), fs.getValueList(...), fs.getMedia(...), etc.
+```
+
+**Not this:**
+```java
+activeProject.getEditingSolution().getForm(formName);   // active solution ONLY — misses module objects
+activeProject.getSolution().getForm(formName);          // same problem, and not the editing copy
+```
+
+Notes:
+- `ServoyProject.getEditingFlattenedSolution()` (no-arg) is the direct call — do not route back
+  through `ServoyModelManager...getServoyModel().getEditingFlattenedSolution(editingSolution)`
+  when you already hold the `ServoyProject`.
+- Use the editing/flattened variants (not the runtime `getFlattenedSolution()`), since developer
+  tools inspect the in-workspace editing state.
+- The read-only lookup helpers on `FlattenedSolution` (`getForm`, `getRelation`, `getValueList`,
+  `getMedia`, `getScriptCalculation`, iterators, etc.) are the right entry points.
+
+---
+
 ## 2. Prioritize Eclipse MCP Tools Over Standard Tools
 
 Since this workspace is a complex, multi-project Eclipse environment, **always prioritize Eclipse-specific MCP/PDE tools** over standard, general-purpose command-line or filesystem tools. This ensures that the Eclipse index, builder, and classpath are kept in sync.

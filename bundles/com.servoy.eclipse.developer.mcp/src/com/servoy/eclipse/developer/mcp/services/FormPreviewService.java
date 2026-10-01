@@ -166,9 +166,13 @@ public class FormPreviewService
 				return "Error: No active Servoy project. Please open a solution.";
 			}
 
-			if (activeProject.getEditingSolution().getForm(formName) == null)
+			// Resolve against the editing flattened solution so a form living in a module of the
+			// active solution is found (the active solution's own getForm misses module forms).
+			if (activeProject.getEditingFlattenedSolution() == null ||
+				activeProject.getEditingFlattenedSolution().getForm(formName) == null)
 			{
-				return "Error: Form '" + formName + "' does not exist in solution '" + activeProject.getSolution().getName() + "'.";
+				return "Error: Form '" + formName + "' does not exist in solution '" + activeProject.getSolution().getName() +
+					"' or its modules.";
 			}
 
 			// Property type mismatches are the only render-blocking gate: they compare persisted

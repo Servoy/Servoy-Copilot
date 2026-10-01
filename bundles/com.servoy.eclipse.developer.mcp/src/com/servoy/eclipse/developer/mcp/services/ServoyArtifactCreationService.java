@@ -88,10 +88,13 @@ public class ServoyArtifactCreationService
 			form.setResponsiveLayout(true);
 		}
 
-		// Set parent form if specified
+		// Set parent form if specified. Resolve the parent against the editing flattened solution
+		// so a form living in a module of the active solution can be extended (the active
+		// solution's own getForm misses module forms).
 		if (extendsForm != null && !extendsForm.isBlank())
 		{
-			Form parentForm = project.getEditingSolution().getForm(extendsForm);
+			com.servoy.j2db.FlattenedSolution fs = project.getEditingFlattenedSolution();
+			Form parentForm = fs != null ? fs.getForm(extendsForm) : null;
 			if (parentForm != null)
 			{
 				form.setExtendsForm(parentForm);
