@@ -29,6 +29,7 @@
     }
     <svy-composer
       [streaming]="store.streaming()"
+      [draft]="store.activeDraft()"
       [disabled]="store.activeIsSubagent() || !!store.pendingForm()"
       [disabledHint]="
         store.pendingForm()
@@ -37,6 +38,7 @@
       "
       (sendMessage)="onSend($event)"
       (stop)="onStop()"
+      (draftChange)="onDraftChange($event)"
     ></svy-composer>
   </main>
   @if (debugEnabled) {

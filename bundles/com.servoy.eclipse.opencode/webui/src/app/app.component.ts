@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 
 import { SendPart } from './models/opencode.models';
-import { ChatStore } from './services/chat-store.service';
+import { ChatStore, ComposerDraft } from './services/chat-store.service';
 import { debugEnabled } from './services/debug-log';
 import { FormAnswer } from './models/opencode.models';
 import { ComposerComponent } from './components/composer.component';
@@ -72,6 +72,10 @@ export class AppComponent implements OnInit {
 
   onStop(): void {
     this.store.abort();
+  }
+
+  onDraftChange(draft: ComposerDraft): void {
+    this.store.setActiveDraft(draft);
   }
 
   onFormSubmit(answer: FormAnswer): void {

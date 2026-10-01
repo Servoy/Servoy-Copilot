@@ -22,9 +22,9 @@
       class="input"
       rows="1"
       [placeholder]="disabled() ? 'Chatting is disabled for subagent sessions' : 'Ask Servoy AI…'"
-      [(ngModel)]="text"
+      [ngModel]="text()"
       [disabled]="disabled()"
-      (input)="onInput()"
+      (input)="onInput($any($event.target).value)"
       (keydown)="onKeydown($event)"
       (paste)="onPaste($event)"
     ></textarea>

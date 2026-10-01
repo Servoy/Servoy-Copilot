@@ -30,6 +30,34 @@ export interface ChatMessage {
 }
 
 /**
+ * The unsent composer state of a single session: the text being typed and any
+ * attachments picked but not yet sent. Held per-session so switching sessions
+ * (or opening a subagent and coming back) preserves each session's own draft.
+ */
+export interface ComposerDraft {
+  text: string;
+  attachments: DraftAttachment[];
+}
+
+/** A composer attachment (file/image) kept in a draft. Mirrors {@code Attachment}. */
+export interface DraftAttachment {
+  filename: string;
+  mime: string;
+  url: string;
+}
+
+/** The empty draft used for a session with nothing typed yet. */
+const EMPTY_DRAFT: ComposerDraft = { text: '', attachments: [] };
+
+/**
+ * The draft key for the fresh, not-yet-created session (when
+ * {@code activeSessionId} is {@code null}). Switched to the real session id by
+ * {@link ChatStore#send} once opencode creates the session, so a draft typed
+ * before the first send is not lost.
+ */
+const NEW_SESSION_DRAFT_KEY = '__new__';
+
+/**
  * A top-level session with its subagent (child) sessions, for the sidebar tree.
  */
 export interface SessionNode {
@@ -55,8 +83,45 @@ export class ChatStore {
 
   readonly activeSessionId = signal<string | null>(null);
   readonly messages = signal<ChatMessage[]>([]);
-  readonly streaming = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  /**
+   * The set of sessions with a turn currently streaming on the server, keyed by
+   * session id. This is per-session, not a single global flag: a turn dispatched
+   * in one session keeps running when you switch to another, so the stop/send
+   * button must reflect the session you are *looking at*, not whichever session
+   * happened to start a turn last. Entries are added on dispatch / an
+   * execution-started event and removed on idle / succeeded / failed / error.
+   */
+  private readonly streamingSessions = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Whether the *active* session has a turn streaming. The composer binds its
+   * stop/send button to this, so the button belongs to the open session rather
+   * than to the app as a whole.
+   */
+  readonly streaming = computed<boolean>(() => {
+    const id = this.activeSessionId();
+    return id !== null && this.streamingSessions().has(id);
+  });
+
+  /**
+   * The unsent composer state per session, keyed by session id (and by
+   * {@link NEW_SESSION_DRAFT_KEY} for the not-yet-created session). Preserved
+   * across session switches so each session keeps its own half-typed message
+   * and attachments. An entry is cleared once its prompt is sent.
+   */
+  private readonly drafts = signal<ReadonlyMap<string, ComposerDraft>>(new Map());
+
+  /**
+   * The draft of the active session (or of the fresh unsaved session). The
+   * composer binds its text/attachments to this; {@link setActiveDraft} writes
+   * changes back under the active session's key.
+   */
+  readonly activeDraft = computed<ComposerDraft>(() => {
+    const key = this.draftKey();
+    return this.drafts().get(key) ?? EMPTY_DRAFT;
+  });
 
   /**
    * The interactive form the active session is currently blocked on, or
@@ -71,6 +136,59 @@ export class ChatStore {
   readonly pendingForm = this.pendingFormSig.asReadonly();
 
   readonly hasActiveSession = computed(() => this.activeSessionId() !== null);
+
+  /** The draft map key for the active session, or the fresh-session key. */
+  private draftKey(): string {
+    return this.activeSessionId() ?? NEW_SESSION_DRAFT_KEY;
+  }
+
+  /**
+   * Persist the composer draft of the active session (or the fresh session).
+   * An empty draft (no text, no attachments) is removed from the map so a
+   * cleared composer leaves nothing behind. The composer calls this on every
+   * change so switching sessions keeps each session's own half-typed message.
+   */
+  setActiveDraft(draft: ComposerDraft): void {
+    const key = this.draftKey();
+    const isEmpty = draft.text.trim().length === 0 && draft.attachments.length === 0;
+    this.drafts.update((map) => {
+      const next = new Map(map);
+      if (isEmpty) {
+        next.delete(key);
+      } else {
+        next.set(key, { text: draft.text, attachments: draft.attachments.slice() });
+      }
+      return next;
+    });
+  }
+
+  /** Drop the draft stored under {@code key} (after its prompt was sent). */
+  private clearDraft(key: string): void {
+    this.drafts.update((map) => {
+      if (!map.has(key)) {
+        return map;
+      }
+      const next = new Map(map);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  /** Marks a session as having a turn streaming, or not. */
+  private setSessionStreaming(id: string, streaming: boolean): void {
+    this.streamingSessions.update((set) => {
+      if (streaming === set.has(id)) {
+        return set;
+      }
+      const next = new Set(set);
+      if (streaming) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
 
   /**
    * The sidebar tree: each top-level session with its subagent (child)
@@ -296,6 +414,10 @@ export class ChatStore {
       this.messages.set([]);
       this.pendingFormSig.set(null);
     }
+    // The removed session's composer draft and streaming flag are no longer
+    // meaningful; drop them so they can't leak onto a reused id.
+    this.clearDraft(id);
+    this.setSessionStreaming(id, false);
     // Drop it locally first so the merging refreshSessions() can't re-add it
     // (the server list no longer returns it, and merge preserves local-only
     // entries - which is exactly what we do NOT want for a removed session).
@@ -312,9 +434,14 @@ export class ChatStore {
     }
     const id = this.activeSessionId();
     if (id) {
+      // The draft for this session has now been sent; clear it.
+      this.clearDraft(id);
       this.dispatch(id, parts);
       return;
     }
+    // Sending from the fresh (not-yet-created) session: its draft is keyed under
+    // NEW_SESSION_DRAFT_KEY and must be cleared once sent.
+    this.clearDraft(NEW_SESSION_DRAFT_KEY);
     this.api.createSession().subscribe({
       next: (session) => {
         this.activeSessionId.set(session.id);
@@ -337,7 +464,7 @@ export class ChatStore {
       return;
     }
     this.api.interrupt(id).subscribe({
-      next: () => this.streaming.set(false),
+      next: () => this.setSessionStreaming(id, false),
       error: (err) => this.error.set(this.describe(err))
     });
   }
@@ -398,7 +525,7 @@ export class ChatStore {
 
   private dispatch(id: string, parts: SendPart[]): void {
     this.error.set(null);
-    this.streaming.set(true);
+    this.setSessionStreaming(id, true);
     // Optimistically render the user's own message. opencode V2 does not push a
     // bus event for the prompt itself (only the assistant's streamed text /
     // reasoning / tool events follow), so without this the user's message would
@@ -406,7 +533,7 @@ export class ChatStore {
     this.appendOptimisticUserMessage(id, parts);
     this.api.sendPrompt(id, parts).subscribe({
       error: (err) => {
-        this.streaming.set(false);
+        this.setSessionStreaming(id, false);
         this.error.set(this.describe(err));
       }
     });
@@ -467,23 +594,30 @@ export class ChatStore {
         this.applySessionDeleted(props);
         break;
 
-      // --- turn lifecycle ---
-      case 'session.execution.started':
-        if (this.matchesActiveSession(props)) {
-          this.streaming.set(true);
+      // --- turn lifecycle (per session, not just the active one) ---
+      case 'session.execution.started': {
+        const id = this.eventSessionId(props);
+        if (id) {
+          this.setSessionStreaming(id, true);
         }
         break;
+      }
       case 'session.idle':
       case 'session.execution.succeeded':
       case 'session.execution.failed':
-      case 'session.error':
-        if (this.matchesActiveSession(props)) {
-          this.streaming.set(false);
-          if (evt.type === 'session.idle' || evt.type === 'session.execution.succeeded') {
+      case 'session.error': {
+        const id = this.eventSessionId(props);
+        if (id) {
+          this.setSessionStreaming(id, false);
+          if (
+            id === this.activeSessionId() &&
+            (evt.type === 'session.idle' || evt.type === 'session.execution.succeeded')
+          ) {
             this.scheduleTitleRefresh();
           }
         }
         break;
+      }
 
       // --- streamed assistant text ---
       case 'session.text.started':
@@ -545,20 +679,20 @@ export class ChatStore {
   // -----------------------------------------------------------------------
 
   private onTextStarted(props: Record<string, unknown>): void {
+    this.markStreamingFromEvent(props);
     if (!this.matchesActiveSession(props)) {
       return;
     }
-    this.streaming.set(true);
     this.upsertStreamPart(props, 'text', { text: '' });
   }
 
   private onTextDelta(props: Record<string, unknown>): void {
+    this.markStreamingFromEvent(props);
     if (!this.matchesActiveSession(props)) {
       return;
     }
     const delta = typeof props['delta'] === 'string' ? (props['delta'] as string) : '';
     this.appendStreamText(props, 'text', delta);
-    this.streaming.set(true);
   }
 
   private onTextEnded(props: Record<string, unknown>): void {
@@ -610,12 +744,24 @@ export class ChatStore {
    * events for one call all carry that same id but no ordinal.
    */
   private onToolStarted(props: Record<string, unknown>): void {
+    this.markStreamingFromEvent(props);
     if (!this.matchesActiveSession(props)) {
       return;
     }
-    this.streaming.set(true);
     const name = typeof props['name'] === 'string' ? (props['name'] as string) : 'tool';
     this.upsertToolPart(props, { tool: name, state: { status: 'running' } });
+  }
+
+  /**
+   * A streamed event (text/tool/part) implies its session has a turn running;
+   * mark that session streaming regardless of whether it is the active one, so
+   * a background session's stop/send state stays correct.
+   */
+  private markStreamingFromEvent(props: Record<string, unknown>): void {
+    const id = this.eventSessionId(props);
+    if (id) {
+      this.setSessionStreaming(id, true);
+    }
   }
 
   private onToolCalled(props: Record<string, unknown>): void {
@@ -888,7 +1034,7 @@ export class ChatStore {
       const part = props['part'] as Part | undefined;
       if (part?.messageID) {
         this.applyPart(part);
-        this.streaming.set(true);
+        this.markStreamingFromEvent(props);
       }
     }
   }
@@ -949,13 +1095,24 @@ export class ChatStore {
     if (!active) {
       return false;
     }
+    return this.eventSessionId(props) === active;
+  }
+
+  /**
+   * The session id an event belongs to, regardless of whether it is the active
+   * session. Used for per-session streaming state so a turn running in a
+   * background session is tracked correctly. Looks at {@code sessionID} first,
+   * then the nested message {@code info} / {@code part}.
+   */
+  private eventSessionId(props: Record<string, unknown>): string | null {
     const info = props['info'] as MessageInfo | undefined;
     const part = props['part'] as Part | undefined;
-    const sessionID =
+    return (
       (props['sessionID'] as string | undefined) ??
       info?.sessionID ??
-      (part?.sessionID as string | undefined);
-    return sessionID === active;
+      (part?.sessionID as string | undefined) ??
+      null
+    );
   }
 
   private ensureMessage(info: MessageInfo): void {

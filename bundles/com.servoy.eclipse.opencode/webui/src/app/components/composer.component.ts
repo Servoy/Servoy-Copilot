@@ -2,8 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  computed,
   input,
-  model,
   output,
   viewChild
 } from '@angular/core';
@@ -11,6 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 
 import { SendPart } from '../models/opencode.models';
+import { ComposerDraft } from '../services/chat-store.service';
 import { Attachment, AttachmentBarComponent } from './attachment-bar.component';
 
 /**
@@ -34,18 +35,31 @@ export class ComposerComponent {
   /** Explains why the composer is disabled; shown above the input when set. */
   readonly disabledHint = input('You\'re viewing a subagent session. Open its parent session to chat.');
 
+  /**
+   * The composer draft for the active session, owned by the store so it is
+   * preserved per-session. The composer is "controlled": it renders this draft
+   * and emits {@link draftChange} on every edit rather than holding its own
+   * copy, so switching sessions swaps the draft without any stale local state.
+   */
+  readonly draft = input<ComposerDraft>({ text: '', attachments: [] });
+
   readonly sendMessage = output<SendPart[]>();
   readonly stop = output<void>();
+  readonly draftChange = output<ComposerDraft>();
 
   readonly textarea = viewChild.required<ElementRef<HTMLTextAreaElement>>('textarea');
   readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
 
-  readonly text = model('');
-  readonly attachments = model<Attachment[]>([]);
+  /** The current text, read from the active session's draft. */
+  readonly text = computed(() => this.draft().text);
+  /** The current attachments, read from the active session's draft. */
+  readonly attachments = computed<Attachment[]>(() => this.draft().attachments);
 
   private static readonly MAX_HEIGHT_PX = 200;
 
-  onInput(): void {
+  /** Textarea input: persist the typed text to the draft and grow the box. */
+  onInput(value: string): void {
+    this.emitDraft(value, this.attachments());
     this.autoGrow();
   }
 
@@ -105,7 +119,8 @@ export class ComposerComponent {
   }
 
   removeAttachment(index: number): void {
-    this.attachments.update((current) => current.filter((_, i) => i !== index));
+    const next = this.attachments().filter((_, i) => i !== index);
+    this.emitDraft(this.text(), next);
   }
 
   onStop(): void {
@@ -136,8 +151,9 @@ export class ComposerComponent {
     }
 
     this.sendMessage.emit(parts);
-    this.text.set('');
-    this.attachments.set([]);
+    // The store clears this session's draft on send; mirror it locally so the
+    // textarea empties immediately without waiting for the input binding.
+    this.emitDraft('', []);
     this.resetHeight();
   }
 
@@ -147,8 +163,8 @@ export class ComposerComponent {
     } else {
       // Non-image files are referenced by name; opencode resolves them against
       // the project directory the servlet injects.
-      this.attachments.update((current) => [
-        ...current,
+      this.emitDraft(this.text(), [
+        ...this.attachments(),
         { filename: file.name, mime: file.type || 'application/octet-stream', url: file.name }
       ]);
     }
@@ -159,13 +175,22 @@ export class ComposerComponent {
     reader.onload = () => {
       const url = typeof reader.result === 'string' ? reader.result : '';
       if (url) {
-        this.attachments.update((current) => [
-          ...current,
+        this.emitDraft(this.text(), [
+          ...this.attachments(),
           { filename: file.name || 'pasted-image.png', mime: file.type || 'image/png', url }
         ]);
       }
     };
     reader.readAsDataURL(file);
+  }
+
+  /**
+   * Emit the current composer state back to the store as the active session's
+   * draft. The composer holds no state of its own; the store owns the draft per
+   * session, so this is the single write path.
+   */
+  private emitDraft(text: string, attachments: Attachment[]): void {
+    this.draftChange.emit({ text, attachments });
   }
 
   private autoGrow(): void {

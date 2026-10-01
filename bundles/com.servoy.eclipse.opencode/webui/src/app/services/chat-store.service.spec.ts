@@ -326,7 +326,8 @@ describe('ChatStore', () => {
   it('clears the streaming flag on session.idle for the active session', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
-    store.streaming.set(true);
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
+    expect(store.streaming()).toBe(true);
 
     events.fire({ type: 'session.idle', data: { sessionID: 's1' } });
 
@@ -336,7 +337,7 @@ describe('ChatStore', () => {
   it('clears the streaming flag on session.execution.succeeded for the active session', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
-    store.streaming.set(true);
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
 
     events.fire({ type: 'session.execution.succeeded', data: { sessionID: 's1' } });
 
@@ -346,19 +347,47 @@ describe('ChatStore', () => {
   it('clears the streaming flag on session.error for the active session', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
-    store.streaming.set(true);
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
 
     events.fire({ type: 'session.error', data: { sessionID: 's1' } });
 
     expect(store.streaming()).toBe(false);
   });
 
-  it('does not clear streaming on session.idle for a different session', () => {
+  it('the active streaming flag ignores a turn running in a different session', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
-    store.streaming.set(true);
+    // A background session starts streaming while s1 is active.
+    events.fire({ type: 'session.execution.started', data: { sessionID: 'other' } });
 
-    events.fire({ type: 'session.idle', data: { sessionID: 'other' } });
+    // store.streaming() reflects the ACTIVE session only.
+    expect(store.streaming()).toBe(false);
+  });
+
+  it('tracks streaming per session: switching to a still-streaming session shows streaming', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    // A turn runs in a background session 's2'.
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's2' } });
+    expect(store.streaming()).toBe(false);
+
+    // Switch to s2: its turn is still running, so the button is a stop button.
+    store.openSession('s2');
+    expect(store.streaming()).toBe(true);
+
+    // s2's turn ends; the active flag clears even though s2 stayed open.
+    events.fire({ type: 'session.idle', data: { sessionID: 's2' } });
+    expect(store.streaming()).toBe(false);
+  });
+
+  it('a session.idle for a background session does not clear the active session streaming', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
+    events.fire({ type: 'session.execution.started', data: { sessionID: 's2' } });
+
+    // s2 (background) goes idle - s1 (active) is still streaming.
+    events.fire({ type: 'session.idle', data: { sessionID: 's2' } });
 
     expect(store.streaming()).toBe(true);
   });
@@ -541,9 +570,12 @@ describe('ChatStore', () => {
 
   it('abort calls interrupt and clears streaming', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.sendPrompt.mockReturnValue(of<void>(undefined));
     api.interrupt.mockReturnValue(of<void>(undefined));
     store.openSession('s1');
-    store.streaming.set(true);
+    // Start a turn so the active session is marked streaming, then abort it.
+    store.send([{ type: 'text', text: 'hi' }]);
+    expect(store.streaming()).toBe(true);
 
     store.abort();
 
@@ -567,6 +599,109 @@ describe('ChatStore', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');
     expect(store.hasActiveSession()).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Per-session composer state: the typed draft (text + attachments) and the
+  // stop/send button belong to a session, not to the app. These exercise the
+  // full switch flow with faked sessions and events - no opencode needed.
+  // -------------------------------------------------------------------------
+
+  describe('per-session composer state', () => {
+    const imageAttachment = {
+      filename: 'shot.png',
+      mime: 'image/png',
+      url: 'data:image/png;base64,AAAA'
+    };
+
+    beforeEach(() => {
+      // Two top-level sessions the user can switch between.
+      api.listSessions.mockReturnValue(
+        of<Session[]>([
+          { id: 's1', title: 'One', time: { updated: 200 } },
+          { id: 's2', title: 'Two', time: { updated: 100 } }
+        ])
+      );
+      api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+      store.refreshSessions();
+    });
+
+    it('keeps each session its own draft text + attachments across switches', () => {
+      // s1: text WITH an image attachment.
+      store.openSession('s1');
+      store.setActiveDraft({ text: 'look at this', attachments: [imageAttachment] });
+      expect(store.activeDraft()).toEqual({ text: 'look at this', attachments: [imageAttachment] });
+
+      // Switch to s2: its draft is independent and starts empty.
+      store.openSession('s2');
+      expect(store.activeDraft()).toEqual({ text: '', attachments: [] });
+
+      // s2: text ONLY, no attachment.
+      store.setActiveDraft({ text: 'just text', attachments: [] });
+      expect(store.activeDraft()).toEqual({ text: 'just text', attachments: [] });
+
+      // Back to s1: its text and image are still there, untouched by s2.
+      store.openSession('s1');
+      expect(store.activeDraft()).toEqual({ text: 'look at this', attachments: [imageAttachment] });
+
+      // Back to s2: its text-only draft is still there, with no attachment.
+      store.openSession('s2');
+      expect(store.activeDraft()).toEqual({ text: 'just text', attachments: [] });
+    });
+
+    it('an empty draft is dropped, not stored, so a cleared composer leaves nothing behind', () => {
+      store.openSession('s1');
+      store.setActiveDraft({ text: 'typing', attachments: [] });
+      store.setActiveDraft({ text: '   ', attachments: [] });
+      expect(store.activeDraft()).toEqual({ text: '', attachments: [] });
+    });
+
+    it('the stop/send button follows the ACTIVE session while a background turn runs', () => {
+      // A turn is streaming in s1 only.
+      store.openSession('s1');
+      events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
+      store.openSession('s2');
+
+      // Viewing s2 (idle): send button, not stop.
+      expect(store.streaming()).toBe(false);
+
+      // Switch to the still-streaming s1: now it's a stop button.
+      store.openSession('s1');
+      expect(store.streaming()).toBe(true);
+    });
+
+    it('sending clears only the sending session draft, leaving the other intact', () => {
+      api.sendPrompt.mockReturnValue(of<void>(undefined));
+
+      store.openSession('s1');
+      store.setActiveDraft({ text: 'draft one', attachments: [imageAttachment] });
+      store.openSession('s2');
+      store.setActiveDraft({ text: 'draft two', attachments: [] });
+
+      // Send from s2.
+      store.send([{ type: 'text', text: 'draft two' }]);
+
+      // s2's draft is cleared...
+      expect(store.activeDraft()).toEqual({ text: '', attachments: [] });
+      // ...s1's draft (text + image) survives.
+      store.openSession('s1');
+      expect(store.activeDraft()).toEqual({ text: 'draft one', attachments: [imageAttachment] });
+    });
+
+    it('deleting a session drops its draft and streaming flag', () => {
+      api.deleteSession.mockReturnValue(of<void>(undefined));
+
+      store.openSession('s1');
+      store.setActiveDraft({ text: 'leftover', attachments: [imageAttachment] });
+      events.fire({ type: 'session.execution.started', data: { sessionID: 's1' } });
+      expect(store.streaming()).toBe(true);
+
+      store.deleteSession('s1');
+
+      // Active session reset; a fresh draft is empty and the button is a send.
+      expect(store.activeDraft()).toEqual({ text: '', attachments: [] });
+      expect(store.streaming()).toBe(false);
+    });
   });
 
   // -------------------------------------------------------------------------
