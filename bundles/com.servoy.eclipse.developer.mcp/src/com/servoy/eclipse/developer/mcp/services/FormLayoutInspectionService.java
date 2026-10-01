@@ -217,7 +217,11 @@ public class FormLayoutInspectionService
 			return FormLayoutResult.error("Error: Form name must not be null or empty.");
 		}
 
-		// active-solution + form resolution (named, actionable messages - never a hang)
+		// active-solution + form resolution (named, actionable messages - never a hang).
+		// Resolve against the editing FLATTENED solution, not the active solution's own editing
+		// solution: a form lives in any of the active solution's modules, and the /formtemplate
+		// route itself renders from the active editing flattened solution - so form lookup must
+		// match it, or forms that are present (in a module) are wrongly reported "not found".
 		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		if (activeProject == null)
 		{
@@ -225,10 +229,11 @@ public class FormLayoutInspectionService
 				"No active Servoy solution. Open a solution in Servoy Developer, then try again.");
 		}
 		String solutionName = activeProject.getSolution().getName();
-		if (activeProject.getEditingSolution().getForm(formName) == null)
+		com.servoy.j2db.FlattenedSolution fs = activeProject.getEditingFlattenedSolution();
+		if (fs == null || fs.getForm(formName) == null)
 		{
-			return FormLayoutResult
-				.error("Form '" + formName + "' was not found in the active solution '" + solutionName + "'.");
+			return FormLayoutResult.error("Form '" + formName +
+				"' was not found in the active solution '" + solutionName + "' or its modules.");
 		}
 
 		int port = ApplicationServerRegistry.get() != null ? ApplicationServerRegistry.get().getWebServerPort() : -1;
