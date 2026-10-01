@@ -453,11 +453,27 @@ public class FormPreviewService
 	{
 		try
 		{
-			com.servoy.j2db.persistence.Form form = activeProject.getEditingSolution().getForm(formName);
+			// Resolve the form against the editing flattened solution so a module form is found,
+			// then collect markers from the project that actually OWNS the form (its module),
+			// not the active project - the form's .frm/.js/.sec files live in the owning module's
+			// Eclipse project, so using the active project would find no files for a module form.
+			com.servoy.j2db.FlattenedSolution fs = activeProject.getEditingFlattenedSolution();
+			com.servoy.j2db.persistence.Form form = fs != null ? fs.getForm(formName) : null;
 			if (form == null)
 				return null;
 
-			IProject project = activeProject.getProject();
+			ServoyProject owningProject = activeProject;
+			if (form.getRootObject() != null)
+			{
+				ServoyProject fromRoot = ServoyModelManager.getServoyModelManager().getServoyModel()
+					.getServoyProject(form.getRootObject().getName());
+				if (fromRoot != null)
+				{
+					owningProject = fromRoot;
+				}
+			}
+
+			IProject project = owningProject.getProject();
 			List<String> errors = new ArrayList<>();
 
 			for (IFile file : getFormFiles(project, form, formName))
