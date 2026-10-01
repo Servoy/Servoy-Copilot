@@ -55,6 +55,7 @@ public class ServoyDebugServer
 		"When both are given, 'script' is evaluated first and then methodName(args) is invoked, and the method's return value is reported. " +
 		"Note: 'methodName' is evaluated as JavaScript (it is turned into a methodName(args) call), so a 'methodName' that contains ';' or other statements is by-design treated as script. " +
 		"A returned JSFoundSet / JSRecord / JSDataSet is described (datasource, size and the first rows) rather than dumped whole, and a very large value is truncated with the full text written to a temp file whose path is reported. " +
+		"The reported result is a human-readable string representation of what the script returned, for you to read and interpret - it is NOT valid JSON and is not meant to be JSON.parse'd (e.g. a number may read as 42.0 and an object as {a:1,b:[2,3]} without quotes). " +
 		"A thrown JS error is returned as a readable message with a solution-relative script stack, not a tool failure; a bare 'foundset'/'controller'/'elements' used outside a form is answered with the qualified rewrite to use. " +
 		"Requires a running debug client: if none is running, this returns a message asking you to run the solution first (it will NOT start a client for you).", type = "object")
 	public String executeInRunningClient(
