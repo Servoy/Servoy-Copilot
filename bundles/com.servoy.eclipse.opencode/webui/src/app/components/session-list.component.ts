@@ -2,8 +2,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
@@ -42,6 +45,8 @@ interface MenuPosition {
   styleUrl: './session-list.component.scss'
 })
 export class SessionListComponent {
+  private readonly injector = inject(Injector);
+
   readonly tree = input<SessionNode[]>([]);
   readonly activeSessionId = input<string | null>(null);
 
@@ -59,6 +64,17 @@ export class SessionListComponent {
   readonly menuSessionId = signal<string | null>(null);
   /** Viewport position for the open menu. */
   readonly menuPosition = signal<MenuPosition>({ x: 0, y: 0 });
+  /**
+   * The anchor the open menu was requested from (the ⋯ button rectangle, or a
+   * zero-size rect at the cursor for a right-click). Kept so the menu can be
+   * re-positioned once its own size is known: it opens downward from the
+   * anchor, but flips upward when there is not enough room below, and is
+   * clamped horizontally into the viewport - the way a popup library would,
+   * without pulling in a dependency.
+   */
+  private menuAnchor: { left: number; top: number; bottom: number } | null = null;
+
+  readonly contextMenu = viewChild<ElementRef<HTMLDivElement>>('contextMenu');
   /** Id of the session currently being renamed inline, or null. */
   readonly renamingSessionId = signal<string | null>(null);
   /** Working copy of the title while renaming. */
@@ -141,7 +157,8 @@ export class SessionListComponent {
   /** Open the menu from a right-click, anchored at the cursor. */
   onContextMenu(event: MouseEvent, id: string): void {
     event.preventDefault();
-    this.openMenu(id, event.clientX, event.clientY);
+    // A cursor is a zero-size anchor: the menu opens from the click point.
+    this.openMenu(id, { left: event.clientX, top: event.clientY, bottom: event.clientY });
   }
 
   /** Open the menu from the 3-dots button, anchored under it. */
@@ -149,12 +166,67 @@ export class SessionListComponent {
     event.preventDefault();
     event.stopPropagation();
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    this.openMenu(id, rect.right, rect.bottom);
+    this.openMenu(id, { left: rect.right, top: rect.top, bottom: rect.bottom });
   }
 
-  private openMenu(id: string, x: number, y: number): void {
-    this.menuPosition.set({ x, y });
+  /**
+   * Open the menu and schedule a one-shot re-position once it is in the DOM and
+   * its real size is known. The initial position is the anchor's bottom-left
+   * (menu opening downward); {@link positionMenu} then flips it above the anchor
+   * when it would overflow the bottom of the viewport, and clamps it so it never
+   * spills off the right or left edge - the common "last row" case where a
+   * downward menu is cut off.
+   */
+  private openMenu(id: string, anchor: { left: number; top: number; bottom: number }): void {
+    this.menuAnchor = anchor;
+    this.menuPosition.set({ x: anchor.left, y: anchor.bottom });
     this.menuSessionId.set(id);
+    afterNextRender(
+      {
+        read: () => this.positionMenu()
+      },
+      { injector: this.injector }
+    );
+  }
+
+  /**
+   * Clamp the open menu into the viewport. Measures the rendered menu and,
+   * relative to the remembered anchor, flips it above when there is not enough
+   * room below, and shifts it left when it would overflow the right edge, with
+   * an 8px margin on every side. A no-op if the menu was closed before this ran.
+   */
+  private positionMenu(): void {
+    const el = this.contextMenu()?.nativeElement;
+    const anchor = this.menuAnchor;
+    if (!el || !anchor) {
+      return;
+    }
+    const MARGIN = 8;
+    const { width, height } = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Vertical: open downward from the anchor's bottom, but flip to open upward
+    // from its top when the menu would run past the bottom edge - unless there
+    // is even less room above, in which case keep it below and let it clamp.
+    let y = anchor.bottom;
+    const fitsBelow = anchor.bottom + height + MARGIN <= vh;
+    const roomAbove = anchor.top;
+    if (!fitsBelow && roomAbove >= height + MARGIN) {
+      y = anchor.top - height;
+    }
+    // Final vertical clamp so it is never off-screen either way.
+    y = Math.min(Math.max(y, MARGIN), Math.max(MARGIN, vh - height - MARGIN));
+
+    // Horizontal: keep the left edge at the anchor, but pull it in when the menu
+    // would overflow the right edge, and never past the left margin.
+    let x = anchor.left;
+    if (x + width + MARGIN > vw) {
+      x = vw - width - MARGIN;
+    }
+    x = Math.max(x, MARGIN);
+
+    this.menuPosition.set({ x, y });
   }
 
   closeMenu(): void {

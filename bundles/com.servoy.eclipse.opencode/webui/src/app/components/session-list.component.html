@@ -73,7 +73,7 @@
 
 @if (menuSessionId(); as menuId) {
   <div class="menu-backdrop" (click)="closeMenu()" (contextmenu)="$event.preventDefault(); closeMenu()"></div>
-  <div class="context-menu" [style.left.px]="menuPosition().x" [style.top.px]="menuPosition().y">
+  <div #contextMenu class="context-menu" [style.left.px]="menuPosition().x" [style.top.px]="menuPosition().y">
     <button type="button" class="menu-item" (click)="onRename(menuId)">Rename</button>
     <button type="button" class="menu-item" (click)="onExport(menuId)">Export</button>
     <button type="button" class="menu-item" (click)="onArchive(menuId)">Archive</button>
