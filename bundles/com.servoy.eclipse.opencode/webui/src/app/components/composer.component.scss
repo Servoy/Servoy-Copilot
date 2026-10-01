@@ -75,14 +75,33 @@
 }
 
 .send-btn {
-  background: var(--svy-accent, #f5a623);
-  color: #fff;
+  // Idle (nothing to send): muted/greyed so it reads as inactive. It becomes
+  // the accent colour via .active the moment there is text or an attachment.
+  background: var(--svy-send-idle, rgba(127, 127, 127, 0.2));
+  color: var(--svy-muted, #9aa0a6);
+  transition: background 0.12s ease, color 0.12s ease;
 
-  &:hover {
-    background: var(--svy-accent-hover, #d4891e);
+  &.active {
+    background: var(--svy-accent, #f5a623);
+    color: #fff;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--svy-accent-hover, #d4891e);
+    }
   }
 
+  // The stop button is always actionable, so it keeps a solid colour even
+  // though .active (a send-only concept) is not set while streaming.
   &.stop {
     background: var(--svy-stop, #b5741a);
+    color: #fff;
+    cursor: pointer;
   }
+}
+
+// A disabled send button must not also show the dimmed-but-coloured hover; the
+// shared :disabled rule already lowers opacity and blocks the cursor.
+.send-btn:disabled:not(.stop) {
+  cursor: not-allowed;
 }

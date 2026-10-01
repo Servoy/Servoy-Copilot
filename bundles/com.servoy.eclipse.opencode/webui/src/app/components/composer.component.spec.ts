@@ -120,6 +120,23 @@ describe('ComposerComponent', () => {
     expect(stopped).toBe(true);
   });
 
+  it('canSend is false for an empty or whitespace-only draft', () => {
+    setDraft('');
+    expect(component.canSend()).toBe(false);
+    setDraft('   ');
+    expect(component.canSend()).toBe(false);
+  });
+
+  it('canSend is true as soon as there is non-blank text', () => {
+    setDraft('hi');
+    expect(component.canSend()).toBe(true);
+  });
+
+  it('canSend is true when there is an attachment even with no text', () => {
+    setDraft('', [{ filename: 'a.txt', mime: 'text/plain', url: 'a.txt' }]);
+    expect(component.canSend()).toBe(true);
+  });
+
   it('removeAttachment emits a draft with the chip at the given index gone', () => {
     const drafts: ComposerDraft[] = [];
     component.draftChange.subscribe((d) => drafts.push(d));

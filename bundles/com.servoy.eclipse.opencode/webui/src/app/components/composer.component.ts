@@ -55,6 +55,16 @@ export class ComposerComponent {
   /** The current attachments, read from the active session's draft. */
   readonly attachments = computed<Attachment[]>(() => this.draft().attachments);
 
+  /**
+   * Whether there is anything to send: non-blank text or at least one
+   * attachment. Drives the send button's enabled/coloured state so an empty
+   * composer shows a greyed-out button, and it lights up the moment the user
+   * types or attaches something.
+   */
+  readonly canSend = computed<boolean>(
+    () => this.text().trim().length > 0 || this.attachments().length > 0
+  );
+
   private static readonly MAX_HEIGHT_PX = 200;
 
   /** Textarea input: persist the typed text to the draft and grow the box. */

@@ -35,10 +35,11 @@
       <button
         type="button"
         class="send-btn"
+        [class.active]="canSend() && !disabled()"
         (click)="submit()"
         title="Send"
         aria-label="Send"
-        [disabled]="disabled()"
+        [disabled]="disabled() || !canSend()"
       >↑</button>
     }
   </div>
