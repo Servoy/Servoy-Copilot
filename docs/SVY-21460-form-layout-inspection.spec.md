@@ -32,7 +32,8 @@ that:
      visual styles** (`color`, `background-color`, borders, font, `display`, `position`,
      `visibility`, opacity, z-index, margin/padding) from `getComputedStyle` plus the
      on-screen **bounding box** (x/y/w/h) from `getBoundingClientRect`.
-   - **`screenshotFile`** — when a screenshot was captured (whole form, default on), the path
+   - **`screenshotFile`** — when a screenshot was captured (whole form, **opt-in** via
+     `screenshot=true`, **off by default** because a PNG is large/token-expensive), the path
      of the saved PNG; the image is **also attached to the tool response as MCP image
      content** so a vision-capable model sees the actual rendered pixels directly.
 
@@ -212,8 +213,10 @@ public Object getFormLayout(
 - `formName` — the form to render.
 - `selector` — optional CSS selector of the subtree to return; when null/blank the whole
   `.svy-form` is returned.
-- `screenshot` — parsed boolean, **default true**; capture a PNG of the whole rendered form.
-  **Ignored when `selector` is set** (a screenshot of a single subtree adds little).
+- `screenshot` — parsed boolean, **default false**; when `true`, also capture a PNG of the whole
+  rendered form. Off by default because a PNG is large and token-expensive; the html + appearance
+  text is returned either way. **Ignored when `selector` is set** (a screenshot of a single
+  subtree adds little).
 - `timeoutSeconds` — parsed, default 15.
 - **Return type is `Object`**, so the tool can return either a plain `String` (the JSON
   envelope, or a named message on failure) or an **`McpToolResult`** carrying the envelope text
@@ -409,7 +412,7 @@ All in `com.servoy.eclipse.developer.mcp` unless noted. **No `IBrowser` / `Chrom
    unit-testable headlessly (§5).
 3. **`ServoyFormServer`** (`servers/`) — `@McpServer(name = "servoy-form")` with the
    `@Tool getFormLayout(formName, selector?, screenshot?, timeoutSeconds?)` returning `Object`,
-   delegating to the service (parse `timeoutSeconds` default 15 and `screenshot` default true;
+   delegating to the service (parse `timeoutSeconds` default 15 and `screenshot` default false;
    catch exceptions → `"Error: " + msg`; return the plain JSON envelope, or an `McpToolResult`
    with the base64 PNG when captured, or the named message). Strong "see how a form looks"
    description (3.6). Register: add to `McpServerBuiltins.BUILT_IN_SERVER_CLASSES`; add a
@@ -500,7 +503,7 @@ dependency (and would be a vacuous test). The coverage is therefore split:
       `McpServerBuiltins.BUILT_IN_SERVER_CLASSES`, with a distinct `ServoyFormServlet` +
       `SERVLET_FACTORIES.put("servoy-form", …)` in `McpServerRegistry`; its `/dev_mcp/servoy-form`
       endpoint is merged into `opencode.json` with **no** `McpEndpointProvider` change.
-- [ ] A `@Tool getFormLayout(formName, selector?, screenshot?=true, timeoutSeconds?=15)` on
+- [ ] A `@Tool getFormLayout(formName, selector?, screenshot?=false, timeoutSeconds?=15)` on
       `ServoyFormServer` (returning `Object`), with correct `@ToolParam` names/types.
 - [ ] The tool renders `http://127.0.0.1:<webPort>/formtemplate/<form>.html` in **one reused,
       hidden `IBrowser`** created via `BrowserFactory.createBrowser(...)` on an offscreen `Shell`
@@ -517,7 +520,7 @@ dependency (and would be a vacuous test). The coverage is therefore split:
       subtree, verbatim — no filtering) and **`appearance`** (per element with an `id`/`class`: a
       bounding box + a small allow-list of resolved computed styles), plus `form`/`selector`/
       `viewport`.
-- [ ] For the whole form with `screenshot=true` (default) a **PNG is captured** via
+- [ ] For the whole form with `screenshot=true` (opt-in; **off by default**) a **PNG is captured** via
       `IBrowser.captureScreenshot()` **off the display thread**, saved to the plugin temp dir with
       its path in **`screenshotFile`**, and **attached as MCP `ImageContent`** (via `McpToolResult`
       + the `McpServerFactory` extension); capture is skipped for a `selector` subtree or
