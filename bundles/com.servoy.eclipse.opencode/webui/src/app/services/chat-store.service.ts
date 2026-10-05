@@ -15,7 +15,7 @@ import {
 import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { OpencodeApiService } from './opencode-api.service';
-import { upsertPart } from './part-utils';
+import { isRenderablePart, upsertPart } from './part-utils';
 import {
   SessionExportData,
   downloadFile,
@@ -1156,13 +1156,15 @@ export class ChatStore {
    * Those must be dropped: otherwise {@code MessageItemComponent} treats them as
    * an in-flight assistant turn and renders the "thinking" dots mid-transcript
    * next to already-answered messages. Keep every user message, and keep any
-   * message that actually has renderable parts.
+   * message that has at least one *renderable* part - a message whose only parts
+   * are placeholders (e.g. an empty "..." reasoning stub opencode emits) would
+   * otherwise seed as a stray "..." row attached to nothing.
    */
   private isRenderableMessage(m: MessageWithParts): boolean {
     if (m.info.role === 'user') {
       return true;
     }
-    return (m.parts ?? []).length > 0;
+    return (m.parts ?? []).some(isRenderablePart);
   }
 
   private describe(err: unknown): string {

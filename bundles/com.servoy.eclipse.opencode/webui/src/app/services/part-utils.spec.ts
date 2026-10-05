@@ -78,6 +78,17 @@ describe('isReasoningPart', () => {
     expect(isReasoningPart(part({ type: 'reasoning' }))).toBe(false);
   });
 
+  it('is false for a placeholder "..." / "…" reasoning stub (opencode emits these)', () => {
+    expect(isReasoningPart(part({ type: 'reasoning', text: '...' }))).toBe(false);
+    expect(isReasoningPart(part({ type: 'reasoning', text: '  ...  ' }))).toBe(false);
+    expect(isReasoningPart(part({ type: 'reasoning', text: '…' }))).toBe(false);
+    expect(isReasoningPart(part({ type: 'reasoning', text: '....' }))).toBe(false);
+  });
+
+  it('is still true when the ellipsis is part of real prose', () => {
+    expect(isReasoningPart(part({ type: 'reasoning', text: 'Hmm... let me think' }))).toBe(true);
+  });
+
   it('is false for a text part', () => {
     expect(isReasoningPart(part({ type: 'text', text: 'hi' }))).toBe(false);
   });
