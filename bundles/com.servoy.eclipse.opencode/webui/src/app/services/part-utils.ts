@@ -31,9 +31,29 @@ export function isTextPart(part: Part): boolean {
   return part.type === 'text' && !isSyntheticPart(part) && !!part.text && part.text.trim().length > 0;
 }
 
-/** Reasoning parts - rendered in a muted block. */
+/**
+ * Whether a reasoning part's text is empty for rendering purposes. opencode
+ * frequently emits a placeholder reasoning block whose entire text is just an
+ * ellipsis ("..." or the single "…" glyph, sometimes padded with whitespace) -
+ * a stub for a thinking block the model never filled in. Rendered as-is it
+ * shows up as a stray muted "..." row with a left guide bar, attached to
+ * nothing. Treat such a part as empty so it is dropped.
+ */
+export function isBlankReasoningText(text: string | undefined): boolean {
+  if (!text) {
+    return true;
+  }
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+  // Only dots / unicode ellipsis (and whitespace) -> nothing meaningful.
+  return /^[.\u2026\s]+$/.test(trimmed);
+}
+
+/** Reasoning parts - rendered in a muted block. Placeholder "..." is dropped. */
 export function isReasoningPart(part: Part): boolean {
-  return part.type === 'reasoning' && !!part.text && part.text.trim().length > 0;
+  return part.type === 'reasoning' && !isBlankReasoningText(part.text);
 }
 
 /** Tool-call parts - rendered as a compact collapsed row. */
@@ -164,6 +184,7 @@ export function toolSubtitle(part: Part): string {
     args['query'] ??
     args['url'] ??
     args['name'] ?? // skill / subagent name, etc.
+    args['id'] ?? // the skill tool identifies the loaded skill by its id
     args['description'];
   if (typeof candidate !== 'string') {
     return '';
