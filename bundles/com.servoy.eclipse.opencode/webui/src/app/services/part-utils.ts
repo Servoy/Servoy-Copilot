@@ -184,6 +184,7 @@ export function toolSubtitle(part: Part): string {
     args['query'] ??
     args['url'] ??
     args['name'] ?? // skill / subagent name, etc.
+    args['id'] ?? // the skill tool identifies the loaded skill by its id
     args['description'];
   if (typeof candidate !== 'string') {
     return '';

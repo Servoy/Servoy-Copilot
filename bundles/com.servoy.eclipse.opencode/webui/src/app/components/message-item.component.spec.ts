@@ -53,6 +53,16 @@ describe('MessageItemComponent', () => {
     expect(component.toolName(tool)).toBe('Read File');
   });
 
+  it('shows the loaded skill id as the subtitle of a skill tool part', () => {
+    const skill = {
+      type: 'tool',
+      tool: 'skill',
+      state: { status: 'completed', input: { id: 'servoy-orchestrator' } }
+    } as Part;
+    expect(component.toolName(skill)).toBe('Load Skill');
+    expect(component.toolSubtitle(skill)).toBe('servoy-orchestrator');
+  });
+
   it('shows a friendly name and an argument subtitle for a tool part', () => {
     const tool = {
       type: 'tool',
