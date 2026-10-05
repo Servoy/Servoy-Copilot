@@ -232,8 +232,21 @@ public class RunningClientExecutionService
 			{
 				partialOutput = capturedOutput.toString();
 			}
+			// A very common reason a run "times out" is that the code it triggered hit a breakpoint and the debug session suspended it.
+			// Detect that and tell the caller explicitly NOT to retry (a retry just re-hits the breakpoint) and to use the debug tools -
+			// the return value of THIS call cannot be recovered once suspended, so debugEval the value in the frame instead.
+			if (isDebugSessionSuspended())
+			{
+				return formatResult(clientDescription,
+					"The code you triggered hit a BREAKPOINT and the debug session is now suspended - that is why this call did not return, " +
+						"not because the client is unresponsive. Do NOT retry executeInRunningClient (it will just re-hit the breakpoint). " +
+						"Use debugStatus to see where it stopped, debugGetVariables / debugEval to read values in the frame, and debugStep / " +
+						"debugResume to drive it. The return value of this call is not recoverable once suspended - read it with debugEval instead.",
+					partialOutput);
+			}
 			return formatResult(clientDescription,
-				"Timed out after " + timeout + " second(s) waiting for the run to complete. The code may still be running in the client.",
+				"Timed out after " + timeout + " second(s) waiting for the run to complete. The code may still be running in the client, or " +
+					"the client may be blocked (e.g. a modal dialog). Check debugStatus in case it suspended at a breakpoint before retrying.",
 				partialOutput);
 		}
 
@@ -681,6 +694,44 @@ public class RunningClientExecutionService
 		}
 		sb.append("Console output:\n").append(outputText == null || outputText.isBlank() ? "(no output)" : outputText.stripTrailing());
 		return sb.toString();
+	}
+
+	/**
+	 * Best-effort check of Eclipse's debug model for a currently-suspended thread, used to explain a timeout as "hit a breakpoint" rather
+	 * than "client unresponsive". Reads the model only; never throws.
+	 */
+	private static boolean isDebugSessionSuspended()
+	{
+		try
+		{
+			org.eclipse.debug.core.DebugPlugin dp = org.eclipse.debug.core.DebugPlugin.getDefault();
+			if (dp == null)
+			{
+				return false;
+			}
+			for (org.eclipse.debug.core.ILaunch launch : dp.getLaunchManager().getLaunches())
+			{
+				for (org.eclipse.debug.core.model.IDebugTarget target : launch.getDebugTargets())
+				{
+					if (target.isTerminated() || target.isDisconnected())
+					{
+						continue;
+					}
+					for (org.eclipse.debug.core.model.IThread thread : target.getThreads())
+					{
+						if (thread.isSuspended())
+						{
+							return true;
+						}
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// best-effort: on any failure just fall back to the generic timeout message
+		}
+		return false;
 	}
 
 	private static String describeClient(IDebugClient client)

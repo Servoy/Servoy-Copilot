@@ -21,6 +21,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.developer.mcp.services.DebugInspectionService;
 import com.servoy.eclipse.developer.mcp.services.RunningClientExecutionService;
 import com.servoy.eclipse.model.util.ServoyLog;
 
@@ -38,6 +39,7 @@ import com.servoy.eclipse.model.util.ServoyLog;
 public class ServoyDebugServer
 {
 	private final RunningClientExecutionService executionService = new RunningClientExecutionService();
+	private final DebugInspectionService inspectionService = new DebugInspectionService();
 
 	public ServoyDebugServer()
 	{
@@ -71,6 +73,197 @@ public class ServoyDebugServer
 		catch (Exception e)
 		{
 			ServoyLog.logError("Error in executeInRunningClient tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugStatus", description = "Reports whether the Servoy debug session is currently SUSPENDED at a breakpoint, and where. " +
+		"This reads Eclipse's own debug model of the session the IDE already owns; it does not open a second debugger connection and never blocks the client. " +
+		"Use it after setting a breakpoint and triggering the code (e.g. via executeInRunningClient) to check whether execution has stopped so you can inspect variables with debugGetVariables. " +
+		"Requires the solution to be launched in Debug mode; if nothing is suspended it returns an actionable message.", type = "object")
+	public String debugStatus()
+	{
+		try
+		{
+			return inspectionService.status();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugStatus tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugGetVariables", description = "Reads the call stack and the variables of a SUSPENDED Servoy debug session through Eclipse's debug model. " +
+		"The nested variable tree is expanded lazily to 'maxDepth' levels: an object that still has children beyond the cap is marked expandable, so you can re-call with a higher 'maxDepth' to drill into it rather than dumping a whole object graph. " +
+		"Only meaningful when debugStatus reports a suspended thread; otherwise it returns the same actionable status message.", type = "object")
+	public String debugGetVariables(
+		@ToolParam(name = "frameIndex", description = "0-based stack frame to inspect (0 = the current/top frame). Defaults to 0.", type = "integer", required = false) int frameIndex,
+		@ToolParam(name = "maxDepth", description = "How many levels of the nested variable tree to expand (bounded). Defaults to 2. Raise it to drill into a node marked 'expandable'.", type = "integer", required = false) int maxDepth)
+	{
+		try
+		{
+			return inspectionService.getVariables(frameIndex, maxDepth);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugGetVariables tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugResume", description = "Resumes a SUSPENDED Servoy debug session (equivalent to the Debug perspective's Resume / F8), letting execution continue until the next breakpoint or completion. " +
+		"This also releases an executeInRunningClient call that timed out because the code it triggered hit a breakpoint. Reads/drives Eclipse's own debug model; no second debugger connection. " +
+		"Returns an actionable message when nothing is suspended.", type = "object")
+	public String debugResume()
+	{
+		try
+		{
+			return inspectionService.resume();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugResume tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugStep", description = "Steps a SUSPENDED Servoy debug session by one statement and lets it suspend again at the new location. " +
+		"'mode' is 'into' (step into a called function), 'over' (execute the current line without descending) or 'out' (run to the end of the current function and stop in the caller). " +
+		"After stepping, call debugStatus / debugGetVariables to inspect the new location. Drives Eclipse's own debug model; returns an actionable message when nothing is suspended.", type = "object")
+	public String debugStep(
+		@ToolParam(name = "mode", description = "The step kind: 'into', 'over' (default) or 'out'.", required = false) String mode)
+	{
+		try
+		{
+			return inspectionService.step(mode);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugStep tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugEval", description = "Evaluates a JavaScript expression in the context of the SUSPENDED frame and returns its value. " +
+		"This is how you get a value while stopped at a breakpoint: the return of a triggering executeInRunningClient call is lost once it times out at the breakpoint, so instead ask the frame directly - " +
+		"evaluate the method's return expression (e.g. 'Math.ceil(diff / msPerDay)'), any in-scope variable, or an arbitrary expression using the frame's locals. Drives Eclipse's own debug model; " +
+		"returns an actionable message when nothing is suspended.", type = "object")
+	public String debugEval(
+		@ToolParam(name = "expression", description = "The JavaScript expression to evaluate in the suspended frame (e.g. 'diff', 'Math.ceil(diff / msPerDay)').", required = true) String expression,
+		@ToolParam(name = "frameIndex", description = "0-based stack frame to evaluate in (0 = the current/top frame). Defaults to 0.", type = "integer", required = false) int frameIndex)
+	{
+		try
+		{
+			return inspectionService.eval(expression, frameIndex);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugEval tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugSetVariable", description = "Changes the value of a named variable in the SUSPENDED frame (equivalent to editing a value in the Debug perspective's Variables view). " +
+		"'value' is a JavaScript source expression the debug engine accepts (e.g. 5, \"text\", true). Only meaningful when a thread is suspended; returns an actionable message otherwise.", type = "object")
+	public String debugSetVariable(
+		@ToolParam(name = "variableName", description = "The name of the variable in the frame to change.", required = true) String variableName,
+		@ToolParam(name = "value", description = "The new value as a JS source expression (e.g. 5, \"text\", true).", required = true) String value,
+		@ToolParam(name = "frameIndex", description = "0-based stack frame (0 = the current/top frame). Defaults to 0.", type = "integer", required = false) int frameIndex)
+	{
+		try
+		{
+			return inspectionService.setVariable(variableName, value, frameIndex);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugSetVariable tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugLaunchClient", description = "Ensures a debuggable Servoy NG client is running, launching one if needed - the same action as the IDE's 'Launch NG Client' toolbar button, so the DBGP debugger is attached and the client can be broken/stepped/inspected. " +
+		"Use this FIRST for 'execute and debug <method>' when nothing is running yet: launch the client, then debugBreakOnMethod, then executeInRunningClient. " +
+		"If a debug client is already running it does nothing. Opens the active solution in the configured browser; requires an active solution.", type = "object")
+	public String debugLaunchClient(
+		@ToolParam(name = "timeoutSeconds", description = "How long to wait for the launched client to become debug-ready. Default 60.", type = "integer", required = false) int timeoutSeconds)
+	{
+		try
+		{
+			return inspectionService.launchDebugClient(timeoutSeconds);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugLaunchClient tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugBreakOnMethod", description = "Sets a breakpoint on a Servoy method addressed the way you script it - 'forms.<form>.<method>' or 'scopes.<scope>.<function>' - by resolving it to its source file and first body line. " +
+		"This is the recommended way to 'run and debug a method': call this with the address the user gave (e.g. 'forms.main.daysLeftInMonth'), then trigger it with executeInRunningClient(methodName='forms.main.daysLeftInMonth') - it will suspend at the first line so you can inspect with debugStatus / debugGetVariables / debugEval and drive with debugStep / debugResume. " +
+		"Resolution is scoped to the ACTIVE solution and its modules (a same-named form in an unrelated, non-running solution is NOT matched), so you do not need to know the file path. " +
+		"IMPORTANT: call debugClearBreakpoint afterwards so the breakpoint does not keep trapping the user's later runs. Requires the solution to be launched in Debug mode.", type = "object")
+	public String debugBreakOnMethod(
+		@ToolParam(name = "methodAddress", description = "The Servoy method address, e.g. 'forms.main.daysLeftInMonth' or 'scopes.rating.computeUValue'.", required = true) String methodAddress)
+	{
+		try
+		{
+			return inspectionService.breakOnMethod(methodAddress);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugBreakOnMethod tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugSetBreakpoint", description = "Sets a Servoy JavaScript line breakpoint at a file+line so the running debug client suspends there when that line runs. " +
+		"This is how you 'run and debug a method': read the method's source, find its first body line, set a breakpoint there with this tool, then trigger the method (e.g. executeInRunningClient) - it will suspend at the breakpoint and you can inspect with debugStatus / debugGetVariables / debugEval and drive with debugStep / debugResume. " +
+		"Idempotent (no duplicate at the same file+line). IMPORTANT: call debugClearBreakpoint afterwards so an agent-set breakpoint does not keep trapping the user's later normal runs. Requires the solution to be launched in Debug mode.", type = "object")
+	public String debugSetBreakpoint(
+		@ToolParam(name = "filePath", description = "Workspace path of the .js file, e.g. '/mySmp/forms/main.js'.", required = true) String filePath,
+		@ToolParam(name = "line", description = "1-based line number to break on (the first executable line of the target function).", type = "integer", required = true) int line)
+	{
+		try
+		{
+			return inspectionService.setBreakpoint(filePath, line);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugSetBreakpoint tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugClearBreakpoint", description = "Removes a Servoy JavaScript line breakpoint set with debugSetBreakpoint. " +
+		"Pass a line to remove just that one, or omit/pass 0 to remove every JS breakpoint in the file. Always clear breakpoints an agent set once the debug flow is done, so they do not trap the user's later runs.", type = "object")
+	public String debugClearBreakpoint(
+		@ToolParam(name = "filePath", description = "Workspace path of the .js file, e.g. '/mySmp/forms/main.js'.", required = true) String filePath,
+		@ToolParam(name = "line", description = "1-based line to clear; 0 or omitted clears all JS breakpoints in the file.", type = "integer", required = false) int line)
+	{
+		try
+		{
+			return inspectionService.clearBreakpoint(filePath, line);
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugClearBreakpoint tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "debugEnd", description = "Ends a debug inspection cleanly in ONE call: resumes every suspended thread (so a client parked at a breakpoint is no longer frozen) and removes every Servoy JavaScript breakpoint (so none keeps trapping later runs). " +
+		"ALWAYS call this when you are done debugging - leaving a thread suspended freezes the client and a leftover breakpoint traps the user's next run. Prefer it over remembering a separate debugResume + debugClearBreakpoint. " +
+		"The debug session itself (the client in debug mode) is left running; the user stops that from the IDE's Debug view.", type = "object")
+	public String debugEnd()
+	{
+		try
+		{
+			return inspectionService.end();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in debugEnd tool", e);
 			return "Error: " + e.getMessage();
 		}
 	}
