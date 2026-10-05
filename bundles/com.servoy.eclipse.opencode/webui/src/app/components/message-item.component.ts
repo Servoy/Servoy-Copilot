@@ -1,13 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import { MessageError, Part } from '../models/opencode.models';
 import {
   isReasoningPart,
   isRenderablePart,
   isScriptTool,
+  isSubagentTool,
   isTextPart,
   isToolExpandable,
   isToolPart,
+  subagentSessionId,
   toolDisplayName,
   toolScript,
   toolSubtitle
@@ -36,6 +38,14 @@ export class MessageItemComponent {
    * running. Used to tell "still thinking" apart from "finished but empty".
    */
   readonly completed = input<number | null>(null);
+
+  /**
+   * Emitted when the user clicks a subagent tool row: the id of the child
+   * session to open. The shell opens it (and the sidebar tree expands and
+   * selects it), the same navigation the tree offers - so a subagent is
+   * reachable straight from the transcript.
+   */
+  readonly openSession = output<string>();
 
   private readonly expanded = signal<Set<string>>(new Set());
 
@@ -104,6 +114,33 @@ export class MessageItemComponent {
   /** True for the Code Mode {@code execute} ("Script") tool. */
   isScript(part: Part): boolean {
     return isScriptTool(part);
+  }
+
+  /**
+   * True when this tool part is a subagent spawn whose child session can be
+   * opened. The row still expands/collapses to show the subagent's output; a
+   * separate "Open subagent" link below navigates into the child session.
+   */
+  isSubagentLink(part: Part): boolean {
+    return isSubagentTool(part) && subagentSessionId(part) !== null;
+  }
+
+  /**
+   * The label shown on the "Open subagent" link, e.g. the subagent's
+   * description ("Build orders/details master-detail") when it has one, else a
+   * generic "subagent". Mirrors OpenChamber's "Open &lt;name&gt; subtask".
+   */
+  subagentLabel(part: Part): string {
+    const subtitle = toolSubtitle(part);
+    return subtitle ? `${subtitle} subagent` : 'subagent';
+  }
+
+  /** Open the child session a subagent row links to. */
+  openSubagent(part: Part): void {
+    const id = subagentSessionId(part);
+    if (id) {
+      this.openSession.emit(id);
+    }
   }
 
   /**

@@ -6,6 +6,7 @@
         [parts]="message.parts"
         [error]="message.info.error ?? null"
         [completed]="message.info.time?.completed ?? null"
+        (openSession)="openSession.emit($event)"
       ></svy-message-item>
     } @empty {
       <div class="empty">What should we build in Servoy today?</div>

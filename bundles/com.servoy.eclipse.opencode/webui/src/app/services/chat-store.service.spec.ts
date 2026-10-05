@@ -311,6 +311,123 @@ describe('ChatStore', () => {
     expect(tool?.state?.output).toBe('file body');
   });
 
+  it('backfills a running subagent child id on re-seed from live-captured metadata (link survives the round-trip)', () => {
+    // 1. Parent is active; its subagent dispatches and a tool.progress event
+    //    carries the child sessionID while it is still RUNNING.
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('parent');
+    events.fire({
+      type: 'session.tool.input.started',
+      data: { sessionID: 'parent', assistantMessageID: 'mA', id: 'toolu_sa', name: 'subagent' }
+    });
+    events.fire({
+      type: 'session.tool.progress',
+      data: { sessionID: 'parent', assistantMessageID: 'mA', id: 'toolu_sa', metadata: { sessionID: 'ses_child', status: 'running' } }
+    });
+
+    // 2. User opens the child, then returns to the parent WHILE the subagent is
+    //    still running. GET /message for a running subagent has NO metadata.
+    api.listMessages.mockReturnValue(
+      of<MessageWithParts[]>([
+        {
+          info: { id: 'mA', sessionID: 'parent', role: 'assistant' },
+          parts: [
+            {
+              id: 'toolu_sa',
+              type: 'tool',
+              tool: 'subagent',
+              messageID: 'mA',
+              sessionID: 'parent',
+              state: { status: 'running', input: { description: 'Do it' } } // no metadata!
+            }
+          ]
+        }
+      ])
+    );
+    store.openSession('child');
+    store.openSession('parent');
+
+    // The re-seeded running subagent part regained its child id from the live
+    // cache, so the "Open subagent" link is present again (not only at the end).
+    const tool = store.messages().find((m) => m.info.id === 'mA')?.parts[0];
+    expect((tool?.state as { metadata?: { sessionID?: string } })?.metadata?.sessionID).toBe('ses_child');
+  });
+
+  it('merges a live tool event into a seeded tool part by its raw call id (no phantom "Tool" duplicate)', () => {
+    // Seed the parent session as if returning to it via GET /message: a subagent
+    // tool part keyed by its raw opencode call id (what mapV2Message assigns).
+    api.listMessages.mockReturnValue(
+      of<MessageWithParts[]>([
+        {
+          info: { id: 'mA', sessionID: 's1', role: 'assistant' },
+          parts: [
+            {
+              id: 'toolu_sa',
+              type: 'tool',
+              tool: 'subagent',
+              messageID: 'mA',
+              sessionID: 's1',
+              state: { status: 'running', input: { description: 'Do it' }, metadata: { sessionID: 'ses_child' } }
+            }
+          ]
+        }
+      ])
+    );
+    store.openSession('s1');
+
+    // The subagent, still running, now finishes - a late live success event for
+    // the SAME tool call id must merge, not spawn a second nameless part.
+    events.fire({
+      type: 'session.tool.success',
+      data: {
+        sessionID: 's1',
+        assistantMessageID: 'mA',
+        id: 'toolu_sa',
+        content: [{ type: 'text', text: 'done' }],
+        metadata: { sessionID: 'ses_child', status: 'completed' }
+      }
+    });
+
+    const parts = store.messages().find((m) => m.info.id === 'mA')?.parts ?? [];
+    // Exactly one tool part, and it kept its name + child id (not "Tool").
+    expect(parts).toHaveLength(1);
+    expect(parts[0].tool).toBe('subagent');
+    expect(parts[0].state?.status).toBe('completed');
+    expect(parts[0].state?.output).toBe('done');
+    expect((parts[0].state as { metadata?: { sessionID?: string } })?.metadata?.sessionID).toBe('ses_child');
+  });
+
+  it('captures a subagent child sessionID from a tool.progress event while it is still running', () => {
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.openSession('s1');
+
+    events.fire({
+      type: 'session.tool.input.started',
+      data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_sa', name: 'subagent' }
+    });
+    events.fire({
+      type: 'session.tool.called',
+      data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_sa', input: { description: 'Do it' } }
+    });
+    // Progress arrives WHILE the subagent runs, carrying the spawned child id.
+    events.fire({
+      type: 'session.tool.progress',
+      data: {
+        sessionID: 's1',
+        assistantMessageID: 'mA',
+        id: 'toolu_sa',
+        metadata: { sessionID: 'ses_child', status: 'running' }
+      }
+    });
+
+    const tool = store.messages().find((m) => m.info.id === 'mA')?.parts[0];
+    // The child id is already on the part before any success/output - so the
+    // "Open subagent" link can show during the run.
+    expect((tool?.state as { metadata?: { sessionID?: string } })?.metadata?.sessionID).toBe('ses_child');
+    expect(tool?.state?.status).toBe('running');
+    expect(tool?.state?.input).toEqual({ description: 'Do it' });
+  });
+
   it('ignores streamed events for a session that is not active', () => {
     api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
     store.openSession('s1');

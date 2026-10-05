@@ -84,6 +84,13 @@ export interface ToolState {
    * API service flattens into this string.
    */
   output?: string;
+  /**
+   * Tool-specific metadata opencode emits on {@code session.tool.progress} /
+   * {@code .success}. For the subagent tool it carries the spawned child
+   * {@code sessionID} (set while the subagent still runs), which the UI uses to
+   * offer an "Open subagent" link.
+   */
+  metadata?: unknown;
   [key: string]: unknown;
 }
 

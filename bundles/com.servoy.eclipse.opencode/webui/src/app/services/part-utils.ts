@@ -26,9 +26,26 @@ export function isSyntheticPart(part: Part): boolean {
   return false;
 }
 
+/**
+ * opencode writes a text part whose entire content is the literal
+ * {@code "(empty)"} placeholder when a model step produced a tool call but no
+ * prose of its own (common right after a subagent/tool dispatch). It carries no
+ * information - rendered as-is it is a stray "(empty)" line next to the tool
+ * row - so it is treated as empty, the same way the "..." reasoning stub is.
+ */
+export function isPlaceholderText(text: string | undefined): boolean {
+  return (text ?? '').trim() === '(empty)';
+}
+
 /** Text parts that carry visible assistant/user prose. */
 export function isTextPart(part: Part): boolean {
-  return part.type === 'text' && !isSyntheticPart(part) && !!part.text && part.text.trim().length > 0;
+  return (
+    part.type === 'text' &&
+    !isSyntheticPart(part) &&
+    !!part.text &&
+    part.text.trim().length > 0 &&
+    !isPlaceholderText(part.text)
+  );
 }
 
 /**
@@ -87,7 +104,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   webfetch: 'Fetch Web Page',
   list: 'List Directory',
   todowrite: 'Update Todos',
-  task: 'Task',
+  task: 'Subagent',
+  subagent: 'Subagent',
   skill: 'Load Skill',
   question: 'Question',
   execute: 'Script'
@@ -122,6 +140,56 @@ export function toolScript(part: Part): string {
 /** True for the Code Mode {@code execute} tool, which runs a script. */
 export function isScriptTool(part: Part): boolean {
   return part.type === 'tool' && part.tool === 'execute';
+}
+
+/**
+ * True for the tool that spawns a subagent (its own child session). opencode
+ * names it {@code subagent}; the core variant is {@code task}.
+ */
+export function isSubagentTool(part: Part): boolean {
+  return part.type === 'tool' && (part.tool === 'subagent' || part.tool === 'task');
+}
+
+/**
+ * The child session id a subagent tool part spawned (or continued), or null.
+ * The row for it is a link into that session - the same navigation the sidebar
+ * tree offers. The id is found either on the tool input ({@code sessionID},
+ * present when the call continued an existing child) or in the tool output,
+ * whose first block opens with {@code <subagent sessionID="ses_...">} when a new
+ * child was created.
+ */
+export function subagentSessionId(part: Part): string | null {
+  if (!isSubagentTool(part)) {
+    return null;
+  }
+  // 1. The authoritative location: opencode writes the child id to the tool
+  //    state metadata, emitted on a `session.tool.progress` event as soon as the
+  //    subagent is dispatched - so this is set while the subagent is still
+  //    running, which is what lets the "Open" link appear during the run.
+  const metadata = (part.state as Record<string, unknown> | undefined)?.['metadata'];
+  if (metadata && typeof metadata === 'object') {
+    const id = (metadata as Record<string, unknown>)['sessionID'];
+    if (typeof id === 'string' && id.length > 0) {
+      return id;
+    }
+  }
+  // 2. The input, when the call continued an existing child session.
+  const input = part.state?.input;
+  if (input && typeof input === 'object') {
+    const id = (input as Record<string, unknown>)['sessionID'];
+    if (typeof id === 'string' && id.length > 0) {
+      return id;
+    }
+  }
+  // 3. Fallback: parse the completed output's opening marker.
+  const output = part.state?.output;
+  if (typeof output === 'string') {
+    const match = /<subagent\s+sessionID="([^"]+)"/.exec(output);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
 }
 
 /**

@@ -237,6 +237,20 @@ export class ChatStore {
     return !!this.allSessions().find((s) => s.id === id)?.parentID;
   });
 
+  /**
+   * Tool metadata captured live from the event bus, keyed by tool-call id. The
+   * subagent tool's {@code metadata.sessionID} arrives on a
+   * {@code session.tool.progress} event while the subagent still runs, but
+   * {@code GET /session/:id/message} does NOT persist it until the tool
+   * completes. So when the parent is re-seeded mid-run (e.g. you open a running
+   * subagent, then return to the parent via the tree) the re-seeded tool part
+   * has no child id and its "Open subagent" link vanishes until completion.
+   * Recording metadata here - for every session, active or not, since the SSE
+   * stream is global - lets {@link backfillToolMetadata} restore it on re-seed,
+   * so the link survives the round-trip.
+   */
+  private readonly toolMetaByCallId = new Map<string, Record<string, unknown>>();
+
   constructor() {
     this.eventStream.events().subscribe((evt) => this.onEvent(evt));
   }
@@ -324,7 +338,9 @@ export class ChatStore {
     this.api.listMessages(id).subscribe({
       next: (msgs) =>
         this.messages.set(
-          (msgs ?? []).filter((m) => this.isRenderableMessage(m)).map((m) => this.toChatMessage(m))
+          (msgs ?? [])
+            .filter((m) => this.isRenderableMessage(m))
+            .map((m) => this.backfillToolMetadata(this.toChatMessage(m)))
         ),
       error: (err) => this.error.set(this.describe(err))
     });
@@ -648,6 +664,9 @@ export class ChatStore {
       case 'session.tool.called':
         this.onToolCalled(props);
         break;
+      case 'session.tool.progress':
+        this.onToolProgress(props);
+        break;
       case 'session.tool.success':
         this.onToolResult(props, 'completed');
         break;
@@ -765,14 +784,38 @@ export class ChatStore {
   }
 
   private onToolCalled(props: Record<string, unknown>): void {
+    this.recordToolMeta(props);
     if (!this.matchesActiveSession(props)) {
       return;
     }
     const input = props['input'];
-    this.upsertToolPart(props, { state: { status: 'running', input } });
+    const state: Partial<ToolState> = { status: 'running', input };
+    if (props['metadata'] !== undefined) {
+      state.metadata = props['metadata'];
+    }
+    this.upsertToolPart(props, { state: state as ToolState });
+  }
+
+  /**
+   * A {@code session.tool.progress} event carries the tool's evolving
+   * {@code metadata} while it still runs. For a subagent tool this is where the
+   * spawned child {@code sessionID} first lands - so handling it is what lets
+   * the "Open subagent" link appear during the run, not only once it finishes.
+   */
+  private onToolProgress(props: Record<string, unknown>): void {
+    this.markStreamingFromEvent(props);
+    this.recordToolMeta(props);
+    if (!this.matchesActiveSession(props)) {
+      return;
+    }
+    if (props['metadata'] === undefined) {
+      return;
+    }
+    this.upsertToolPart(props, { state: { status: 'running', metadata: props['metadata'] } as ToolState });
   }
 
   private onToolResult(props: Record<string, unknown>, status: 'completed' | 'error'): void {
+    this.recordToolMeta(props);
     if (!this.matchesActiveSession(props)) {
       return;
     }
@@ -784,7 +827,56 @@ export class ChatStore {
     if (props['input'] !== undefined) {
       state.input = props['input'];
     }
+    // Carry the final metadata (e.g. a subagent's child sessionID) if present.
+    if (props['metadata'] !== undefined) {
+      state.metadata = props['metadata'];
+    }
     this.upsertToolPart(props, { state: state as ToolState });
+  }
+
+  /**
+   * Record a tool event's {@code metadata} by its tool-call id, for EVERY
+   * session (not just the active one) - the SSE stream is global, so a subagent
+   * running in a background session still delivers its progress here. Only a
+   * non-empty metadata object is kept, and it is merged, so a later partial
+   * event cannot wipe the {@code sessionID} an earlier one supplied. See
+   * {@link toolMetaByCallId} and {@link backfillToolMetadata}.
+   */
+  private recordToolMeta(props: Record<string, unknown>): void {
+    const callId = typeof props['id'] === 'string' ? (props['id'] as string) : null;
+    const metadata = props['metadata'];
+    if (!callId || !metadata || typeof metadata !== 'object' || Object.keys(metadata).length === 0) {
+      return;
+    }
+    const prev = this.toolMetaByCallId.get(callId) ?? {};
+    this.toolMetaByCallId.set(callId, { ...prev, ...(metadata as Record<string, unknown>) });
+  }
+
+  /**
+   * Restore live-captured tool metadata onto a message's tool parts that came
+   * back from {@code GET /message} without it. {@code GET /message} omits a
+   * running tool's metadata, so a subagent re-seeded mid-run would lose its
+   * child {@code sessionID} (and its "Open subagent" link) until it finished;
+   * this fills it back in from {@link toolMetaByCallId}.
+   */
+  private backfillToolMetadata(message: ChatMessage): ChatMessage {
+    let changed = false;
+    const parts = message.parts.map((p) => {
+      if (p.type !== 'tool' || !p.id) {
+        return p;
+      }
+      const existing = (p.state?.metadata as Record<string, unknown> | undefined) ?? undefined;
+      if (existing && Object.keys(existing).length > 0) {
+        return p;
+      }
+      const cached = this.toolMetaByCallId.get(p.id);
+      if (!cached) {
+        return p;
+      }
+      changed = true;
+      return { ...p, state: { ...p.state, metadata: cached } };
+    });
+    return changed ? { ...message, parts } : message;
   }
 
   /** Flattens a V2 {@code content: [{ type:'text', text }]} array into a string. */
@@ -878,13 +970,26 @@ export class ChatStore {
     });
   }
 
-  /** Creates or merges a tool part identified by its opencode tool-call id. */
+  /**
+   * Creates or merges a tool part identified by its opencode tool-call id.
+   *
+   * The id must be the RAW tool-call id ({@code toolu_...}), the same id
+   * {@link mapV2Message} assigns a seeded tool part ({@code content[].id}). If
+   * the live path used a different key (e.g. a {@code tool#} prefix), a tool
+   * seeded from {@code GET /message} and then updated by a later live event
+   * would not merge: the live update would spawn a second, nameless part that
+   * renders as "Tool" with no subtitle/subagent link. That is exactly the
+   * "open a running subagent, go back to the parent, watch it finish" case -
+   * the parent is re-seeded while the subagent still runs, then its
+   * success/progress event must land on the SAME part. Keying both paths by the
+   * raw call id keeps them one part.
+   */
   private upsertToolPart(props: Record<string, unknown>, patch: Partial<Part>): void {
     const toolCallId = typeof props['id'] === 'string' ? (props['id'] as string) : null;
     if (!toolCallId) {
       return;
     }
-    const partId = `tool#${toolCallId}`;
+    const partId = toolCallId;
     const messageID = this.streamMessageId(props) ?? undefined;
     const sessionID = props['sessionID'] as string | undefined;
     this.withAssistantMessage(props, (parts) => {

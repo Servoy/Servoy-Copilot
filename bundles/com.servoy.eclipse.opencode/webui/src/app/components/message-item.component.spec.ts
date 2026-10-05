@@ -53,6 +53,54 @@ describe('MessageItemComponent', () => {
     expect(component.toolName(tool)).toBe('Read File');
   });
 
+  it('keeps a subagent row expandable (its output) AND exposes an open link that emits the child id', () => {
+    const sub = {
+      type: 'tool',
+      tool: 'subagent',
+      id: 'sa1',
+      state: {
+        status: 'completed',
+        input: { description: 'Build it', agent: 'Developer' },
+        output: '<subagent sessionID="ses_child_1" state="completed">\n## Summary'
+      }
+    } as Part;
+
+    expect(component.isSubagentLink(sub)).toBe(true);
+    // The row still expands/collapses to show the subagent output.
+    expect(component.canExpand(sub)).toBe(true);
+    expect(component.toolName(sub)).toBe('Subagent');
+    expect(component.toolSubtitle(sub)).toBe('Build it');
+    expect(component.subagentLabel(sub)).toBe('Build it subagent');
+
+    // The separate "Open subagent" link navigates into the child session.
+    let opened: string | null = null;
+    component.openSession.subscribe((id) => (opened = id));
+    component.openSubagent(sub);
+    expect(opened).toBe('ses_child_1');
+  });
+
+  it('resolves the subagent child id from input.sessionID when the call continued a child', () => {
+    const sub = {
+      type: 'tool',
+      tool: 'subagent',
+      state: { status: 'completed', input: { description: 'Re-review', sessionID: 'ses_child_2' } }
+    } as Part;
+    expect(component.isSubagentLink(sub)).toBe(true);
+    let opened: string | null = null;
+    component.openSession.subscribe((id) => (opened = id));
+    component.openSubagent(sub);
+    expect(opened).toBe('ses_child_2');
+  });
+
+  it('a subagent part with no resolvable child id is not treated as a link', () => {
+    const sub = {
+      type: 'tool',
+      tool: 'subagent',
+      state: { status: 'running', input: { description: 'pending' } }
+    } as Part;
+    expect(component.isSubagentLink(sub)).toBe(false);
+  });
+
   it('shows the loaded skill id as the subtitle of a skill tool part', () => {
     const skill = {
       type: 'tool',

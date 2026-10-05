@@ -4,10 +4,12 @@ import {
   isReasoningPart,
   isRenderablePart,
   isScriptTool,
+  isSubagentTool,
   isSyntheticPart,
   isTextPart,
   isToolExpandable,
   isToolPart,
+  subagentSessionId,
   toolLabel,
   toolDisplayName,
   toolScript,
@@ -62,7 +64,10 @@ describe('isTextPart', () => {
     ['synthetic flagged', part({ type: 'text', text: 'x', synthetic: true }), false],
     ['system-reminder', part({ type: 'text', text: '<system-reminder>x' }), false],
     ['reasoning type', part({ type: 'reasoning', text: 'thinking' }), false],
-    ['no text field', part({ type: 'text' }), false]
+    ['no text field', part({ type: 'text' }), false],
+    ['opencode "(empty)" placeholder', part({ type: 'text', text: '(empty)' }), false],
+    ['padded "(empty)" placeholder', part({ type: 'text', text: '  (empty)  ' }), false],
+    ['prose that merely contains (empty)', part({ type: 'text', text: 'the result was (empty) today' }), true]
   ])('%s -> %s', (_label, p, expected) => {
     expect(isTextPart(p)).toBe(expected);
   });
@@ -158,6 +163,70 @@ describe('toolDisplayName', () => {
 
   it('falls back to "Tool" when no name is present', () => {
     expect(toolDisplayName(part({ type: 'tool' }))).toBe('Tool');
+  });
+
+  it('maps the subagent/task tools to "Subagent"', () => {
+    expect(toolDisplayName(part({ type: 'tool', tool: 'subagent' }))).toBe('Subagent');
+    expect(toolDisplayName(part({ type: 'tool', tool: 'task' }))).toBe('Subagent');
+  });
+});
+
+describe('subagent tool', () => {
+  it('detects the subagent and task tools', () => {
+    expect(isSubagentTool(part({ type: 'tool', tool: 'subagent' }))).toBe(true);
+    expect(isSubagentTool(part({ type: 'tool', tool: 'task' }))).toBe(true);
+    expect(isSubagentTool(part({ type: 'tool', tool: 'read' }))).toBe(false);
+    expect(isSubagentTool(part({ type: 'text', text: 'x' }))).toBe(false);
+  });
+
+  it('resolves the child session id from state.metadata.sessionID (set while running)', () => {
+    const p = part({
+      type: 'tool',
+      tool: 'subagent',
+      state: { status: 'running', input: { description: 'go' }, metadata: { sessionID: 'ses_meta' } }
+    });
+    expect(subagentSessionId(p)).toBe('ses_meta');
+  });
+
+  it('prefers metadata.sessionID over the input and the output marker', () => {
+    const p = part({
+      type: 'tool',
+      tool: 'subagent',
+      state: {
+        metadata: { sessionID: 'ses_meta' },
+        input: { sessionID: 'ses_in' },
+        output: '<subagent sessionID="ses_out">'
+      }
+    });
+    expect(subagentSessionId(p)).toBe('ses_meta');
+  });
+
+  it('resolves the child session id from input.sessionID (continued child)', () => {
+    const p = part({ type: 'tool', tool: 'subagent', state: { input: { sessionID: 'ses_a' } } });
+    expect(subagentSessionId(p)).toBe('ses_a');
+  });
+
+  it('resolves the child session id from the output marker (newly created child)', () => {
+    const p = part({
+      type: 'tool',
+      tool: 'subagent',
+      state: { input: { description: 'go' }, output: '<subagent sessionID="ses_b" state="completed">\n## Summary' }
+    });
+    expect(subagentSessionId(p)).toBe('ses_b');
+  });
+
+  it('prefers input.sessionID over the output marker', () => {
+    const p = part({
+      type: 'tool',
+      tool: 'subagent',
+      state: { input: { sessionID: 'ses_in' }, output: '<subagent sessionID="ses_out">' }
+    });
+    expect(subagentSessionId(p)).toBe('ses_in');
+  });
+
+  it('is null when neither the input nor the output carries a child id', () => {
+    expect(subagentSessionId(part({ type: 'tool', tool: 'subagent', state: { input: {} } }))).toBeNull();
+    expect(subagentSessionId(part({ type: 'tool', tool: 'read', state: { input: { sessionID: 'x' } } }))).toBeNull();
   });
 });
 

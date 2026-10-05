@@ -5,6 +5,7 @@ import {
   afterRenderEffect,
   computed,
   input,
+  output,
   viewChild
 } from '@angular/core';
 
@@ -25,6 +26,9 @@ import { MessageItemComponent } from './message-item.component';
 })
 export class MessageListComponent {
   readonly messages = input<ChatMessage[]>([]);
+
+  /** Bubbled up from a subagent tool row: the child session id to open. */
+  readonly openSession = output<string>();
 
   readonly scroll = viewChild.required<ElementRef<HTMLDivElement>>('scroll');
 

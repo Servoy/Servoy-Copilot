@@ -108,6 +108,40 @@
   }
 }
 
+// The "Open subagent" link sits under the subagent's tool row as a one-node
+// tree branch into the child session (like OpenChamber's "Open ... subtask").
+// Indented well past the caret column and drawn with a short left guide so it
+// reads as a nested child of the row above, not a sibling tool row.
+.subagent-open-wrap {
+  margin: 0.1rem 0 0.25rem;
+  margin-left: 0.45rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+}
+
+.subagent-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  background: transparent;
+  padding: 0.1rem 0;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--svy-accent, #f5a623);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+.subagent-open-icon {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+}
+
 .tool-caret {
   flex: 0 0 auto;
   width: 0.9rem;

@@ -86,6 +86,23 @@ export class SessionListComponent {
   readonly isEmpty = computed(() => this.tree().length === 0);
 
   constructor() {
+    // When the active session is a subagent (child), auto-expand its parent so
+    // the selected child is actually visible in the tree. This makes opening a
+    // subagent from the chat transcript behave like clicking it in the sidebar:
+    // the branch opens and the child shows as selected.
+    effect(() => {
+      const activeId = this.activeSessionId();
+      if (!activeId) {
+        return;
+      }
+      const parent = this.tree().find((n) => n.children.some((c) => c.id === activeId));
+      if (parent && !this.expandedIds().has(parent.session.id)) {
+        const next = new Set(this.expandedIds());
+        next.add(parent.session.id);
+        this.expandedIds.set(next);
+      }
+    });
+
     // DEBUG(title-timing): fires whenever the reactive tree the sidebar renders
     // actually changes. Compare its timestamp to the [store] applySessionUpdate
     // log: a large gap means the signal wrote but change detection ran late.

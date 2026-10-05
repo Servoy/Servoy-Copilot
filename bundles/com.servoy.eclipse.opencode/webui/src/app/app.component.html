@@ -19,7 +19,11 @@
     @if (store.error(); as error) {
       <div class="banner">{{ error }}</div>
     }
-    <svy-message-list class="messages" [messages]="store.messages()"></svy-message-list>
+    <svy-message-list
+      class="messages"
+      [messages]="store.messages()"
+      (openSession)="onSelectSession($event)"
+    ></svy-message-list>
     @if (store.pendingForm(); as form) {
       <svy-form-card
         [form]="form"

@@ -35,6 +35,22 @@
             </div>
           }
         }
+        <!-- A subagent spawn is still expand/collapse above (its output), with a
+             separate "Open subagent" link below - a one-node tree into the child
+             session, like OpenChamber's "Open ... subtask". -->
+        @if (isSubagentLink(part)) {
+          <div class="subagent-open-wrap">
+            <button
+              type="button"
+              class="subagent-open"
+              [title]="'Open subagent session'"
+              (click)="openSubagent(part)"
+            >
+              <span class="subagent-open-icon" aria-hidden="true">↗</span>
+              <span>Open {{ subagentLabel(part) }}</span>
+            </button>
+          </div>
+        }
       </div>
     }
   }
