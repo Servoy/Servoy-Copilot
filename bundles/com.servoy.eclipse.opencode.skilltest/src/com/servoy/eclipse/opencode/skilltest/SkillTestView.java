@@ -17,6 +17,8 @@
 
 package com.servoy.eclipse.opencode.skilltest;
 
+import com.servoy.eclipse.model.util.ServoyLog;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -395,7 +397,24 @@ public class SkillTestView extends ViewPart {
 						setup.prepare(baseline);
 						results.add(runner.runBaseline(baseline, monitor::isCanceled));
 					} catch (Exception setupEx) {
-						log("[skilltest] " + baseline.id() + " setup failed: " + setupEx.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+						// Log the FULL stack trace (not just getMessage) so the real failing
+						// frame is visible - a bare message like "Cannot invoke
+						// Boolean.booleanValue()" is useless without the frame that threw it.
+						ServoyLog.logError("[skilltest] " + baseline.id() + " setup failed", setupEx); //$NON-NLS-1$ //$NON-NLS-2$
+						StringBuilder trace = new StringBuilder(
+								"[skilltest] " + baseline.id() + " setup failed: " + setupEx); //$NON-NLS-1$ //$NON-NLS-2$
+						for (StackTraceElement f : setupEx.getStackTrace()) {
+							trace.append("\n    at ").append(f); //$NON-NLS-1$
+						}
+						Throwable cause = setupEx.getCause();
+						while (cause != null) {
+							trace.append("\n  Caused by: ").append(cause); //$NON-NLS-1$
+							for (StackTraceElement f : cause.getStackTrace()) {
+								trace.append("\n    at ").append(f); //$NON-NLS-1$
+							}
+							cause = cause.getCause();
+						}
+						log(trace.toString());
 						results.add(SkillTestResult.error(baseline.id(), 0, "setup failed: " + setupEx.getMessage())); //$NON-NLS-1$
 					}
 				}
@@ -605,8 +624,10 @@ public class SkillTestView extends ViewPart {
 		String currentScriptName = current != null && !current.scripts().isEmpty()
 				? JsUnitVerifier.toSolutionRelativePath(current.scripts().get(0))
 				: null;
+		java.io.File solutionSourceFolder = com.servoy.eclipse.opencode.skilltest.headless.SolutionSetup
+				.resolveSolutionSourceFolder(entry.baseline().source(), entry.baseline().solution());
 		JsUnitVerifyEditorDialog dialog = new JsUnitVerifyEditorDialog(getSite().getShell(),
-				entry.baseline().id(), current, currentScript, currentScriptName);
+				entry.baseline().id(), current, currentScript, currentScriptName, solutionSourceFolder);
 		if (dialog.open() != Window.OK) {
 			return;
 		}

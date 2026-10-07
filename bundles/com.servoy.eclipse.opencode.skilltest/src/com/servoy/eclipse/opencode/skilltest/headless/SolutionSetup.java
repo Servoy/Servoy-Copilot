@@ -67,6 +67,31 @@ import com.servoy.eclipse.opencode.skilltest.Baseline;
  */
 public final class SolutionSetup {
 
+	/**
+	 * Web packages planted into an imported solution so its components resolve.
+	 * <p>
+	 * A solution does NOT declare the web packages it needs: its {@code rootmetadata.obj}
+	 * / {@code solution_settings.obj} carry only name/uuid/type, and {@code .project}
+	 * references only the resources project. Packages reach a solution either because
+	 * a {@code .servoy} export package bundles them (the wizard/XML import path) or
+	 * because something copies them into {@code ng_web_packages/} - which is exactly what
+	 * the {@code createSolution} MCP tool does from Developer's {@code wizardpackages/}
+	 * folder. A raw git/folder checkout has neither, so a form using e.g.
+	 * {@code bootstrapcomponents-textbox} became an "Error Bean - Specification not found"
+	 * and the structural assertions reported the component as missing (SVY-21366).
+	 * </p>
+	 * <p>
+	 * This is the same default set {@code ServoyDevServer.NG_PACKAGES} uses, so an
+	 * imported solution gets the same baseline components a newly created one does.
+	 * </p>
+	 */
+	private static final String[] NG_PACKAGES = { "12grid", "bootstrapcomponents", "fontawesome", "servoyextra" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+
+	/** Max time to wait for the Servoy model to load the imported solution before activating. */
+	private static final long ACTIVATE_SETTLE_TIMEOUT_MS = 60_000L;
+	/** Poll interval while waiting for the solution model to materialize. */
+	private static final long ACTIVATE_SETTLE_POLL_MS = 250L;
+
 	private final SetupLogger logger;
 	private final McpToolClient mcp;
 
@@ -98,15 +123,20 @@ public final class SolutionSetup {
 		// 2. Materialize the initial state.
 		switch (source.type()) {
 			case GIT -> {
-				// Clone/revert FIRST, so the import source is verified before touching
-				// the workspace. Only then remove the existing solution + declared extra
-				// projects: cleaning before a failed clone/import would leave the user
-				// with their previously-active solution deleted and nothing to replace
-				// it (the "it was active but you removed it" failure).
+				// A git source IS a checked-out working copy: the solution project lives
+				// in the clone and is git-backed. The way to return it to a clean start
+				// is 'git reset --hard' + 'clean -dfx' (revert the agent's changes,
+				// including newly-added files) - NOT deleting the project with content,
+				// which would destroy the checkout (SVY-21366 "you deleted the solution").
+				// cloneGitRepo does exactly that: clone on first use, reset+clean on reuse.
+				// So there is NO cleanBeforeMaterialize here - the clone/revert is the clean.
 				File checkout = cloneGitRepo(source.location(), source.ref());
-				cleanBeforeMaterialize(solution, baseline);
+				assertSourceHasSolution(checkout, solution);
 				List<String> imported = importSolutionProjects(checkout, solution);
-				activate(resolveActivate(solution, imported));
+				String toActivate = resolveActivate(solution, imported);
+				ensureNgPackages(toActivate);
+				settleBeforeActivate(toActivate);
+				activate(toActivate);
 				settleAfterActivate();
 			}
 			case FOLDER -> {
@@ -115,9 +145,13 @@ public final class SolutionSetup {
 					throw new IllegalArgumentException("source folder not found: " + source.location()); //$NON-NLS-1$
 				}
 				assertNotWorkspace(folder);
+				assertSourceHasSolution(folder, solution);
 				cleanBeforeMaterialize(solution, baseline);
 				List<String> imported = importSolutionProjects(folder, solution);
-				activate(resolveActivate(solution, imported));
+				String toActivate = resolveActivate(solution, imported);
+				ensureNgPackages(toActivate);
+				settleBeforeActivate(toActivate);
+				activate(toActivate);
 				settleAfterActivate();
 			}
 			case EMPTY -> {
@@ -140,6 +174,163 @@ public final class SolutionSetup {
 			deleteProjectWithContent(solution);
 		}
 		deleteProjects(baseline.cleanProjects().toArray(new String[0]));
+	}
+
+	/**
+	 * Builds the just-imported projects and waits for the Servoy builder to parse
+	 * them into an in-memory {@code Solution} model BEFORE activation is attempted.
+	 * <p>
+	 * {@code ServoyModel.setActiveProject} refuses to activate a project whose
+	 * {@code getSolution()} is still {@code null} and pops a modal "Solution X cannot
+	 * be activated. Please check for problems in the underlying file representation."
+	 * — which, in an unattended skilltest run, blocks forever. Right after
+	 * {@code importSolutionProjects} the projects exist on disk and are open, but the
+	 * Servoy build that reads their {@code .frm}/{@code .obj}/metadata into the model
+	 * has not necessarily run yet, so {@code getSolution()} races the activation.
+	 * </p>
+	 * <p>
+	 * This forces a full build and joins the build jobs, then polls the target
+	 * {@code ServoyProject.getSolution()} for up to {@value #ACTIVATE_SETTLE_TIMEOUT_MS}
+	 * ms. If the model never materializes it fails the setup with a clear message
+	 * (the checkout's file representation is genuinely broken, not a timing issue) —
+	 * which the runner reports as a baseline ERROR, instead of leaving the modal to
+	 * hang the run.
+	 *
+	 * @param solutionName the solution about to be activated
+	 */
+	/**
+	 * Plants the default web packages into an imported solution's
+	 * {@code ng_web_packages/} folder, so the components its forms use resolve to a
+	 * spec instead of becoming "Error Bean - Specification not found".
+	 * <p>
+	 * Mirrors {@code ServoyDevServer.copyNgPackages}: the zips are read from
+	 * Developer's {@code wizardpackages/} state folder (the source of truth populated
+	 * at Developer startup) and copied as {@code <name>.zip}. This needs no network
+	 * and no WPM round-trip. A package already present in the checkout is left as it
+	 * is, so a solution that ships its own packages keeps them.
+	 * </p>
+	 * <p>
+	 * Best-effort: a missing {@code wizardpackages/} folder or an unreadable zip is
+	 * logged and skipped rather than failing the setup - the outcome checks will
+	 * report the unresolved component clearly enough.
+	 * </p>
+	 *
+	 * @param solutionName the imported solution project to provision
+	 */
+	private void ensureNgPackages(String solutionName) {
+		if (solutionName == null || solutionName.isBlank()) {
+			return;
+		}
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(solutionName);
+		if (!project.exists() || !project.isOpen()) {
+			return;
+		}
+		File wizardPackagesDir = new File(com.servoy.eclipse.ui.Activator.getDefault().getStateLocation().toFile(),
+				"wizardpackages"); //$NON-NLS-1$
+		if (!wizardPackagesDir.isDirectory()) {
+			logger.log("[skilltest] WARN: wizardpackages folder not found at " + wizardPackagesDir //$NON-NLS-1$
+					+ "; imported solution keeps whatever packages it ships"); //$NON-NLS-1$
+			return;
+		}
+		File[] available = wizardPackagesDir.listFiles();
+		if (available == null) {
+			return;
+		}
+		try {
+			org.eclipse.core.resources.IFolder ngFolder = project
+					.getFolder(com.servoy.eclipse.model.repository.SolutionSerializer.NG_PACKAGES_DIR_NAME);
+			if (!ngFolder.exists()) {
+				ngFolder.create(true, true, new NullProgressMonitor());
+			}
+			List<String> planted = new ArrayList<>();
+			for (String name : NG_PACKAGES) {
+				org.eclipse.core.resources.IFile dest = ngFolder.getFile(name + ".zip"); //$NON-NLS-1$
+				if (dest.exists()) {
+					continue; // the checkout already provides this package
+				}
+				File source = null;
+				for (File f : available) {
+					if (f.isFile() && f.getName().startsWith(name + "_")) { //$NON-NLS-1$
+						source = f;
+						break;
+					}
+				}
+				if (source == null) {
+					logger.log("[skilltest] WARN: package not found in wizardpackages: " + name); //$NON-NLS-1$
+					continue;
+				}
+				try (java.io.InputStream is = new java.io.FileInputStream(source)) {
+					dest.create(is, true, new NullProgressMonitor());
+					planted.add(name);
+				} catch (IOException | CoreException e) {
+					logger.log("[skilltest] WARN: could not copy package " + name + ": " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+				}
+			}
+			project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+			logger.log("[skilltest] web packages for '" + solutionName + "': planted " //$NON-NLS-1$ //$NON-NLS-2$
+					+ (planted.isEmpty() ? "none (already present)" : String.join(", ", planted))); //$NON-NLS-1$ //$NON-NLS-2$
+		} catch (CoreException e) {
+			logger.log("[skilltest] WARN: could not provision web packages for '" + solutionName //$NON-NLS-1$
+					+ "': " + e.getMessage()); //$NON-NLS-1$
+		}
+	}
+
+	private void settleBeforeActivate(String solutionName) {
+		if (solutionName == null || solutionName.isBlank()) {
+			return;
+		}
+		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
+		try {
+			logger.log("[skilltest] building imported projects before activation..."); //$NON-NLS-1$
+			ResourcesPlugin.getWorkspace().build(
+					org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
+		} catch (CoreException | OperationCanceledException e) {
+			logger.log("[skilltest] WARN: full build before activation failed: " + e.getMessage()); //$NON-NLS-1$
+		}
+		try {
+			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
+			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new NullProgressMonitor());
+		} catch (OperationCanceledException | InterruptedException e) {
+			Thread.currentThread().interrupt();
+			logger.log("[skilltest] WARN: interrupted while waiting for build before activation: " //$NON-NLS-1$
+					+ e.getMessage());
+		}
+
+		// Tell the Servoy model to (re)scan the workspace so the just-imported project
+		// is registered and its Solution root object is loaded. This is the step that
+		// actually makes getSolution() non-null for a freshly-imported project - a full
+		// workspace build alone does NOT populate it. The MCP activateSolution tool only
+		// refreshes when called with refreshAndWait=true, which this path does not use
+		// (it calls the plain tool), so we must refresh here ourselves. Without this the
+		// poll below would never see a Solution and would always time out (the regression).
+		try {
+			logger.log("[skilltest] refreshing Servoy projects so the import loads into the model..."); //$NON-NLS-1$
+			ServoyModelFinder.getServoyModel().refreshServoyProjects();
+		} catch (RuntimeException | LinkageError e) {
+			logger.log("[skilltest] WARN: refreshServoyProjects failed: " + e.getMessage()); //$NON-NLS-1$
+		}
+
+		// Poll until the Servoy model has a non-null Solution for this project, so
+		// activateSolution does not hit the "cannot be activated" modal.
+		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_TIMEOUT_MS;
+		ServoyProject project = null;
+		while (System.currentTimeMillis() < deadline) {
+			project = ServoyModelFinder.getServoyModel().getServoyProject(solutionName);
+			if (project != null && project.getSolution() != null) {
+				logger.log("[skilltest] solution model for '" + solutionName + "' is ready to activate."); //$NON-NLS-1$ //$NON-NLS-2$
+				return;
+			}
+			try {
+				Thread.sleep(ACTIVATE_SETTLE_POLL_MS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				break;
+			}
+		}
+		throw new IllegalStateException("solution '" + solutionName //$NON-NLS-1$
+				+ "' did not load into the Servoy model after import (getSolution() is null after a full build" //$NON-NLS-1$
+				+ " + refreshServoyProjects + " + (ACTIVATE_SETTLE_TIMEOUT_MS / 1000) //$NON-NLS-1$
+				+ "s wait); the checked-out file representation is likely incomplete or has build errors."); //$NON-NLS-1$
 	}
 
 	/**
@@ -214,17 +405,38 @@ public final class SolutionSetup {
 		}
 
 		// Already checked out: just revert it to a pristine ref state (reset --hard
-		// + clean -dfx) rather than re-cloning. This discards all local changes the
+		// + clean -df) rather than re-cloning. This discards all local changes the
 		// previous attempt made, including newly added/untracked files.
 		if (new File(dest, ".git").isDirectory()) { //$NON-NLS-1$
 			logger.log("[skilltest] reusing checkout " + dest + " - reverting local changes ..."); //$NON-NLS-1$ //$NON-NLS-2$
 			try (org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.open(dest)) {
+				// reset --hard brings all TRACKED files back to the ref; this already undoes
+				// the bulk of the agent's changes and never touches ignored files.
 				git.reset().setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD).call();
-				git.clean().setCleanDirectories(true).setForce(true).setIgnore(false).call();
+				// clean removes untracked files (the agent's newly-added solution content).
+				// setIgnore(true): do NOT clean gitignored files. The opencode codebase-index
+				// plugin writes a live .opencode/index/ (with codebase.db) into the checkout
+				// root while the server runs there, and that folder is gitignored (SVY-21507).
+				// Cleaning ignored files (setIgnore(false)) made JGit try to delete the open,
+				// Windows-locked codebase.db and threw "process cannot access the file ... used
+				// by another process", failing the whole setup. The agent's own output is
+				// tracked/untracked solution content, not ignored, so it is still removed; the
+				// live index DB is left alone.
+				try {
+					git.clean().setCleanDirectories(true).setForce(true).setIgnore(true).call();
+				} catch (org.eclipse.jgit.api.errors.GitAPIException | org.eclipse.jgit.api.errors.JGitInternalException cleanEx) {
+					// A leftover ignored file may still be locked on Windows (e.g. an older
+					// checkout whose .opencode/index/ predates the .gitignore entry). reset --hard
+					// has already restored every tracked file, so the checkout is usable; the
+					// locked ignored file is not solution content. Log and keep going rather than
+					// re-cloning (which would hit the same lock and leave a half-deleted checkout).
+					logger.log("[skilltest] clean skipped a locked/ignored file (" //$NON-NLS-1$
+							+ cleanEx.getMessage() + "); checkout was reset --hard, continuing"); //$NON-NLS-1$
+				}
 				logger.log("[skilltest] checkout reverted to clean " + (ref != null ? ref : "HEAD")); //$NON-NLS-1$ //$NON-NLS-2$
 				return dest;
-			} catch (org.eclipse.jgit.api.errors.GitAPIException e) {
-				// Reset/clean failed (corrupt checkout?) - fall through to a fresh clone.
+			} catch (org.eclipse.jgit.api.errors.GitAPIException | org.eclipse.jgit.api.errors.JGitInternalException e) {
+				// reset itself failed (corrupt checkout?) - fall through to a fresh clone.
 				logger.log("[skilltest] revert failed (" + e.getMessage() + "), re-cloning"); //$NON-NLS-1$ //$NON-NLS-2$
 				deleteRecursive(dest);
 			}
@@ -269,6 +481,66 @@ public final class SolutionSetup {
 		}
 	}
 
+	/**
+	 * Resolves the on-disk folder of a baseline's solution project WITHOUT importing or
+	 * cloning anything, so UI (e.g. the JSUnit editor's "existing test files" picker) can
+	 * discover the solution's files at edit time. Returns:
+	 * <ul>
+	 * <li>FOLDER: {@code <location>/<solution>} when it exists, else {@code <location>},</li>
+	 * <li>GIT: {@code <workspace>/.skilltest-src/<repo>@<ref>/<solution>} - the stable clone
+	 * path this class uses - but ONLY if it already exists on disk (a prior run cloned it);
+	 * {@code null} otherwise,</li>
+	 * <li>EMPTY or unresolvable: {@code null}.</li>
+	 * </ul>
+	 *
+	 * @param source   the baseline's declared source
+	 * @param solution the baseline's solution/project name (may be blank)
+	 * @return the solution folder on disk, or {@code null} when it cannot be resolved
+	 */
+	public static File resolveSolutionSourceFolder(Baseline.Source source, String solution) {
+		if (source == null) {
+			return null;
+		}
+		switch (source.type()) {
+			case FOLDER -> {
+				if (source.location() == null || source.location().isBlank()) {
+					return null;
+				}
+				File root = new File(source.location());
+				if (solution != null && !solution.isBlank()) {
+					File sol = new File(root, solution);
+					if (sol.isDirectory()) {
+						return sol;
+					}
+				}
+				return root.isDirectory() ? root : null;
+			}
+			case GIT -> {
+				if (source.location() == null || source.location().isBlank()) {
+					return null;
+				}
+				File wsRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile();
+				File base = new File(wsRoot, ".skilltest-src"); //$NON-NLS-1$
+				String ref = source.ref();
+				File checkout = new File(base,
+						sanitize(source.location()) + (ref != null && !ref.isBlank() ? "@" + sanitize(ref) : "")); //$NON-NLS-1$ //$NON-NLS-2$
+				if (!checkout.isDirectory()) {
+					return null; // not cloned yet
+				}
+				if (solution != null && !solution.isBlank()) {
+					File sol = new File(checkout, solution);
+					if (sol.isDirectory()) {
+						return sol;
+					}
+				}
+				return checkout;
+			}
+			default -> {
+				return null; // EMPTY has no on-disk source
+			}
+		}
+	}
+
 	/** Makes a repo URL safe to use as a folder name. */
 	private static String sanitize(String url) {
 		String s = url.replaceAll("[^A-Za-z0-9._-]", "_"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -276,6 +548,36 @@ public final class SolutionSetup {
 	}
 
 	// --- project import (resources API only) ----------------------------------
+
+	/**
+	 * Asserts the source (clone/folder) actually contains a project whose name is
+	 * {@code solutionName}, BEFORE the workspace is cleaned. This guards against the
+	 * destructive sequence where a wrong/misspelled solution name would otherwise
+	 * delete the user's existing solution and only then fail the import - which
+	 * destroyed work (SVY-21366). A blank name is allowed (resolved later from a
+	 * single-project source). Throws {@link IllegalStateException} listing the
+	 * available projects when the declared solution is absent.
+	 *
+	 * @param sourceFolder the clone/folder root to search
+	 * @param solutionName the declared solution name (may be blank)
+	 */
+	private void assertSourceHasSolution(File sourceFolder, String solutionName) throws CoreException {
+		if (solutionName == null || solutionName.isBlank()) {
+			return; // resolved later from a single-project source
+		}
+		IWorkspace workspace = ResourcesPlugin.getWorkspace();
+		List<File> projectDirs = new ArrayList<>();
+		collectProjectDirs(sourceFolder, projectDirs, 0);
+		java.util.Set<String> names = new java.util.LinkedHashSet<>();
+		for (File dir : projectDirs) {
+			IProjectDescription pd = workspace.loadProjectDescription(IPath.fromFile(new File(dir, ".project"))); //$NON-NLS-1$
+			names.add(pd.getName());
+		}
+		if (!names.contains(solutionName)) {
+			throw new IllegalStateException("declared solution '" + solutionName //$NON-NLS-1$
+					+ "' not found under the source (nothing was deleted); available projects: " + names); //$NON-NLS-1$
+		}
+	}
 
 	/**
 	 * Imports ONLY the declared solution and the projects it transitively depends
@@ -362,12 +664,28 @@ public final class SolutionSetup {
 			File dir = byName.get(name);
 			IProjectDescription pd = workspace.loadProjectDescription(IPath.fromFile(new File(dir, ".project"))); //$NON-NLS-1$
 			IProject project = root.getProject(pd.getName());
+			java.net.URI targetLocation = dir.toURI();
 			if (project.exists()) {
-				project.delete(true, true, new NullProgressMonitor());
+				// If the project already points at this very source location (a re-run
+				// reusing the same clone/folder), delete only the workspace REFERENCE,
+				// NOT the content - the content is the git checkout we just reverted and
+				// must survive. Only when it points elsewhere do we remove content, so a
+				// stale copy from a different source does not shadow this import.
+				//
+				// Compare as canonical FILES, not as URIs: File.toURI() appends a trailing
+				// slash for a directory while IProject.getLocationURI() has none, and
+				// URI.normalize() does NOT strip it - so URI equality was ALWAYS false and
+				// every re-run deleted the project WITH ITS CONTENT, wiping the solution's
+				// files (rootmetadata.obj, solution_settings.obj, forms/...) out of the git
+				// checkout. The solution then had no file representation left, getSolution()
+				// returned null and activation failed with "Solution X cannot be activated"
+				// (SVY-21366).
+				boolean sameLocation = isSameLocation(project, dir);
+				project.delete(!sameLocation, true, new NullProgressMonitor());
 			}
 			// Create from the fixture's own .project so Servoy natures/builders are
 			// preserved (a blank description would not register it as a solution).
-			pd.setLocationURI(dir.toURI());
+			pd.setLocationURI(targetLocation);
 			project.create(pd, new NullProgressMonitor());
 			project.open(new NullProgressMonitor());
 			names.add(pd.getName());
@@ -376,6 +694,38 @@ public final class SolutionSetup {
 		}
 		root.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		return names;
+	}
+
+	/**
+	 * Tells whether an existing workspace project already lives at exactly
+	 * {@code dir} on disk, so the import can drop only the workspace reference and
+	 * keep the content (the git checkout) intact.
+	 * <p>
+	 * Compares canonical {@link File}s rather than {@link java.net.URI}s on purpose:
+	 * {@code File.toURI()} appends a trailing slash for a directory while
+	 * {@code IProject.getLocationURI()} does not, and {@code URI.normalize()} does not
+	 * remove it, so URI equality never held and the caller always deleted project
+	 * content. Canonical files also make the comparison case- and separator-correct on
+	 * Windows and resolve any {@code .}/{@code ..}/symlink differences.
+	 * </p>
+	 *
+	 * @param project the existing workspace project
+	 * @param dir     the source directory the import wants it to point at
+	 * @return {@code true} when the project's location is the same directory
+	 */
+	private boolean isSameLocation(IProject project, File dir) {
+		org.eclipse.core.runtime.IPath location = project.getLocation();
+		if (location == null) {
+			return false;
+		}
+		try {
+			return location.toFile().getCanonicalFile().equals(dir.getCanonicalFile());
+		} catch (IOException e) {
+			// Cannot canonicalize (unusual path / IO issue): fall back to absolute paths.
+			logger.log("[skilltest] WARN: could not canonicalize project location (" + e.getMessage() //$NON-NLS-1$
+					+ "); comparing absolute paths"); //$NON-NLS-1$
+			return location.toFile().getAbsoluteFile().equals(dir.getAbsoluteFile());
+		}
 	}
 
 	/**
@@ -537,8 +887,29 @@ public final class SolutionSetup {
 				// folder that makes createSolution say "already exists" instead of
 				// creating a fresh solution with default packages).
 				java.io.File onDisk = project.getLocation() != null ? project.getLocation().toFile() : null;
-				project.delete(true, true, new NullProgressMonitor());
-				// Force-delete the on-disk folder if it survived (file-lock residue).
+				// The skilltest workspace is often a git repo, so the solution project may
+				// be connected to EGit. EGit's move/delete team hook runs inside
+				// project.delete(...) and has been seen to throw a RuntimeException
+				// (GitProvider.getMoveDeleteHook NPE on a half-initialized provider) - which
+				// is NOT a CoreException, so it escapes the catch below and fails the whole
+				// setup. Disconnect the team provider first so the plain resource delete runs
+				// without the git hook; then delete.
+				disconnectTeamProvider(project);
+				try {
+					project.delete(true, true, new NullProgressMonitor());
+				} catch (RuntimeException teamHookEx) {
+					// A team/move-delete hook still blew up: fall back to deleting the
+					// project from the workspace without content, then wiping the folder.
+					logger.log("[skilltest] project.delete hook failed (" + teamHookEx.getMessage() //$NON-NLS-1$
+							+ "); deleting description-only + on-disk"); //$NON-NLS-1$
+					try {
+						project.delete(false, true, new NullProgressMonitor());
+					} catch (CoreException | RuntimeException ignore) {
+						// best-effort: the on-disk wipe below is the real cleanup
+					}
+				}
+				// Force-delete the on-disk folder if it survived (file-lock residue or the
+				// description-only delete above left content).
 				if (onDisk != null && onDisk.exists()) {
 					logger.log("[skilltest] force-deleting residual on-disk folder: " + onDisk); //$NON-NLS-1$
 					deleteRecursive(onDisk);
@@ -559,6 +930,27 @@ public final class SolutionSetup {
 		} catch (CoreException e) {
 			ServoyLog.logError("Failed to clean solution project '" + projectName + "'.", e); //$NON-NLS-1$ //$NON-NLS-2$
 			logger.log("[skilltest] WARN: could not clean project '" + projectName + "': " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	/**
+	 * Disconnects any Team (EGit) provider from the project before deletion, so the
+	 * provider's move/delete hook does not run inside {@code project.delete(...)}.
+	 * EGit's {@code GitProvider.getMoveDeleteHook} has been seen to throw during a
+	 * skilltest cleanup when the project is in a git-mapped workspace, failing the
+	 * whole setup. Best-effort and tolerant: no provider, or Team API absent, is a
+	 * no-op.
+	 */
+	private void disconnectTeamProvider(IProject project) {
+		try {
+			if (org.eclipse.team.core.RepositoryProvider.getProvider(project) != null) {
+				org.eclipse.team.core.RepositoryProvider.unmap(project);
+				logger.log("[skilltest] disconnected team provider from '" + project.getName() + "'"); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+		} catch (Exception | LinkageError e) {
+			// Team API not present or unmap refused - the delete fallbacks handle it.
+			logger.log("[skilltest] could not disconnect team provider from '" + project.getName() //$NON-NLS-1$
+					+ "': " + e.getMessage()); //$NON-NLS-1$
 		}
 	}
 

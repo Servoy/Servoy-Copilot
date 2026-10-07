@@ -147,21 +147,53 @@ public final class Baseline {
 	 * @param scripts        baseline-relative {@code .js} files to inject into the
 	 *                       active solution before running (path each declares is
 	 *                       relative to the solution project root, e.g.
-	 *                       {@code scopes/skilltest_verify.js}); empty = run tests
-	 *                       already present in the (folder/git) solution
-	 * @param scope          the scope/form/{@code ALL}/{@code MODULES}/{@code FORMS}
-	 *                       to run
-	 * @param method         optional single {@code test_} method to run, else all
-	 *                       in {@code scope}
-	 * @param timeoutSeconds JSUnit run timeout
-	 * @param required       if {@code false}, JSUnit failures are reported but do
-	 *                       not fail the baseline
+	 *                       {@code scopes/skilltest_verify.js}); empty = do not
+	 *                       inject - either run {@link #existingScripts} or the
+	 *                       declared {@link #scope}
+	 * @param existingScripts solution-relative {@code .js} files that ALREADY exist
+	 *                       in a non-empty (git/folder) solution and should be run
+	 *                       WITHOUT injecting anything (e.g. {@code globals.js},
+	 *                       {@code forms/customers.js}). When non-empty the verifier
+	 *                       skips injection and runs each file's scope, aggregating
+	 *                       the results. Mutually exclusive with {@link #scripts} in
+	 *                       practice; empty = fall back to injection / {@link #scope}
+	 * @param scope                the scope/form/{@code ALL}/{@code MODULES}/
+	 *                             {@code FORMS} to run
+	 * @param method               optional single {@code test_} method to run, else
+	 *                             all in {@code scope}
+	 * @param timeoutSeconds       JSUnit run timeout for the test execution itself
+	 * @param warmupTimeoutSeconds generous timeout that must also cover the
+	 *                             first-time Titanium/NG client bundle build and
+	 *                             SmartClient boot a freshly imported solution pays
+	 *                             on its first JSUnit launch. The verifier runs with
+	 *                             {@code max(timeoutSeconds, warmupTimeoutSeconds)}
+	 *                             so that cold-start build time is not charged
+	 *                             against {@code timeoutSeconds} (SVY-21366). A value
+	 *                             {@code <= 0} means "no extra warmup budget".
+	 * @param required             if {@code false}, JSUnit failures are reported but
+	 *                             do not fail the baseline
 	 */
-	public record JsUnitVerify(List<String> scripts, String scope, String method, int timeoutSeconds,
-			boolean required) {
+	public record JsUnitVerify(List<String> scripts, List<String> existingScripts, String scope, String method,
+			int timeoutSeconds, int warmupTimeoutSeconds, boolean required) {
 
 		public JsUnitVerify {
 			scripts = scripts == null ? Collections.emptyList() : List.copyOf(scripts);
+			existingScripts = existingScripts == null ? Collections.emptyList() : List.copyOf(existingScripts);
+		}
+
+		/** @return {@code true} when existing solution test files should be run instead of injecting. */
+		public boolean usesExistingScripts() {
+			return existingScripts != null && !existingScripts.isEmpty();
+		}
+
+		/**
+		 * The timeout the verifier should actually launch with: the larger of the
+		 * test-execution timeout and the cold-start warmup budget, so the first run of
+		 * a freshly imported solution has room to build the NG bundle + boot the
+		 * SmartClient before the tests run.
+		 */
+		public int effectiveTimeoutSeconds() {
+			return Math.max(timeoutSeconds, warmupTimeoutSeconds);
 		}
 	}
 

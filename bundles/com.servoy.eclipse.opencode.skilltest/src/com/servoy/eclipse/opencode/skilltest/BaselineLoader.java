@@ -43,6 +43,15 @@ public final class BaselineLoader {
 
 	private static final int DEFAULT_MAX_ATTEMPTS = 3;
 	private static final int DEFAULT_TIMEOUT_SECONDS = 180;
+	/**
+	 * Default warmup budget for a JSUnit verify run (seconds). The first JSUnit
+	 * launch of a freshly imported solution pays the one-time Titanium/NG client
+	 * bundle build (~11s) + SmartClient boot before any test can run; this generous
+	 * budget covers that so the per-test {@code timeoutSeconds} is not consumed by
+	 * cold-start build time (SVY-21366). The verifier launches with
+	 * {@code max(timeoutSeconds, warmupTimeoutSeconds)}.
+	 */
+	private static final int DEFAULT_WARMUP_TIMEOUT_SECONDS = 300;
 
 	/**
 	 * The solution an imported baseline is set up against by default. Written into
@@ -246,6 +255,10 @@ public final class BaselineLoader {
 			for (String s : verify.scripts()) {
 				scripts.add(s);
 			}
+			com.fasterxml.jackson.databind.node.ArrayNode existingScripts = jsunit.putArray("existingScripts"); //$NON-NLS-1$
+			for (String s : verify.existingScripts()) {
+				existingScripts.add(s);
+			}
 			jsunit.put("scope", verify.scope()); //$NON-NLS-1$
 			if (verify.method() != null && !verify.method().isBlank()) {
 				jsunit.put("method", verify.method()); //$NON-NLS-1$
@@ -253,6 +266,7 @@ public final class BaselineLoader {
 				jsunit.putNull("method"); //$NON-NLS-1$
 			}
 			jsunit.put("timeoutSeconds", verify.timeoutSeconds()); //$NON-NLS-1$
+			jsunit.put("warmupTimeoutSeconds", verify.warmupTimeoutSeconds()); //$NON-NLS-1$
 			jsunit.put("required", verify.required()); //$NON-NLS-1$
 
 			// Store the injected test script under the baseline folder at verify/<scriptName>.
@@ -326,15 +340,49 @@ public final class BaselineLoader {
 		if (verify == null || verify.scripts().isEmpty()) {
 			return null;
 		}
+		// Prefer the exact stored path (baseline-relative, e.g. "verify/scopes/foo.js").
 		File scriptFile = new File(baselineFolder, verify.scripts().get(0));
 		if (!scriptFile.isFile()) {
-			return null;
+			// Path drift fallback: the sidecar pointer and the on-disk file can disagree if an
+			// earlier edit wrote a different prefix. Rather than return null (which makes the
+			// editor silently show the DEFAULT_SCRIPT and overwrite the real one on OK -
+			// SVY-21366), locate the actual script under <baseline>/verify by its base name.
+			scriptFile = findScriptByName(new File(baselineFolder, "verify"), //$NON-NLS-1$
+					new File(verify.scripts().get(0)).getName());
+			if (scriptFile == null) {
+				return null;
+			}
 		}
 		try {
 			return Files.readString(scriptFile.toPath(), StandardCharsets.UTF_8);
 		} catch (IOException e) {
 			return null;
 		}
+	}
+
+	/** Recursively finds a file named {@code fileName} under {@code dir}, or {@code null}. */
+	private static File findScriptByName(File dir, String fileName) {
+		if (dir == null || !dir.isDirectory() || fileName == null) {
+			return null;
+		}
+		File[] children = dir.listFiles();
+		if (children == null) {
+			return null;
+		}
+		for (File c : children) {
+			if (c.isFile() && c.getName().equals(fileName)) {
+				return c;
+			}
+		}
+		for (File c : children) {
+			if (c.isDirectory()) {
+				File hit = findScriptByName(c, fileName);
+				if (hit != null) {
+					return hit;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -390,8 +438,15 @@ public final class BaselineLoader {
 	 * "verify": { "jsunit": {
 	 *   "scripts": [ "verify/scopes/skilltest_verify.js" ],
 	 *   "scope": "skilltest_verify", "method": null,
-	 *   "timeoutSeconds": 180, "required": true } }
+	 *   "timeoutSeconds": 180, "warmupTimeoutSeconds": 300, "required": true } }
 	 * </pre>
+	 *
+	 * <p>
+	 * {@code warmupTimeoutSeconds} is optional (default
+	 * {@value #DEFAULT_WARMUP_TIMEOUT_SECONDS}) and covers the one-time NG bundle
+	 * build + SmartClient boot a freshly imported solution pays on its first JSUnit
+	 * launch, so it is not charged against {@code timeoutSeconds}.
+	 * </p>
 	 *
 	 * @param verifyNode the {@code verify} JSON node (may be {@code null})
 	 * @return the parsed verification, or {@code null} when none is declared
@@ -405,14 +460,17 @@ public final class BaselineLoader {
 			return null;
 		}
 		List<String> scripts = stringArray(jsunit.get("scripts")); //$NON-NLS-1$
+		List<String> existingScripts = stringArray(jsunit.get("existingScripts")); //$NON-NLS-1$
 		String scope = optText(jsunit, "scope"); //$NON-NLS-1$
 		if (scope == null || scope.isBlank()) {
 			scope = "ALL"; //$NON-NLS-1$
 		}
 		String method = optText(jsunit, "method"); //$NON-NLS-1$
 		int timeoutSeconds = jsunit.path("timeoutSeconds").asInt(DEFAULT_TIMEOUT_SECONDS); //$NON-NLS-1$
+		int warmupTimeoutSeconds = jsunit.path("warmupTimeoutSeconds").asInt(DEFAULT_WARMUP_TIMEOUT_SECONDS); //$NON-NLS-1$
 		boolean required = jsunit.path("required").asBoolean(true); //$NON-NLS-1$
-		return new Baseline.JsUnitVerify(scripts, scope, method, timeoutSeconds, required);
+		return new Baseline.JsUnitVerify(scripts, existingScripts, scope, method, timeoutSeconds, warmupTimeoutSeconds,
+				required);
 	}
 
 	/**

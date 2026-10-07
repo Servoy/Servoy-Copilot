@@ -75,6 +75,8 @@ public class ServoyArtifactCreationService
 		Dimension size = new Dimension(width > 0 ? width : 640, height > 0 ? height : 480);
 		boolean isResponsive = "responsive".equalsIgnoreCase(style);
 
+		if (dataSource != null && !dataSource.isBlank()) ensureDbiForDataSource(dataSource);
+
 		Form form = project.getEditingSolution().createNewForm(validator, null, name, dataSource, true, size);
 		form.setNavigatorID(Form.NAVIGATOR_NONE);
 
@@ -221,6 +223,7 @@ public class ServoyArtifactCreationService
 			String ds = correctDataSource(dataSource);
 			vl.setValueListType(1); // DATABASE_VALUES
 			vl.setDataSource(ds);
+			ensureDbiForDataSource(ds);
 			if (displayColumn != null && !displayColumn.isBlank()) vl.setDataProviderID1(displayColumn);
 			if (returnColumn != null && !returnColumn.isBlank() && !returnColumn.equals(displayColumn))
 				vl.setDataProviderID2(returnColumn);
@@ -295,6 +298,8 @@ public class ServoyArtifactCreationService
 		}
 		if (table == null)
 			throw new RepositoryException("Table '" + dsParts[1] + "' not found in server '" + dsParts[0] + "'");
+
+		ensureDbiForDataSource(dataSource);
 
 		Collection<Column> allColumns = table.getColumns();
 		List<Column> selectedColumns = new ArrayList<>();
@@ -462,6 +467,41 @@ public class ServoyArtifactCreationService
 			throw new RepositoryException("Invalid datasource format: '" + ds + "'. Use 'db:/server_name/table_name'");
 		}
 		return ds;
+	}
+
+	/**
+	 * Ensures the resources project has a {@code .dbi} column-info file for the
+	 * table a {@code db:/server/table} datasource points at, generating it from the
+	 * (connected) database server when missing.
+	 * <p>
+	 * In an interactive Developer the {@code .dbi} is created lazily the first time
+	 * the table is opened in the designer; a headless skill-test run never goes
+	 * through that path, so a form bound to e.g. {@code db:/example_data/customers}
+	 * would have no {@code .dbi}, and the JSUnit SmartClient then fails to load the
+	 * solution ({@code getClientInfo()} null). Creating the {@code .dbi} here, at
+	 * the moment an artifact binds a datasource, mirrors what the designer does and
+	 * keeps the resources project consistent for any later load. Best-effort: a
+	 * missing server/table or a write failure is logged, not thrown, so artifact
+	 * creation is never blocked by {@code .dbi} generation.
+	 *
+	 * @param dataSource a {@code db:/server/table} datasource (already corrected)
+	 */
+	private void ensureDbiForDataSource(String dataSource)
+	{
+		try
+		{
+			if (dataSource == null || !dataSource.startsWith("db:/")) return;
+			com.servoy.j2db.persistence.ITable table = ServoyModelFinder.getServoyModel().getDataSourceManager()
+				.getDataSource(dataSource);
+			if (table == null) return;
+			com.servoy.eclipse.model.repository.DataModelManager dmm = com.servoy.eclipse.model.ServoyModelFinder
+				.getServoyModel().getDataModelManager();
+			if (dmm != null) dmm.testTableAndCreateDBIFile(table);
+		}
+		catch (Exception | LinkageError e)
+		{
+			ServoyLog.logWarning("Could not ensure .dbi for datasource '" + dataSource + "'", e);
+		}
 	}
 
 	private String resolveOrCreateMethod(Form form, String methodName, String eventName, IValidateName validator)

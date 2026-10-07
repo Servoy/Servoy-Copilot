@@ -85,47 +85,113 @@ final class JsUnitVerifier {
 		if (active == null || active.getEditingSolution() == null) {
 			return new Result(false, "- JSUnit verify: no active Servoy solution to run against\n"); //$NON-NLS-1$
 		}
-		String injectedScope;
-		try {
-			injectedScope = injectScopeFiles(v.scripts(), baselineFolder, active.getProject());
-			// Build + settle so the Servoy builder parses the new root .js into the
-			// solution model (registering the scope + its test_ methods) before the
-			// JSUnit launch reads that model.
-			active.getProject().build(org.eclipse.core.resources.IncrementalProjectBuilder.INCREMENTAL_BUILD,
-					new NullProgressMonitor());
-			settleBuildJobs();
-		} catch (Exception e) {
-			return new Result(false, "- JSUnit verify: could not inject test script(s): " + e.getMessage() + "\n"); //$NON-NLS-1$ //$NON-NLS-2$
+
+		// A baseline may inject its own test script, run test files that already exist in the
+		// solution, or BOTH (SVY-21366). Inject first (so the injected scope registers in the
+		// model), then run the injected scope and every existing-script scope in one aggregated
+		// pass. The two lists are de-duped by scope so an entry that names the injected script
+		// is not run twice.
+		int effectiveTimeout = v.effectiveTimeoutSeconds();
+
+		// 1. Inject the baseline-owned script(s), if any.
+		String injectedScope = null;
+		if (!v.scripts().isEmpty()) {
+			try {
+				injectedScope = injectScopeFiles(v.scripts(), baselineFolder, active.getProject());
+				// Build + settle so the Servoy builder parses the new root .js into the
+				// solution model (registering the scope + its test_ methods) before the
+				// JSUnit launch reads that model.
+				active.getProject().build(org.eclipse.core.resources.IncrementalProjectBuilder.INCREMENTAL_BUILD,
+						new NullProgressMonitor());
+				settleBuildJobs();
+			} catch (Exception e) {
+				return new Result(false,
+						"- JSUnit verify: could not inject test script(s): " + e.getMessage() + "\n"); //$NON-NLS-1$ //$NON-NLS-2$
+			}
 		}
 
-		// If the baseline declared a scope run it, else run the scope we just created
-		// (so an empty-source solution runs exactly the injected tests).
-		String scope = v.scope() != null && !v.scope().isBlank() && !"ALL".equalsIgnoreCase(v.scope()) //$NON-NLS-1$
-				? v.scope()
-				: (injectedScope != null ? injectedScope : "ALL"); //$NON-NLS-1$
-		logger.log("[skilltest] running JSUnit verify scope=" + scope //$NON-NLS-1$
-				+ (v.method() != null ? " method=" + v.method() : "")); //$NON-NLS-1$ //$NON-NLS-2$
-		JSUnitRunnerService runner = new JSUnitRunnerService();
-		String report;
-		try {
-			report = v.method() != null && !v.method().isBlank()
-					? runner.runTestMethod(v.method(), scope, v.timeoutSeconds())
-					: runner.runTests(scope, v.timeoutSeconds());
-		} catch (Exception | LinkageError runEx) {
-			// The JSUnit SmartClient may fail to start (e.g. getClientInfo() null when
-			// the solution references a DB datasource that is not configured, or the
-			// app server is not up). Catch it so it reports as a JSUnit FAIL instead
-			// of crashing with a modal dialog that blocks headless/CI runs.
-			String msg = runEx.getClass().getSimpleName() + ": " + runEx.getMessage(); //$NON-NLS-1$
-			logger.log("[skilltest] JSUnit verify crashed: " + msg); //$NON-NLS-1$
-			return new Result(false, "JSUnit SmartClient failed to start: " + msg); //$NON-NLS-1$
+		// 2. Build the ordered, de-duplicated list of scopes to run.
+		//    - the injected scope (the declared scope, or the scope the injected file created);
+		//    - each existing solution test file mapped to its scope.
+		java.util.LinkedHashSet<String> scopes = new java.util.LinkedHashSet<>();
+		if (!v.scripts().isEmpty()) {
+			String injectRun = v.scope() != null && !v.scope().isBlank() && !"ALL".equalsIgnoreCase(v.scope()) //$NON-NLS-1$
+					? v.scope()
+					: (injectedScope != null ? injectedScope : "ALL"); //$NON-NLS-1$
+			if (injectRun != null && !injectRun.isBlank()) {
+				scopes.add(injectRun);
+			}
 		}
-		boolean pass = isPass(report);
-		logger.log("[skilltest] JSUnit verify " + (pass ? "PASS" : "FAIL")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		java.util.List<String> unmappable = new java.util.ArrayList<>();
+		for (String rel : v.existingScripts()) {
+			String s = scopeForSolutionPath(rel);
+			if (s == null) {
+				unmappable.add(rel);
+			} else {
+				scopes.add(s); // LinkedHashSet de-dupes against the injected scope
+			}
+		}
+		if (scopes.isEmpty() && unmappable.isEmpty()) {
+			// Nothing injected and nothing existing: fall back to running everything, preserving
+			// the previous empty-source behaviour.
+			scopes.add("ALL"); //$NON-NLS-1$
+		}
+
+		// 3. Run each scope, aggregating. Pass only if every scope passes.
+		JSUnitRunnerService runner = new JSUnitRunnerService();
+		StringBuilder report = new StringBuilder();
+		boolean allPass = unmappable.isEmpty();
+		for (String rel : unmappable) {
+			report.append("- JSUnit verify: cannot map '").append(rel) //$NON-NLS-1$
+					.append("' to a runnable scope (expected a root <scope>.js or forms/<form>.js)\n"); //$NON-NLS-1$
+		}
+		// A single scope keeps the historical single-report shape; multiple scopes get a header
+		// per scope so each result is identifiable.
+		boolean multi = scopes.size() > 1 || !unmappable.isEmpty();
+		DebugConfirmationGuard guard = DebugConfirmationGuard.suppress(logger);
+		try {
+			for (String scope : scopes) {
+				logger.log("[skilltest] running JSUnit verify scope=" + scope //$NON-NLS-1$
+						+ (v.method() != null ? " method=" + v.method() : "") //$NON-NLS-1$ //$NON-NLS-2$
+						+ " timeout=" + effectiveTimeout + "s" //$NON-NLS-1$ //$NON-NLS-2$
+						+ (effectiveTimeout != v.timeoutSeconds()
+								? " (includes warmup from " + v.warmupTimeoutSeconds() + "s)" //$NON-NLS-1$ //$NON-NLS-2$
+								: "")); //$NON-NLS-1$
+				String one;
+				try {
+					one = v.method() != null && !v.method().isBlank()
+							? runner.runTestMethod(v.method(), scope, effectiveTimeout)
+							: runner.runTests(scope, effectiveTimeout);
+				} catch (Exception | LinkageError runEx) {
+					// The JSUnit SmartClient may fail to start (e.g. getClientInfo() null when the
+					// solution references a DB datasource that is not configured, or the app server
+					// is not up). Catch it so it reports as a JSUnit FAIL instead of crashing with a
+					// modal dialog that blocks headless/CI runs.
+					String msg = runEx.getClass().getSimpleName() + ": " + runEx.getMessage(); //$NON-NLS-1$
+					logger.log("[skilltest] JSUnit verify crashed for scope '" + scope + "': " + msg); //$NON-NLS-1$ //$NON-NLS-2$
+					allPass = false;
+					if (multi) {
+						report.append("### ").append(scope).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
+					}
+					report.append("JSUnit SmartClient failed to start: ").append(msg).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
+					continue;
+				}
+				boolean pass = isPass(one);
+				allPass = allPass && pass;
+				if (multi) {
+					report.append("### ").append(scope).append(" - ").append(pass ? "PASS" : "FAIL") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+							.append("\n"); //$NON-NLS-1$
+				}
+				report.append(one).append("\n"); //$NON-NLS-1$
+			}
+		} finally {
+			guard.restore();
+		}
+		logger.log("[skilltest] JSUnit verify " + (allPass ? "PASS" : "FAIL")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		// Running JSUnit brings the DLTK "Script Unit Test" view to the front; bring
 		// the Skill Tests view back on top so the run stays the focus.
 		bringSkillTestViewToTop();
-		return new Result(pass, report);
+		return new Result(allPass, report.toString());
 	}
 
 	/**
@@ -165,22 +231,39 @@ final class JsUnitVerifier {
 	}
 
 	/**
-	 * Injects each baseline verify script as a Servoy <b>global scope file in the
-	 * solution project ROOT</b> (e.g. {@code skilltest_verify.js}), which is exactly
-	 * how Servoy stores a global scope: a {@code <scope>.js} directly under the
-	 * solution project. The Servoy builder then parses it into the in-memory
-	 * solution model (registering the scope + its {@code test_} methods) that the
-	 * JSUnit client reads — and it shows up under <b>Scopes</b> in the Solution
-	 * Explorer.
-	 * <p>
-	 * The earlier attempt wrote the file under a {@code scopes/} subfolder, which is
-	 * NOT a recognized global-scope location, so it never registered as a scope and
-	 * JSUnit found no tests ("no solution?"). Global scopes live in the project
-	 * root, named {@code <scopeName>.js}.
+	 * Maps a solution-relative {@code .js} path to the JSUnit scope string the runner takes.
+	 * A root-level {@code <name>.js} is the global scope {@code name}; {@code forms/<form>.js}
+	 * (or any {@code .../<form>.js} under a {@code forms} segment) is the form {@code form}.
 	 *
-	 * @return the scope name the tests were injected into (the first script's file
-	 *         base name), or {@code null} when there were no scripts to inject
+	 * @return the scope/form name, or {@code null} when the path is not a recognizable test file
 	 */
+	static String scopeForSolutionPath(String solutionRelative) {
+		if (solutionRelative == null) {
+			return null;
+		}
+		String p = solutionRelative.replace('\\', '/').trim();
+		while (p.startsWith("/")) { //$NON-NLS-1$
+			p = p.substring(1);
+		}
+		if (p.isEmpty() || !p.toLowerCase().endsWith(".js")) { //$NON-NLS-1$
+			return null;
+		}
+		String base = p.substring(0, p.length() - ".js".length()); //$NON-NLS-1$
+		int slash = base.lastIndexOf('/');
+		// forms/<form>.js (the form's scripting file) -> run the form
+		if (slash >= 0) {
+			String parent = base.substring(0, slash);
+			String name = base.substring(slash + 1);
+			if (parent.equalsIgnoreCase("forms") || parent.toLowerCase().endsWith("/forms")) { //$NON-NLS-1$ //$NON-NLS-2$
+				return name;
+			}
+			// Any other nested .js is not a recognizable global scope / form test file.
+			return null;
+		}
+		// root-level <scope>.js -> global scope
+		return base;
+	}
+
 	private String injectScopeFiles(List<String> scripts, File baselineFolder, IProject solutionProject)
 			throws Exception {
 		if (scripts == null || scripts.isEmpty()) {
@@ -266,10 +349,17 @@ final class JsUnitVerifier {
 	 * {@code | **1** | **1** | **0** | **0** |} and, on failures, a
 	 * {@code **Failed / Error tests:**} section with {@code FAIL <name>} lines.
 	 * <p>
-	 * The run passes only when it is not a runner-level error, contains the results
-	 * header, the Failed and Errors counts are both zero, and there is no
-	 * {@code FAIL }/{@code ERROR } test line. Conservative: anything unparseable is
-	 * treated as NOT passing.
+	 * The run passes only when it is not a runner-level error, did not time out,
+	 * contains the results header, at least one test actually ran, the Failed and
+	 * Errors counts are both zero, and there is no {@code FAIL }/{@code ERROR } test
+	 * line. Conservative: anything unparseable is treated as NOT passing.
+	 * <p>
+	 * A timed-out run with zero executed tests is explicitly an ERROR, never a pass:
+	 * {@link JSUnitRunnerService#runTests} prefixes a timeout with
+	 * {@code "Error - Timed out while running!"} (caught by the {@code Error} guard),
+	 * but a run whose scope registered no {@code test_} methods in time produces a
+	 * clean {@code | **0** | **0** | **0** | **0** |} row with "All 0 test(s)
+	 * passed!" — the false-pass this guard closes (SVY-21366).
 	 */
 	static boolean isPass(String report) {
 		if (report == null || report.isBlank()) {
@@ -277,6 +367,12 @@ final class JsUnitVerifier {
 		}
 		String r = report.trim();
 		if (r.startsWith("Error")) { //$NON-NLS-1$
+			return false;
+		}
+		// A timeout marker anywhere in the report (partial results follow it) is a
+		// failure, not a pass, even though the embedded results table may show no
+		// failures/errors.
+		if (r.contains("Timed out while running")) { //$NON-NLS-1$
 			return false;
 		}
 		if (!r.contains("JSUnit Test Results")) { //$NON-NLS-1$
@@ -289,13 +385,20 @@ final class JsUnitVerifier {
 		}
 		// Parse the counts row: | Passed | Failed | Errors | Ignored | then a row of
 		// four numbers (possibly wrapped in ** markdown bold). Fail if Failed>0 or
-		// Errors>0.
+		// Errors>0, and ALSO fail when nothing ran at all (passed+failed+errors == 0):
+		// a 0/0/0 run means the scope registered no test_ methods (the solution/NG
+		// bundle was not built in time), which "All 0 test(s) passed!" wrongly reported
+		// as a pass before (SVY-21366).
 		java.util.regex.Matcher row = java.util.regex.Pattern
 				.compile("\\|\\s*\\*{0,2}(\\d+)\\*{0,2}\\s*\\|\\s*\\*{0,2}(\\d+)\\*{0,2}\\s*\\|\\s*\\*{0,2}(\\d+)\\*{0,2}\\s*\\|") //$NON-NLS-1$
 				.matcher(r);
 		if (row.find()) {
+			int passed = Integer.parseInt(row.group(1));
 			int failed = Integer.parseInt(row.group(2));
 			int errors = Integer.parseInt(row.group(3));
+			if (passed == 0 && failed == 0 && errors == 0) {
+				return false; // nothing executed - not a pass
+			}
 			return failed == 0 && errors == 0;
 		}
 		// No parseable counts row and no FAIL/ERROR line: fall back to the old

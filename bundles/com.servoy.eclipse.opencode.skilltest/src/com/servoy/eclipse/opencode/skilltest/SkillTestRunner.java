@@ -303,20 +303,27 @@ public final class SkillTestRunner {
 		// All trials ran. Report the distribution: PASS only when every trial matched.
 		String distribution = passCount + "/" + maxAttempts + " trials passed"; //$NON-NLS-1$ //$NON-NLS-2$
 		logger.log("[skilltest] " + baseline.id() + " " + distribution); //$NON-NLS-1$ //$NON-NLS-2$
+		// Choose the JSUnit detail to attach: the kept trial's, else the last trial's,
+		// else none. Build report + pass as separate Boolean/String locals so a null
+		// JSUnit (a baseline without verify.jsunit, like this one) stays null - a mixed
+		// boolean/Boolean ternary would unbox null and throw (SVY-21366 NPE at
+		// withJsUnit: "Cannot invoke java.lang.Boolean.booleanValue()").
+		JsUnitVerifier.Result jsUnitForReport = keptJsUnit != null ? keptJsUnit : lastJsUnit;
+		String jsUnitReport = jsUnitForReport != null ? jsUnitForReport.report() : null;
+		Boolean jsUnitPass = jsUnitForReport != null ? Boolean.valueOf(jsUnitForReport.pass()) : null;
+
 		if (passCount == maxAttempts) {
 			return SkillTestResult.pass(baseline.id(), attempts)
 					.withTranscript(prompt, expectedCalls, lastActualCalls)
 					.withOutcomeNodes(keptOutcomeNodes)
-					.withJsUnit(keptJsUnit != null ? keptJsUnit.report() : null,
-							keptJsUnit != null ? keptJsUnit.pass() : null)
+					.withJsUnit(jsUnitReport, jsUnitPass)
 					.withTrials(trials);
 		}
 		String failDiff = distribution + (keptDiff != null && !keptDiff.isBlank() ? "\n" + keptDiff : ""); //$NON-NLS-1$ //$NON-NLS-2$
 		return SkillTestResult.fail(baseline.id(), attempts, failDiff)
 				.withTranscript(prompt, expectedCalls, lastActualCalls)
 				.withOutcomeNodes(keptOutcomeNodes != null ? keptOutcomeNodes : lastOutcomeNodes)
-				.withJsUnit(keptJsUnit != null ? keptJsUnit.report() : (lastJsUnit != null ? lastJsUnit.report() : null),
-						keptJsUnit != null ? keptJsUnit.pass() : (lastJsUnit != null ? lastJsUnit.pass() : null))
+				.withJsUnit(jsUnitReport, jsUnitPass)
 				.withTrials(trials);
 	}
 
