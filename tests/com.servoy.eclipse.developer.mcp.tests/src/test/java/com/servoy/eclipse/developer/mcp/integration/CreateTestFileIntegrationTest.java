@@ -20,10 +20,12 @@ import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.TestFileService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 
@@ -313,6 +315,77 @@ public class CreateTestFileIntegrationTest extends DialogGuardBase
 		String result = service.createTestFile(TEST_FILE_NAME, null);
 
 		assertTrue("Null solution should return an Error: " + result, result.startsWith("Error"));
+	}
+
+	// -----------------------------------------------------------------------
+	// Tool-layer file-name convention (SVY-21491: accept test_*.js OR *_test.js)
+	// The convention check lives in ServoyTestingServer.createTestFile, NOT in
+	// TestFileService, so these cases go through the tool.
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName("tool accepts *_test.js name and creates the file on disk")
+	public void testCreateTestFile_tool_underscoreTestSuffix_createsFile() throws Exception
+	{
+		String underscoreTestName = "utils_test.js";
+		try
+		{
+			ServoyTestingServer server = new ServoyTestingServer();
+			String result = server.createTestFile(underscoreTestName, SOLUTION_NAME);
+
+			assertFalse("*_test.js name should be accepted but returned: " + result,
+				result.startsWith("Error"));
+			assertTrue("File should physically exist in the project",
+				servoyProject.getProject().getFile(underscoreTestName).exists());
+		}
+		finally
+		{
+			deleteFileIfExists(underscoreTestName);
+		}
+	}
+
+	@Test
+	@DisplayName("tool still accepts test_*.js name (regression guard)")
+	public void testCreateTestFile_tool_testPrefix_stillAccepted() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse("test_*.js name should still be accepted but returned: " + result,
+			result.startsWith("Error"));
+		assertTrue("File should physically exist in the project",
+			servoyProject.getProject().getFile(TEST_FILE_NAME).exists());
+	}
+
+	@Test
+	@DisplayName("tool rejects a name matching neither convention, naming both forms")
+	public void testCreateTestFile_tool_neitherConvention_returnsError() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("utils.js", SOLUTION_NAME);
+
+		assertTrue("Name matching neither convention should return an Error: " + result,
+			result.startsWith("Error"));
+		assertTrue("Error should name the 'test_*.js' convention: " + result,
+			result.contains("test_*.js"));
+		assertTrue("Error should name the '*_test.js' convention: " + result,
+			result.contains("*_test.js"));
+		assertFalse("No file should be created for a rejected name",
+			servoyProject.getProject().getFile("utils.js").exists());
+	}
+
+	@Test
+	@DisplayName("tool rejects a non-.js name with the .js requirement error")
+	public void testCreateTestFile_tool_nonJsName_returnsJsError() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("test_utils.txt", SOLUTION_NAME);
+
+		assertTrue("Non-.js name should return an Error: " + result, result.startsWith("Error"));
+		assertTrue("Error should mention the '.js' requirement: " + result,
+			result.contains(".js"));
+		assertFalse("No file should be created for a non-.js name",
+			servoyProject.getProject().getFile("test_utils.txt").exists());
 	}
 
 	// -----------------------------------------------------------------------

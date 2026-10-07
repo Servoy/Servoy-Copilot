@@ -453,21 +453,22 @@ public class ServoyTestingServer
 	}
 
 	@Tool(name = "createTestFile", description = "Creates a new JSUnit test file (JavaScript scope) in the active solution's root directory. " +
-		"File name must follow convention: test_functionName.js or test_fileName.js. " +
+		"File name must follow convention: `test_*.js` or `*_test.js` (e.g. 'test_utils.js' or 'utils_test.js'). " +
 		"The file is created with a standard JSUnit header comment.", type = "object")
 	public String createTestFile(
-		@ToolParam(name = "testFileName", description = "Test file name (e.g., 'test_utils.js' or 'test_calculateTotal.js'). Must start with 'test_' and end with '.js'.") String testFileName,
+		@ToolParam(name = "testFileName", description = "Test file name (e.g., 'test_utils.js' or 'utils_test.js'). Must end with '.js' and either start with 'test_' or end with '_test' (e.g. 'test_utils.js' or 'utils_test.js').") String testFileName,
 		@ToolParam(name = "solutionName", description = "Solution name to create the file in. Use 'TARGET' to use the current active solution.") String solutionName)
 	{
 		try
 		{
-			if (!testFileName.startsWith("test_"))
+			if (testFileName == null || !testFileName.endsWith(".js"))
 			{
-				return "Error: Test file name must start with 'test_' (e.g., 'test_utils.js')";
+				return "Error: Test file name must end with '.js' (e.g., 'test_utils.js' or 'utils_test.js')";
 			}
-			if (!testFileName.endsWith(".js"))
+			String baseName = testFileName.substring(0, testFileName.length() - ".js".length());
+			if (!baseName.startsWith("test_") && !baseName.endsWith("_test"))
 			{
-				return "Error: Test file name must end with '.js' (e.g., 'test_utils.js')";
+				return "Error: Test file name must follow the convention 'test_*.js' or '*_test.js' (e.g., 'test_utils.js' or 'utils_test.js')";
 			}
 
 			String actualSolutionName = solutionName;
