@@ -28,11 +28,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.swt.widgets.Display;
@@ -41,8 +39,6 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.eclipse.ngclient.ui.Activator;
-import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 
 /**
@@ -85,7 +81,7 @@ public class FormPreviewService
 			{
 				return "Error: Tomcat web server is not running (port=" + port + "). Please check the Tomcat starter.";
 			}
-			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName;
+			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName + "&svy_testmode=true";
 
 			// Collect validation findings — never block showFormInBrowser
 			String markerFindings = checkFormMarkers(activeProject, formName);
@@ -192,7 +188,7 @@ public class FormPreviewService
 			{
 				return "Error: Tomcat web server is not running (port=" + port + "). Please check the Tomcat starter.";
 			}
-			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName;
+			String url = "http://localhost:" + port + "/solution/" + solutionName + "/index.html?formpreview=" + formName + "&svy_testmode=true";
 
 			FormSpecRunner specRunner = new FormSpecRunner();
 			Path cypressDir = specRunner.getCypressDir();

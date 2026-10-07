@@ -18,21 +18,20 @@ package com.servoy.eclipse.developer.mcp.servers;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.servoy.eclipse.cypress.services.CypressLoginSupport;
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
-import com.servoy.eclipse.cypress.services.CypressLoginSupport;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
-import com.servoy.eclipse.cypress.services.FormSpecGenerator;
-import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.model.util.ServoyLog;
-import com.servoy.j2db.util.Settings;
 
 /**
  * MCP server for all testing-related tools: JSUnit test running, form preview,
@@ -53,11 +52,6 @@ public class ServoyTestingServer
 
 	public ServoyTestingServer()
 	{
-	}
-
-	private void ensureTestingMode()
-	{
-		Settings.getInstance().setProperty("servoy.ngclient.testingMode", "true");
 	}
 
 	/**
@@ -197,7 +191,6 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			ensureTestingMode();
 			String result = formPreview.showFormInBrowser(formName, openBrowser);
 			if (!result.startsWith("Error") && !specGenerator.specExists(formName))
 			{
@@ -265,7 +258,6 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			ensureTestingMode();
 			if (!specGenerator.specExists(formName))
 			{
 				String genResult = specGenerator.generateSpec(formName);
@@ -291,7 +283,6 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			ensureTestingMode();
 			if (!specGenerator.specExists(formName))
 			{
 				String genResult = specGenerator.generateSpec(formName);
@@ -373,7 +364,6 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			ensureTestingMode();
 			String result = specRunner.runE2ECypressTests(targetForm, true);
 			writeToConsole(result);
 			return result;
@@ -394,7 +384,6 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			ensureTestingMode();
 			String result = specRunner.runE2ECypressTests(targetForm, false);
 			writeToConsole(result);
 			return result;
