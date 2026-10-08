@@ -42,6 +42,28 @@ pipeline {
             }
         }
 
+        stage('Checkout baselines') {
+            steps {
+                // The baselines are curated by testers in a SEPARATE private repo
+                // (Servoy/servoy-ai-skilltest-baselines) they have access to, independent of
+                // this plugin source. Check it out (or pull if already present) into a
+                // sub-directory of the job workspace; build_product then seeds the run-install
+                // from ${WORKSPACE}/baselines-repo/baselines via -Dskilltest.baselines.dir.
+                //
+                // BASELINES_CRED must be a GitHub credential (username+token) with read access
+                // to the private baselines repo. TODO: set this to the real Jenkins credential id
+                // (Manage Jenkins > Credentials, or the main job's SCM config) before enabling.
+                dir('baselines-repo') {
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: '*/master']],
+                        extensions: [[$class: 'CloneOption', shallow: true, depth: 1]],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/Servoy/servoy-ai-skilltest-baselines.git',
+                            credentialsId: 'BASELINES_CRED_TO_CONFIGURE']]])
+                }
+            }
+        }
+
         stage('Build product + run skill tests') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'servoy-cloud-svc',
@@ -59,6 +81,7 @@ pipeline {
                                 -Dtycho.localArtifacts=ignore \
                                 -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ \
                                 -Dservoy.install.tarball.for.appserver=/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz \
+                                -Dskilltest.baselines.dir="$WORKSPACE/baselines-repo/baselines" \
                                 -Dskilltest.cloudUser="$CLOUD_USER" \
                                 -Dskilltest.cloudPass="$CLOUD_PASS"'''
                         }
