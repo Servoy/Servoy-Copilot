@@ -6,3 +6,4 @@ bundles/application_server/
 **/webui-dist/
 **/.angular/
 *.openchamber.backup
+docs/reviews/.work/
