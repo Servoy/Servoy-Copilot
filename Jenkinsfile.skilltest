@@ -72,6 +72,23 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy skilltest p2 site') {
+            steps {
+                // Publish the internal skilltest update site built by the reactor
+                // (repository.site_skilltest) to build.servoy.com/latest/servoy_ai_skilltest/.
+                // Mirrors the main Jenkinsfile's servoy_ai deploy. Internal-only tooling,
+                // kept at a separate path from the customer servoy_ai site.
+                sh '''
+                rm -rf /data/www/latest/servoy_ai_skilltest/
+                mkdir -p /data/www/latest/servoy_ai_skilltest/
+                for d in repository.site_skilltest/target/repository/; do
+                    [ -d "$d" ] && cp -r "$d/." "/data/www/latest/servoy_ai_skilltest/"
+                    break
+                done
+                '''
+            }
+        }
     }
 
     post {
