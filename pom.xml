@@ -16,6 +16,14 @@
         <maven.compiler.target>21</maven.compiler.target>
         <servoy.url>https://build.servoy.com/latest/servoy_lts_2026/update_site/</servoy.url>
         <servoy.install.tarball.for.appserver>/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz</servoy.install.tarball.for.appserver>
+        <!-- Skill-test run (SVY-21366). Overridable on the Maven command line. -->
+        <skilltest.install.dir>${project.build.directory}/skilltest-install</skilltest.install.dir>
+        <!-- Where the committed baselines live. Defaults to the in-repo fixture; point this at
+             the baselines repo once it exists. The seed step tolerates a missing directory. -->
+        <skilltest.baselines.dir>${project.basedir}/tests/com.servoy.eclipse.opencode.skilltest.tests/baselines</skilltest.baselines.dir>
+        <!-- Cloud login for the GENAI key (set as Jenkins credentials, passed with -D). -->
+        <skilltest.cloudUser></skilltest.cloudUser>
+        <skilltest.cloudPass></skilltest.cloudPass>
     </properties>
 
     <repositories>
@@ -140,4 +148,215 @@
         <module>tests/com.servoy.eclipse.opencode.tests</module>
         <module>tests/com.servoy.eclipse.developer.mcp.tests</module>
     </modules>
+
+    <profiles>
+        <!-- ================================================================
+             SVY-21366 Servoy AI skill tests. One Jenkins job, two profiles:
+               -Pbuild_product  materializes a runnable Servoy install with the
+                                freshly-built AI bundles overlaid + the baselines
+                                seeded into the run workspace;
+               -Prun_test       launches that install headless to run the baselines.
+             Activate both in one invocation: mvn ... -Pbuild_product,run_test
+             The reactor build of the 3 AI bundles runs first (normal lifecycle),
+             so run_test always exercises the current plugin code.
+             ================================================================ -->
+        <profile>
+            <id>build_product</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>materialize-skilltest-install</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <property name="install" value="${skilltest.install.dir}" />
+                                        <property name="developer" value="${install}/developer" />
+
+                                        <!-- 1. Fresh install from the full Servoy tarball (developer + application_server). -->
+                                        <delete dir="${install}" />
+                                        <mkdir dir="${install}" />
+                                        <untar src="${servoy.install.tarball.for.appserver}"
+                                               dest="${install}" compression="gzip" />
+
+                                        <!-- 2. Overlay the freshly-built AI bundles.
+                                             The installed product loads EXACTLY the bundles listed in
+                                             simpleconfigurator's bundles.info; a raw jar dropped in plugins/ is
+                                             ignored unless its bundles.info entry also points at it. The freshly
+                                             built jars carry a NEW Tycho .qualifier that will not match the entry
+                                             shipped in the tarball, so swapping the jar alone leaves bundles.info
+                                             referencing a file we just deleted and the AI bundles fail to resolve
+                                             (no AI view). We therefore, per bundle: remove the shipped jar/dir,
+                                             copy the new jar, capture its real filename, and rewrite that bundle's
+                                             bundles.info line to the new version+path. This mirrors the committed
+                                             launch_files/overlay_skilltest_plugins.ps1 used for local installs. -->
+                                        <property name="bundlesInfo"
+                                                  value="${developer}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info" />
+
+                                        <!-- Remove the shipped bundles (jar OR exploded dir form). -->
+                                        <delete>
+                                            <fileset dir="${developer}/plugins"
+                                                     includes="com.servoy.eclipse.opencode_* com.servoy.eclipse.opencode.skilltest_* com.servoy.eclipse.developer.mcp_*" />
+                                        </delete>
+                                        <delete includeemptydirs="true">
+                                            <dirset dir="${developer}/plugins"
+                                                    includes="com.servoy.eclipse.opencode_* com.servoy.eclipse.opencode.skilltest_* com.servoy.eclipse.developer.mcp_*" />
+                                        </delete>
+
+                                        <!-- Copy the new jars in. -->
+                                        <copy todir="${developer}/plugins" flatten="true">
+                                            <fileset dir="${project.basedir}/bundles/com.servoy.eclipse.opencode/target" includes="com.servoy.eclipse.opencode_*.jar" />
+                                            <fileset dir="${project.basedir}/bundles/com.servoy.eclipse.opencode.skilltest/target" includes="com.servoy.eclipse.opencode.skilltest_*.jar" />
+                                            <fileset dir="${project.basedir}/bundles/com.servoy.eclipse.developer.mcp/target" includes="com.servoy.eclipse.developer.mcp_*.jar" />
+                                        </copy>
+
+                                        <!-- Capture each overlaid jar's actual filename + version (the Tycho
+                                             qualifier differs per build) so bundles.info can be rewritten to match. -->
+                                        <resourcecount property="dummy.unused" count="0"><fileset dir="${developer}/plugins" includes="never"/></resourcecount>
+                                        <pathconvert property="opencode.jar">
+                                            <mapper type="flatten" />
+                                            <fileset dir="${developer}/plugins" includes="com.servoy.eclipse.opencode_*.jar" />
+                                        </pathconvert>
+                                        <pathconvert property="skilltest.jar">
+                                            <mapper type="flatten" />
+                                            <fileset dir="${developer}/plugins" includes="com.servoy.eclipse.opencode.skilltest_*.jar" />
+                                        </pathconvert>
+                                        <pathconvert property="mcp.jar">
+                                            <mapper type="flatten" />
+                                            <fileset dir="${developer}/plugins" includes="com.servoy.eclipse.developer.mcp_*.jar" />
+                                        </pathconvert>
+                                        <!-- version = filename between the first '_' and the trailing '.jar' -->
+                                        <loadresource property="opencode.ver">
+                                            <string value="${opencode.jar}" />
+                                            <filterchain><tokenfilter><replaceregex pattern="^com\.servoy\.eclipse\.opencode_(.+)\.jar$" replace="\1" /></tokenfilter></filterchain>
+                                        </loadresource>
+                                        <loadresource property="skilltest.ver">
+                                            <string value="${skilltest.jar}" />
+                                            <filterchain><tokenfilter><replaceregex pattern="^com\.servoy\.eclipse\.opencode\.skilltest_(.+)\.jar$" replace="\1" /></tokenfilter></filterchain>
+                                        </loadresource>
+                                        <loadresource property="mcp.ver">
+                                            <string value="${mcp.jar}" />
+                                            <filterchain><tokenfilter><replaceregex pattern="^com\.servoy\.eclipse\.developer\.mcp_(.+)\.jar$" replace="\1" /></tokenfilter></filterchain>
+                                        </loadresource>
+
+                                        <!-- Rewrite each bundle's bundles.info line (version column + path) to the
+                                             overlaid jar. '^<id>,[^,]*,[^,]*' replaces the first three CSV columns,
+                                             preserving the start-level/autostart columns. Order the skilltest id
+                                             BEFORE opencode is irrelevant here because each regex is anchored to the
+                                             exact id up to the following comma. -->
+                                        <replaceregexp file="${bundlesInfo}" byline="true"
+                                                       match="^com\.servoy\.eclipse\.opencode,[^,]*,[^,]*"
+                                                       replace="com.servoy.eclipse.opencode,${opencode.ver},plugins/${opencode.jar}" />
+                                        <replaceregexp file="${bundlesInfo}" byline="true"
+                                                       match="^com\.servoy\.eclipse\.opencode\.skilltest,[^,]*,[^,]*"
+                                                       replace="com.servoy.eclipse.opencode.skilltest,${skilltest.ver},plugins/${skilltest.jar}" />
+                                        <replaceregexp file="${bundlesInfo}" byline="true"
+                                                       match="^com\.servoy\.eclipse\.developer\.mcp,[^,]*,[^,]*"
+                                                       replace="com.servoy.eclipse.developer.mcp,${mcp.ver},plugins/${mcp.jar}" />
+                                        <echo message="overlaid AI bundles.info: opencode=${opencode.ver} skilltest=${skilltest.ver} developer.mcp=${mcp.ver}" />
+
+                                        <!-- Wipe the OSGi cache so the framework re-reads plugins/ + bundles.info. -->
+                                        <delete dir="${developer}/configuration/org.eclipse.osgi" />
+
+                                        <!-- 3. Seed the run workspace with the committed baselines. Tolerant: a
+                                             missing baselines dir (e.g. before the baselines repo exists) is not fatal. -->
+                                        <mkdir dir="${install}/workspace/servoy_ai_skilltests/baselines" />
+                                        <copy todir="${install}/workspace/servoy_ai_skilltests/baselines"
+                                              failonerror="false" quiet="true">
+                                            <fileset dir="${skilltest.baselines.dir}" erroronmissingdir="false" />
+                                        </copy>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>run_test</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>run-skilltests</id>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <property name="install" value="${skilltest.install.dir}" />
+                                        <property name="developer" value="${install}/developer" />
+                                        <property name="appserver" value="${install}/application_server" />
+                                        <property name="workspace" value="${install}/workspace" />
+                                        <property name="reports" value="${workspace}/servoy_ai_skilltests/reports" />
+
+                                        <!-- Resolve the product's bundled JRE java + the equinox launcher jar by
+                                             glob, so the versions are not hardcoded (and the right platform JRE is
+                                             picked: linux.x86_64 on CI, win32/mac locally). -->
+                                        <first id="jredir">
+                                            <dirset dir="${developer}/plugins" includes="com.servoy.eclipse.jre.*" />
+                                        </first>
+                                        <property name="jredir.prop" refid="jredir" />
+                                        <condition property="java.bin"
+                                                   value="${jredir.prop}/jre/bin/java.exe"
+                                                   else="${jredir.prop}/jre/bin/java">
+                                            <os family="windows" />
+                                        </condition>
+                                        <first id="launcher">
+                                            <fileset dir="${developer}/plugins" includes="org.eclipse.equinox.launcher_*.jar" />
+                                        </first>
+                                        <property name="launcher.prop" refid="launcher" />
+
+                                        <mkdir dir="${reports}" />
+
+                                        <!-- Launch the full Servoy Developer PRODUCT (not the bare -application):
+                                             the skill-test runner needs the running workbench, because its 'empty'
+                                             source creates the solution over the MCP servers and the JSUnit tier runs
+                                             in the workbench's SmartClient. The product's SkillTestStartup
+                                             (org.eclipse.ui.startup) triggers the run, reading the -Dservoy.skilltest.*
+                                             system properties (SkillTestArgumentChest.fromSystemProperties). -data is a
+                                             framework arg consumed by the launcher. failonerror=false so the junit
+                                             report (published by the Jenkinsfile) is the verdict, not the exit code. -->
+                                        <java jar="${launcher.prop}" fork="true" failonerror="false"
+                                              resultproperty="skilltest.exit"
+                                              jvm="${java.bin}">
+                                            <jvmarg value="-Xms256m" />
+                                            <jvmarg value="-Xmx3g" />
+                                            <jvmarg value="-Dservoy.cloud.skipCheckout=true" />
+                                            <jvmarg value="-Dchromium.integration.eclipse.disable=true" />
+                                            <jvmarg value="--add-exports=java.base/sun.security.x509=ALL-UNNAMED" />
+                                            <jvmarg value="-Dservoy.skilltest.run=true" />
+                                            <jvmarg value="-Dservoy.skilltest.as=${appserver}" />
+                                            <jvmarg value="-Dservoy.skilltest.outputDir=${reports}" />
+                                            <jvmarg value="-Dservoy.skilltest.cloudUser=${skilltest.cloudUser}" />
+                                            <jvmarg value="-Dservoy.skilltest.cloudPass=${skilltest.cloudPass}" />
+                                            <arg value="-product" />
+                                            <arg value="com.servoy.eclipse.core.ide" />
+                                            <arg value="-noSplash" />
+                                            <arg value="-consolelog" />
+                                            <arg value="-data" />
+                                            <arg value="${workspace}" />
+                                        </java>
+                                        <echo message="skill-test run exit code: ${skilltest.exit}" />
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

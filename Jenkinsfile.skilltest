@@ -1,0 +1,88 @@
+// RUN job for the Servoy AI skill-test suite (SVY-21366).
+//
+// One job, one Jenkinsfile. The work is driven by two pom.xml profiles:
+//   -Pbuild_product  materializes a runnable Servoy install (from the full tarball)
+//                    with the freshly-built AI bundles overlaid and the baselines
+//                    seeded into the run workspace;
+//   -Prun_test       launches that install headless to run the baselines.
+// The reactor build of the AI bundles runs first (normal lifecycle), so every run
+// exercises the current plugin code - rebuilding one plugin is quick.
+//
+// The baselines are seeded from ${skilltest.baselines.dir} (defaults to the in-repo
+// fixture); override it to point at the baselines repo once it exists.
+
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 90, unit: 'MINUTES')
+        timestamps()
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    environment {
+        TEAMS_WEBHOOK = credentials('servoy-teams-webhook')
+        // 'clean install' runs the full Tycho lifecycle incl. tycho-gpg-plugin:sign-p2-artifacts,
+        // which needs the signing key passphrase - same as the main build Jenkinsfile.
+        MAVEN_GPG_PASSPHRASE = credentials('servoy-gpg-passphrase')
+    }
+
+    tools {
+        jdk 'Java 21'
+        maven 'Maven 3.9.16'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build product + run skill tests') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'servoy-cloud-svc',
+                        usernameVariable: 'CLOUD_USER', passwordVariable: 'CLOUD_PASS')]) {
+                    wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
+                        configFileProvider([
+                            configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
+                            configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
+                        ]) {
+                            // clean install builds the AI bundles; build_product materializes the
+                            // install + overlays them + seeds baselines; run_test launches it.
+                            sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
+                                clean install \
+                                -Pbuild_product,run_test \
+                                -Dtycho.localArtifacts=ignore \
+                                -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ \
+                                -Dservoy.install.tarball.for.appserver=/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz \
+                                -Dskilltest.cloudUser="$CLOUD_USER" \
+                                -Dskilltest.cloudPass="$CLOUD_PASS"'''
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: '**/skilltest-install/workspace/servoy_ai_skilltests/reports/TEST-*.xml'
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Failed', adaptiveCards: true
+        }
+        unstable {
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Unstable', adaptiveCards: true
+        }
+        fixed {
+            office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Back to Normal', adaptiveCards: true
+        }
+    }
+}
