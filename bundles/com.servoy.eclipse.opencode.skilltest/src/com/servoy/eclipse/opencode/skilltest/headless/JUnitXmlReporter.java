@@ -99,7 +99,15 @@ public final class JUnitXmlReporter {
 		}
 		xml.append("</testsuite>\n"); //$NON-NLS-1$
 
-		Path reportFile = outputDir.resolve("TEST-" + suiteName + ".xml"); //$NON-NLS-1$ //$NON-NLS-2$
+		// The XML content keeps the raw suiteName (XML-escaped in the attribute above), but the
+		// FILE name must be filesystem-safe: a suiteName with a path-illegal char (e.g. '<' on
+		// Windows) would make Path.resolve throw InvalidPathException and lose the whole report.
+		// Replace anything outside [A-Za-z0-9._-] with '_' for the file name only.
+		String safeSuite = suiteName == null ? "suite" : suiteName.replaceAll("[^A-Za-z0-9._-]", "_"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		if (safeSuite.isBlank()) {
+			safeSuite = "suite"; //$NON-NLS-1$
+		}
+		Path reportFile = outputDir.resolve("TEST-" + safeSuite + ".xml"); //$NON-NLS-1$ //$NON-NLS-2$
 		Files.writeString(reportFile, xml.toString(), StandardCharsets.UTF_8);
 		return reportFile;
 	}

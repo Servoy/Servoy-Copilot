@@ -1,0 +1,20 @@
+{
+  "id": "create-valuelist-basic",
+  "title": "Create a value list with values one, two, three",
+  "active": true,
+  "export": "export.json",
+  "promptOverride": "Create a value list named colors with the custom values one, two and three.",
+  "agent": null,
+  "model": null,
+  "maxAttempts": 3,
+  "timeoutSeconds": 180,
+  "precondition": { "solution": "aiTestSolution" },
+  "compare": {
+    "ordered": false,
+    "strict": false,
+    "forbidden": [ { "server": "servoy-ide", "tool": "delete_form" } ],
+    "argOverrides": {
+      "servoy-coder.create_valuelist": { "values": { "containsAll": ["one", "two", "three"] } }
+    }
+  }
+}

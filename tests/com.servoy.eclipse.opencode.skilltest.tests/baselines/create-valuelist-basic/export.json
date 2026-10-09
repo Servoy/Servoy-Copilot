@@ -1,0 +1,29 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Create a value list named colors with the custom values one, two and three."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "tool",
+          "tool": "servoy-coder_create_valuelist",
+          "state": {
+            "input": {
+              "name": "colors",
+              "values": ["one", "two", "three"]
+            },
+            "output": "Created value list 'colors' with 3 custom values."
+          }
+        }
+      ]
+    }
+  ]
+}
