@@ -86,6 +86,21 @@ export class ChatStore {
   readonly error = signal<string | null>(null);
 
   /**
+   * Pagination state for the active session's transcript. The server returns
+   * the newest page first; {@code olderCursor} is the handle for the page of
+   * still-older messages, {@code hasMore} tells the message list whether to
+   * offer a "load older" when scrolled to the top, and {@code loadingOlder}
+   * guards against firing overlapping fetches while one is in flight.
+   */
+  private olderCursor: string | null = null;
+  private readonly hasMoreSig = signal<boolean>(false);
+  private readonly loadingOlderSig = signal<boolean>(false);
+  /** Whether older history can still be loaded for the active session. */
+  readonly hasMoreMessages = this.hasMoreSig.asReadonly();
+  /** Whether an older-history page is currently being fetched. */
+  readonly loadingOlder = this.loadingOlderSig.asReadonly();
+
+  /**
    * The set of sessions with a turn currently streaming on the server, keyed by
    * session id. This is per-session, not a single global flag: a turn dispatched
    * in one session keeps running when you switch to another, so the stop/send
@@ -335,13 +350,24 @@ export class ChatStore {
     this.messages.set([]);
     this.error.set(null);
     this.pendingFormSig.set(null);
-    this.api.listMessages(id).subscribe({
-      next: (msgs) =>
+    // Seed with the newest page only; older history is fetched on demand when
+    // the user scrolls up (see loadOlderMessages). Reset the pagination state.
+    this.olderCursor = null;
+    this.hasMoreSig.set(false);
+    this.loadingOlderSig.set(false);
+    this.api.listMessagePage(id).subscribe({
+      next: (page) => {
+        if (this.activeSessionId() !== id) {
+          return; // session changed while loading
+        }
+        this.olderCursor = page.olderCursor;
+        this.hasMoreSig.set(page.olderCursor !== null);
         this.messages.set(
-          (msgs ?? [])
+          (page.messages ?? [])
             .filter((m) => this.isRenderableMessage(m))
             .map((m) => this.backfillToolMetadata(this.toChatMessage(m)))
-        ),
+        );
+      },
       error: (err) => this.error.set(this.describe('listMessages', err))
     });
     // Recover a form still pending on the server (e.g. after a reload, when the
@@ -356,6 +382,49 @@ export class ChatStore {
         // Non-fatal: no form recovery, the user can still chat - but still log
         // the cause so a silent failure is visible in the debug overlay.
         dbg('error', `listPendingForms ${this.errorDetail(err)}`);
+      }
+    });
+  }
+
+  /**
+   * Load the next page of OLDER messages and prepend them to the transcript.
+   * Called when the user scrolls to the top. A no-op when there is no older
+   * history, when a fetch is already in flight, or when there is no active
+   * session. The session is captured so a late response for a session the user
+   * has since left is discarded rather than mixed into another transcript.
+   */
+  loadOlderMessages(): void {
+    const id = this.activeSessionId();
+    if (!id || !this.olderCursor || this.loadingOlderSig()) {
+      return;
+    }
+    const cursor = this.olderCursor;
+    this.loadingOlderSig.set(true);
+    this.api.listMessagePage(id, { cursor }).subscribe({
+      next: (page) => {
+        this.loadingOlderSig.set(false);
+        if (this.activeSessionId() !== id) {
+          return; // user switched sessions mid-fetch
+        }
+        this.olderCursor = page.olderCursor;
+        this.hasMoreSig.set(page.olderCursor !== null);
+        const older = (page.messages ?? [])
+          .filter((m) => this.isRenderableMessage(m))
+          .map((m) => this.backfillToolMetadata(this.toChatMessage(m)));
+        if (older.length === 0) {
+          return;
+        }
+        // Prepend older history, skipping any id already present (defensive
+        // against overlap at the page boundary).
+        this.messages.update((current) => {
+          const known = new Set(current.map((m) => m.info.id));
+          const fresh = older.filter((m) => !known.has(m.info.id));
+          return fresh.length > 0 ? [...fresh, ...current] : current;
+        });
+      },
+      error: (err) => {
+        this.loadingOlderSig.set(false);
+        this.error.set(this.describe('loadOlderMessages', err));
       }
     });
   }
@@ -388,15 +457,16 @@ export class ChatStore {
 
   /**
    * Export a session as JSON and trigger a browser download. Fetches the
-   * session info and its full message history and emits them verbatim in the
-   * {@code { info, messages: [{ info, parts }] }} structure that opencode's own
-   * {@code opencode export} produces, so the file is byte-compatible with that
-   * format.
+   * session info and its FULL message history (paging through every page, not
+   * just the newest one the transcript seeds with) and emits them verbatim in
+   * the {@code { info, messages: [{ info, parts }] }} structure that opencode's
+   * own {@code opencode export} produces, so the file is byte-compatible with
+   * that format and contains the whole conversation.
    */
   exportSession(id: string): void {
     forkJoin({
       info: this.api.getSession(id),
-      messages: this.api.listMessages(id)
+      messages: this.api.listAllMessages(id)
     }).subscribe({
       next: ({ info, messages }) => {
         const data: SessionExportData = { info, messages: messages ?? [] };

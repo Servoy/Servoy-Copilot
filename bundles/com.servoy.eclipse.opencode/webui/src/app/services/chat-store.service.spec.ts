@@ -25,6 +25,8 @@ function apiMock() {
     updateSessionTitle: vi.fn(),
     deleteSession: vi.fn(),
     listMessages: vi.fn(),
+    listMessagePage: vi.fn(),
+    listAllMessages: vi.fn(),
     sendPrompt: vi.fn(),
     interrupt: vi.fn(),
     findFiles: vi.fn(),
@@ -34,6 +36,8 @@ function apiMock() {
     cancelForm: vi.fn()
   };
 }
+
+
 
 describe('ChatStore', () => {
   let store: ChatStore;
@@ -54,7 +58,17 @@ describe('ChatStore', () => {
     // openSession/bootstrap now recover pending forms; default to none so the
     // existing session-focused tests are unaffected.
     api.listPendingForms.mockReturnValue(of<FormInfo[]>([]));
+    // openSession pages the transcript (listMessagePage) and export walks the
+    // whole history (listAllMessages); default both to empty so the many
+    // session-focused tests that only need an empty transcript keep working.
+    // Tests that seed real messages or exercise pagination override these.
+    api.listMessagePage.mockReturnValue(of({ messages: [] as MessageWithParts[], olderCursor: null }));
+    api.listAllMessages.mockReturnValue(of<MessageWithParts[]>([]));
   });
+
+  /** Seed the newest transcript page for an openSession in a test. */
+  const seedPage = (messages: MessageWithParts[], olderCursor: string | null = null) =>
+    api.listMessagePage.mockReturnValue(of({ messages, olderCursor }));
 
   it('refreshSessions populates the session list', () => {
     const sessions: Session[] = [{ id: 's1', title: 'One' }];
@@ -158,7 +172,7 @@ describe('ChatStore', () => {
     // in the list but are never auto-opened.
     expect(store.sessions().map((s) => s.id)).toEqual(['old', 'new', 'archived']);
     expect(store.activeSessionId()).toBe('new');
-    expect(api.listMessages).toHaveBeenCalledWith('new');
+    expect(api.listMessagePage).toHaveBeenCalledWith('new');
   });
 
   it('bootstrap starts a fresh draft when there are no sessions', () => {
@@ -168,7 +182,7 @@ describe('ChatStore', () => {
 
     expect(store.activeSessionId()).toBeNull();
     expect(store.messages()).toEqual([]);
-    expect(api.listMessages).not.toHaveBeenCalled();
+    expect(api.listMessagePage).not.toHaveBeenCalled();
   });
 
   it('bootstrap starts a fresh draft when only archived/child sessions exist', () => {
@@ -181,7 +195,7 @@ describe('ChatStore', () => {
     store.bootstrap();
 
     expect(store.activeSessionId()).toBeNull();
-    expect(api.listMessages).not.toHaveBeenCalled();
+    expect(api.listMessagePage).not.toHaveBeenCalled();
   });
 
   it('refreshSessions coerces a null response to an empty list', () => {
@@ -197,7 +211,7 @@ describe('ChatStore', () => {
       // opencode idle marker: no parts, not a user message -> must be filtered.
       { info: { id: 'idle1', role: 'idle' }, parts: [] }
     ];
-    api.listMessages.mockReturnValue(of(msgs));
+    seedPage(msgs);
 
     store.openSession('s1');
 
@@ -206,7 +220,7 @@ describe('ChatStore', () => {
 
   it('openSession keeps a user message even when it has no parts', () => {
     const msgs: MessageWithParts[] = [{ info: { id: 'u1', role: 'user' }, parts: [] }];
-    api.listMessages.mockReturnValue(of(msgs));
+    seedPage(msgs);
 
     store.openSession('s1');
 
@@ -217,11 +231,11 @@ describe('ChatStore', () => {
     const msgs: MessageWithParts[] = [
       { info: { id: 'm1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] }
     ];
-    api.listMessages.mockReturnValue(of(msgs));
+    seedPage(msgs);
 
     store.openSession('s1');
 
-    expect(api.listMessages).toHaveBeenCalledWith('s1');
+    expect(api.listMessagePage).toHaveBeenCalledWith('s1');
     expect(store.activeSessionId()).toBe('s1');
     expect(store.messages()).toHaveLength(1);
     expect(store.messages()[0].info.id).toBe('m1');
@@ -313,7 +327,7 @@ describe('ChatStore', () => {
   it('backfills a running subagent child id on re-seed from live-captured metadata (link survives the round-trip)', () => {
     // 1. Parent is active; its subagent dispatches and a tool.progress event
     //    carries the child sessionID while it is still RUNNING.
-    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    seedPage([]);
     store.openSession('parent');
     events.fire({
       type: 'session.tool.input.started',
@@ -326,23 +340,21 @@ describe('ChatStore', () => {
 
     // 2. User opens the child, then returns to the parent WHILE the subagent is
     //    still running. GET /message for a running subagent has NO metadata.
-    api.listMessages.mockReturnValue(
-      of<MessageWithParts[]>([
-        {
-          info: { id: 'mA', sessionID: 'parent', role: 'assistant' },
-          parts: [
-            {
-              id: 'toolu_sa',
-              type: 'tool',
-              tool: 'subagent',
-              messageID: 'mA',
-              sessionID: 'parent',
-              state: { status: 'running', input: { description: 'Do it' } } // no metadata!
-            }
-          ]
-        }
-      ])
-    );
+    seedPage([
+      {
+        info: { id: 'mA', sessionID: 'parent', role: 'assistant' },
+        parts: [
+          {
+            id: 'toolu_sa',
+            type: 'tool',
+            tool: 'subagent',
+            messageID: 'mA',
+            sessionID: 'parent',
+            state: { status: 'running', input: { description: 'Do it' } } // no metadata!
+          }
+        ]
+      }
+    ]);
     store.openSession('child');
     store.openSession('parent');
 
@@ -355,23 +367,21 @@ describe('ChatStore', () => {
   it('merges a live tool event into a seeded tool part by its raw call id (no phantom "Tool" duplicate)', () => {
     // Seed the parent session as if returning to it via GET /message: a subagent
     // tool part keyed by its raw opencode call id (what mapV2Message assigns).
-    api.listMessages.mockReturnValue(
-      of<MessageWithParts[]>([
-        {
-          info: { id: 'mA', sessionID: 's1', role: 'assistant' },
-          parts: [
-            {
-              id: 'toolu_sa',
-              type: 'tool',
-              tool: 'subagent',
-              messageID: 'mA',
-              sessionID: 's1',
-              state: { status: 'running', input: { description: 'Do it' }, metadata: { sessionID: 'ses_child' } }
-            }
-          ]
-        }
-      ])
-    );
+    seedPage([
+      {
+        info: { id: 'mA', sessionID: 's1', role: 'assistant' },
+        parts: [
+          {
+            id: 'toolu_sa',
+            type: 'tool',
+            tool: 'subagent',
+            messageID: 'mA',
+            sessionID: 's1',
+            state: { status: 'running', input: { description: 'Do it' }, metadata: { sessionID: 'ses_child' } }
+          }
+        ]
+      }
+    ]);
     store.openSession('s1');
 
     // The subagent, still running, now finishes - a late live success event for
@@ -556,14 +566,15 @@ describe('ChatStore', () => {
     const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
 
     api.getSession.mockReturnValue(of<Session>({ id: 's1', title: 'Fix Bug' }));
-    api.listMessages.mockReturnValue(
+    // Export walks the WHOLE history via listAllMessages, not just the newest page.
+    api.listAllMessages.mockReturnValue(
       of<MessageWithParts[]>([{ info: { id: 'm1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] }])
     );
 
     store.exportSession('s1');
 
     expect(api.getSession).toHaveBeenCalledWith('s1');
-    expect(api.listMessages).toHaveBeenCalledWith('s1');
+    expect(api.listAllMessages).toHaveBeenCalledWith('s1');
     expect(clickSpy).toHaveBeenCalled();
     expect(anchor.download).toBe('fix-bug.json');
 
@@ -574,11 +585,101 @@ describe('ChatStore', () => {
 
   it('exportSession surfaces an error when loading fails', () => {
     api.getSession.mockReturnValue(throwError(() => ({ status: 500 })));
-    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.listAllMessages.mockReturnValue(of<MessageWithParts[]>([]));
 
     store.exportSession('s1');
 
     expect(store.error()).not.toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Transcript pagination: seed the newest page, load older history on demand.
+  // -------------------------------------------------------------------------
+
+  describe('transcript pagination', () => {
+    const msg = (id: string): MessageWithParts => ({
+      info: { id, role: 'user' },
+      parts: [{ type: 'text', text: id } as Part]
+    });
+
+    it('openSession seeds the newest page and flags that older history exists', () => {
+      api.listMessagePage.mockReturnValue(of({ messages: [msg('m50')], olderCursor: 'CUR_OLDER' }));
+
+      store.openSession('s1');
+
+      expect(store.messages().map((m) => m.info.id)).toEqual(['m50']);
+      // A non-null older cursor means "load older" is offered.
+      expect(store.hasMoreMessages()).toBe(true);
+      expect(store.loadingOlder()).toBe(false);
+    });
+
+    it('openSession with no older cursor reports no more history', () => {
+      api.listMessagePage.mockReturnValue(of({ messages: [msg('m1')], olderCursor: null }));
+      store.openSession('s1');
+      expect(store.hasMoreMessages()).toBe(false);
+    });
+
+    it('loadOlderMessages prepends the older page and advances the cursor', () => {
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('newer')], olderCursor: 'CUR1' }));
+      store.openSession('s1');
+      expect(store.messages().map((m) => m.info.id)).toEqual(['newer']);
+
+      // The next page (older) returns an even-older cursor.
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('older')], olderCursor: 'CUR2' }));
+      store.loadOlderMessages();
+
+      // Older messages are prepended (chronological), newest stays last.
+      expect(store.messages().map((m) => m.info.id)).toEqual(['older', 'newer']);
+      expect(api.listMessagePage).toHaveBeenLastCalledWith('s1', { cursor: 'CUR1' });
+      expect(store.hasMoreMessages()).toBe(true);
+    });
+
+    it('loadOlderMessages stops offering more once the start is reached', () => {
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('b')], olderCursor: 'CUR1' }));
+      store.openSession('s1');
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('a')], olderCursor: null }));
+
+      store.loadOlderMessages();
+
+      expect(store.messages().map((m) => m.info.id)).toEqual(['a', 'b']);
+      expect(store.hasMoreMessages()).toBe(false);
+    });
+
+    it('loadOlderMessages is a no-op when there is no older cursor', () => {
+      api.listMessagePage.mockReturnValue(of({ messages: [msg('only')], olderCursor: null }));
+      store.openSession('s1');
+      api.listMessagePage.mockClear();
+
+      store.loadOlderMessages();
+
+      expect(api.listMessagePage).not.toHaveBeenCalled();
+    });
+
+    it('loadOlderMessages does not fetch twice while a page is still in flight', () => {
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('x')], olderCursor: 'CUR1' }));
+      store.openSession('s1');
+      // A page that never emits simulates a request still in flight.
+      api.listMessagePage.mockReturnValueOnce(new Subject());
+      api.listMessagePage.mockClear();
+
+      store.loadOlderMessages();
+      store.loadOlderMessages();
+
+      // Only the first request fired; the second was guarded by loadingOlder.
+      expect(api.listMessagePage).toHaveBeenCalledTimes(1);
+      expect(store.loadingOlder()).toBe(true);
+    });
+
+    it('loadOlderMessages skips a message id already present at the page boundary', () => {
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('dup'), msg('newer')], olderCursor: 'CUR1' }));
+      store.openSession('s1');
+      // The older page overlaps on 'dup' - it must not be duplicated.
+      api.listMessagePage.mockReturnValueOnce(of({ messages: [msg('older'), msg('dup')], olderCursor: null }));
+
+      store.loadOlderMessages();
+
+      expect(store.messages().map((m) => m.info.id)).toEqual(['older', 'dup', 'newer']);
+    });
   });
 
   it('deleteSession deletes, refreshes and resets the active session when it was active', () => {

@@ -74,6 +74,10 @@ export class AppComponent implements OnInit {
     this.store.setActiveDraft(draft);
   }
 
+  onLoadOlder(): void {
+    this.store.loadOlderMessages();
+  }
+
   onFormSubmit(answer: FormAnswer): void {
     this.store.submitForm(answer);
   }

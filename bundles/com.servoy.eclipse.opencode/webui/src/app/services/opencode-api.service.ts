@@ -1,7 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
 
 import {
   FileMatch,
@@ -12,6 +11,20 @@ import {
   Session
 } from '../models/opencode.models';
 import { mapV2Message } from './v2-mapping';
+
+/**
+ * One page of a session's messages: the chronological {@link MessageWithParts}
+ * for the page, plus {@code olderCursor} - the opaque cursor that fetches the
+ * page of still-OLDER messages before these, or {@code null} when this is the
+ * start of the conversation. opencode returns messages newest-first (desc) with
+ * a {@code cursor.next} that pages toward older history; this wrapper maps that
+ * page to chronological order and surfaces {@code cursor.next} as
+ * {@code olderCursor}.
+ */
+export interface MessagePage {
+  messages: MessageWithParts[];
+  olderCursor: string | null;
+}
 
 /**
  * Typed wrappers over the BFF servlet's {@code ./rest_api/**} endpoints, which
@@ -71,21 +84,59 @@ export class OpencodeApiService {
   }
 
   /**
-   * List a session's messages (V2 {@code GET /session/:id/message} ->
-   * {@code { data, cursor }}). Each raw V2 message is normalised into the
-   * {@link MessageWithParts} shape the store renders. V2 returns newest-first
-   * (desc); the store expects chronological order, so we reverse.
+   * Fetch ONE page of a session's messages (V2
+   * {@code GET /session/:id/message} -> {@code { data, cursor }}), newest page
+   * first. Pass {@code olderCursor} from a previous {@link MessagePage} to fetch
+   * the page of OLDER messages before it. Each raw V2 message is normalised to
+   * {@link MessageWithParts}; opencode returns the page newest-first (desc), so
+   * it is reversed to chronological order. The returned {@code olderCursor} is
+   * opencode's {@code cursor.next} (which pages toward older history), or
+   * {@code null} at the start of the conversation.
    */
-  listMessages(id: string, limit?: number): Observable<MessageWithParts[]> {
+  listMessagePage(id: string, options?: { limit?: number; cursor?: string }): Observable<MessagePage> {
     let params = new HttpParams();
-    if (limit != null) {
-      params = params.set('limit', String(limit));
+    if (options?.limit != null) {
+      params = params.set('limit', String(options.limit));
+    }
+    if (options?.cursor) {
+      // The cursor already encodes the order; `cursor` and `order` are mutually
+      // exclusive on the server, so never send `order` alongside it.
+      params = params.set('cursor', options.cursor);
     }
     return this.http
-      .get<{ data?: unknown[] }>(`${this.base}/session/${encodeURIComponent(id)}/message`, {
-        params
-      })
-      .pipe(map((r) => (r?.data ?? []).map(mapV2Message).reverse()));
+      .get<{ data?: unknown[]; cursor?: { next?: string | null } }>(
+        `${this.base}/session/${encodeURIComponent(id)}/message`,
+        { params }
+      )
+      .pipe(
+        map((r) => ({
+          messages: (r?.data ?? []).map(mapV2Message).reverse(),
+          olderCursor: r?.cursor?.next ?? null
+        }))
+      );
+  }
+
+  /**
+   * Convenience: the newest page only, as a plain chronological list. Kept for
+   * callers that do not paginate.
+   */
+  listMessages(id: string, limit?: number): Observable<MessageWithParts[]> {
+    return this.listMessagePage(id, { limit }).pipe(map((page) => page.messages));
+  }
+
+  /**
+   * Fetch the WHOLE session, following the older-cursor until the start of the
+   * conversation, and return every message in chronological order. Used by
+   * export so the file is the complete session, not just the newest page.
+   */
+  listAllMessages(id: string): Observable<MessageWithParts[]> {
+    return this.listMessagePage(id).pipe(
+      // Keep paging toward older history until there is no older cursor left.
+      expand((page) => (page.olderCursor ? this.listMessagePage(id, { cursor: page.olderCursor }) : EMPTY)),
+      // Each page is a chronological block; older pages arrive later, so
+      // prepend them to build the full chronological history.
+      reduce((all, page) => [...page.messages, ...all], [] as MessageWithParts[])
+    );
   }
 
   /**

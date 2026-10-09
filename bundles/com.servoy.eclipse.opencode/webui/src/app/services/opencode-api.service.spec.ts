@@ -161,6 +161,62 @@ describe('OpencodeApiService', () => {
     req.flush({ data: [] });
   });
 
+  it('listMessagePage surfaces the server cursor.next as olderCursor', () => {
+    let page: { messages: MessageWithParts[]; olderCursor: string | null } | undefined;
+    service.listMessagePage('s1').subscribe((p) => (page = p));
+    const req = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message');
+    req.flush({
+      data: [{ id: 'm2', type: 'assistant', content: [{ type: 'text', text: 'b' }] }, { id: 'm1', type: 'user', text: 'a' }],
+      cursor: { next: 'OLDER', previous: 'NEWER' }
+    });
+    // Reversed to chronological, and the older-cursor is cursor.next.
+    expect(page?.messages.map((m) => m.info.id)).toEqual(['m1', 'm2']);
+    expect(page?.olderCursor).toBe('OLDER');
+  });
+
+  it('listMessagePage sends the cursor param (and no limit) for an older page', () => {
+    service.listMessagePage('s1', { cursor: 'CUR' }).subscribe();
+    const req = httpMock.expectOne(
+      (r) => r.url === 'rest_api/session/s1/message' && r.params.get('cursor') === 'CUR'
+    );
+    expect(req.request.params.has('limit')).toBe(false);
+    req.flush({ data: [], cursor: {} });
+  });
+
+  it('listMessagePage reports a null olderCursor at the start of the conversation', () => {
+    let page: { olderCursor: string | null } | undefined;
+    service.listMessagePage('s1', { cursor: 'CUR' }).subscribe((p) => (page = p));
+    const req = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message');
+    req.flush({ data: [], cursor: { next: null } });
+    expect(page?.olderCursor).toBeNull();
+  });
+
+  it('listAllMessages follows the older cursor across pages and returns the whole history chronologically', () => {
+    let all: MessageWithParts[] | undefined;
+    service.listAllMessages('s1').subscribe((r) => (all = r));
+
+    // Page 1: newest page, has an older cursor.
+    const p1 = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message' && !r.params.has('cursor'));
+    p1.flush({
+      data: [{ id: 'm4', type: 'assistant', content: [] }, { id: 'm3', type: 'user', text: 'c' }],
+      cursor: { next: 'CUR1' }
+    });
+
+    // Page 2 (older): fetched with CUR1, has a further older cursor.
+    const p2 = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message' && r.params.get('cursor') === 'CUR1');
+    p2.flush({
+      data: [{ id: 'm2', type: 'assistant', content: [] }, { id: 'm1', type: 'user', text: 'a' }],
+      cursor: { next: 'CUR2' }
+    });
+
+    // Page 3 (oldest): no further cursor -> paging stops.
+    const p3 = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message' && r.params.get('cursor') === 'CUR2');
+    p3.flush({ data: [{ id: 'm0', type: 'user', text: 'start' }], cursor: { next: null } });
+
+    // Full history, oldest first.
+    expect(all?.map((m) => m.info.id)).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
+  });
+
   it('sendPrompt POSTs a { text } body to the V2 prompt endpoint', () => {
     const parts: SendPart[] = [
       { type: 'text', text: 'hello' },

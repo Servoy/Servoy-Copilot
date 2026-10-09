@@ -21,7 +21,9 @@
     <svy-message-list
       class="messages"
       [messages]="store.messages()"
+      [canLoadOlder]="store.hasMoreMessages()"
       (openSession)="onSelectSession($event)"
+      (loadOlder)="onLoadOlder()"
     ></svy-message-list>
     @if (store.pendingForm(); as form) {
       <svy-form-card
