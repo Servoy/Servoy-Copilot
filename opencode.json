@@ -1,5 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": [
+      "skills"
+    ]
+  },
   "commands": {
     "sdd": {
       "description": "Run full Spec-Driven Development pipeline for a Jira issue",
