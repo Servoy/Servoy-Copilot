@@ -2,7 +2,8 @@
   "name": "servoy-opencode-host",
   "version": "1.0.0",
   "private": true,
+  "comment": "The @opencode/cli version is PINNED to an exact version on purpose. opencode ships breaking API changes in patch releases (e.g. the prompt attachment field was renamed url->uri in 2.0.26), so we never auto-update. To move to a newer opencode: (1) bump this exact version, (2) re-check the webui API calls (opencode-api.service.ts / status.service.ts) against the new server schema, (3) test, then commit. Changing this version makes OpencodeFolderCreatorJob reinstall on next start.",
   "dependencies": {
-    "@opencode/cli": "~2.0.18"
+    "@opencode/cli": "2.0.26"
   }
 }

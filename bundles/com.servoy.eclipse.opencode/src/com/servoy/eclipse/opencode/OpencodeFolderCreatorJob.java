@@ -159,22 +159,16 @@ public class OpencodeFolderCreatorJob extends Job {
 				activator.logToConsole(msg);
 				return new Status(IStatus.WARNING, Activator.PLUGIN_ID, msg);
 			}
-		} else {
-			// Already installed — check for a newer patch release within the ~2.0.x range
-			IRunNPMCommand update = ngActivator.createNPMCommand(opencodeDir, List.of("update", "@opencode/cli")); //$NON-NLS-1$
-			update.setOutputStream(activator.getConsole().outputStream());
-			try {
-				update.runCommand(monitor);
-				if (update.getExitCode() == 0) {
-					activator.logToConsole("@opencode/cli update check complete.");
-				} else {
-					activator.logToConsole(
-							"npm update @opencode/cli exited with code " + update.getExitCode() + " (non-fatal).");
-				}
-			} catch (IOException | InterruptedException e) {
-				activator.logToConsole("npm update @opencode/cli failed (non-fatal): " + e.getMessage());
-			}
 		}
+		// NOTE: no `npm update @opencode/cli` here on purpose. The version is
+		// PINNED to an exact version in the bundle's opencode/package.json because
+		// opencode ships breaking API changes in patch releases (e.g. the prompt
+		// attachment field was renamed url->uri in 2.0.26). Auto-updating silently
+		// changed the server API under the webui and broke features. To move to a
+		// newer opencode, bump the exact version in opencode/package.json: that
+		// changes the sentinel, so needsInstall() triggers a clean reinstall of the
+		// pinned version on the next start. Updates are therefore deliberate and
+		// testable, never automatic.
 
 		// Write / merge the opencode.json MCP config
 		Path servoyOpencodeCfgDir = Path.of(System.getProperty("user.home"), ".servoy", "opencode"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
