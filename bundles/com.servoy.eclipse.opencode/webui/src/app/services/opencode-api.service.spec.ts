@@ -154,16 +154,29 @@ describe('OpencodeApiService', () => {
     req.flush(null);
   });
 
-  it('sendPrompt includes file attachments when present', () => {
+  it('sendPrompt sends file attachments as PromptInput.FileAttachment { uri, name }', () => {
     const parts: SendPart[] = [
       { type: 'text', text: 'look' },
       { type: 'file', filename: 'a.txt', mime: 'text/plain', url: 'data:...' }
     ];
     service.sendPrompt('s1', parts).subscribe();
     const req = httpMock.expectOne('rest_api/session/s1/prompt');
+    // opencode 2.0.26 takes the content from `uri` and detects the mime itself;
+    // the filename maps to `name`. There is no `url`/`filename`/`mime` field.
     expect(req.request.body).toEqual({
       text: 'look',
-      files: [{ filename: 'a.txt', mime: 'text/plain', url: 'data:...' }]
+      files: [{ uri: 'data:...', name: 'a.txt' }]
+    });
+    req.flush(null);
+  });
+
+  it('sendPrompt omits name when the attachment has no filename', () => {
+    const parts: SendPart[] = [{ type: 'file', mime: 'image/png', url: 'data:image/png;base64,AAA' }];
+    service.sendPrompt('s1', parts).subscribe();
+    const req = httpMock.expectOne('rest_api/session/s1/prompt');
+    expect(req.request.body).toEqual({
+      text: '',
+      files: [{ uri: 'data:image/png;base64,AAA' }]
     });
     req.flush(null);
   });

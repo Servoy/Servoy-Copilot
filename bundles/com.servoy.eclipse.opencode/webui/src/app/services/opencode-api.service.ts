@@ -98,6 +98,14 @@ export class OpencodeApiService {
    * Send a prompt (V2 {@code POST /session/:id/prompt}, body {@code { text }}).
    * V2 has a single {@code text} field rather than a {@code parts} array; the
    * text parts are concatenated. Streaming continues on {@code /event}.
+   * <p>
+   * Each attachment is a {@code PromptInput.FileAttachment}:
+   * {@code { uri, name? }}. opencode takes the content from {@code uri} (a
+   * {@code data:} URL for an inline/pasted image, or a {@code file:} URL / path
+   * reference) and detects the mime type itself - there is no {@code mime} or
+   * {@code filename} input field. (opencode 2.0.26 renamed the field to
+   * {@code uri}; sending the old {@code url}/{@code filename}/{@code mime} shape
+   * is rejected with "Missing key ... uri".)
    */
   sendPrompt(id: string, parts: SendPart[]): Observable<void> {
     const text = parts
@@ -106,7 +114,13 @@ export class OpencodeApiService {
       .join('\n');
     const files = parts
       .filter((p) => p.type === 'file' && p.url)
-      .map((p) => ({ filename: p.filename, mime: p.mime, url: p.url }));
+      .map((p) => {
+        const file: { uri: string; name?: string } = { uri: p.url as string };
+        if (p.filename) {
+          file.name = p.filename;
+        }
+        return file;
+      });
     const body: Record<string, unknown> = { text };
     if (files.length > 0) {
       body['files'] = files;

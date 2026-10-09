@@ -273,7 +273,7 @@ export class ChatStore {
         const serverIds = new Set(server.map((s) => s.id));
         this.allSessions.update((local) => [...server, ...local.filter((s) => !serverIds.has(s.id))]);
       },
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('refreshSessions', err))
     });
   }
 
@@ -309,7 +309,7 @@ export class ChatStore {
           this.newSession();
         }
       },
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('bootstrap', err))
     });
   }
 
@@ -342,7 +342,7 @@ export class ChatStore {
             .filter((m) => this.isRenderableMessage(m))
             .map((m) => this.backfillToolMetadata(this.toChatMessage(m)))
         ),
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('listMessages', err))
     });
     // Recover a form still pending on the server (e.g. after a reload, when the
     // form.created event was missed). Only apply if this session is still active.
@@ -352,8 +352,10 @@ export class ChatStore {
           this.pendingFormSig.set(forms[0]);
         }
       },
-      error: () => {
-        // Non-fatal: no form recovery, the user can still chat.
+      error: (err) => {
+        // Non-fatal: no form recovery, the user can still chat - but still log
+        // the cause so a silent failure is visible in the debug overlay.
+        dbg('error', `listPendingForms ${this.errorDetail(err)}`);
       }
     });
   }
@@ -380,7 +382,7 @@ export class ChatStore {
     }
     this.api.updateSessionTitle(id, trimmed).subscribe({
       next: () => this.refreshSessions(),
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('renameSession', err))
     });
   }
 
@@ -391,7 +393,7 @@ export class ChatStore {
   archiveSession(id: string): void {
     this.api.archiveSession(id).subscribe({
       next: () => this.afterRemoval(id),
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('archiveSession', err))
     });
   }
 
@@ -411,7 +413,7 @@ export class ChatStore {
         const data: SessionExportData = { info, messages: messages ?? [] };
         downloadFile(`${sessionExportBaseName(info)}.json`, sessionExportToJson(data), 'application/json');
       },
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('exportSession', err))
     });
   }
 
@@ -419,7 +421,7 @@ export class ChatStore {
   deleteSession(id: string): void {
     this.api.deleteSession(id).subscribe({
       next: () => this.afterRemoval(id),
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('deleteSession', err))
     });
   }
 
@@ -470,7 +472,7 @@ export class ChatStore {
         this.upsertSession(session);
         this.dispatch(session.id, parts);
       },
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('createSession', err))
     });
   }
 
@@ -481,7 +483,7 @@ export class ChatStore {
     }
     this.api.interrupt(id).subscribe({
       next: () => this.setSessionStreaming(id, false),
-      error: (err) => this.error.set(this.describe(err))
+      error: (err) => this.error.set(this.describe('interrupt', err))
     });
   }
 
@@ -504,7 +506,7 @@ export class ChatStore {
           this.clearForm(form.id);
           return;
         }
-        this.error.set(this.describe(err));
+        this.error.set(this.describe('replyToForm', err));
       }
     });
   }
@@ -522,7 +524,7 @@ export class ChatStore {
           this.clearForm(form.id);
           return;
         }
-        this.error.set(this.describe(err));
+        this.error.set(this.describe('cancelForm', err));
       }
     });
   }
@@ -542,6 +544,18 @@ export class ChatStore {
   private dispatch(id: string, parts: SendPart[]): void {
     this.error.set(null);
     this.setSessionStreaming(id, true);
+    // DEBUG(upload): record the shape of what we are about to send - the text
+    // length and, for each file part, its mime and url scheme (data: vs file:)
+    // without dumping the whole base64 payload. Visible in the ?debug_view
+    // overlay to compare against what the running opencode build accepts.
+    dbg(
+      'upload',
+      `dispatch files=${JSON.stringify(
+        parts
+          .filter((p) => p.type === 'file')
+          .map((p) => ({ mime: p.mime, filename: p.filename, urlScheme: (p.url ?? '').slice(0, 12) }))
+      )}`
+    );
     // Optimistically render the user's own message. opencode V2 does not push a
     // bus event for the prompt itself (only the assistant's streamed text /
     // reasoning / tool events follow), so without this the user's message would
@@ -550,9 +564,39 @@ export class ChatStore {
     this.api.sendPrompt(id, parts).subscribe({
       error: (err) => {
         this.setSessionStreaming(id, false);
-        this.error.set(this.describe(err));
+        // describe('prompt', ...) logs the real server response (status +
+        // opencode's message) to the debug overlay and console before returning
+        // the short banner text, so an attachment rejection is never swallowed.
+        this.error.set(this.describe('prompt', err));
       }
     });
+  }
+
+  /**
+   * A compact, human-readable description of an HTTP error for the debug log:
+   * the status plus opencode's own error message/body when present. opencode
+   * returns {@code { message, field }} (or {@code { error }}) for a 4xx, so a
+   * rejected attachment carries a useful reason here.
+   */
+  private errorDetail(err: unknown): string {
+    if (!err || typeof err !== 'object') {
+      return String(err);
+    }
+    const e = err as { status?: number; error?: unknown; message?: string };
+    const status = e.status != null ? `status=${e.status}` : '';
+    let body = '';
+    if (typeof e.error === 'string') {
+      body = e.error;
+    } else if (e.error && typeof e.error === 'object') {
+      const be = e.error as { message?: string; field?: string; error?: string };
+      body = be.message ?? be.error ?? JSON.stringify(e.error);
+      if (be.field) {
+        body += ` (field=${be.field})`;
+      }
+    } else if (e.message) {
+      body = e.message;
+    }
+    return `${status} ${body}`.trim();
   }
 
   /**
@@ -1272,13 +1316,54 @@ export class ChatStore {
     return (m.parts ?? []).some(isRenderablePart);
   }
 
-  private describe(err: unknown): string {
+  /**
+   * Turn a caught error into the user-facing banner message AND record the full
+   * detail (operation + status + opencode's own message) so nothing is silently
+   * swallowed. This is the single choke point every store error passes through,
+   * so {@code describe(context, err)} both logs the real cause to the
+   * {@code ?debug_view} overlay (and the browser console) and returns the short
+   * message for the banner. {@code context} names the operation that failed
+   * (e.g. 'prompt', 'createSession', 'rename') so the log pinpoints it.
+   */
+  private describe(context: string, err: unknown): string {
+    const detail = this.errorDetail(err);
+    // Always surface the real cause: the debug overlay (when ?debug_view=true)
+    // and the browser console. The banner only ever shows the short message.
+    dbg('error', `${context} ${detail}`);
+    try {
+      console.error(`[servoy-ai] ${context} failed: ${detail}`, err);
+    } catch {
+      // console may be unavailable in some embedded hosts - never let logging
+      // throw and mask the original error.
+    }
     if (err && typeof err === 'object' && 'status' in err) {
       const status = (err as { status?: number }).status;
       if (status === 409 || status === 503) {
         return 'Servoy AI is starting or no solution is active. Please wait…';
       }
+      // A 4xx carries a specific reason from opencode (e.g. a rejected
+      // attachment). Surface it rather than the generic message - it is what
+      // the user needs to understand why a prompt/upload failed.
+      if (status != null && status >= 400 && status < 500) {
+        const message = this.serverMessage(err);
+        if (message) {
+          return message;
+        }
+      }
     }
     return 'Something went wrong talking to Servoy AI.';
+  }
+
+  /** opencode's own error message from an HTTP error body, or null. */
+  private serverMessage(err: unknown): string | null {
+    const body = (err as { error?: unknown }).error;
+    if (typeof body === 'string' && body.trim().length > 0) {
+      return body.trim();
+    }
+    if (body && typeof body === 'object') {
+      const be = body as { message?: string; error?: string };
+      return (be.message ?? be.error)?.trim() ?? null;
+    }
+    return null;
   }
 }
