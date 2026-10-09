@@ -125,6 +125,33 @@ describe('OpencodeApiService', () => {
     expect(result?.[1].parts[0]).toMatchObject({ type: 'text', text: 'hi' });
   });
 
+  it('listMessages turns a user message attachment (files[]) into a renderable image file part', () => {
+    const v2Response = {
+      data: [
+        {
+          id: 'm1',
+          type: 'user',
+          text: 'wat zie je?',
+          files: [{ data: 'AAAABBBB', mime: 'image/png', name: 'image.png', source: { type: 'inline' } }]
+        }
+      ]
+    };
+    let result: MessageWithParts[] | undefined;
+    service.listMessages('s1').subscribe((r) => (result = r));
+    const req = httpMock.expectOne((r) => r.url === 'rest_api/session/s1/message');
+    req.flush(v2Response);
+
+    const parts = result?.[0].parts ?? [];
+    // The prompt text plus the attachment, as a data: URL image file part.
+    expect(parts[0]).toMatchObject({ type: 'text', text: 'wat zie je?' });
+    expect(parts[1]).toMatchObject({
+      type: 'file',
+      mime: 'image/png',
+      filename: 'image.png',
+      url: 'data:image/png;base64,AAAABBBB'
+    });
+  });
+
   it('listMessages includes the limit query param when supplied', () => {
     service.listMessages('s1', 25).subscribe();
     const req = httpMock.expectOne(

@@ -5,7 +5,18 @@
   [class.errored]="errorText() !== null"
 >
   @for (part of renderable(); track partKey(part, $index)) {
-    @if (isText(part)) {
+    @if (isFile(part)) {
+      @if (isImageFile(part)) {
+        <a class="attachment-image-link" [href]="fileUrl(part)" target="_blank" rel="noopener" [title]="fileName(part)">
+          <img class="attachment-image" [src]="fileUrl(part)" [alt]="fileName(part)" />
+        </a>
+      } @else {
+        <span class="attachment-chip" [title]="fileName(part)">
+          <span class="attachment-icon" aria-hidden="true">📎</span>
+          <span class="attachment-name">{{ fileName(part) }}</span>
+        </span>
+      }
+    } @else if (isText(part)) {
       <svy-markdown [content]="part.text ?? ''"></svy-markdown>
     } @else if (isReasoning(part)) {
       <div class="reasoning">

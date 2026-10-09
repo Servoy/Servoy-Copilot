@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 
 import { MessageError, Part } from '../models/opencode.models';
 import {
+  isFilePart,
+  isImageFilePart,
   isReasoningPart,
   isRenderablePart,
   isScriptTool,
@@ -94,6 +96,26 @@ export class MessageItemComponent {
 
   isTool(part: Part): boolean {
     return isToolPart(part);
+  }
+
+  /** A file/image attachment part. */
+  isFile(part: Part): boolean {
+    return isFilePart(part);
+  }
+
+  /** Whether the attachment should render as an inline image thumbnail. */
+  isImageFile(part: Part): boolean {
+    return isImageFilePart(part);
+  }
+
+  /** The attachment's URL (a data: URL or a file reference). */
+  fileUrl(part: Part): string {
+    return part.url ?? '';
+  }
+
+  /** The attachment's display name, falling back to a generic label. */
+  fileName(part: Part): string {
+    return part.filename && part.filename.trim().length > 0 ? part.filename : 'attachment';
   }
 
   /** Friendly tool name, e.g. "Read File". */

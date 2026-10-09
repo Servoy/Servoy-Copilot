@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isFilePart,
+  isImageFilePart,
   isReasoningPart,
   isRenderablePart,
   isScriptTool,
@@ -119,7 +121,12 @@ describe('isRenderablePart', () => {
     expect(isRenderablePart(part({ type: 'text', text: '<system-reminder>x' }))).toBe(false);
   });
 
-  it('does not render unsupported part types', () => {
+  it('renders a file/image attachment part (with a url)', () => {
+    expect(isRenderablePart(part({ type: 'file', url: 'data:image/png;base64,AAA' }))).toBe(true);
+    expect(isRenderablePart(part({ type: 'media', url: 'data:image/png;base64,AAA' }))).toBe(true);
+  });
+
+  it('does not render a file part without a url, or other unsupported types', () => {
     expect(isRenderablePart(part({ type: 'file', filename: 'a.txt' }))).toBe(false);
     expect(isRenderablePart(part({ type: 'step-start' }))).toBe(false);
     expect(isRenderablePart(part({ type: 'snapshot' }))).toBe(false);
@@ -127,6 +134,24 @@ describe('isRenderablePart', () => {
 
   it('does not render empty text parts', () => {
     expect(isRenderablePart(part({ type: 'text', text: '   ' }))).toBe(false);
+  });
+});
+
+describe('file / image attachment parts', () => {
+  it('isFilePart is true only for file/media parts that carry a url', () => {
+    expect(isFilePart(part({ type: 'file', url: 'data:image/png;base64,AAA' }))).toBe(true);
+    expect(isFilePart(part({ type: 'media', url: 'file:///tmp/a.pdf' }))).toBe(true);
+    expect(isFilePart(part({ type: 'file', filename: 'a.txt' }))).toBe(false); // no url
+    expect(isFilePart(part({ type: 'text', text: 'hi' }))).toBe(false);
+  });
+
+  it('isImageFilePart detects an image by mime or a data:image URL', () => {
+    expect(isImageFilePart(part({ type: 'file', mime: 'image/png', url: 'x' }))).toBe(true);
+    expect(isImageFilePart(part({ type: 'file', url: 'data:image/jpeg;base64,AAA' }))).toBe(true);
+    // A non-image file is a chip, not a thumbnail.
+    expect(isImageFilePart(part({ type: 'file', mime: 'application/pdf', url: 'file:///a.pdf' }))).toBe(false);
+    // Not a file part at all.
+    expect(isImageFilePart(part({ type: 'text', text: 'hi' }))).toBe(false);
   });
 });
 

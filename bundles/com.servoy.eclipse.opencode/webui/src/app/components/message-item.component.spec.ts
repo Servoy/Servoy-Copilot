@@ -53,6 +53,32 @@ describe('MessageItemComponent', () => {
     expect(component.toolName(tool)).toBe('Read File');
   });
 
+  it('renders an image attachment part as a thumbnail in the DOM', () => {
+    fixture.componentRef.setInput('role', 'user');
+    fixture.componentRef.setInput('parts', [
+      { type: 'file', mime: 'image/png', filename: 'shot.png', url: 'data:image/png;base64,AAA' } as Part,
+      { type: 'text', text: 'what is this?' } as Part
+    ]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const img = el.querySelector('img.attachment-image') as HTMLImageElement | null;
+    expect(img).toBeTruthy();
+    expect(img?.getAttribute('src')).toBe('data:image/png;base64,AAA');
+    expect(img?.getAttribute('alt')).toBe('shot.png');
+    expect(el.textContent).toContain('what is this?');
+  });
+
+  it('renders a non-image attachment part as a named chip', () => {
+    fixture.componentRef.setInput('role', 'user');
+    fixture.componentRef.setInput('parts', [
+      { type: 'file', mime: 'application/pdf', filename: 'spec.pdf', url: 'file:///spec.pdf' } as Part
+    ]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('img.attachment-image')).toBeNull();
+    expect(el.querySelector('.attachment-chip')?.textContent).toContain('spec.pdf');
+  });
+
   it('keeps a subagent row expandable (its output) AND exposes an open link that emits the child id', () => {
     const sub = {
       type: 'tool',

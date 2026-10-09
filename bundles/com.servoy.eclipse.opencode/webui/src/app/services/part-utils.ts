@@ -78,12 +78,38 @@ export function isToolPart(part: Part): boolean {
   return part.type === 'tool';
 }
 
+/**
+ * File/image attachment parts - a user's uploaded or pasted file. Rendered as
+ * an inline thumbnail (image) or a small chip (other files) at the top of the
+ * message, so you can see what was attached. Only shown when it has a URL to
+ * point at (a {@code data:} URL or a file reference).
+ */
+export function isFilePart(part: Part): boolean {
+  return (part.type === 'file' || part.type === 'media') && typeof part.url === 'string' && part.url.length > 0;
+}
+
+/**
+ * Whether a file part is an image (shown as a thumbnail rather than a chip),
+ * decided from its mime type or a {@code data:image/...} URL.
+ */
+export function isImageFilePart(part: Part): boolean {
+  if (!isFilePart(part)) {
+    return false;
+  }
+  const mime = typeof part.mime === 'string' ? part.mime : '';
+  if (mime.startsWith('image/')) {
+    return true;
+  }
+  const url = part.url ?? '';
+  return url.startsWith('data:image/');
+}
+
 /** Whether the part should be rendered at all in iteration 1. */
 export function isRenderablePart(part: Part): boolean {
   if (isSyntheticPart(part)) {
     return false;
   }
-  return isTextPart(part) || isReasoningPart(part) || isToolPart(part);
+  return isTextPart(part) || isReasoningPart(part) || isToolPart(part) || isFilePart(part);
 }
 
 /** A short human label for a tool part (name + status). */

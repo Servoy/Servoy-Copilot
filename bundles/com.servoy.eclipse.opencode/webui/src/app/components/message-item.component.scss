@@ -28,6 +28,44 @@
   }
 }
 
+// An attached image: a compact thumbnail above the message text (like
+// OpenChamber), clickable to open the full image in a new tab.
+.attachment-image-link {
+  display: inline-block;
+  margin: 0 0 0.4rem;
+  line-height: 0;
+}
+
+.attachment-image {
+  max-width: 240px;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+  object-fit: contain;
+}
+
+// A non-image attachment: a small chip showing the file name.
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  background: var(--svy-hover, rgba(127, 127, 127, 0.1));
+  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+  font-size: 0.82rem;
+  max-width: 100%;
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .error-notice {
   color: var(--svy-danger, #d1242f);
   font-size: 0.85rem;

@@ -53,6 +53,19 @@ export function mapV2Message(raw: unknown): MessageWithParts {
     parts.push({ type: 'text', text: m['text'] as string, messageID: id, sessionID });
   }
 
+  // A V2 user message's attachments come back as a top-level `files` array
+  // (NOT in `content`): each entry is { data(base64, no prefix), mime, name,
+  // source }. Normalise them into file parts so the transcript renderer shows
+  // them the same way as a just-sent (optimistic) attachment - otherwise an
+  // uploaded image is invisible after a reload.
+  const files = Array.isArray(m['files']) ? (m['files'] as unknown[]) : [];
+  files.forEach((entry, index) => {
+    const part = mapV2FilePart(entry, id, sessionID, index);
+    if (part) {
+      parts.push(part);
+    }
+  });
+
   const content = Array.isArray(m['content']) ? (m['content'] as unknown[]) : [];
   content.forEach((entry, index) => {
     const part = mapV2ContentPart(entry, id, sessionID, index);
@@ -62,6 +75,42 @@ export function mapV2Message(raw: unknown): MessageWithParts {
   });
 
   return { info, parts };
+}
+
+/**
+ * Maps a V2 user-message attachment ({@code message.files[]} entry) into a file
+ * {@link Part}. The entry is {@code { data(base64, no data: prefix), mime, name,
+ * source }}; the content becomes a {@code data:} URL under {@code url} so the
+ * renderer can show an inline image, with the mime and filename alongside. An
+ * entry that carries a {@code source.uri}/{@code url} instead of inline data
+ * uses that as the url. Returns {@code null} when there is nothing to show.
+ */
+export function mapV2FilePart(
+  entry: unknown,
+  messageID: string,
+  sessionID: string | undefined,
+  index: number
+): Part | null {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+  const f = entry as Record<string, unknown>;
+  const mime = typeof f['mime'] === 'string' ? (f['mime'] as string) : undefined;
+  const name = typeof f['name'] === 'string' ? (f['name'] as string) : undefined;
+  const data = typeof f['data'] === 'string' ? (f['data'] as string) : undefined;
+  const source = f['source'] as { uri?: string } | undefined;
+  let url: string | undefined;
+  if (data && mime) {
+    url = `data:${mime};base64,${data}`;
+  } else if (typeof f['url'] === 'string') {
+    url = f['url'] as string;
+  } else if (typeof source?.uri === 'string') {
+    url = source.uri;
+  }
+  if (!url) {
+    return null;
+  }
+  return { id: `${messageID}#file-${index}`, type: 'file', messageID, sessionID, filename: name, mime, url };
 }
 
 /**
