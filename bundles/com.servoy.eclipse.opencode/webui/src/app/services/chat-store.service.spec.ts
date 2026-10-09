@@ -23,7 +23,6 @@ function apiMock() {
     createSession: vi.fn(),
     getSession: vi.fn(),
     updateSessionTitle: vi.fn(),
-    archiveSession: vi.fn(),
     deleteSession: vi.fn(),
     listMessages: vi.fn(),
     sendPrompt: vi.fn(),
@@ -543,31 +542,6 @@ describe('ChatStore', () => {
   it('renameSession ignores a blank title', () => {
     store.renameSession('s1', '   ');
     expect(api.updateSessionTitle).not.toHaveBeenCalled();
-  });
-
-  it('archiveSession archives, refreshes and resets the active session when it was active', () => {
-    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
-    api.archiveSession.mockReturnValue(of<Session>({ id: 's1', time: { archived: 1 } }));
-    api.listSessions.mockReturnValue(of<Session[]>([]));
-    store.openSession('s1');
-
-    store.archiveSession('s1');
-
-    expect(api.archiveSession).toHaveBeenCalledWith('s1');
-    expect(store.activeSessionId()).toBeNull();
-    expect(store.messages()).toEqual([]);
-    expect(api.listSessions).toHaveBeenCalled();
-  });
-
-  it('archiveSession keeps the active session when a different one is archived', () => {
-    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
-    api.archiveSession.mockReturnValue(of<Session>({ id: 'other', time: { archived: 1 } }));
-    api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1' }]));
-    store.openSession('s1');
-
-    store.archiveSession('other');
-
-    expect(store.activeSessionId()).toBe('s1');
   });
 
   it('exportSession fetches the session and messages and downloads a json file', () => {

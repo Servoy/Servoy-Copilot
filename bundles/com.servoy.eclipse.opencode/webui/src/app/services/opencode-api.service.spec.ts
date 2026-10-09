@@ -94,14 +94,6 @@ describe('OpencodeApiService', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
-  it('archiveSession PATCHes a time.archived timestamp', () => {
-    service.archiveSession('s1', 123).subscribe();
-    const req = httpMock.expectOne('rest_api/session/s1');
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ time: { archived: 123 } });
-    req.flush(null, { status: 204, statusText: 'No Content' });
-  });
-
   it('deleteSession DELETEs the session (V2 returns 204)', () => {
     service.deleteSession('s1').subscribe();
     const req = httpMock.expectOne('rest_api/session/s1');

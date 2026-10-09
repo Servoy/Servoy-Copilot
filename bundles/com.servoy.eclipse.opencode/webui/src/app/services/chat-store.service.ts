@@ -387,17 +387,6 @@ export class ChatStore {
   }
 
   /**
-   * Archive a session (hidden from the list, recoverable). Refreshes the list;
-   * if the archived session was active, drops back to a fresh draft.
-   */
-  archiveSession(id: string): void {
-    this.api.archiveSession(id).subscribe({
-      next: () => this.afterRemoval(id),
-      error: (err) => this.error.set(this.describe('archiveSession', err))
-    });
-  }
-
-  /**
    * Export a session as JSON and trigger a browser download. Fetches the
    * session info and its full message history and emits them verbatim in the
    * {@code { info, messages: [{ info, parts }] }} structure that opencode's own
@@ -425,7 +414,7 @@ export class ChatStore {
     });
   }
 
-  /** Shared cleanup after a session leaves the list (archive or delete). */
+  /** Shared cleanup after a session leaves the list (deleted). */
   private afterRemoval(id: string): void {
     if (this.activeSessionId() === id) {
       this.activeSessionId.set(null);

@@ -58,10 +58,6 @@ export class AppComponent implements OnInit {
     this.store.exportSession(id);
   }
 
-  onArchiveSession(id: string): void {
-    this.store.archiveSession(id);
-  }
-
   onDeleteSession(id: string): void {
     this.store.deleteSession(id);
   }

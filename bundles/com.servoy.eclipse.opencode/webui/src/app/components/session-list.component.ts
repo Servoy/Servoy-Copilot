@@ -34,7 +34,7 @@ interface MenuPosition {
  * Panel listing sessions as a tree: top-level sessions, each expandable to show
  * its subagent (child) sessions. A "New session" action and selection to switch
  * the active session. Each row has a context menu (right-click / 3-dots) with
- * Rename, Archive and Delete.
+ * Rename, Export and Delete.
  */
 @Component({
   selector: 'svy-session-list',
@@ -54,7 +54,6 @@ export class SessionListComponent {
   readonly create = output<void>();
   readonly rename = output<SessionRename>();
   readonly export = output<string>();
-  readonly archive = output<string>();
   readonly remove = output<string>();
 
   /** Ids of expanded top-level sessions (their subagent children are shown). */
@@ -289,11 +288,6 @@ export class SessionListComponent {
   onExport(id: string): void {
     this.closeMenu();
     this.export.emit(id);
-  }
-
-  onArchive(id: string): void {
-    this.closeMenu();
-    this.archive.emit(id);
   }
 
   onDelete(id: string): void {

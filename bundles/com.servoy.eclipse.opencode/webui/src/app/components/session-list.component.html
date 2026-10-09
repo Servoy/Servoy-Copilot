@@ -76,7 +76,6 @@
   <div #contextMenu class="context-menu" [style.left.px]="menuPosition().x" [style.top.px]="menuPosition().y">
     <button type="button" class="menu-item" (click)="onRename(menuId)">Rename</button>
     <button type="button" class="menu-item" (click)="onExport(menuId)">Export</button>
-    <button type="button" class="menu-item" (click)="onArchive(menuId)">Archive</button>
     <button type="button" class="menu-item danger" (click)="onDelete(menuId)">Delete</button>
   </div>
 }
