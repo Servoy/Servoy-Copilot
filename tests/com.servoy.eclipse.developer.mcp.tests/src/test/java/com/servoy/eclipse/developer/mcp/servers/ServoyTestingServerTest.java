@@ -713,8 +713,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue("screenshotForm description should name property type mismatches as the blocking gate: " + tool.description(),
-				tool.description().contains("property type mismatches"));
+		assertTrue("screenshotForm description should name property type mismatches as the blocking gate: "
+				+ tool.description(), tool.description().contains("property type mismatches"));
 	}
 
 	@Test
@@ -736,17 +736,19 @@ public class ServoyTestingServerTest {
 	}
 
 	/**
-	 * Problem markers no longer gate the screenshot. The description must say so, and must
-	 * not claim any file's markers block it.
+	 * Problem markers no longer gate the screenshot. The description must say so,
+	 * and must not claim any file's markers block it.
 	 */
 	@Test
 	public void testScreenshotForm_descriptionSaysMarkersDoNotBlock() {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue("screenshotForm description should state problem markers do not block the screenshot: " + tool.description(),
-				tool.description().contains("do not block the screenshot"));
-		assertFalse("screenshotForm description must not claim .frm/.js markers block the screenshot: " + tool.description(),
+		assertTrue("screenshotForm description should state problem markers do not block the screenshot: "
+				+ tool.description(), tool.description().contains("do not block the screenshot"));
+		assertFalse(
+				"screenshotForm description must not claim .frm/.js markers block the screenshot: "
+						+ tool.description(),
 				tool.description().contains(".frm or .js") || tool.description().contains(".js files")
 						|| tool.description().contains("markers on its .frm file"));
 	}
@@ -770,8 +772,7 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("testE2E");
 		assertNotNull("testE2E tool not found", m);
 		assertEquals("testE2E must have 1 parameter", 1, m.getParameterCount());
-		assertNotNull("testE2E parameter must have @ToolParam",
-				m.getParameters()[0].getAnnotation(ToolParam.class));
+		assertNotNull("testE2E parameter must have @ToolParam", m.getParameters()[0].getAnnotation(ToolParam.class));
 	}
 
 	@Test
@@ -791,7 +792,8 @@ public class ServoyTestingServerTest {
 	public void testGenerateCypressE2ETest_outputFileNameParamMentionsCyTs() {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull("generateCypressE2ETest tool not found", m);
-		// outputFileName is the 4th parameter (index 3): targetForm, scenario, fromForm, outputFileName, ...
+		// outputFileName is the 4th parameter (index 3): targetForm, scenario,
+		// fromForm, outputFileName, ...
 		ToolParam param = m.getParameters()[3].getAnnotation(ToolParam.class);
 		assertNotNull("outputFileName parameter must have @ToolParam", param);
 		assertTrue("outputFileName @ToolParam description must mention .cy.ts: " + param.description(),
@@ -861,5 +863,59 @@ public class ServoyTestingServerTest {
 	public void testCypressE2ESpecPattern_containsCyJs() {
 		assertTrue("CYPRESS_E2E_SPEC_PATTERN must include cy.js for backward compatibility",
 				ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.js"));
+	}
+	// -----------------------------------------------------------------------
+	// E2E tool descriptions must mention both .cy.js and .cy.ts (SVY-21525)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testListE2ETests_descriptionMentionsBothExtensions() {
+		Method m = findToolMethod("listE2ETests");
+		assertNotNull("listE2ETests tool not found", m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue("listE2ETests @Tool description must mention .cy.js: " + desc, desc.contains(".cy.js"));
+		assertTrue("listE2ETests @Tool description must mention .cy.ts: " + desc, desc.contains(".cy.ts"));
+	}
+
+	@Test
+	public void testTestE2E_descriptionMentionsBothExtensions() {
+		Method m = findToolMethod("testE2E");
+		assertNotNull("testE2E tool not found", m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue("testE2E @Tool description must mention .cy.js: " + desc, desc.contains(".cy.js"));
+		assertTrue("testE2E @Tool description must mention .cy.ts: " + desc, desc.contains(".cy.ts"));
+	}
+
+	@Test
+	public void testTestE2E_targetFormParamMentionsBothExtensions() {
+		Method m = findToolMethod("testE2E");
+		assertNotNull("testE2E tool not found", m);
+		ToolParam param = m.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull("testE2E targetForm parameter must have @ToolParam", param);
+		assertTrue("testE2E targetForm @ToolParam description must mention .cy.js: " + param.description(),
+				param.description().contains(".cy.js"));
+		assertTrue("testE2E targetForm @ToolParam description must mention .cy.ts: " + param.description(),
+				param.description().contains(".cy.ts"));
+	}
+
+	@Test
+	public void testShowAndTestE2E_descriptionMentionsBothExtensions() {
+		Method m = findToolMethod("showAndTestE2E");
+		assertNotNull("showAndTestE2E tool not found", m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue("showAndTestE2E @Tool description must mention .cy.js: " + desc, desc.contains(".cy.js"));
+		assertTrue("showAndTestE2E @Tool description must mention .cy.ts: " + desc, desc.contains(".cy.ts"));
+	}
+
+	@Test
+	public void testShowAndTestE2E_targetFormParamMentionsBothExtensions() {
+		Method m = findToolMethod("showAndTestE2E");
+		assertNotNull("showAndTestE2E tool not found", m);
+		ToolParam param = m.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull("showAndTestE2E targetForm parameter must have @ToolParam", param);
+		assertTrue("showAndTestE2E targetForm @ToolParam description must mention .cy.js: " + param.description(),
+				param.description().contains(".cy.js"));
+		assertTrue("showAndTestE2E targetForm @ToolParam description must mention .cy.ts: " + param.description(),
+				param.description().contains(".cy.ts"));
 	}
 }
