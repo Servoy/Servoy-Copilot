@@ -12,4 +12,234 @@
 	</parent>
 	<artifactId>com.servoy.eclipse.opencode.skilltest.tests</artifactId>
 	<packaging>eclipse-test-plugin</packaging>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jarsigner-plugin</artifactId>
+				<configuration>
+					<skip>true</skip>
+				</configuration>
+			</plugin>
+			<!-- Default (headless) run: the pure-logic unit tests only. The real
+			     skill-test SCENARIOS are NOT run here - they need a full workbench and
+			     are run via the 'integration' profile below. Enumerate concrete classes;
+			     Tycho cannot expand the JUnit Platform @Suite (AllSkillTestUnitTests). -->
+			<plugin>
+				<groupId>org.eclipse.tycho</groupId>
+				<artifactId>tycho-surefire-plugin</artifactId>
+				<version>${tycho-version}</version>
+				<configuration>
+					<useUIHarness>false</useUIHarness>
+					<application>org.eclipse.pde.junit.runtime.coretestapplication</application>
+					<providerHint>junit6</providerHint>
+					<test>
+						ArgMatcherTest,
+						BaselineLoaderTest,
+						JsUnitVerifierTest,
+						McpToolCallTest,
+						ScopeForSolutionPathTest,
+						SessionTranscriptTest,
+						SkillTestResultTest,
+						TranscriptComparatorTest,
+						OutcomeAssertionsTest,
+						OutcomeInferenceTest,
+						SkillTestArgumentChestTest,
+						JUnitXmlReporterTest
+					</test>
+					<argLine>
+						-Xms128m -Xmx512m -ea
+						--add-exports=java.base/sun.security.x509=ALL-UNNAMED
+						-Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<!-- ================================================================
+		     SVY-21366 real skill-test scenario run.
+		     Boots a FULLY RESOLVED Servoy workbench via tycho-surefire (from the
+		     target platform + reactor, exactly like the developer.mcp integration
+		     tests) and runs SkillTestCiRunnerTest, which invokes the real
+		     SkillTestHeadlessRunner over the baseline scenarios cloned from
+		     servoy-ai-skilltest-baselines (-Dservoy.skilltest.baselines=...).
+		     This replaces the old build_product/run_test tarball-overlay-launch:
+		     the IDE bundles come from the target platform (so they resolve), only
+		     application_server is taken from the tarball.
+		     Run on CI with:
+		       mvn verify -Pintegration -pl tests/com.servoy.eclipse.opencode.skilltest.tests -am \
+		           -Dservoy.skilltest.run=true -Dservoy.skilltest.baselines=... (+ cloud creds)
+		     ================================================================ -->
+		<profile>
+			<id>win32-x86_64</id>
+			<activation>
+				<os><family>windows</family><arch>amd64</arch></os>
+			</activation>
+			<properties>
+				<arch.extension.plugin>com.servoy.eclipse.nodejs.win32.win32.x86_64</arch.extension.plugin>
+			</properties>
+		</profile>
+		<profile>
+			<id>win32-aarch64</id>
+			<activation>
+				<os><family>windows</family><arch>aarch64</arch></os>
+			</activation>
+			<properties>
+				<arch.extension.plugin>com.servoy.eclipse.nodejs.win32.win32.aarch64</arch.extension.plugin>
+			</properties>
+		</profile>
+		<profile>
+			<id>linux-x86_64</id>
+			<activation>
+				<os><family>unix</family><name>linux</name><arch>amd64</arch></os>
+			</activation>
+			<properties>
+				<arch.extension.plugin>com.servoy.eclipse.nodejs.linux.gtk.x86_64</arch.extension.plugin>
+			</properties>
+		</profile>
+		<profile>
+			<id>mac-aarch64</id>
+			<activation>
+				<os><family>mac</family><arch>aarch64</arch></os>
+			</activation>
+			<properties>
+				<arch.extension.plugin>com.servoy.eclipse.nodejs.macosx.aarch64</arch.extension.plugin>
+			</properties>
+		</profile>
+
+		<profile>
+			<id>integration</id>
+			<properties>
+				<servoy_install>${project.basedir}/testresources/servoy_lts_extracted</servoy_install>
+			</properties>
+			<build>
+				<plugins>
+					<!-- Extract ONLY application_server/** from the Servoy tarball. The IDE
+					     bundles are NOT taken from the tarball (that is what broke the old
+					     approach); tycho-surefire resolves them from the target platform. -->
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>3.1.0</version>
+						<executions>
+							<execution>
+								<id>prepare-servoy-install</id>
+								<phase>generate-test-resources</phase>
+								<goals><goal>run</goal></goals>
+								<configuration>
+									<target xmlns:if="ant:if" xmlns:unless="ant:unless">
+										<property name="tarball" value="${servoy.install.tarball.for.appserver}"/>
+										<property name="extract_dir" value="${project.basedir}/testresources/servoy_lts_extracted"/>
+										<property name="timestamp_file" value="${project.basedir}/testresources/servoy_lts_extracted.timestamp"/>
+
+										<available file="${tarball}" property="tarball_exists"/>
+										<uptodate property="extraction_current"
+											srcfile="${tarball}" targetfile="${timestamp_file}"
+											if:set="tarball_exists"/>
+
+										<sequential if:set="tarball_exists" unless:set="extraction_current">
+											<delete dir="${extract_dir}" quiet="true"/>
+											<delete file="${timestamp_file}" quiet="true"/>
+											<mkdir dir="${extract_dir}"/>
+											<untar src="${tarball}" dest="${extract_dir}" compression="gzip">
+												<patternset>
+													<include name="application_server/**"/>
+													<exclude name="application_server/postgres_db/**"/>
+												</patternset>
+											</untar>
+											<exec executable="touch">
+												<arg value="-r"/>
+												<arg value="${tarball}"/>
+												<arg value="${timestamp_file}"/>
+											</exec>
+										</sequential>
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.eclipse.tycho</groupId>
+						<artifactId>tycho-surefire-plugin</artifactId>
+						<version>${tycho-version}</version>
+						<configuration>
+							<providerHint>junit6</providerHint>
+							<!-- The real-scenario ignition: invokes SkillTestHeadlessRunner.runInWorkbench()
+							     over the cloned baselines, guarded by -Dservoy.skilltest.run=true (so it is
+							     skipped unless the CI job sets it). -->
+							<test>SkillTestCiRunnerTest</test>
+							<useUIHarness>true</useUIHarness>
+							<useUIThread>false</useUIThread>
+							<product>com.servoy.eclipse.core.ide</product>
+							<application>org.eclipse.ui.ide.workbench</application>
+							<argLine>-Xms256m -Xmx3072m -ea
+								--add-exports=java.base/sun.security.x509=ALL-UNNAMED
+								-Dorg.osgi.framework.system.packages.extra=sun.security.x509
+								-Dservoy.cloud.skipCheckout=true
+								-Dservoy.application_server.dir=${servoy_install}/application_server
+								-Dservoy.skilltest.as=${servoy_install}/application_server
+								-Dchromium.integration.eclipse.disable=true
+								-Dorg.eclipse.ui.testing=true</argLine>
+							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
+							<bundleStartLevel>
+								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>
+								<bundle><id>org.apache.logging.log4j.api</id><level>2</level><autoStart>true</autoStart></bundle>
+								<bundle><id>org.apache.logging.log4j.core</id><level>2</level><autoStart>true</autoStart></bundle>
+								<bundle><id>org.apache.logging.log4j.slf4j2.impl</id><level>2</level><autoStart>true</autoStart></bundle>
+								<bundle><id>j2db_log4j</id><level>3</level><autoStart>true</autoStart></bundle>
+							</bundleStartLevel>
+							<dependencies>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.extension.compatibility</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.opencode</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.developer.mcp</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.opencode.skilltest</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.cypress</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>j2db_log4j</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>org.apache.logging.log4j.core</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>org.apache.logging.log4j.api</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>org.apache.logging.log4j.slf4j2.impl</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>slf4j.api</artifactId>
+								</dependency>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>${arch.extension.plugin}</artifactId>
+								</dependency>
+							</dependencies>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

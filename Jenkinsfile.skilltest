@@ -1,15 +1,14 @@
 // RUN job for the Servoy AI skill-test suite (SVY-21366).
 //
-// One job, one Jenkinsfile. The work is driven by two pom.xml profiles:
-//   -Pbuild_product  materializes a runnable Servoy install (from the full tarball)
-//                    with the freshly-built AI bundles overlaid and the baselines
-//                    seeded into the run workspace;
-//   -Prun_test       launches that install headless to run the baselines.
-// The reactor build of the AI bundles runs first (normal lifecycle), so every run
-// exercises the current plugin code - rebuilding one plugin is quick.
-//
-// The baselines are seeded from ${skilltest.baselines.dir} (defaults to the in-repo
-// fixture); override it to point at the baselines repo once it exists.
+// Runs the real skill-test SCENARIOS from the servoy-ai-skilltest-baselines repo
+// against the real LLM. The scenarios need a running Servoy workbench (they create
+// solutions over MCP, check the live model, and run JSUnit in a SmartClient), so
+// they are launched via a tycho-surefire PDE run of the skilltest.tests project's
+// 'integration' profile: Tycho boots a FULLY RESOLVED workbench from the target
+// platform + reactor (so the IDE bundles resolve - unlike extracting the shipped
+// tarball product), and only application_server is taken from the tarball. The
+// SkillTestCiRunnerTest ignition then invokes the real SkillTestHeadlessRunner over
+// the cloned baselines.
 
 pipeline {
     agent any
@@ -25,8 +24,9 @@ pipeline {
 
     environment {
         TEAMS_WEBHOOK = credentials('servoy-teams-webhook')
-        // 'clean install' runs the full Tycho lifecycle incl. tycho-gpg-plugin:sign-p2-artifacts,
-        // which needs the signing key passphrase - same as the main build Jenkinsfile.
+        // The reactor build runs the full Tycho lifecycle incl.
+        // tycho-gpg-plugin:sign-p2-artifacts, which needs the signing key passphrase -
+        // same as the main build Jenkinsfile.
         MAVEN_GPG_PASSPHRASE = credentials('servoy-gpg-passphrase')
     }
 
@@ -44,15 +44,11 @@ pipeline {
 
         stage('Checkout baselines') {
             steps {
-                // The baselines are curated by testers in a SEPARATE private repo
+                // The baseline scenarios are curated by testers in a SEPARATE private repo
                 // (Servoy/servoy-ai-skilltest-baselines) they have access to, independent of
-                // this plugin source. Check it out (or pull if already present) into a
-                // sub-directory of the job workspace; build_product then seeds the run-install
-                // from ${WORKSPACE}/baselines-repo/baselines via -Dskilltest.baselines.dir.
-                //
-                // BASELINES_CRED must be a GitHub credential (username+token) with read access
-                // to the private baselines repo. TODO: set this to the real Jenkins credential id
-                // (Manage Jenkins > Credentials, or the main job's SCM config) before enabling.
+                // this plugin source. Check it out (shallow; refreshed on re-runs) into a
+                // sub-directory of the job workspace. The run points -Dservoy.skilltest.baselines
+                // straight at ${WORKSPACE}/baselines-repo/baselines - no copy step.
                 dir('baselines-repo') {
                     checkout([$class: 'GitSCM',
                         branches: [[name: '*/master']],
@@ -64,7 +60,7 @@ pipeline {
             }
         }
 
-        stage('Build product + run skill tests') {
+        stage('Run skill-test scenarios') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'servoy-cloud-svc',
                         usernameVariable: 'CLOUD_USER', passwordVariable: 'CLOUD_PASS')]) {
@@ -73,59 +69,63 @@ pipeline {
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                             configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                         ]) {
-                            // Two invocations to solve an ordering problem: build_product is an
-                            // antrun execution on the PARENT pom, whose lifecycle runs before the
-                            // child modules in the reactor. On a clean workspace, bundles/*/target
-                            // does not exist yet when the parent hits pre-integration-test. So:
-                            //
-                            // 1) Build ONLY the 3 AI plugin bundles (not tests, not sites, not
-                            //    features). This is fast (~30s) and produces the target/ jars.
+                            // One invocation. -Pintegration + -am builds the 3 AI bundles from
+                            // source, extracts only application_server/** from the tarball, and
+                            // runs SkillTestCiRunnerTest under a tycho-surefire workbench (resolved
+                            // from the target platform). That ignition calls the real
+                            // SkillTestHeadlessRunner over the cloned baselines and writes
+                            // TEST-skilltest.xml. -Dservoy.skilltest.run=true un-skips the ignition.
                             sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
-                                clean package \
-                                -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest \
-                                -am \
+                                clean verify \
+                                -Pintegration \
+                                -pl tests/com.servoy.eclipse.opencode.skilltest.tests -am \
                                 -Dtycho.localArtifacts=ignore \
-                                -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'''
-
-                            // 2) Materialize the install + overlay + run. -N (non-recursive) runs
-                            //    ONLY the parent pom's lifecycle, so build_product's antrun finds
-                            //    the target/ jars built in step 1 and run_test then launches the
-                            //    product. The child modules' lifecycles are NOT re-run.
-                            sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -N \
-                                -Pbuild_product,run_test \
-                                integration-test \
+                                -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ \
                                 -Dservoy.install.tarball.for.appserver=/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz \
-                                -Dskilltest.baselines.dir="$WORKSPACE/baselines-repo/baselines" \
-                                -Dskilltest.cloudUser="$CLOUD_USER" \
-                                -Dskilltest.cloudPass="$CLOUD_PASS"'''
+                                -Dservoy.skilltest.run=true \
+                                -Dservoy.skilltest.baselines="$WORKSPACE/baselines-repo/baselines" \
+                                -Dservoy.skilltest.outputDir="$WORKSPACE/skilltest-reports" \
+                                -Dservoy.skilltest.cloudUser="$CLOUD_USER" \
+                                -Dservoy.skilltest.cloudPass="$CLOUD_PASS"'''
                         }
                     }
                 }
             }
             post {
                 always {
-                    // allowEmptyResults: false so a run that produces zero reports (e.g. the
-                    // product failed to launch) fails the build instead of a silent SUCCESS.
+                    // The runner writes TEST-skilltest.xml to -Dservoy.skilltest.outputDir;
+                    // tycho-surefire also writes its own surefire reports. allowEmptyResults:false
+                    // so a run that produced NO report (e.g. the workbench never came up) fails the
+                    // build instead of a silent SUCCESS.
                     junit allowEmptyResults: false,
-                          testResults: '**/skilltest-install/workspace/servoy_ai_skilltests/reports/TEST-*.xml'
+                          testResults: 'skilltest-reports/TEST-*.xml, **/target/surefire-reports/TEST-*.xml'
                 }
             }
         }
 
         stage('Deploy skilltest p2 site') {
             steps {
-                // Publish the internal skilltest update site built by the reactor
-                // (repository.site_skilltest) to build.servoy.com/latest/servoy_ai_skilltest/.
-                // Mirrors the main Jenkinsfile's servoy_ai deploy. Internal-only tooling,
-                // kept at a separate path from the customer servoy_ai site.
-                sh '''
-                rm -rf /data/www/latest/servoy_ai_skilltest/
-                mkdir -p /data/www/latest/servoy_ai_skilltest/
-                for d in repository.site_skilltest/target/repository/; do
-                    [ -d "$d" ] && cp -r "$d/." "/data/www/latest/servoy_ai_skilltest/"
-                    break
-                done
-                '''
+                // Build + publish the internal skilltest update site to
+                // build.servoy.com/latest/servoy_ai_skilltest/. Separate invocation because the
+                // scenario run above only builds the test project + its deps, not the site.
+                configFileProvider([
+                    configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
+                    configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
+                ]) {
+                    sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
+                        clean package \
+                        -pl repository.site_skilltest -am \
+                        -Dtycho.localArtifacts=ignore \
+                        -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'''
+                    sh '''
+                    rm -rf /data/www/latest/servoy_ai_skilltest/
+                    mkdir -p /data/www/latest/servoy_ai_skilltest/
+                    for d in repository.site_skilltest/target/repository/; do
+                        [ -d "$d" ] && cp -r "$d/." "/data/www/latest/servoy_ai_skilltest/"
+                        break
+                    done
+                    '''
+                }
             }
         }
     }
