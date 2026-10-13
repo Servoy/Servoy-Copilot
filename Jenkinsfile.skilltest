@@ -104,7 +104,9 @@ pipeline {
             }
             post {
                 always {
-                    junit allowEmptyResults: true,
+                    // allowEmptyResults: false so a run that produces zero reports (e.g. the
+                    // product failed to launch) fails the build instead of a silent SUCCESS.
+                    junit allowEmptyResults: false,
                           testResults: '**/skilltest-install/workspace/servoy_ai_skilltests/reports/TEST-*.xml'
                 }
             }

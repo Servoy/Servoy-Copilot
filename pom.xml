@@ -185,6 +185,13 @@
                                         <untar src="${servoy.install.tarball.for.appserver}"
                                                dest="${install}" compression="gzip" />
 
+                                        <!-- The tarball's JRE java binary loses its execute permission when
+                                             Ant's <untar> extracts it (Ant does not preserve Unix file modes).
+                                             chmod it before the <java> task in run_test tries to launch it. -->
+                                        <chmod perm="+x">
+                                            <fileset dir="${developer}/plugins" includes="com.servoy.eclipse.jre.*/jre/bin/*" />
+                                        </chmod>
+
                                         <!-- 2. Overlay the freshly-built AI bundles.
                                              The installed product loads EXACTLY the bundles listed in
                                              simpleconfigurator's bundles.info; a raw jar dropped in plugins/ is
