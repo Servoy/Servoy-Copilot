@@ -561,6 +561,11 @@ public class FormLayoutInspectionService
 	 * Builds the final result envelope from the raw DOM-read JSON, applying the cap-inline /
 	 * spill-to-temp-file convention. The raw read is already the JSON envelope (form, selector,
 	 * viewport, html, appearance); this only decides inline-vs-spill based on total size.
+	 * <p>
+	 * The inline-vs-spill decision measures the <em>compact</em> serialized length (inline token
+	 * cost). Inline output stays compact single-line JSON, but the spilled file is written
+	 * pretty-printed (one JSON node per line) so line-based file readers can grep for an element
+	 * ref or style and read a small line range around it to reach a specific appearance entry.
 	 */
 	private FormLayoutResult assembleResult(String formName, String rawRead, CapturedScreenshot shot) throws Exception
 	{
@@ -574,14 +579,15 @@ public class FormLayoutInspectionService
 		String resultFile;
 		if (mapper.writeValueAsString(read).length() > RESULT_CAP)
 		{
-			String file = spill(formName, "json", mapper.writeValueAsString(read));
+			String file = spill(formName, "json", mapper.writerWithDefaultPrettyPrinter().writeValueAsString(read));
 			resultFile = file;
 			ObjectNode envelope = mapper.createObjectNode();
 			envelope.put("resultFile", file);
 			envelope.put("truncated", true);
 			envelope.put("warning",
-				"The rendered form (HTML + appearance) exceeded the inline cap; the full result was written to " +
-					file + " - read it with the file tools.");
+				"The rendered form (HTML + appearance) exceeded the inline cap; the full result was written to the ABSOLUTE path '" +
+					file +
+					"'. Pass this path UNCHANGED to a file-reading tool - do not make it project-relative (no ../). The file is pretty-printed (one JSON node per line), so you can grep it for an element ref or style and read a small line range around the match to reach a specific 'appearance' entry.");
 			// include a light summary inline so the caller has immediate context
 			if (read.has("form")) envelope.set("form", read.get("form"));
 			if (read.has("selector")) envelope.set("selector", read.get("selector"));

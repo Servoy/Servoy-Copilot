@@ -62,8 +62,11 @@ public class ServoyFormServer
 		"you cannot judge from the computed values). The screenshot is only captured for the whole form, not for a 'selector'.\n" +
 		"Typical loop: edit the form -> call getFormLayout -> read the html + appearance map -> adjust -> call again; add " +
 		"'screenshot=true' only when you want to eyeball the actual pixels. It is READ-ONLY (it never changes the form). Pass a " +
-		"CSS 'selector' to inspect just one component's subtree. Large output is written to a temp file whose path is returned " +
-		"in 'resultFile'. If the form cannot be rendered it returns a message naming the action to take, never a timeout.", type = "object")
+		"CSS 'selector' to inspect just one component's subtree. Large output is written to a temp file whose ABSOLUTE path is " +
+		"returned in 'resultFile': pass that path UNCHANGED to a file-reading tool (do not make it project-relative with ../). " +
+		"The spilled file is pretty-printed (one JSON node per line), so you can grep it for an element ref or style and read a " +
+		"small line range around the match to reach a specific 'appearance' entry. If the form cannot be rendered it returns a " +
+		"message naming the action to take, never a timeout.", type = "object")
 	public Object getFormLayout(
 		@ToolParam(name = "formName", description = "The form to inspect, e.g. 'orderDetails'", required = true) String formName,
 		@ToolParam(name = "selector", description = "Optional CSS selector of the subtree to return (e.g. a component's tag or '#<id>'). When omitted the whole .svy-form is returned. A screenshot is only captured for the whole form, not a selected subtree.", required = false) String selector,

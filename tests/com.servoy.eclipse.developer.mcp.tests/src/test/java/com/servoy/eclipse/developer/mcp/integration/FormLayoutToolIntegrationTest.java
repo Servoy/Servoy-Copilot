@@ -263,9 +263,59 @@ public class FormLayoutToolIntegrationTest extends AbstractIntegrationTest {
 			// large form: the full html + appearance was spilled - read it back
 			Path file = Paths.get(resultFile.asText());
 			assertTrue(Files.exists(file), "the spilled resultFile must exist on disk: " + file);
-			return mapper.readTree(Files.readString(file, StandardCharsets.UTF_8));
+
+			String raw = Files.readString(file, StandardCharsets.UTF_8);
+			// SVY-21577: the spilled file must be pretty-printed (one JSON node per
+			// line) so line-based file readers can grep + ranged-read it, not a single
+			// ~170 KB line. A compact serialization would collapse to a single physical
+			// line with no indentation; a revert of the pretty-printer would fail here.
+			assertSpillIsPrettyPrinted(raw, file);
+			// SVY-21577: the inline warning must steer the agent to the absolute path,
+			// to pass it unchanged (no project-relative ../), and must advertise that the
+			// file is pretty-printed / greppable.
+			assertSpillWarning(envelope.path("warning").asText(), resultFile.asText());
+
+			// still parses to the same envelope shape (pretty JSON parses identically).
+			return mapper.readTree(raw);
 		}
 		return envelope;
+	}
+
+	/**
+	 * Asserts the spilled file content is pretty-printed JSON: more than one
+	 * physical line and carrying newline-anchored indentation (Jackson's default
+	 * pretty printer indents nested nodes). A compact single-line serialization -
+	 * the pre-SVY-21577 behaviour - would fail both checks.
+	 */
+	private void assertSpillIsPrettyPrinted(String raw, Path file) {
+		long lineCount = raw.lines().count();
+		assertTrue(lineCount > 1,
+				"the spilled JSON must be pretty-printed across multiple physical lines, not one giant line (file "
+						+ file + ", lines=" + lineCount + ")");
+		assertTrue(raw.indexOf('\n') >= 0, "the spilled JSON must contain line breaks: " + file);
+		// default pretty printing puts nested nodes on their own indented lines, so
+		// grep + a ranged read can reach a specific appearance entry; compact JSON has
+		// no newline-anchored indentation.
+		assertTrue(raw.contains("\n ") || raw.contains("\n\t"),
+				"the spilled JSON must carry newline-anchored indentation (pretty-printed), file " + file);
+	}
+
+	/**
+	 * Asserts the inline spill warning carries the three required points: the path
+	 * is absolute, must be passed unchanged (no project-relative ../), and the file
+	 * is pretty-printed / greppable.
+	 */
+	private void assertSpillWarning(String warning, String spilledPath) {
+		assertNotNull(warning, "a spill envelope must carry a warning");
+		String lower = warning.toLowerCase();
+		assertTrue(lower.contains("absolute"), "the warning must state the path is absolute: " + warning);
+		assertTrue(warning.contains(spilledPath), "the warning must embed the actual spilled path: " + warning);
+		assertTrue(lower.contains("unchanged"),
+				"the warning must tell the agent to pass the path unchanged: " + warning);
+		assertTrue(lower.contains("../") || lower.contains("project-relative"),
+				"the warning must warn against rebuilding a project-relative (../) path: " + warning);
+		assertTrue(lower.contains("pretty"), "the warning must say the file is pretty-printed: " + warning);
+		assertTrue(lower.contains("grep"), "the warning must say the file is greppable: " + warning);
 	}
 
 	private void saveEditingSolutionNodes(IPersist[] iPersists) throws RepositoryException {
