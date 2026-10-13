@@ -59,7 +59,7 @@ pipeline {
                         extensions: [[$class: 'CloneOption', shallow: true, depth: 1]],
                         userRemoteConfigs: [[
                             url: 'https://github.com/Servoy/servoy-ai-skilltest-baselines.git',
-                            credentialsId: 'BASELINES_CRED_TO_CONFIGURE']]])
+                            credentialsId: 'servoy-github-app']]])
                 }
             }
         }
