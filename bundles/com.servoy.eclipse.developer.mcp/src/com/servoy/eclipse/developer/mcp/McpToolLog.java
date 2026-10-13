@@ -31,7 +31,7 @@ public class McpToolLog
 	 * {@link ResourceNotFoundException} found, or {@code null} if the failure is a
 	 * genuine (unexpected) error. Package-visible for unit testing.
 	 */
-	static ResourceNotFoundException findNotFound(Throwable error)
+	public static ResourceNotFoundException findNotFound(Throwable error)
 	{
 		Throwable cause = error;
 		while (cause != null)

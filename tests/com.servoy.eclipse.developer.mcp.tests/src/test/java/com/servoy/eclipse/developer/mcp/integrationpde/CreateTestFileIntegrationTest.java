@@ -1,0 +1,417 @@
+/*
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+
+ This program is free software; you can redistribute it and/or modify it under
+ the terms of the GNU Affero General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+*/
+package com.servoy.eclipse.developer.mcp.integrationpde;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IProjectDescription;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspaceRunnable;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.DialogGuardBaseCopy;
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.TestUtilitiesClassCopy;
+import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
+import com.servoy.eclipse.developer.mcp.services.TestFileService;
+import com.servoy.eclipse.model.nature.ServoyProject;
+
+/**
+ * Layer 2 PDE integration tests for {@link TestFileService#createTestFile}.
+ * <p>
+ * Covers all scenarios from unittest.txt for the createTestFile tool:
+ * <ul>
+ *   <li>Happy-path: file is created on disk, return value format</li>
+ *   <li>Content structure: JSDoc header, well-formed block comment, non-empty, UTF-8</li>
+ *   <li>File location: always in solution root, never in a subdirectory</li>
+ *   <li>Multi-file: two distinct test files can coexist in the same project</li>
+ *   <li>Re-creation: file can be recreated after deletion</li>
+ *   <li>Duplicate-call protection: second call on same name returns "already exists" error</li>
+ *   <li>Error conditions: unknown solution, null solution</li>
+ * </ul>
+ */
+public class CreateTestFileIntegrationTest extends DialogGuardBaseCopy
+{
+	// Neutral name - NOT an existing Servoy solution so Servoy never tries to
+	// load it and show blocking error dialogs in the PDE test workspace.
+	private static final String SOLUTION_NAME = "test_layer2_workspace";
+	private static final String TEST_FILE_NAME = "test_createfiletest.js";
+
+	private TestFileService service;
+	private ServoyProject servoyProject;
+
+	@BeforeAll
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		TestUtilitiesClassCopy.deleteProjects(SOLUTION_NAME);
+		TestUtilitiesClassCopy.waitForWorkspaceBuildJobs();
+	}
+
+	@BeforeEach
+	public void setUp()
+	{
+		service = TestFileService.getInstance();
+
+		// Create a plain project in the test workspace (no Servoy natures/builders).
+		// We do NOT import the on-disk fixture: Servoy would try to load it as a
+		// solution, discover the missing "preimp4Test" module, and show a blocking
+		// error dialog that stalls the test runner.
+		// IWorkspace.run() acquires the workspace lock atomically, avoiding
+		// ResourceException from concurrent Servoy startup jobs holding the lock.
+		try
+		{
+			final IProject[] holder = new IProject[1];
+			ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable)monitor -> {
+				IProject p = ResourcesPlugin.getWorkspace().getRoot().getProject(SOLUTION_NAME);
+				if (!p.exists())
+				{
+					IProjectDescription desc = ResourcesPlugin.getWorkspace()
+						.newProjectDescription(SOLUTION_NAME);
+					p.create(desc, monitor);
+				}
+				if (!p.isOpen())
+				{
+					p.open(monitor);
+				}
+				holder[0] = p;
+			}, new NullProgressMonitor());
+			servoyProject = new ServoyProject();
+			servoyProject.setProject(holder[0]);
+		}
+		catch (Throwable e)
+		{
+			System.err.println("[CreateTestFileIntegrationTest.setUp] FAILED: " +
+				e.getClass().getName() + ": " + e.getMessage());
+			e.printStackTrace(System.err);
+			servoyProject = null;
+		}
+		assertNotNull(servoyProject, "Failed to create test project in workspace");
+
+		// Clean slate: OS-level delete bypasses any Eclipse workspace rule/lock that
+		// can cause IFile.delete() to throw silently (e.g. Servoy resource listeners
+		// holding a rule on the newly-created .js file).  After the OS delete we
+		// refresh Eclipse's resource cache so the workspace is back in sync.
+		deleteFileIfExists(TEST_FILE_NAME);
+	}
+
+	@AfterEach
+	public void tearDown()
+	{
+		deleteFileIfExists(TEST_FILE_NAME);
+	}
+
+	// -----------------------------------------------------------------------
+	// Happy-path: file creation and return value
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_createsFileOnDisk() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"), "createTestFile should succeed but returned: " + result);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		assertTrue(file.exists(), "File should physically exist in the project");
+	}
+
+	@Test
+	public void testCreateTestFile_returnValueContainsFileName() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"), "Should succeed: " + result);
+		assertTrue(result.contains(TEST_FILE_NAME),
+			"Return value should mention the file name: " + result);
+	}
+
+	@Test
+	public void testCreateTestFile_returnValueContainsCreated() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"), "Should succeed: " + result);
+		assertTrue(result.contains("Created"), "Return value should contain 'Created': " + result);
+	}
+
+	@Test
+	public void testCreateTestFile_returnValueContainsPath() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"), "Should succeed: " + result);
+		// Eclipse IPath.toString() always uses '/' as separator
+		assertTrue(result.contains("/"), "Return value should contain a path separator: " + result);
+	}
+
+	// -----------------------------------------------------------------------
+	// Content structure (unittest.txt §4: JSDoc header, encoding, well-formed JS)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_fileContentNotEmpty() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		String content;
+		try (java.io.InputStream is = file.getContents())
+		{
+			content = new String(is.readAllBytes(), "UTF-8");
+		}
+		assertTrue(content.trim().length() > 0, "Created file should not be empty");
+	}
+
+	@Test
+	public void testCreateTestFile_createdFileContainsJsunitHeader() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		String content;
+		try (java.io.InputStream is = file.getContents())
+		{
+			content = new String(is.readAllBytes(), "UTF-8");
+		}
+
+		assertTrue(content.startsWith("/**"),
+			"Created file should contain JSUnit block comment");
+		assertTrue(content.contains("Servoy") || content.contains("JSUnit"),
+			"Created file should mention Servoy or JSUnit");
+	}
+
+	@Test
+	public void testCreateTestFile_contentHasClosingBlockComment() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		String content;
+		try (java.io.InputStream is = file.getContents())
+		{
+			content = new String(is.readAllBytes(), "UTF-8");
+		}
+
+		assertTrue(content.contains("*/"), "Header should have a closing */ marker");
+	}
+
+	@Test
+	public void testCreateTestFile_contentBlockCommentIsWellFormed() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		String content;
+		try (java.io.InputStream is = file.getContents())
+		{
+			content = new String(is.readAllBytes(), "UTF-8");
+		}
+
+		int openIdx = content.indexOf("/**");
+		int closeIdx = content.indexOf("*/");
+		assertTrue(openIdx >= 0 && closeIdx > openIdx, "Opening /** must come before closing */");
+	}
+
+	// -----------------------------------------------------------------------
+	// File location (unittest.txt §3: always in solution root, never subdirectory)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_fileIsInProjectRoot() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		IFile file = servoyProject.getProject().getFile(TEST_FILE_NAME);
+		assertTrue(file.getParent().equals(servoyProject.getProject()),
+			"File should be a direct child of the project root (not in a subdirectory)");
+	}
+
+	// -----------------------------------------------------------------------
+	// Multi-file and re-creation
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_afterDeletion_canRecreate() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+		deleteFileIfExists(TEST_FILE_NAME); // simulate user deleting the file
+
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"),
+			"Re-creating after deletion should succeed: " + result);
+		assertTrue(servoyProject.getProject().getFile(TEST_FILE_NAME).exists(),
+			"File should exist after re-creation");
+	}
+
+	@Test
+	public void testCreateTestFile_twoDistinctFilesCanCoexist() throws Exception
+	{
+		// unittest.txt: each source file gets its own test file (test_sourceFileName.js)
+		String secondFileName = "test_createfiletest2.js";
+		try
+		{
+			String r1 = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+			String r2 = service.createTestFile(secondFileName, SOLUTION_NAME);
+
+			assertFalse(r1.startsWith("Error"), "First file creation failed: " + r1);
+			assertFalse(r2.startsWith("Error"), "Second file creation failed: " + r2);
+			assertTrue(servoyProject.getProject().getFile(TEST_FILE_NAME).exists(),
+				"First file should exist on disk");
+			assertTrue(servoyProject.getProject().getFile(secondFileName).exists(),
+				"Second file should exist on disk");
+		}
+		finally
+		{
+			deleteFileIfExists(secondFileName);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Duplicate-call protection (unittest.txt §1 step 2B: check before creating)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_duplicateCall_returnsError() throws Exception
+	{
+		service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME); // first call succeeds
+		String result = service.createTestFile(TEST_FILE_NAME, SOLUTION_NAME); // second call should fail
+
+		assertTrue(result.startsWith("Error"), "Second call should return an Error message");
+		assertTrue(result.toLowerCase().contains("already exists"),
+			"Error should mention the file already exists");
+	}
+
+	// -----------------------------------------------------------------------
+	// Error conditions (unittest.txt §5)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void testCreateTestFile_unknownSolution_returnsError() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, "nonexistent_solution_xyz");
+
+		assertTrue(result.startsWith("Error"), "Non-existent solution should return Error");
+		assertTrue(result.toLowerCase().contains("not found"),
+			"Error should mention solution not found");
+	}
+
+	@Test
+	public void testCreateTestFile_nullSolution_returnsError() throws Exception
+	{
+		String result = service.createTestFile(TEST_FILE_NAME, null);
+
+		assertTrue(result.startsWith("Error"), "Null solution should return an Error: " + result);
+	}
+
+	// -----------------------------------------------------------------------
+	// Tool-layer file-name convention (SVY-21491: accept test_*.js OR *_test.js)
+	// The convention check lives in ServoyTestingServer.createTestFile, NOT in
+	// TestFileService, so these cases go through the tool.
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName("tool accepts *_test.js name and creates the file on disk")
+	public void testCreateTestFile_tool_underscoreTestSuffix_createsFile() throws Exception
+	{
+		String underscoreTestName = "utils_test.js";
+		try
+		{
+			ServoyTestingServer server = new ServoyTestingServer();
+			String result = server.createTestFile(underscoreTestName, SOLUTION_NAME);
+
+			assertFalse(result.startsWith("Error"),
+				"*_test.js name should be accepted but returned: " + result);
+			assertTrue(servoyProject.getProject().getFile(underscoreTestName).exists(),
+				"File should physically exist in the project");
+		}
+		finally
+		{
+			deleteFileIfExists(underscoreTestName);
+		}
+	}
+
+	@Test
+	@DisplayName("tool still accepts test_*.js name (regression guard)")
+	public void testCreateTestFile_tool_testPrefix_stillAccepted() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile(TEST_FILE_NAME, SOLUTION_NAME);
+
+		assertFalse(result.startsWith("Error"),
+			"test_*.js name should still be accepted but returned: " + result);
+		assertTrue(servoyProject.getProject().getFile(TEST_FILE_NAME).exists(),
+			"File should physically exist in the project");
+	}
+
+	@Test
+	@DisplayName("tool rejects a name matching neither convention, naming both forms")
+	public void testCreateTestFile_tool_neitherConvention_returnsError() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("utils.js", SOLUTION_NAME);
+
+		assertTrue(result.startsWith("Error"),
+			"Name matching neither convention should return an Error: " + result);
+		assertTrue(result.contains("test_*.js"),
+			"Error should name the 'test_*.js' convention: " + result);
+		assertTrue(result.contains("*_test.js"),
+			"Error should name the '*_test.js' convention: " + result);
+		assertFalse(servoyProject.getProject().getFile("utils.js").exists(),
+			"No file should be created for a rejected name");
+	}
+
+	@Test
+	@DisplayName("tool rejects a non-.js name with the .js requirement error")
+	public void testCreateTestFile_tool_nonJsName_returnsJsError() throws Exception
+	{
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.createTestFile("test_utils.txt", SOLUTION_NAME);
+
+		assertTrue(result.startsWith("Error"), "Non-.js name should return an Error: " + result);
+		assertTrue(result.contains(".js"),
+			"Error should mention the '.js' requirement: " + result);
+		assertFalse(servoyProject.getProject().getFile("test_utils.txt").exists(),
+			"No file should be created for a non-.js name");
+	}
+
+	// -----------------------------------------------------------------------
+	// Helpers
+	// -----------------------------------------------------------------------
+
+	/**
+	 * OS-level delete for any named file in the test project, then syncs the Eclipse
+	 * workspace cache. Safe to call when the file does not exist. Uses OS-level I/O to
+	 * bypass Eclipse workspace rules that can block IFile.delete() (e.g. Servoy resource
+	 * listeners holding a read lock on a .js file after creation).
+	 */
+	private void deleteFileIfExists(String fileName)
+	{
+		if (servoyProject == null) return;
+		try
+		{
+			IProject project = servoyProject.getProject();
+			java.io.File f = new java.io.File(project.getLocation().toFile(), fileName);
+			if (f.exists()) f.delete();
+			project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		}
+		catch (Exception ignored)
+		{
+		}
+	}
+}

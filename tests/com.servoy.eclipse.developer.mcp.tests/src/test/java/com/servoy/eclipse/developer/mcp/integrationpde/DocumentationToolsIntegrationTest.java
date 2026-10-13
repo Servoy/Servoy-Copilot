@@ -1,0 +1,192 @@
+/*
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+
+ This program is free software; you can redistribute it and/or modify it under
+ the terms of the GNU Affero General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License along
+ with this program; if not, see http://www.gnu.org/licenses or write to the Free
+ Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+package com.servoy.eclipse.developer.mcp.integrationpde;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.swt.widgets.Display;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.TestUtilitiesClassCopy;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
+import com.servoy.eclipse.model.nature.ServoyProject;
+
+public class DocumentationToolsIntegrationTest extends TestUtilitiesClassCopy {
+	private static final String TEST_SOLUTION = "test_documentation_suite";
+	private static final String SERVOY_RESOURCES = "servoy_resources";
+	private static final String TEST_SCOPE_FILE = "globals.js";
+
+	private ServoyDevServer devServer;
+	private ServoyProject activeProject;
+
+	public DocumentationToolsIntegrationTest() {
+		super(TEST_SOLUTION, SERVOY_RESOURCES);
+	}
+
+	@BeforeAll
+	public static void deleteProjectsBeforeClass() throws Exception
+	{
+		deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES);
+		waitForWorkspaceBuildJobs();
+	}
+
+	@BeforeEach
+	public void setUp() throws Exception {
+		devServer = new ServoyDevServer();
+
+		assertNotNull(Display.getDefault(), "No Display available - test requires a running Eclipse UI");
+
+		waitForAppServer();
+		ensureTestSolutionInWorkspace(null, (sol, monitor) -> {
+			try {
+				writeProjectFile(sol, "scopes/" + TEST_SCOPE_FILE,
+						"/**\n * @type {String}\n */\nvar testVariable = 'hello';\n\n/**\n * @param {String} name\n * @return {String}\n */\nfunction testFunction(name) {\n\treturn 'Hello ' + name;\n}\n",
+						monitor);
+			} catch (CoreException e) {
+				throw new RuntimeException(e);
+			}
+		});
+		ensureActiveProject();
+
+		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		assertNotNull(activeProject, "Active project required");
+	}
+
+	@Test
+	public void testGetDocumentationForTypeMember_success() {
+		String result = devServer.getDocumentationForTypeMember("JSApplication", "getUUID");
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "Should not return an error: " + result);
+		assertTrue(result.contains("DOCUMENTATION FOR:"), "Result should contain documentation header");
+	}
+
+	@Test
+	public void testGetDocumentationForTypeMember_nullType_returnsError() {
+		String result = devServer.getDocumentationForTypeMember(null, "getUUID");
+		assertTrue(result.startsWith("Error"), "Should return error for null typeName");
+	}
+
+	@Test
+	public void testGetDocumentationForTypeMember_nullMember_returnsError() {
+		String result = devServer.getDocumentationForTypeMember("application", null);
+		assertTrue(result.startsWith("Error"), "Should return error for null memberName");
+	}
+
+	@Test
+	public void testGetDocumentationForTypeMember_unknownType_returnsError() {
+		String result = devServer.getDocumentationForTypeMember("nonExistentType_xyz", "someMethod");
+		assertTrue(result.startsWith("Error"), "Should return error for unknown type");
+	}
+
+	@Test
+	public void testGetDocumentationForTypeMember_unknownMember_returnsError() {
+		String result = devServer.getDocumentationForTypeMember("application", "nonExistentMethod_xyz");
+		assertTrue(result.startsWith("Error"), "Should return error for unknown member");
+	}
+
+	@Test
+	public void testGetAvailableMembersForType_success() {
+		String result = devServer.getAvailableMembersForType("JSApplication", null);
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "Should not return an error: " + result);
+		assertTrue(result.contains("AVAILABLE MEMBERS FOR TYPE:"), "Result should contain members header");
+		assertTrue(result.contains("Total found:"), "Result should contain total found");
+	}
+
+	@Test
+	public void testGetAvailableMembersForType_withFilter() {
+		String result = devServer.getAvailableMembersForType("JSApplication", "get.*");
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "Should not return an error: " + result);
+		assertTrue(result.contains("Filter: get.*"), "Result should contain filter info");
+	}
+
+	@Test
+	public void testGetAvailableMembersForType_nullType_returnsError() {
+		String result = devServer.getAvailableMembersForType(null, null);
+		assertTrue(result.startsWith("Error"), "Should return error for null typeName");
+	}
+
+	@Test
+	public void testGetAvailableMembersForType_unknownType_returnsError() {
+		String result = devServer.getAvailableMembersForType("nonExistentType_xyz", null);
+		assertTrue(result.startsWith("Error"), "Should return error for unknown type");
+	}
+
+	@Test
+	public void testGetDocumentationForIdentifiers_success() {
+		String result = devServer.getDocumentationForIdentifiers("application", TEST_SCOPE_FILE);
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "Should not return an error: " + result);
+		assertTrue(result.contains("DOCUMENTATION FOR:"), "Result should contain documentation section");
+	}
+
+	@Test
+	public void testGetDocumentationForIdentifiers_nullIdentifiers_returnsError() {
+		String result = devServer.getDocumentationForIdentifiers(null, TEST_SCOPE_FILE);
+		assertTrue(result.startsWith("Error"), "Should return error for null identifiers");
+	}
+
+	@Test
+	public void testGetDocumentationForIdentifiers_nullFilePath_returnsError() {
+		String result = devServer.getDocumentationForIdentifiers("application", null);
+		assertTrue(result.startsWith("Error"), "Should return error for null filePath");
+	}
+
+	@Test
+	public void testGetDocumentationForIdentifiers_multipleIdentifiers() {
+		String result = devServer.getDocumentationForIdentifiers("application,databaseManager", TEST_SCOPE_FILE);
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "Should not return an error: " + result);
+		assertTrue(result.contains("DOCUMENTATION FOR:"), "Result should contain documentation section");
+	}
+
+	@Test
+	public void testApplyDocumentations_nullFilePath_returnsError() {
+		String result = devServer.applyDocumentations(null,
+				"[{\"startLine\":0,\"endLine\":0,\"jsdoc\":\"/** test */\"}]");
+		assertTrue(result.startsWith("Error"), "Should return error for null filePath");
+	}
+
+	@Test
+	public void testApplyDocumentations_nullItemsJson_returnsError() {
+		String result = devServer.applyDocumentations(TEST_SCOPE_FILE, null);
+		assertTrue(result.startsWith("Error"), "Should return error for null itemsJson");
+	}
+
+	@Test
+	public void testApplyDocumentations_emptyItemsJson_returnsError() {
+		String result = devServer.applyDocumentations(TEST_SCOPE_FILE, "[]");
+		assertNotNull(result);
+		assertTrue(result.contains("Error"), "Should return error for empty items");
+	}
+
+	@Test
+	public void testApplyDocumentations_insertDocumentation() {
+		String itemsJson = "[{\"startLine\":0,\"endLine\":0,\"startSentence\":\"\",\"endSentence\":\"\",\"jsdoc\":\"/**\\n * Test documentation\\n */\"}]";
+		String result = devServer.applyDocumentations(TEST_SCOPE_FILE, itemsJson);
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "applyDocumentations should not return a top-level error: " + result);
+	}
+
+}

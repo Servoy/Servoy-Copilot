@@ -35,12 +35,12 @@ import java.util.concurrent.TimeUnit;
  * @author jcompagner
  * @since 2026.06
  */
-class OpencodeServerState {
+public class OpencodeServerState {
 	private final CountDownLatch serverReady = new CountDownLatch(1);
 	private volatile int serverPort;
 	private volatile String serverPassword;
 
-	OpencodeServerState(int defaultPort) {
+	public OpencodeServerState(int defaultPort) {
 		this.serverPort = defaultPort;
 	}
 
@@ -52,7 +52,7 @@ class OpencodeServerState {
 	 * by
 	 * {@link #isReady()} checks).
 	 */
-	void serverStarted(int port) {
+	public void serverStarted(int port) {
 		this.serverPort = port;
 		serverReady.countDown();
 	}
@@ -63,12 +63,12 @@ class OpencodeServerState {
 	 * @param timeoutMs maximum wait in milliseconds
 	 * @return {@code true} if the server became ready within the timeout
 	 */
-	boolean waitForServer(long timeoutMs) throws InterruptedException {
+	public boolean waitForServer(long timeoutMs) throws InterruptedException {
 		return serverReady.await(timeoutMs, TimeUnit.MILLISECONDS);
 	}
 
 	/** @return the port the server is (or will be) listening on */
-	int getServerPort() {
+	public int getServerPort() {
 		return serverPort;
 	}
 
@@ -87,7 +87,7 @@ class OpencodeServerState {
 	}
 
 	/** @return {@code true} once {@link #serverStarted(int)} has been called */
-	boolean isReady() {
+	public boolean isReady() {
 		return serverReady.getCount() == 0;
 	}
 }

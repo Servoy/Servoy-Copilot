@@ -256,7 +256,7 @@ public class WpmService
 	 * @param allPackages the full SPM package list (as produced by GetAllInstalledPackages).
 	 * @return the names of installed packages that directly depend on {@code packageName}.
 	 */
-	static List<String> findDependents(String packageName, JSONArray allPackages)
+	public static List<String> findDependents(String packageName, JSONArray allPackages)
 	{
 		List<String> dependents = new ArrayList<>();
 		if (allPackages == null) return dependents;
@@ -290,7 +290,7 @@ public class WpmService
 	 * Returns the {@code dependency} string of the release matching {@code version} for the given
 	 * package, or the latest release's dependency as a fallback when no exact match is found.
 	 */
-	static String dependencyForVersion(JSONObject pkg, String version)
+	public static String dependencyForVersion(JSONObject pkg, String version)
 	{
 		JSONArray releases = pkg.optJSONArray("releases");
 		if (releases == null || releases.length() == 0) return null;
@@ -379,7 +379,7 @@ public class WpmService
 		return result;
 	}
 
-	static String latestVersion(JSONObject pkg)
+	public static String latestVersion(JSONObject pkg)
 	{
 		JSONArray releases = pkg.optJSONArray("releases");
 		if (releases != null && releases.length() > 0)
@@ -394,7 +394,7 @@ public class WpmService
 	 * Compares two dotted version strings (e.g. "2.1.0"). Returns true if {@code candidate} is strictly
 	 * newer than {@code reference}. Non-numeric segments are compared lexically as a fallback.
 	 */
-	static boolean isNewerVersion(String candidate, String reference)
+	public static boolean isNewerVersion(String candidate, String reference)
 	{
 		if (candidate == null) return false;
 		if (reference == null) return true;

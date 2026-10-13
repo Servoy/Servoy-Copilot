@@ -53,11 +53,11 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * @author jcompagner
  * @since 2026.06
  */
-class McpConfigWriter {
+public class McpConfigWriter {
 
-	static final String ENV_PORT = "MCP_PORT"; //$NON-NLS-1$
-	static final String ENV_TOKEN = "MCP_AUTH_TOKEN"; //$NON-NLS-1$
-	static final String SCHEMA_URL = "https://opencode.ai/config.json"; //$NON-NLS-1$
+	public static final String ENV_PORT = "MCP_PORT"; //$NON-NLS-1$
+	public static final String ENV_TOKEN = "MCP_AUTH_TOKEN"; //$NON-NLS-1$
+	public static final String SCHEMA_URL = "https://opencode.ai/config.json"; //$NON-NLS-1$
 
 	private static final String EXTENSION_POINT_ID = "com.servoy.eclipse.opencode.mcpEndpoint"; //$NON-NLS-1$
 	private static final String ELEMENT_ENDPOINT = "endpoint"; //$NON-NLS-1$
@@ -69,10 +69,10 @@ class McpConfigWriter {
 	 * Must be reset to {@code null} after each test to restore normal behaviour.
 	 */
 	// package-private for testing
-	static volatile List<IMcpEndpointProvider> testProvidersOverride = null;
+	public static volatile List<IMcpEndpointProvider> testProvidersOverride = null;
 
 	/** Collects all registered providers via the extension point registry. */
-	static List<IMcpEndpointProvider> collectProviders() {
+	public static List<IMcpEndpointProvider> collectProviders() {
 		List<IMcpEndpointProvider> override = testProvidersOverride;
 		if (override != null) {
 			return new ArrayList<>(override);
@@ -110,7 +110,7 @@ class McpConfigWriter {
 	 *
 	 * @throws IllegalArgumentException if the URL has no explicit port
 	 */
-	static int extractPort(String url) {
+	public static int extractPort(String url) {
 		try {
 			URI uri = new URI(url);
 			int port = uri.getPort();
@@ -127,7 +127,7 @@ class McpConfigWriter {
 	 * Derives the MCP server name from a URL by taking the last non-empty
 	 * path segment. {@code ".../mcp/eclipse-ide"} → {@code "eclipse-ide"}.
 	 */
-	static String serverNameFromUrl(String url) {
+	public static String serverNameFromUrl(String url) {
 		try {
 			URI uri = new URI(url);
 			String path = uri.getPath();
@@ -154,7 +154,7 @@ class McpConfigWriter {
 	 * {@code "http://localhost:8085/mcp/eclipse-ide"}
 	 * → {@code "http://localhost:{env:MCP_PORT}/mcp/eclipse-ide"}
 	 */
-	static String templateUrl(String url) {
+	public static String templateUrl(String url) {
 		int port = extractPort(url);
 		return url.replace(":" + port + "/", ":{env:" + ENV_PORT + "}/"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 	}
@@ -167,7 +167,7 @@ class McpConfigWriter {
 	 * @return unmodifiable map; empty if {@code providers} is empty or all
 	 *         return empty URL lists
 	 */
-	static Map<String, String> buildEnvVars(List<IMcpEndpointProvider> providers) {
+	public static Map<String, String> buildEnvVars(List<IMcpEndpointProvider> providers) {
 		if (providers.isEmpty()) {
 			return Collections.emptyMap();
 		}
@@ -214,7 +214,7 @@ class McpConfigWriter {
 	 * @param configFile target path, e.g.
 	 *                   {@code ~/.servoy/opencode/opencode.json}
 	 */
-	static void mergeConfig(List<IMcpEndpointProvider> providers, Path configFile) throws IOException {
+	public static void mergeConfig(List<IMcpEndpointProvider> providers, Path configFile) throws IOException {
 		if (providers.isEmpty()) {
 			return;
 		}

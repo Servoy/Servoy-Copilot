@@ -189,7 +189,7 @@ public class McpServerFactory
 	}
 
 	@SuppressWarnings("unchecked")
-	static String validateRequiredParams(Tool tool, Map<String, Object> args)
+	public static String validateRequiredParams(Tool tool, Map<String, Object> args)
 	{
 		var schema = tool.inputSchema();
 		if (schema == null) return null;
@@ -290,7 +290,7 @@ public class McpServerFactory
 	 * @param result the value returned by the tool method
 	 * @return the ordered content parts to attach to the {@link CallToolResult}
 	 */
-	static List<McpSchema.Content> toContents(Object result)
+	public static List<McpSchema.Content> toContents(Object result)
 	{
 		var annotations = new McpSchema.Annotations(List.of(McpSchema.Role.ASSISTANT), 0.0);
 		if (result instanceof McpToolResult toolResult)

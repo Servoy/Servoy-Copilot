@@ -137,10 +137,11 @@ both wrappers (`SwtBrowserWrapper` / `ChromiumWrapper`) in `com.servoy.eclipse.u
 
 ### Test bundles
 
-- `com.servoy.eclipse.opencode.tests` — OSGi fragment of the opencode bundle. **Plain
-  JUnit**, no OSGi runtime. Run with `eclipse-ide_runClassTests`. Covers `McpConfigWriter`,
-  `OpencodeFolderCreatorJob` helpers, and the `.tomcat` BFF (`OpencodeChatServletTest`,
-  `OpencodeChatServletGuardTest`, `ServicesProviderTest`).
+- `com.servoy.eclipse.opencode.tests` - OSGi fragment of the opencode bundle, split into
+  `...opencode.tests.plainjunit` (pure JUnit, no OSGi runtime; covers `McpConfigWriter`,
+  `OpencodeFolderCreatorJob` helpers, `OpencodeIndexIgnorer` and the `.tomcat` BFF -
+  `OpencodeChatServletTest`, `OpencodeChatServletGuardTest`, `ServicesProviderTest`) and
+  `...opencode.tests.integrationpde` (needs the OSGi container, e.g. `SkillsZipExtractorTest`).
 - `com.servoy.eclipse.developer.mcp.tests` — OSGi fragment of the developer.mcp bundle,
   source in `src/test/java/`. **Pure JUnit 5/6 (Jupiter).** Both plain unit tests and
   integration tests that need a running Eclipse workbench + Servoy App Server.
@@ -148,27 +149,26 @@ both wrappers (`SwtBrowserWrapper` / `ChromiumWrapper`) in `com.servoy.eclipse.u
 ### Jupiter conventions (developer.mcp.tests)
 
 - **Always write new tests as Jupiter** (`org.junit.jupiter.api.*`). No JUnit 4 remains.
-- New code should prefer `org.junit.jupiter.api.Assertions` directly (message-last).
-  A legacy message-first facade `com.servoy.eclipse.developer.mcp.junit.Assert` exists for
-  the ~1500 old call sites; you may keep using it when extending a test that already does.
+- Use `org.junit.jupiter.api.Assertions` directly (message-last argument order).
 - `@DisplayName` ONLY on `@Test`/`@ParameterizedTest`/`@Nested` **methods**, never on the
   top-level class (class-level display names break Jenkins/Tycho-surefire grouping).
 - No `public` modifier needed. No silent skips (`Assumptions`/`assumeXxx`) — fix setup or
   fail loudly. `@Test(expected=…)` → `assertThrows(...)`; `@Rule`/`ExternalResource` → a
   JUnit 5 extension via `@ExtendWith`.
-- SWT dialog guard: integration tests extend `TestUtilitiesClass` → `DialogGuardBase`
-  (`@ExtendWith(DialogGuardRule.class)`), inherited automatically. Tests that intentionally
-  open a dialog push `TestDialogInterceptor.expect(...)` first.
-- Integration tests use `TestUtilitiesClass` helpers (`pumpEventsUntil`,
+- SWT dialog guard: integration tests extend `TestUtilitiesClassCopy` -> `DialogGuardBaseCopy`
+  (`@ExtendWith(DialogGuardRuleCopy.class)`), inherited automatically. Tests that intentionally
+  open a dialog push `TestDialogInterceptorCopy.expect(...)` first. The `*Copy` classes live in
+  `...integrationpde.utils` and mirror servoy-eclipse's originals - keep them in sync.
+- Integration tests use `TestUtilitiesClassCopy` helpers (`pumpEventsUntil`,
   `waitForWorkspaceBuildJobs`, `waitForTitaniumuildJobs`) — never raw `Thread.sleep`. Each
   class cleans workspace projects in `@BeforeAll deleteProjectsBeforeClass()`.
 
-### Aggregation suites (keep in sync with pom `<test>`)
+### Test selection (no suites)
 
-JUnit Platform `@Suite` classes: `AllDeveloperMcpJupiterUnitTests` (plain unit),
-`AllDeveloperMcpIntegrationTests` (integration), `AllWpmTests`. **Maven/Tycho cannot expand
-a `@Suite`**, so `pom.xml` enumerates concrete classes in `<test>` — when adding a test
-class, register it in BOTH the suite `@SelectClasses` and the matching pom `<test>` list.
+There are no `@Suite`/`AllXxxTests` aggregator classes. Tests are selected by package: put a
+new test under `...plainjunit` (headless, no OSGi) or `...integrationpde` (needs the workbench /
+OSGi container) and it is picked up automatically by the pom includes and by running the
+package or project from the IDE. Nothing needs to be registered anywhere.
 
 ### How Maven/Tycho runs tests
 
@@ -176,7 +176,7 @@ class, register it in BOTH the suite `@SelectClasses` and the matching pom `<tes
   Servoy app server.
 - `pom.xml` already sets `<providerHint>junit6</providerHint>` (required — the target
   platform contributes JUnit 4, so auto-detection otherwise picks junit4 → "No tests found"
-  for Jupiter) and enumerated `<test>` lists (not `@Suite`).
+  for Jupiter) and package-based `<includes>` (`**/plainjunit/**`, `**/integrationpde/**`) - no `@Suite`.
 - Headless unit run:
   `mvn -B clean verify -pl tests/com.servoy.eclipse.developer.mcp.tests -am "-Dtycho.localArtifacts=ignore" "-Dmaven.test.failure.ignore=true"`
 - Integration: add `-Pintegration "-Dservoy_install=<path-to-parent-of-application_server>"`.

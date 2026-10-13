@@ -794,7 +794,7 @@ public class WorkspaceService
 		return roots.toArray(IResource[]::new);
 	}
 
-	static Pattern globPatternsToRegex(String... globs)
+	public static Pattern globPatternsToRegex(String... globs)
 	{
 		if (globs == null || globs.length == 0)
 			return Pattern.compile(".*");

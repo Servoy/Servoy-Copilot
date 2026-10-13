@@ -58,21 +58,21 @@ import com.servoy.j2db.util.ITransactionConnection;
  * @author jcompagner
  * @since 2026.06
  */
-class SkillsZipExtractor {
+public class SkillsZipExtractor {
 
 	/**
 	 * System property name that carries the URL or absolute path to the skills zip.
 	 */
-	static final String SKILLS_ZIP_PROPERTY = "SERVOY_SKILLS_ZIP"; //$NON-NLS-1$
+	public static final String SKILLS_ZIP_PROPERTY = "SERVOY_SKILLS_ZIP"; //$NON-NLS-1$
 
 	/**
 	 * System property to control whether skills are overwritten on startup. When
 	 * set to "false" (case-insensitive), skills extraction is skipped.
 	 */
-	static final String SKILL_OVERWRITE_PROPERTY = "SERVOY_SKILL_OVERWRITE"; //$NON-NLS-1$
+	public static final String SKILL_OVERWRITE_PROPERTY = "SERVOY_SKILL_OVERWRITE"; //$NON-NLS-1$
 
 	/** Hardcoded PostgreSQL version embedded in the AGENTS.MD YAML block. */
-	static final String POSTGRES_VERSION = "17.6"; //$NON-NLS-1$
+	public static final String POSTGRES_VERSION = "17.6"; //$NON-NLS-1$
 
 	private static final String AGENTS_MD = "AGENTS.MD"; //$NON-NLS-1$
 	private static final String OPENCODE_JSON = "opencode.json"; //$NON-NLS-1$
@@ -83,7 +83,7 @@ class SkillsZipExtractor {
 	 * only when the property is explicitly set to {@code "false"}
 	 * (case-insensitive).
 	 */
-	static boolean shouldSkipExtraction() {
+	public static boolean shouldSkipExtraction() {
 		return "false".equalsIgnoreCase(System.getProperty(SKILL_OVERWRITE_PROPERTY));
 	}
 
@@ -96,7 +96,7 @@ class SkillsZipExtractor {
 	 * verified before returning.
 	 * </p>
 	 */
-	static String getSkillsZipSource() {
+	public static String getSkillsZipSource() {
 		String prop = System.getProperty(SKILLS_ZIP_PROPERTY);
 		if (prop == null || prop.isBlank())
 			return null;
@@ -115,7 +115,7 @@ class SkillsZipExtractor {
 	 * @return an open {@link InputStream} -- caller must close it
 	 * @throws IOException on network or file-system failure
 	 */
-	static InputStream openZipStream(String source) throws IOException {
+	public static InputStream openZipStream(String source) throws IOException {
 		if (source.startsWith("http://") || source.startsWith("https://")) { //$NON-NLS-1$ //$NON-NLS-2$
 			return new URL(source).openStream();
 		}
@@ -143,7 +143,7 @@ class SkillsZipExtractor {
 	 *         (caller should skip {@link ProviderConfigWriter})
 	 * @throws IOException on read/write failure
 	 */
-	static boolean extractToConfigDir(InputStream zipStream, Path configDir) throws IOException {
+	public static boolean extractToConfigDir(InputStream zipStream, Path configDir) throws IOException {
 		Files.createDirectories(configDir);
 
 		Set<String> cleanedDirs = new HashSet<>();
@@ -207,7 +207,7 @@ class SkillsZipExtractor {
 	 * @param projectRoot project / git-root directory
 	 * @throws IOException on read/write failure
 	 */
-	static void writeOrUpdateAgentsMd(InputStream zipStream, Path projectRoot) throws IOException {
+	public static void writeOrUpdateAgentsMd(InputStream zipStream, Path projectRoot) throws IOException {
 		String servoyVersion = ClientVersion.getMajorVersion() + "." + //$NON-NLS-1$
 				String.format("%02d", ClientVersion.getMiddleVersion()); //$NON-NLS-1$
 		String postgresVersion = getPostgresVersion();
@@ -258,7 +258,7 @@ class SkillsZipExtractor {
 	 * @param databases       list of enabled server names
 	 * @return updated content
 	 */
-	static String updateAgentsYaml(String content, String servoyVersion, String postgresVersion,
+	public static String updateAgentsYaml(String content, String servoyVersion, String postgresVersion,
 			List<String> databases) {
 		String result = content;
 
@@ -281,7 +281,7 @@ class SkillsZipExtractor {
 	 * @return UTF-8 decoded content, or {@code null} if not found
 	 * @throws IOException on read failure
 	 */
-	static String readZipEntry(InputStream zipStream, String entryName) throws IOException {
+	public static String readZipEntry(InputStream zipStream, String entryName) throws IOException {
 		try (ZipInputStream zis = new ZipInputStream(zipStream)) {
 			ZipEntry entry;
 			while ((entry = zis.getNextEntry()) != null) {
@@ -303,7 +303,7 @@ class SkillsZipExtractor {
 	 * back to {@link #POSTGRES_VERSION} when no PostgreSQL server is available or
 	 * reachable.
 	 */
-	static String getPostgresVersion() {
+	public static String getPostgresVersion() {
 		try {
 			if (!ApplicationServerRegistry.exists())
 				return POSTGRES_VERSION;

@@ -265,7 +265,7 @@ public class OpencodeFolderCreatorJob extends Job {
 	 *                      bundle
 	 * @return {@code true} if a (re-)install is required
 	 */
-	static boolean needsInstall(File markerFile, File sentinelFile, String bundleContent) {
+	public static boolean needsInstall(File markerFile, File sentinelFile, String bundleContent) {
 		if (!markerFile.exists() || !sentinelFile.exists())
 			return true;
 		try {
@@ -280,7 +280,7 @@ public class OpencodeFolderCreatorJob extends Job {
 	/**
 	 * Reads the full content of the given URL as a UTF-8 string.
 	 */
-	static String readUrlContent(URL url) throws IOException {
+	public static String readUrlContent(URL url) throws IOException {
 		try (InputStream is = url.openStream()) {
 			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
 		}
@@ -289,7 +289,7 @@ public class OpencodeFolderCreatorJob extends Job {
 	/**
 	 * Recursively deletes {@code dir} and all its contents.
 	 */
-	static void deleteDirectory(Path dir) throws IOException {
+	public static void deleteDirectory(Path dir) throws IOException {
 		try (var stream = Files.walk(dir)) {
 			stream.sorted(Comparator.reverseOrder()).forEach(path -> {
 				try {

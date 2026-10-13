@@ -12,4 +12,68 @@
 	</parent>
 	<artifactId>com.servoy.eclipse.opencode.tests</artifactId>
 	<packaging>eclipse-test-plugin</packaging>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.eclipse.tycho</groupId>
+				<artifactId>tycho-surefire-plugin</artifactId>
+				<version>${tycho-version}</version>
+				<configuration>
+					<useUIHarness>false</useUIHarness>
+					<application>
+						org.eclipse.pde.junit.runtime.coretestapplication</application>
+					<includes>
+						<include>**/plainjunit/**/*Test.java</include>
+					</includes>
+					<argLine>
+						-Xms128m -Xmx512m -ea
+						--add-exports=java.base/sun.security.x509=ALL-UNNAMED
+						-Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
+					<dependencies>
+						<dependency>
+							<type>eclipse-plugin</type>
+							<artifactId>
+								com.servoy.eclipse.extension.compatibility</artifactId>
+						</dependency>
+					</dependencies>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+	<profiles>
+		<profile>
+			<id>integration</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.eclipse.tycho</groupId>
+						<artifactId>tycho-surefire-plugin</artifactId>
+						<version>${tycho-version}</version>
+						<configuration>
+							<includes>
+								<include>**/integrationpde/**/*Test.java</include>
+							</includes>
+							<useUIHarness>true</useUIHarness>
+							<useUIThread>false</useUIThread>
+							<product>com.servoy.eclipse.core.ide</product>
+							<application>org.eclipse.ui.ide.workbench</application>
+							<argLine>-Xms256m -Xmx2048m -ea
+								--add-exports=java.base/sun.security.x509=ALL-UNNAMED
+								-Dorg.osgi.framework.system.packages.extra=sun.security.x509
+								-Dservoy.cloud.skipCheckout=true
+								-Dchromium.integration.eclipse.disable=true
+								-Dorg.eclipse.ui.testing=true</argLine>
+							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
+							<dependencies>
+								<dependency>
+									<type>eclipse-plugin</type>
+									<artifactId>com.servoy.eclipse.extension.compatibility</artifactId>
+								</dependency>
+							</dependencies>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

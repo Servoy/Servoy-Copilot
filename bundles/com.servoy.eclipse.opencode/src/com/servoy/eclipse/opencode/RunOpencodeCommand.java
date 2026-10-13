@@ -208,7 +208,7 @@ public class RunOpencodeCommand extends Job {
 	 * @return a map of XDG environment variables to inject, or an empty map if the
 	 *         escape hatch property is set
 	 */
-	static Map<String, String> buildServoyXdgEnv() {
+	public static Map<String, String> buildServoyXdgEnv() {
 		if (Boolean.getBoolean("opencode.use.default.xdg")) {
 			return Map.of();
 		}

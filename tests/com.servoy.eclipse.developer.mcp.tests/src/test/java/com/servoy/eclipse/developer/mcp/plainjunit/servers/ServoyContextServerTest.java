@@ -1,0 +1,207 @@
+/*
+ This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
+
+ This program is free software; you can redistribute it and/or modify it under
+ the terms of the GNU Affero General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License along
+ with this program; if not, see http://www.gnu.org/licenses or write to the Free
+ Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+package com.servoy.eclipse.developer.mcp.plainjunit.servers;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.lang.reflect.Field;
+import java.util.Map;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.servoy.eclipse.developer.mcp.cache.CachedEntry;
+import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
+import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
+
+/**
+ * JUnit 4 tests for {@link ServoyContextServer}.
+ * <p>
+ * Tests that do not require a live Eclipse workspace (no
+ * {@code ResourcesPlugin} calls): cache tools and local history error paths.
+ * </p>
+ * <p>
+ * Tests for {@code getFileHistory}, {@code getFileHistoryContent}, and
+ * {@code compareWithHistory} with real files are covered by the curl endpoint
+ * tests against Servoy Developer (those require a live workspace).
+ * </p>
+ */
+public class ServoyContextServerTest {
+	private ServoyContextServer server;
+
+	@BeforeEach
+	public void setUp() throws Exception {
+		server = new ServoyContextServer(new com.servoy.eclipse.developer.mcp.services.LocalHistoryService());
+		// Clear the singleton cache between tests
+		ServoyResourceCache cache = ServoyResourceCache.getInstance();
+		Field entriesField = ServoyResourceCache.class.getDeclaredField("entries");
+		entriesField.setAccessible(true);
+		((Map<?, ?>) entriesField.get(cache)).clear();
+	}
+
+	// --- Cache tools ---
+
+	@Test
+	public void testListCachedResources_empty() {
+		String result = server.listCachedResources();
+		assertNotNull(result);
+		assertTrue(result.contains("servoy-ide"), "Should mention servoy-ide tools when empty");
+		assertTrue(result.contains("readProjectResource"), "Should mention readProjectResource");
+	}
+
+	@Test
+	public void testListCachedResources_withEntry() {
+		ServoyResourceCache.getInstance().put("workspace:///MyProject/scopes/globals.js", "globals.js",
+				"WORKSPACE_FILE", "var x = 1;");
+
+		String result = server.listCachedResources();
+		assertNotNull(result);
+		assertTrue(result.contains("globals.js"), "Should list the cached URI");
+		assertTrue(result.contains("Cached Resources"), "Should show Cached Resources header");
+	}
+
+	@Test
+	public void testGetCacheStats_empty() {
+		String result = server.getCacheStats();
+		assertNotNull(result);
+		assertTrue(result.contains("Cache Statistics"), "Should contain stats header");
+		assertTrue(result.contains("0/20"), "Should show 0 resources");
+	}
+
+	@Test
+	public void testGetCachedResource_notFound() {
+		String result = server.getCachedResource("workspace:///NoProject/no.js");
+		assertNotNull(result);
+		assertTrue(result.contains("not found in cache"), "Should say not found");
+		assertTrue(result.contains("listCachedResources"), "Should suggest listCachedResources");
+	}
+
+	@Test
+	public void testGetCachedResource_found() {
+		ServoyResourceCache.getInstance().put("workspace:///P/test.js", "test.js", "WORKSPACE_FILE", "// test content");
+
+		String result = server.getCachedResource("workspace:///P/test.js");
+		assertNotNull(result);
+		assertTrue(result.contains("// test content"), "Should contain file content");
+		assertTrue(result.contains("v1"), "Should show version");
+	}
+
+	@Test
+	public void testGetCacheStats_withEntry() {
+		ServoyResourceCache.getInstance().put("workspace:///P/x.js", "x.js", "WORKSPACE_FILE", "hello world");
+
+		String result = server.getCacheStats();
+		assertNotNull(result);
+		assertTrue(result.contains("1/20"), "Should show 1 resource");
+	}
+
+	// --- Error path tests for LocalHistoryService (null/missing project) ---
+
+	@Test
+	public void testGetFileHistory_nullProject_throws() {
+		try {
+			server.getFileHistory(null, "forms/test.js", null);
+			fail("Should throw on null projectName");
+		} catch (RuntimeException e) {
+			assertNotNull(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testGetFileHistoryContent_nullProject_throws() {
+		try {
+			server.getFileHistoryContent(null, "forms/test.js", "0");
+			fail("Should throw on null projectName");
+		} catch (RuntimeException e) {
+			assertNotNull(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testCompareWithHistory_nullProject_throws() {
+		try {
+			server.compareWithHistory(null, "forms/test.js", "0");
+			fail("Should throw on null projectName");
+		} catch (RuntimeException e) {
+			assertNotNull(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testGetFileHistory_nullFilePath_throws() {
+		try {
+			server.getFileHistory("MyProject", null, null);
+			fail("Should throw on null filePath");
+		} catch (RuntimeException e) {
+			assertNotNull(e.getMessage());
+		}
+	}
+
+	// --- CachedEntry record tests ---
+
+	@Test
+	public void testCachedEntry_estimateTokens() {
+		// 40 chars / 4 = 10 tokens
+		String content = "a".repeat(40);
+		ServoyResourceCache.getInstance().put("workspace:///P/e.js", "e.js", "WORKSPACE_FILE", content);
+		CachedEntry entry = ServoyResourceCache.getInstance().get("workspace:///P/e.js").get();
+		assertTrue(entry.estimateTokens() > 0, "Token estimate should be > 0");
+	}
+
+	@Test
+	public void testCachedEntry_toSummary_containsDisplayName() {
+		ServoyResourceCache.getInstance().put("workspace:///P/summary.js", "summary.js", "WORKSPACE_FILE", "x");
+		CachedEntry entry = ServoyResourceCache.getInstance().get("workspace:///P/summary.js").get();
+		String summary = entry.toSummary();
+		assertNotNull(summary);
+		assertTrue(summary.contains("summary.js"), "Summary should contain display name");
+	}
+
+	@Test
+	public void testCachedEntry_cachedAt_notNull() {
+		ServoyResourceCache.getInstance().put("workspace:///P/ts.js", "ts.js", "WORKSPACE_FILE", "x");
+		CachedEntry entry = ServoyResourceCache.getInstance().get("workspace:///P/ts.js").get();
+		assertNotNull(entry.cachedAt(), "cachedAt must not be null");
+	}
+
+	// --- McpServerBuiltins registration test ---
+
+	@Test
+	public void testServoyContextServer_registeredInBuiltins() {
+		boolean found = false;
+		for (Class<?> cls : com.servoy.eclipse.developer.mcp.McpServerBuiltins.BUILT_IN_SERVER_CLASSES) {
+			if (cls == ServoyContextServer.class) {
+				found = true;
+				break;
+			}
+		}
+		assertTrue(found, "ServoyContextServer must be registered in McpServerBuiltins");
+	}
+
+	@Test
+	public void testServoyContextServer_hasCorrectAnnotation() {
+		com.servoy.eclipse.developer.mcp.annotations.McpServer ann = ServoyContextServer.class
+				.getAnnotation(com.servoy.eclipse.developer.mcp.annotations.McpServer.class);
+		assertNotNull(ann, "ServoyContextServer must have @McpServer annotation");
+		assertFalse(ann.name().isBlank(), "@McpServer name must not be empty");
+		assertTrue("servoy-context".equals(ann.name()), "@McpServer name must be 'servoy-context'");
+	}
+
+}

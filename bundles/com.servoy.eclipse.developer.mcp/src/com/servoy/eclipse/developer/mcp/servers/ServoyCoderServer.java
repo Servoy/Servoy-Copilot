@@ -250,7 +250,7 @@ public class ServoyCoderServer
 	 * @param filePath the path supplied to {@code createFile}
 	 * @return an {@code Error:} message if the path is invalid, or {@code null} if acceptable
 	 */
-	static String guardScopePath(String filePath)
+	public static String guardScopePath(String filePath)
 	{
 		if (filePath == null) return null;
 		String normalized = filePath.replace('\\', '/').replaceFirst("^/+", "");

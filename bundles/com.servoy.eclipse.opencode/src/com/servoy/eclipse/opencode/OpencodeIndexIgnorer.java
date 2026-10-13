@@ -74,13 +74,13 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * @author jcompagner
  * @since 2026.06
  */
-class OpencodeIndexIgnorer {
+public class OpencodeIndexIgnorer {
 
 	/** The repository-relative folder written by the opencode index plugin. */
 	static final String INDEX_RELATIVE_PATH = ".opencode/index"; //$NON-NLS-1$
 
 	/** The gitignore pattern we ensure is present (anchored to the git root). */
-	static final String GITIGNORE_PATTERN = "/.opencode/index/"; //$NON-NLS-1$
+	public static final String GITIGNORE_PATTERN = "/.opencode/index/"; //$NON-NLS-1$
 
 	private static final String GITIGNORE_FILE = ".gitignore"; //$NON-NLS-1$
 
@@ -143,7 +143,7 @@ class OpencodeIndexIgnorer {
 	 * @param gitRoot the git root directory
 	 * @throws IOException on read/write failure
 	 */
-	static void ensureGitignore(Path gitRoot) throws IOException {
+	public static void ensureGitignore(Path gitRoot) throws IOException {
 		Path gitignore = gitRoot.resolve(GITIGNORE_FILE);
 		String existing = Files.exists(gitignore) ? Files.readString(gitignore, StandardCharsets.UTF_8) : null;
 		String updated = ensureGitignoreContent(existing);
@@ -165,7 +165,7 @@ class OpencodeIndexIgnorer {
 	 *                 not exist yet
 	 * @return the content to write, or {@code null} if no change is needed
 	 */
-	static String ensureGitignoreContent(String existing) {
+	public static String ensureGitignoreContent(String existing) {
 		if (existing == null) {
 			return GITIGNORE_PATTERN + "\n"; //$NON-NLS-1$
 		}
@@ -209,7 +209,7 @@ class OpencodeIndexIgnorer {
 	 * Pure variant used by the unit tests: given the current {@code .gitignore}
 	 * lines, returns the resulting lines after ensuring the pattern is present.
 	 */
-	static List<String> computeGitignore(List<String> lines) {
+	public static List<String> computeGitignore(List<String> lines) {
 		for (String rawLine : lines) {
 			String line = rawLine.strip();
 			if (line.isEmpty() || line.startsWith("#")) //$NON-NLS-1$

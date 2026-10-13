@@ -6,13 +6,15 @@ Bundle-Version: 2026.3.1.qualifier
 Bundle-Vendor: Servoy
 Fragment-Host: com.servoy.eclipse.developer.mcp
 Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: com.servoy.eclipse.cypress
 Bundle-ClassPath: .,
  testresources/drivers/hsqldb.jar
-Import-Package: org.junit.jupiter.api;version="5.0.0",
- org.junit.jupiter.api.extension;version="5.0.0",
- org.junit.jupiter.api.function;version="5.0.0",
- org.junit.jupiter.api.io;version="5.0.0",
- org.junit.jupiter.params;version="5.0.0",
- org.junit.jupiter.params.provider;version="5.0.0",
- org.junit.platform.suite.api
+Import-Package: org.bouncycastle.pqc.jcajce.provider.uov;version="[1.85.0,2.0.0)",
+ org.eclipse.team.core,
+ org.junit.jupiter.api,
+ org.junit.jupiter.api.extension,
+ org.junit.jupiter.api.function,
+ org.junit.jupiter.api.io,
+ org.junit.jupiter.params,
+ org.junit.jupiter.params.provider
 Automatic-Module-Name: com.servoy.eclipse.developer.mcp.tests

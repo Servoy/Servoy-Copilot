@@ -44,10 +44,10 @@ import java.util.Map;
  * @author jcompagner
  * @since 2026.06
  */
-class ProviderConfigWriter {
+public class ProviderConfigWriter {
 
 	/** Name of the environment variable that carries the GenAI API key. */
-	static final String ENV_API_KEY = "GENAI_API_KEY"; //$NON-NLS-1$
+	public static final String ENV_API_KEY = "GENAI_API_KEY"; //$NON-NLS-1$
 
 	/**
 	 * Returns the environment variables that must be passed to the opencode child
@@ -61,7 +61,7 @@ class ProviderConfigWriter {
 	 * @return unmodifiable map - either empty or a single-entry map with
 	 *         {@code GENAI_API_KEY}
 	 */
-	static Map<String, String> buildProviderEnvVars() {
+	public static Map<String, String> buildProviderEnvVars() {
 		String apiKey = System.getProperty(ENV_API_KEY);
 		if (apiKey == null || apiKey.isBlank()) {
 			return Collections.emptyMap();
@@ -78,7 +78,7 @@ class ProviderConfigWriter {
 	 * @param configFile target path, e.g. {@code ~/.servoy/opencode/opencode.json}
 	 * @throws IOException if the file cannot be read or written
 	 */
-	static void mergeProviderConfig(Path configFile) throws IOException {
+	public static void mergeProviderConfig(Path configFile) throws IOException {
 		if (!Files.exists(configFile)) {
 			return;
 		}

@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -466,7 +466,7 @@ public class JSUnitRunnerService
 	 * @param totalCount   number of planned tests (0 until the tree starts bridging in)
 	 * @return {@code true} if the whole run should be reported as finished now
 	 */
-	static boolean isTerminalRun(int childCount, int startedCount, int totalCount)
+	public static boolean isTerminalRun(int childCount, int startedCount, int totalCount)
 	{
 		if (childCount <= 0)
 			return false;

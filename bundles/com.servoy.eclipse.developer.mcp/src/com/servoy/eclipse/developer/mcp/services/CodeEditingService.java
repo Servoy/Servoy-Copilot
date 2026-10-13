@@ -1,4 +1,4 @@
-﻿/*
+/*
  This file belongs to the Servoy development and deployment environment, Copyright (C) 2026 Servoy BV
 
  This program is free software; you can redistribute it and/or modify it under
@@ -629,7 +629,7 @@ public class CodeEditingService
 	 * {@code "\r"}, or {@code "\n"}. On a CRLF-vs-LF tie, LF is preferred. A content with no
 	 * terminator (empty or a single unterminated line) defaults to the platform-neutral {@code "\n"}.
 	 */
-	static String detectDominantLineEnding(String content)
+	public static String detectDominantLineEnding(String content)
 	{
 		if (content == null || content.isEmpty()) return "\n";
 
@@ -666,7 +666,7 @@ public class CodeEditingService
 	 * Returns whether the content ends with a line terminator, so a file that had no trailing
 	 * newline is not given one (and one that did keeps it).
 	 */
-	static boolean endsWithNewline(String content)
+	public static boolean endsWithNewline(String content)
 	{
 		return content != null && !content.isEmpty() && (content.endsWith("\n") || content.endsWith("\r"));
 	}
@@ -675,7 +675,7 @@ public class CodeEditingService
 	 * Joins the given lines with the supplied line ending, appending a trailing terminator only
 	 * when {@code trailingNewline} is {@code true}.
 	 */
-	static String joinLines(List<String> lines, String eol, boolean trailingNewline)
+	public static String joinLines(List<String> lines, String eol, boolean trailingNewline)
 	{
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < lines.size(); i++)
@@ -707,16 +707,16 @@ public class CodeEditingService
 		}
 	}
 
-	static class DiffHunk
+	public static class DiffHunk
 	{
-		int originalStart;
-		int originalCount;
-		boolean headerParsed;
-		String headerLine;
-		List<String> hunkLines = new ArrayList<>();
+		public int originalStart;
+		public int originalCount;
+		public boolean headerParsed;
+		public String headerLine;
+		public List<String> hunkLines = new ArrayList<>();
 	}
 
-	static List<DiffHunk> parseHunks(String patch)
+	public static List<DiffHunk> parseHunks(String patch)
 	{
 		List<DiffHunk> hunks = new ArrayList<>();
 		// Split on \r?\n so a CRLF-delimited patch does not leave a trailing \r on every
@@ -772,12 +772,12 @@ public class CodeEditingService
 		return hunks;
 	}
 
-	static List<String> applyUnifiedDiff(List<String> originalLines, String patch)
+	public static List<String> applyUnifiedDiff(List<String> originalLines, String patch)
 	{
 		return applyUnifiedDiff(originalLines, patch, null);
 	}
 
-	static List<String> applyUnifiedDiff(List<String> originalLines, String patch, List<String> driftNotesOut)
+	public static List<String> applyUnifiedDiff(List<String> originalLines, String patch, List<String> driftNotesOut)
 	{
 		List<String> result = new ArrayList<>(originalLines);
 		List<DiffHunk> hunks = parseHunks(patch);

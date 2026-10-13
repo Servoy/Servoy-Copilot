@@ -204,7 +204,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * @return {@code true} if the given path-info targets the proxied opencode API
 	 *         (i.e. starts with {@link #API_PREFIX})
 	 */
-	static boolean isApiRequest(String pathInfo) {
+	public static boolean isApiRequest(String pathInfo) {
 		if (pathInfo == null)
 			return false;
 		return pathInfo.equals(API_PREFIX) || pathInfo.startsWith(API_PREFIX + "/");
@@ -214,7 +214,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * @return {@code true} if the given path-info targets the opencode SSE event
 	 *         stream ({@code /rest_api/event})
 	 */
-	static boolean isEventStreamRequest(String pathInfo) {
+	public static boolean isEventStreamRequest(String pathInfo) {
 		if (pathInfo == null)
 			return false;
 		return pathInfo.equals(API_PREFIX + "/event");
@@ -227,7 +227,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * {@code /rest_api/session} maps to {@code /api/session} and bare
 	 * {@code /rest_api} maps to {@code /api}.
 	 */
-	static String toUpstreamPath(String pathInfo) {
+	public static String toUpstreamPath(String pathInfo) {
 		if (pathInfo == null)
 			return UPSTREAM_API_PREFIX;
 		String rest = pathInfo.substring(API_PREFIX.length());
@@ -244,7 +244,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * @param directory    the project directory, or {@code null}
 	 * @return the path with the directory query param ensured
 	 */
-	static String injectDirectory(String upstreamPath, String directory) {
+	public static String injectDirectory(String upstreamPath, String directory) {
 		if (directory == null || directory.isEmpty())
 			return upstreamPath;
 		int q = upstreamPath.indexOf('?');
@@ -296,7 +296,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 *                     possibly with a query string
 	 * @return {@code true} if a {@code location} should be ensured in the body
 	 */
-	static boolean isBodyLocationEndpoint(String upstreamPath) {
+	public static boolean isBodyLocationEndpoint(String upstreamPath) {
 		if (upstreamPath == null)
 			return false;
 		int q = upstreamPath.indexOf('?');
@@ -324,7 +324,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * @param directory the project directory to inject (must be non-empty)
 	 * @return the body bytes with a location ensured, UTF-8 encoded
 	 */
-	static byte[] ensureBodyLocation(byte[] body, String directory) {
+	public static byte[] ensureBodyLocation(byte[] body, String directory) {
 		String json = (body == null || body.length == 0) ? "" : new String(body, StandardCharsets.UTF_8);
 		String trimmed = json.trim();
 		String locationMember = "\"location\":{\"directory\":\"" + jsonEscape(directory) + "\"}";
@@ -347,7 +347,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	}
 
 	/** Minimal JSON string escaping for the characters that occur in file paths. */
-	static String jsonEscape(String value) {
+	public static String jsonEscape(String value) {
 		StringBuilder sb = new StringBuilder(value.length() + 8);
 		for (int i = 0; i < value.length(); i++) {
 			char c = value.charAt(i);
@@ -431,7 +431,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * Maps a servlet path-info to a bundle asset path. An empty or root path-info
 	 * (i.e. the app root) resolves to {@code /index.html}.
 	 */
-	static String normalizeAssetPath(String pathInfo) {
+	public static String normalizeAssetPath(String pathInfo) {
 		if (pathInfo == null || pathInfo.isEmpty() || "/".equals(pathInfo)) {
 			return "/index.html";
 		}
@@ -449,7 +449,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * A hashed asset carries an 8+ hex chunk before its extension (e.g.
 	 * main-AB12CD34.js).
 	 */
-	static boolean isHashedAsset(String assetPath) {
+	public static boolean isHashedAsset(String assetPath) {
 		return assetPath.matches(".*-[0-9A-Za-z]{8,}\\.[a-zA-Z0-9]+$");
 	}
 

@@ -24,6 +24,7 @@ import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
+import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
@@ -192,7 +193,8 @@ public class ServoyTestingServer
 		try
 		{
 			String result = formPreview.showFormInBrowser(formName, openBrowser);
-			if (!result.startsWith("Error") && !specGenerator.specExists(formName))
+			if (!result.startsWith("Error") && !specGenerator.specExists(formName, ServoyModelManager
+				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String specResult = specGenerator.generateSpec(formName);
 				if (!specResult.startsWith("Error"))
@@ -258,7 +260,8 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			if (!specGenerator.specExists(formName))
+			if (!specGenerator.specExists(formName, ServoyModelManager
+				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String genResult = specGenerator.generateSpec(formName);
 				if (genResult.startsWith("Error"))
@@ -283,7 +286,8 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			if (!specGenerator.specExists(formName))
+			if (!specGenerator.specExists(formName, ServoyModelManager
+				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String genResult = specGenerator.generateSpec(formName);
 				if (genResult.startsWith("Error"))
@@ -1049,7 +1053,7 @@ public class ServoyTestingServer
 	 * Resolves the E2E test file name from the optional caller-supplied name and
 	 * the target form. Package-private for unit testing.
 	 */
-	static String resolveE2EFileName(String outputFileName, String targetForm)
+	public static String resolveE2EFileName(String outputFileName, String targetForm)
 	{
 		String fileName = (outputFileName != null && !outputFileName.isBlank()) ? outputFileName
 			: targetForm + ".cy.ts";
@@ -1062,7 +1066,7 @@ public class ServoyTestingServer
 	 * The specPattern written into the scaffolded cypress.config.js.
 	 * Package-private for unit testing.
 	 */
-	static final String CYPRESS_E2E_SPEC_PATTERN = "**/*.{cy.js,cy.ts,spec.cy.js,spec.js,spec.ts,test.js,test.ts}";
+	public static final String CYPRESS_E2E_SPEC_PATTERN = "**/*.{cy.js,cy.ts,spec.cy.js,spec.js,spec.ts,test.js,test.ts}";
 
 	private String injectLoginIntoBeforeEach(String content)
 	{

@@ -71,7 +71,7 @@ public class OpenCodeUtil {
 	 *
 	 * @return the git root, or {@code null} if none found
 	 */
-	static Path findGitRoot(Path dir) {
+	public static Path findGitRoot(Path dir) {
 		Path current = dir;
 		while (current != null) {
 			if (Files.isDirectory(current.resolve(".git"))) { //$NON-NLS-1$

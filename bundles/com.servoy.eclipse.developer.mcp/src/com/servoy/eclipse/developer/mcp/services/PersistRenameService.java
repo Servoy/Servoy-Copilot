@@ -672,12 +672,13 @@ public class PersistRenameService {
 		return null;
 	}
 
-	// package-private (instead of private) so PersistRenameServiceTest can call it
-	// directly rather than via reflection — reflective getDeclaredMethod() forces
-	// resolution of every declared method's signature in this class, which can
-	// throw NoClassDefFoundError if an unrelated OSGi bundle (e.g. com.servoy.eclipse.core,
+	// public (instead of private) so PersistRenameServiceTest, now in a different
+	// package after the plainjunit split, can call it directly rather than via
+	// reflection — reflective getDeclaredMethod() forces resolution of every
+	// declared method's signature in this class, which can throw
+	// NoClassDefFoundError if an unrelated OSGi bundle (e.g. com.servoy.eclipse.core,
 	// referenced by other methods here) failed to activate earlier in the same test run.
-	String buildAmbiguousMessage(String oldName, java.util.List<String[]> matches,
+	public String buildAmbiguousMessage(String oldName, java.util.List<String[]> matches,
 			String activeProjectName) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("Error: Ambiguous name '").append(oldName).append("' — found in multiple locations:\n");
