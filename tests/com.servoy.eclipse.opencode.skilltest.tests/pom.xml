@@ -159,14 +159,7 @@
 							<useUIThread>false</useUIThread>
 							<product>com.servoy.eclipse.core.ide</product>
 							<application>org.eclipse.ui.ide.workbench</application>
-							<argLine>-Xms256m -Xmx3072m -ea
-								--add-exports=java.base/sun.security.x509=ALL-UNNAMED
-								-Dorg.osgi.framework.system.packages.extra=sun.security.x509
-								-Dservoy.cloud.skipCheckout=true
-								-Dservoy.application_server.dir=${servoy_install}/application_server
-								-Dservoy.skilltest.as=${servoy_install}/application_server
-								-Dchromium.integration.eclipse.disable=true
-								-Dorg.eclipse.ui.testing=true</argLine>
+							<argLine>-Xms256m -Xmx3072m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dservoy.skilltest.as=${servoy_install}/application_server -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<bundleStartLevel>
 								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>
