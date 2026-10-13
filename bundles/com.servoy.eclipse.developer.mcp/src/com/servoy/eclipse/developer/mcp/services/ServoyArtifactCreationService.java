@@ -17,6 +17,8 @@ import java.util.Map;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.servoy.base.query.IBaseSQLCondition;
+import com.servoy.base.query.IQueryConstants;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.ServoyModelFinder;
@@ -27,7 +29,6 @@ import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IColumnTypes;
 import com.servoy.j2db.persistence.IDataProvider;
 import com.servoy.j2db.persistence.IPersist;
-import com.servoy.j2db.persistence.IServerInternal;
 import com.servoy.j2db.persistence.ITable;
 import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.LayoutContainer;
@@ -37,10 +38,7 @@ import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.ScriptMethod;
 import com.servoy.j2db.persistence.ValueList;
 import com.servoy.j2db.persistence.WebComponent;
-import com.servoy.j2db.server.shared.ApplicationServerRegistry;
-
-import com.servoy.base.query.IBaseSQLCondition;
-import com.servoy.base.query.IQueryConstants;
+import com.servoy.j2db.util.DataSourceUtils;
 
 /**
  * Service for creating Servoy solution artifacts (forms, relations, valuelists).
@@ -163,17 +161,36 @@ public class ServoyArtifactCreationService
 		relation.setAllowCreationRelatedRecords(true);
 
 		// Add column mapping if both columns provided
+		String columnMappingWarning = null;
 		if (primaryColumn != null && !primaryColumn.isBlank() && foreignColumn != null && !foreignColumn.isBlank())
 		{
 			try
 			{
 				ITable primaryTable = ServoyModelFinder.getServoyModel().getDataSourceManager().getDataSource(primaryDataSource);
 				ITable foreignTable = ServoyModelFinder.getServoyModel().getDataSourceManager().getDataSource(foreignDataSource);
-				if (primaryTable != null && foreignTable != null)
+				if (primaryTable == null || foreignTable == null)
+				{
+					StringBuilder warn = new StringBuilder("Could not resolve table(s) for column mapping: ");
+					if (primaryTable == null) warn.append("table not found for '").append(primaryDataSource).append("'");
+					if (primaryTable == null && foreignTable == null) warn.append(", ");
+					if (foreignTable == null) warn.append("table not found for '").append(foreignDataSource).append("'");
+					warn.append(". Relation saved without column mapping — add it manually in the relation editor.");
+					columnMappingWarning = warn.toString();
+				}
+				else
 				{
 					Column primaryCol = primaryTable.getColumn(primaryColumn);
 					Column foreignCol = foreignTable.getColumn(foreignColumn);
-					if (primaryCol != null && foreignCol != null)
+					if (primaryCol == null || foreignCol == null)
+					{
+						StringBuilder warn = new StringBuilder("Could not resolve column(s) for mapping: ");
+						if (primaryCol == null) warn.append("'").append(primaryColumn).append("' not found in ").append(primaryDataSource);
+						if (primaryCol == null && foreignCol == null) warn.append(", ");
+						if (foreignCol == null) warn.append("'").append(foreignColumn).append("' not found in ").append(foreignDataSource);
+						warn.append(". Relation saved without column mapping — add it manually in the relation editor.");
+						columnMappingWarning = warn.toString();
+					}
+					else
 					{
 						relation.createNewRelationItems(
 							new IDataProvider[] { primaryCol },
@@ -184,6 +201,8 @@ public class ServoyArtifactCreationService
 			}
 			catch (Exception e)
 			{
+				columnMappingWarning = "Could not add column mapping: " + e.getMessage() +
+					". Relation saved without column mapping — add it manually in the relation editor.";
 				ServoyLog.logWarning("Could not add column mapping: " + e.getMessage(), e);
 			}
 		}
@@ -197,6 +216,8 @@ public class ServoyArtifactCreationService
 		if (primaryColumn != null && foreignColumn != null)
 			result.append("\n  Mapping: ").append(primaryColumn).append(" = ").append(foreignColumn);
 		result.append("\n  Join: ").append(jt == IQueryConstants.INNER_JOIN ? "INNER" : "LEFT OUTER");
+		if (columnMappingWarning != null)
+			result.append("\n  WARNING: ").append(columnMappingWarning);
 		return result.toString();
 	}
 
@@ -278,26 +299,15 @@ public class ServoyArtifactCreationService
 		if (project.getEditingSolution().getForm(name) != null)
 			return "Form '" + name + "' already exists in the active solution.";
 
-		String[] dsParts = dataSource.replace("db:/", "").split("/");
-		if (dsParts.length < 2)
-			throw new RepositoryException("Invalid datasource format: '" + dataSource + "'. Use 'db:/server_name/table_name'");
+		String tableName = DataSourceUtils.getDataSourceTableName(dataSource);
 
-		IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
-				.getServer(dsParts[0], false, false);
-		if (server == null)
-			throw new RepositoryException("Database server '" + dsParts[0] + "' not found");
-
-		ITable table;
-		try
-		{
-			table = server.getTable(dsParts[1]);
-		}
-		catch (Exception e)
-		{
-			throw new RepositoryException("Error loading table '" + dsParts[1] + "': " + e.getMessage());
-		}
+		ITable table = ServoyModelFinder.getServoyModel().getDataSourceManager().getDataSource(dataSource);
 		if (table == null)
-			throw new RepositoryException("Table '" + dsParts[1] + "' not found in server '" + dsParts[0] + "'");
+		{
+			String serverName = DataSourceUtils.getDataSourceServerName(dataSource);
+			throw new RepositoryException("Table '" + tableName + "' not found" +
+				(serverName != null ? " in server '" + serverName + "'" : "") + " for datasource '" + dataSource + "'");
+		}
 
 		ensureDbiForDataSource(dataSource);
 
@@ -315,7 +325,7 @@ public class ServoyArtifactCreationService
 				if (col != null) selectedColumns.add(col);
 			}
 			if (selectedColumns.isEmpty())
-				throw new RepositoryException("None of the specified columns found in table '" + dsParts[1] + "'");
+				throw new RepositoryException("None of the specified columns found in table '" + tableName + "'");
 		}
 
 		IValidateName validator = servoyModel.getNameValidator();
@@ -407,12 +417,12 @@ public class ServoyArtifactCreationService
 		int type = col.getColumnType().getSqlType();
 		switch (Column.mapToDefaultType(type))
 		{
-			case IColumnTypes.DATETIME:
+			case IColumnTypes.DATETIME :
 				return "bootstrapcomponents-calendar";
-			case IColumnTypes.INTEGER:
-			case IColumnTypes.NUMBER:
+			case IColumnTypes.INTEGER :
+			case IColumnTypes.NUMBER :
 				return "bootstrapcomponents-textbox";
-			default:
+			default :
 				return "bootstrapcomponents-textbox";
 		}
 	}
@@ -461,10 +471,16 @@ public class ServoyArtifactCreationService
 	private String correctDataSource(String ds) throws RepositoryException
 	{
 		if (ds == null || ds.isBlank()) throw new RepositoryException("Datasource cannot be empty");
+		// mem: and view: datasources are valid as-is
+		if (ds.startsWith(DataSourceUtils.INMEM_DATASOURCE_SCHEME_COLON) || ds.startsWith(DataSourceUtils.VIEW_DATASOURCE_SCHEME_COLON))
+		{
+			return ds;
+		}
 		if (!ds.startsWith("db:/"))
 		{
 			if (ds.contains("/")) return "db:/" + ds;
-			throw new RepositoryException("Invalid datasource format: '" + ds + "'. Use 'db:/server_name/table_name'");
+			throw new RepositoryException("Invalid datasource format: '" + ds +
+				"'. Use 'db:/server_name/table_name', 'mem:table_name' or 'view:name'");
 		}
 		return ds;
 	}
@@ -526,18 +542,42 @@ public class ServoyArtifactCreationService
 	{
 		switch (eventName)
 		{
-			case "onLoad": form.setOnLoadMethodID(methodUUID); break;
-			case "onUnLoad": form.setOnUnLoadMethodID(methodUUID); break;
-			case "onShow": form.setOnShowMethodID(methodUUID); break;
-			case "onHide": form.setOnHideMethodID(methodUUID); break;
-			case "onBeforeHide": form.setOnBeforeHideMethodID(methodUUID); break;
-			case "onRecordSelection": form.setOnRecordSelectionMethodID(methodUUID); break;
-			case "onRecordEditStart": form.setOnRecordEditStartMethodID(methodUUID); break;
-			case "onRecordEditStop": form.setOnRecordEditStopMethodID(methodUUID); break;
-			case "onElementDataChange": form.setOnElementDataChangeMethodID(methodUUID); break;
-			case "onResize": form.setOnResizeMethodID(methodUUID); break;
-			case "onSort": form.setOnSortCmdMethodID(methodUUID); break;
-			default: ServoyLog.logInfo("Unknown event: " + eventName); break;
+			case "onLoad" :
+				form.setOnLoadMethodID(methodUUID);
+				break;
+			case "onUnLoad" :
+				form.setOnUnLoadMethodID(methodUUID);
+				break;
+			case "onShow" :
+				form.setOnShowMethodID(methodUUID);
+				break;
+			case "onHide" :
+				form.setOnHideMethodID(methodUUID);
+				break;
+			case "onBeforeHide" :
+				form.setOnBeforeHideMethodID(methodUUID);
+				break;
+			case "onRecordSelection" :
+				form.setOnRecordSelectionMethodID(methodUUID);
+				break;
+			case "onRecordEditStart" :
+				form.setOnRecordEditStartMethodID(methodUUID);
+				break;
+			case "onRecordEditStop" :
+				form.setOnRecordEditStopMethodID(methodUUID);
+				break;
+			case "onElementDataChange" :
+				form.setOnElementDataChangeMethodID(methodUUID);
+				break;
+			case "onResize" :
+				form.setOnResizeMethodID(methodUUID);
+				break;
+			case "onSort" :
+				form.setOnSortCmdMethodID(methodUUID);
+				break;
+			default :
+				ServoyLog.logInfo("Unknown event: " + eventName);
+				break;
 		}
 	}
 }

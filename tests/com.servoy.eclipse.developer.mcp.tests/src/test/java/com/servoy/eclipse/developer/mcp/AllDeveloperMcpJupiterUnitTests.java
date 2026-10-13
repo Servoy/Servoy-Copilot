@@ -47,6 +47,7 @@ import com.servoy.eclipse.developer.mcp.services.PersistDuplicateServiceTest;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameServiceTest;
 import com.servoy.eclipse.developer.mcp.services.ResolvedElementsProcessorTest;
 import com.servoy.eclipse.developer.mcp.services.RunningClientExecutionServiceTest;
+import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationServiceTest;
 import com.servoy.eclipse.developer.mcp.services.TestFileServiceReflectionTest;
 import com.servoy.eclipse.developer.mcp.services.WorkspaceServiceSearchTest;
 import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
@@ -98,6 +99,7 @@ import com.servoy.eclipse.developer.mcp.services.WpmServiceTest;
 		PersistRenameServiceTest.class,
 		ResolvedElementsProcessorTest.class,
 		RunningClientExecutionServiceTest.class,
+		ServoyArtifactCreationServiceTest.class,
 		TestFileServiceReflectionTest.class,
 		WorkspaceServiceSearchTest.class,
 		WpmServiceTest.class,

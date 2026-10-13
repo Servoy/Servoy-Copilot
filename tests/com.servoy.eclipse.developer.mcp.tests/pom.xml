@@ -63,6 +63,7 @@
                         PersistDuplicateServiceTest,
                         PersistRenameServiceTest,
                         ResolvedElementsProcessorTest,
+                        ServoyArtifactCreationServiceTest,
                         TestFileServiceReflectionTest,
                         WorkspaceServiceSearchTest,
                         WpmServiceTest
