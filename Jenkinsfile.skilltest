@@ -75,10 +75,14 @@ pipeline {
                             // from the target platform). That ignition calls the real
                             // SkillTestHeadlessRunner over the cloned baselines and writes
                             // TEST-skilltest.xml. -Dservoy.skilltest.run=true un-skips the ignition.
+                            // Build the 3 AI bundle modules explicitly alongside the test module:
+                            // the test plugin is a FRAGMENT of com.servoy.eclipse.opencode.skilltest, an
+                            // OSGi (not Maven) dependency, so -am does not pull the host bundle in and
+                            // Tycho cannot resolve it from the target platform at the reactor qualifier.
                             sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                                 clean verify \
                                 -Pintegration \
-                                -pl tests/com.servoy.eclipse.opencode.skilltest.tests -am \
+                                -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest,tests/com.servoy.eclipse.opencode.skilltest.tests \
                                 -Dtycho.localArtifacts=ignore \
                                 -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ \
                                 -Dservoy.install.tarball.for.appserver=/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz \

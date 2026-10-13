@@ -22,36 +22,18 @@
 					<skip>true</skip>
 				</configuration>
 			</plugin>
-			<!-- Default (headless) run: the pure-logic unit tests only. The real
-			     skill-test SCENARIOS are NOT run here - they need a full workbench and
-			     are run via the 'integration' profile below. Enumerate concrete classes;
-			     Tycho cannot expand the JUnit Platform @Suite (AllSkillTestUnitTests). -->
+			<!-- Default lifecycle: SKIP tests. This module is in the parent <modules>
+			     only so the skilltest Jenkins job can select it with -pl; it must NOT run
+			     anything in the main (developer_ai_plugin) 'clean install' build - launching
+			     a test runtime there failed the whole build. The real skill-test scenarios
+			     run ONLY via the 'integration' profile below. (The pure-logic unit tests are
+			     run from the IDE; they are not part of the CI lifecycle.) -->
 			<plugin>
 				<groupId>org.eclipse.tycho</groupId>
 				<artifactId>tycho-surefire-plugin</artifactId>
 				<version>${tycho-version}</version>
 				<configuration>
-					<useUIHarness>false</useUIHarness>
-					<application>org.eclipse.pde.junit.runtime.coretestapplication</application>
-					<providerHint>junit6</providerHint>
-					<test>
-						ArgMatcherTest,
-						BaselineLoaderTest,
-						JsUnitVerifierTest,
-						McpToolCallTest,
-						ScopeForSolutionPathTest,
-						SessionTranscriptTest,
-						SkillTestResultTest,
-						TranscriptComparatorTest,
-						OutcomeAssertionsTest,
-						OutcomeInferenceTest,
-						SkillTestArgumentChestTest,
-						JUnitXmlReporterTest
-					</test>
-					<argLine>
-						-Xms128m -Xmx512m -ea
-						--add-exports=java.base/sun.security.x509=ALL-UNNAMED
-						-Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
+					<skipTests>true</skipTests>
 				</configuration>
 			</plugin>
 		</plugins>
@@ -165,6 +147,9 @@
 						<artifactId>tycho-surefire-plugin</artifactId>
 						<version>${tycho-version}</version>
 						<configuration>
+							<!-- Re-enable tests here: the default lifecycle sets skipTests=true (so the
+							     main build runs nothing), and that base config merges into this profile. -->
+							<skipTests>false</skipTests>
 							<providerHint>junit6</providerHint>
 							<!-- The real-scenario ignition: invokes SkillTestHeadlessRunner.runInWorkbench()
 							     over the cloned baselines, guarded by -Dservoy.skilltest.run=true (so it is
