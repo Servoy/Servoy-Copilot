@@ -73,13 +73,27 @@ pipeline {
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                             configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                         ]) {
-                            // clean install builds the AI bundles; build_product materializes the
-                            // install + overlays them + seeds baselines; run_test launches it.
+                            // Two invocations to solve an ordering problem: build_product is an
+                            // antrun execution on the PARENT pom, whose lifecycle runs before the
+                            // child modules in the reactor. On a clean workspace, bundles/*/target
+                            // does not exist yet when the parent hits pre-integration-test. So:
+                            //
+                            // 1) Build ONLY the 3 AI plugin bundles (not tests, not sites, not
+                            //    features). This is fast (~30s) and produces the target/ jars.
                             sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
-                                clean install \
-                                -Pbuild_product,run_test \
+                                clean package \
+                                -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest \
+                                -am \
                                 -Dtycho.localArtifacts=ignore \
-                                -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ \
+                                -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'''
+
+                            // 2) Materialize the install + overlay + run. -N (non-recursive) runs
+                            //    ONLY the parent pom's lifecycle, so build_product's antrun finds
+                            //    the target/ jars built in step 1 and run_test then launches the
+                            //    product. The child modules' lifecycles are NOT re-run.
+                            sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -N \
+                                -Pbuild_product,run_test \
+                                integration-test \
                                 -Dservoy.install.tarball.for.appserver=/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz \
                                 -Dskilltest.baselines.dir="$WORKSPACE/baselines-repo/baselines" \
                                 -Dskilltest.cloudUser="$CLOUD_USER" \
