@@ -159,7 +159,13 @@
 							<useUIThread>false</useUIThread>
 							<product>com.servoy.eclipse.core.ide</product>
 							<application>org.eclipse.ui.ide.workbench</application>
-							<argLine>-Xms256m -Xmx3072m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dservoy.skilltest.as=${servoy_install}/application_server -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
+							<!-- tycho-surefire forks a NEW JVM for the workbench; only args listed here
+							     reach it. The -Dservoy.skilltest.* properties therefore MUST be passed
+							     through from the outer Maven build (where the Jenkinsfile sets them) via
+							     ${...} so SkillTestCiRunnerTest's assumeTrue(servoy.skilltest.run) passes
+							     and SkillTestHeadlessRunner sees the baselines dir, output dir and cloud
+							     credentials. Without this the test is skipped. -->
+							<argLine>-Xms256m -Xmx3072m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass}</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<bundleStartLevel>
 								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>

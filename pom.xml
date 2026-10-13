@@ -16,14 +16,15 @@
         <maven.compiler.target>21</maven.compiler.target>
         <servoy.url>https://build.servoy.com/latest/servoy_lts_2026/update_site/</servoy.url>
         <servoy.install.tarball.for.appserver>/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz</servoy.install.tarball.for.appserver>
-        <!-- Skill-test run (SVY-21366). Overridable on the Maven command line. -->
-        <skilltest.install.dir>${project.build.directory}/skilltest-install</skilltest.install.dir>
-        <!-- Where the committed baselines live. Defaults to the in-repo fixture; point this at
-             the baselines repo once it exists. The seed step tolerates a missing directory. -->
-        <skilltest.baselines.dir>${project.basedir}/tests/com.servoy.eclipse.opencode.skilltest.tests/baselines</skilltest.baselines.dir>
-        <!-- Cloud login for the GENAI key (set as Jenkins credentials, passed with -D). -->
-        <skilltest.cloudUser></skilltest.cloudUser>
-        <skilltest.cloudPass></skilltest.cloudPass>
+        <!-- Skill-test run (SVY-21366). The CI job overrides these with -D; defaults here
+             keep the properties from resolving to literal '${...}' when unset (which would
+             reach the forked test JVM as garbage). run=false means the scenario ignition
+             (SkillTestCiRunnerTest) is skipped unless the job opts in. -->
+        <servoy.skilltest.run>false</servoy.skilltest.run>
+        <servoy.skilltest.baselines></servoy.skilltest.baselines>
+        <servoy.skilltest.outputDir>${project.build.directory}/skilltest-reports</servoy.skilltest.outputDir>
+        <servoy.skilltest.cloudUser></servoy.skilltest.cloudUser>
+        <servoy.skilltest.cloudPass></servoy.skilltest.cloudPass>
     </properties>
 
     <repositories>

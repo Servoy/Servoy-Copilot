@@ -116,9 +116,11 @@ pipeline {
                     configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                     configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                 ]) {
+                    // List the feature + bundle modules explicitly: the site needs the
+                    // skilltest FEATURE (an OSGi/p2 requirement), which -am does not pull in.
                     sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                         clean package \
-                        -pl repository.site_skilltest -am \
+                        -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest,features/com.servoy.eclipse.opencode.skilltest.feature,repository.site_skilltest \
                         -Dtycho.localArtifacts=ignore \
                         -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'''
                     sh '''
