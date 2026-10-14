@@ -25,6 +25,18 @@
         <servoy.skilltest.outputDir>${project.build.directory}/skilltest-reports</servoy.skilltest.outputDir>
         <servoy.skilltest.cloudUser></servoy.skilltest.cloudUser>
         <servoy.skilltest.cloudPass></servoy.skilltest.cloudPass>
+        <!-- Kiro key path (preferred over cloud login). The CI job sets this to the Kiro
+             'ksk_...' key. It is passed to the forked JVM as -DGENAI_API_KEY so the
+             OpencodeFolderCreatorJob gate (which only checks GENAI_API_KEY is non-blank)
+             passes; the ACTUAL Kiro auth is done by the @servoy/opencode-kiro-auth plugin,
+             which reads the KIRO_API_KEY *environment* variable (set in the Jenkins shell,
+             inherited by the surefire fork + opencode child) - not a -D. Same value in both.
+             With GENAI_API_KEY set, CloudLogin returns early, so no 401 cloud login.
+             skillsZip points at the non-production skills bundle (skill4servoy's
+             .opencode-shippable, zipped at build time with opencode_servoy.json as
+             opencode.json) so the run does not verify production skills. -->
+        <servoy.skilltest.kiroApiKey></servoy.skilltest.kiroApiKey>
+        <servoy.skilltest.skillsZip></servoy.skilltest.skillsZip>
     </properties>
 
     <repositories>

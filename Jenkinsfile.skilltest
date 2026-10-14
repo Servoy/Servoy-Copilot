@@ -60,25 +60,60 @@ pipeline {
             }
         }
 
+        stage('Checkout + zip skills (skill4servoy)') {
+            steps {
+                // The Kiro path needs the SERVOY (not public/sample) skills: skill4servoy's
+                // .opencode-shippable, zipped so SkillsZipExtractor extracts it into
+                // ~/.servoy/opencode/. opencode_servoy.json is the kiro provider config
+                // (model kiro/auto + @servoy/opencode-kiro-auth); it must land in the zip
+                // ROOT as opencode.json so extractToConfigDir writes it as the active config
+                // (and sets providerFromZip=true, so no litellm/GENAI provider is written).
+                dir('skill4servoy') {
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: '*/master']],
+                        extensions: [[$class: 'CloneOption', shallow: true, depth: 1]],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/Servoy/skill4servoy.git',
+                            credentialsId: 'servoy-github-app']]])
+                }
+                sh '''
+                    rm -f "$WORKSPACE/skilltest-skills.zip"
+                    cp "$WORKSPACE/skill4servoy/opencode_servoy.json" "$WORKSPACE/skill4servoy/.opencode-shippable/opencode.json"
+                    (cd "$WORKSPACE/skill4servoy/.opencode-shippable" && zip -r "$WORKSPACE/skilltest-skills.zip" . -x '*/node_modules/*')
+                '''
+            }
+        }
+
         stage('Run skill-test scenarios') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'servoy-cloud-svc',
+                // KIRO_API_KEY is bound as an ENV VAR (not -D): the @servoy/opencode-kiro-auth
+                // plugin in the opencode child process reads it from the environment, which the
+                // surefire fork + opencode child inherit from this shell. The same key is also
+                // passed as -DGENAI_API_KEY (see the mvn line) only to satisfy the opencode setup
+                // gate; real auth is KIRO_API_KEY. cloud creds are no longer used (kept bound but
+                // unused) now that the Kiro key skips the cloud login.
+                withCredentials([
+                        string(credentialsId: 'servoy-kiro-api-key', variable: 'KIRO_API_KEY'),
+                        usernamePassword(credentialsId: 'servoy-cloud-svc',
                         usernameVariable: 'CLOUD_USER', passwordVariable: 'CLOUD_PASS')]) {
                     wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
                         configFileProvider([
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                             configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                         ]) {
-                            // One invocation. -Pintegration + -am builds the 3 AI bundles from
-                            // source, extracts only application_server/** from the tarball, and
-                            // runs SkillTestCiRunnerTest under a tycho-surefire workbench (resolved
-                            // from the target platform). That ignition calls the real
+                            // One invocation. -Pintegration builds the 3 AI bundles from source,
+                            // extracts only application_server/** from the tarball, and runs
+                            // SkillTestCiRunnerTest under a tycho-surefire workbench (resolved from
+                            // the target platform). That ignition calls the real
                             // SkillTestHeadlessRunner over the cloned baselines and writes
                             // TEST-skilltest.xml. -Dservoy.skilltest.run=true un-skips the ignition.
-                            // Build the 3 AI bundle modules explicitly alongside the test module:
-                            // the test plugin is a FRAGMENT of com.servoy.eclipse.opencode.skilltest, an
-                            // OSGi (not Maven) dependency, so -am does not pull the host bundle in and
-                            // Tycho cannot resolve it from the target platform at the reactor qualifier.
+                            // The 3 AI bundle modules are listed explicitly (not -am): the test
+                            // plugin is a FRAGMENT of com.servoy.eclipse.opencode.skilltest, an OSGi
+                            // (not Maven) dependency, so -am would not pull the host bundle into the
+                            // reactor and Tycho could not resolve it at the reactor qualifier.
+                            // kiroApiKey -> -DGENAI_API_KEY (gate only); the real Kiro auth uses the
+                            // KIRO_API_KEY env var bound above. skillsZip is the skill4servoy
+                            // .opencode-shippable bundle zipped in the previous stage.
                             sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                                 clean verify \
                                 -Pintegration \
@@ -89,8 +124,8 @@ pipeline {
                                 -Dservoy.skilltest.run=true \
                                 -Dservoy.skilltest.baselines="$WORKSPACE/baselines-repo/baselines" \
                                 -Dservoy.skilltest.outputDir="$WORKSPACE/skilltest-reports" \
-                                -Dservoy.skilltest.cloudUser="$CLOUD_USER" \
-                                -Dservoy.skilltest.cloudPass="$CLOUD_PASS"'''
+                                -Dservoy.skilltest.kiroApiKey="$KIRO_API_KEY" \
+                                -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip"'''
                         }
                     }
                 }
