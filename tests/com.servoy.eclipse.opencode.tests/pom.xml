@@ -30,10 +30,7 @@
 					<includes>
 						<include>**/plainjunit/**/*Test.java</include>
 					</includes>
-					<argLine>
-						-Xms128m -Xmx512m -ea
-						--add-exports=java.base/sun.security.x509=ALL-UNNAMED
-						-Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
+					<argLine>-Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509</argLine>
 					<dependencies>
 						<dependency>
 							<type>eclipse-plugin</type>
@@ -67,12 +64,7 @@
 							<useUIThread>false</useUIThread>
 							<product>com.servoy.eclipse.core.ide</product>
 							<application>org.eclipse.ui.ide.workbench</application>
-							<argLine>-Xms256m -Xmx2048m -ea
-								--add-exports=java.base/sun.security.x509=ALL-UNNAMED
-								-Dorg.osgi.framework.system.packages.extra=sun.security.x509
-								-Dservoy.cloud.skipCheckout=true
-								-Dchromium.integration.eclipse.disable=true
-								-Dorg.eclipse.ui.testing=true</argLine>
+							<argLine>-Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<dependencies>
 								<dependency>
