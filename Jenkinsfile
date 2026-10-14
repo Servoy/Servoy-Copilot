@@ -29,10 +29,35 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                // Decide whether this push is "skilltest-only" - i.e. every changed file is
+                // under the skilltest TEST project or the skilltest Jenkinsfile. Those do not
+                // affect the product build/deploy, so the heavy stages below skip for them.
+                // The skilltest BUNDLE (bundles/.../opencode.skilltest) is a product bundle and
+                // is deliberately NOT in this set, so a bundle change still builds the product.
+                // First build (no prior changeset) is treated as NOT skilltest-only, so a fresh
+                // branch always does a full build.
+                script {
+                    def changed = []
+                    for (cs in currentBuild.changeSets) {
+                        for (c in cs.items) {
+                            for (f in c.affectedFiles) {
+                                changed << f.path
+                            }
+                        }
+                    }
+                    boolean hasChanges = !changed.isEmpty()
+                    boolean onlySkilltest = hasChanges && changed.every { p ->
+                        p.startsWith('tests/com.servoy.eclipse.opencode.skilltest.tests/') ||
+                        p == 'Jenkinsfile.skilltest'
+                    }
+                    env.SKILLTEST_ONLY = onlySkilltest.toString()
+                    echo "Changed files: ${changed.size()}; skilltest-only (skip product build): ${onlySkilltest}"
+                }
             }
         }
         
         stage('Build with Tycho 5') {
+            when { expression { env.SKILLTEST_ONLY != 'true' } }
             steps {
                 wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
                     configFileProvider([
@@ -46,6 +71,7 @@ pipeline {
             }
         }
         stage('Deploy Plugin Site') {
+            when { expression { env.SKILLTEST_ONLY != 'true' } }
             steps {
                 sh '''
                 rm -rf /data/www/latest/servoy_ai/
@@ -58,6 +84,7 @@ pipeline {
             }
         }
         stage('Integration Tests') {
+            when { expression { env.SKILLTEST_ONLY != 'true' } }
             steps {
                 wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
                     configFileProvider([

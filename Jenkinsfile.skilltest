@@ -43,6 +43,21 @@ pipeline {
         }
 
         stage('Checkout baselines') {
+            // Only run the heavy skilltest work when this push actually touched the AI
+            // plugin code (MCP tools / skilltest / opencode). githubPush() still STARTS
+            // the job on every push, but these stages skip to a fast no-op otherwise, so
+            // doc/pom-only commits don't spend 2 minutes launching a workbench.
+            // NOTE: changeset only sees Servoy-Copilot's own diff - baselines/skill4servoy
+            // changes are handled by their own triggers (webhook/poll), not here.
+            when {
+                anyOf {
+                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
+                    changeset "bundles/com.servoy.eclipse.opencode/**"
+                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
+                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
+                    changeset "Jenkinsfile.skilltest"
+                }
+            }
             steps {
                 // The baseline scenarios are curated by testers in a SEPARATE private repo
                 // (Servoy/servoy-ai-skilltest-baselines) they have access to, independent of
@@ -61,6 +76,15 @@ pipeline {
         }
 
         stage('Checkout + zip skills (skill4servoy)') {
+            when {
+                anyOf {
+                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
+                    changeset "bundles/com.servoy.eclipse.opencode/**"
+                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
+                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
+                    changeset "Jenkinsfile.skilltest"
+                }
+            }
             steps {
                 // The Kiro path needs the SERVOY (not public/sample) skills: skill4servoy's
                 // .opencode-shippable, zipped so SkillsZipExtractor extracts it into
@@ -89,6 +113,15 @@ pipeline {
         }
 
         stage('Run skill-test scenarios') {
+            when {
+                anyOf {
+                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
+                    changeset "bundles/com.servoy.eclipse.opencode/**"
+                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
+                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
+                    changeset "Jenkinsfile.skilltest"
+                }
+            }
             steps {
                 // KIRO_API_KEY is bound as an ENV VAR (not -D): the @servoy/opencode-kiro-auth
                 // plugin in the opencode child process reads it from the environment, which the
