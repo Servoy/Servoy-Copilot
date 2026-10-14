@@ -177,10 +177,22 @@ pipeline {
                     // `clean` wipes target/. The opencode setup (OpencodeFolderCreatorJob,
                     // RunOpencodeCommand, kiro-auth) logs via ServoyLog to the Eclipse
                     // .metadata/.log, which the Jenkins console does NOT show - this is where
-                    // "opencode server did not become ready" has its real cause. Also grab any
-                    // opencode/npm logs under the bundle state location. archiveArtifacts (not the
-                    // workspace browser) so hidden dotfiles are actually downloadable.
-                    archiveArtifacts artifacts: '**/target/work/data/.metadata/.log, **/target/work/**/opencode/**/*.log, skilltest-reports/**',
+                    // "opencode server did not become ready" has its real cause.
+                    //
+                    // Copy the DOT-named logs to non-dot names first: Jenkins archiveArtifacts
+                    // applies Ant "default excludes" which skip .* paths (.metadata, .log), so a
+                    // direct glob of **/.metadata/.log silently matches nothing. We copy to
+                    // plain names under $WORKSPACE/skilltest-logs and archive THAT.
+                    sh '''
+                        set +e
+                        mkdir -p "$WORKSPACE/skilltest-logs"
+                        find "$WORKSPACE" -path '*/target/work/data/.metadata/.log' -exec cp {} "$WORKSPACE/skilltest-logs/workbench.log" \\; 2>/dev/null
+                        find "$WORKSPACE" -path '*/target/work/**' -name '*.log' 2>/dev/null | while read f; do
+                            cp "$f" "$WORKSPACE/skilltest-logs/$(echo "$f" | tr '/.' '__')" 2>/dev/null
+                        done
+                        echo "collected logs:"; ls -la "$WORKSPACE/skilltest-logs" 2>/dev/null
+                    '''
+                    archiveArtifacts artifacts: 'skilltest-logs/**, skilltest-reports/**',
                                      allowEmptyArchive: true, fingerprint: false
                     junit allowEmptyResults: false,
                           testResults: 'skilltest-reports/TEST-*.xml, **/target/surefire-reports/TEST-*.xml'
