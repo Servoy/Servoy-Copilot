@@ -612,20 +612,13 @@ public class RunningClientExecutionServiceTest {
 					"all-blank request must be rejected: " + result);
 		}
 
-		@Test
-		@DisplayName("with a valid request but no debug environment, a clear 'no running client' style message is returned, never a crash")
-		void validRequestNoClient_returnsActionableMessage() {
-			// In the plain-JUnit environment there is no ApplicationServerRegistry /
-			// debug-ready client, so execute() must fall through to one of its
-			// actionable, non-throwing guard messages rather than raising.
-			String result = service.execute("application.output('x')", null, null, 5);
-			assertNotNull(result, "execute must never return null");
-			assertTrue(
-					result.contains("No running Servoy client")
-							|| result.contains("debug environment is not available"),
-					"without a client, execute must return an actionable guard message: " + result);
-			assertFalse(result.contains("Timed out"),
-					"a missing client must NOT be misreported as a timeout: " + result);
-		}
+		// NOTE: the "valid request but no running client" case is deliberately NOT tested here.
+		// With a non-blank script, execute() falls through to getDebugClientHandler() ->
+		// ApplicationServerRegistry.get(), which BLOCKS (as_instanceRef.wait()) until an
+		// application server is registered. In the plain-JUnit environment no server is ever
+		// registered, so that call never returns and the test would hang forever (not fail).
+		// That path requires a live app server and is covered by the integration test
+		// RunningClientExecutionIntegrationTest.execute_noClient_returnsActionableMessage_notTimeout.
+		// Only the request-shape guards above (which return before touching the runtime) belong here.
 	}
 }
