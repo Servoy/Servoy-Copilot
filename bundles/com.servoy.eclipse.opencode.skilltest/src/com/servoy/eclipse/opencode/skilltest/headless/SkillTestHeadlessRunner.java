@@ -89,8 +89,13 @@ public class SkillTestHeadlessRunner implements IApplication {
 	/** How long to wait for the workbench to start the Servoy application server. */
 	private static final long APP_SERVER_WAIT_MS = 180_000L;
 
-	/** How long to wait for the opencode server to come up. */
-	private static final long OPENCODE_SERVER_WAIT_MS = 180_000L;
+	/**
+	 * How long to wait for the opencode server to come up. The first CI run has to
+	 * download node + {@code npm install} the pinned opencode cli, which can exceed
+	 * the old 180s. Overridable with {@code -Dservoy.skilltest.opencodeWaitMs} so CI
+	 * can tune it without a rebuild; defaults to 420s.
+	 */
+	private static final long OPENCODE_SERVER_WAIT_MS = Long.getLong("servoy.skilltest.opencodeWaitMs", 420_000L); //$NON-NLS-1$
 
 
 	private Integer exitCode = EXIT_OK;

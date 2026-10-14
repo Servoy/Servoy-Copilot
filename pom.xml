@@ -37,6 +37,9 @@
              opencode.json) so the run does not verify production skills. -->
         <servoy.skilltest.kiroApiKey></servoy.skilltest.kiroApiKey>
         <servoy.skilltest.skillsZip></servoy.skilltest.skillsZip>
+        <!-- opencode server readiness wait (ms). First CI run downloads node + npm installs
+             the pinned opencode cli, which can exceed the old 180s. Default 420s. -->
+        <servoy.skilltest.opencodeWaitMs>420000</servoy.skilltest.opencodeWaitMs>
     </properties>
 
     <repositories>
