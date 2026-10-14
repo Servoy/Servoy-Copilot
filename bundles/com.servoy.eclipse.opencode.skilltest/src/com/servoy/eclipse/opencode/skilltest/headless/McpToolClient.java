@@ -62,7 +62,65 @@ public final class McpToolClient {
 	 * @return the tool's text result (best-effort string form)
 	 * @throws Exception if the call fails or the tool reports an error
 	 */
+	/** Max attempts for the connect+initialize+call; see {@link #callDevTool}. */
+	private static final int MAX_ATTEMPTS = 6;
+
+	/** Backoff between attempts. */
+	private static final long RETRY_DELAY_MS = 2_000L;
+
+	/**
+	 * Calls a servoy-dev MCP tool, retrying the whole connect+initialize+call on
+	 * transient connection failures. The embedded web server is up (the diagnostics
+	 * probe confirms the servlet responds), but the very first streamable-HTTP
+	 * {@code initialize()} right after activation can hit a
+	 * {@link java.net.ConnectException}/{@link java.nio.channels.ClosedChannelException}
+	 * ("Client failed to initialize by explicit API call") before the MCP server has
+	 * finished wiring up - the standalone McpProbeApplication only succeeds after a
+	 * settle. A bounded retry rides over that window. Each attempt is logged so a
+	 * persistent (non-transient) failure is visible as N failed attempts rather than
+	 * a silent slow death.
+	 */
 	public String callDevTool(String toolName, Map<String, Object> args) throws Exception {
+		Exception last = null;
+		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+			try {
+				return callDevToolOnce(toolName, args);
+			} catch (Exception e) {
+				if (!isTransientConnect(e) || attempt == MAX_ATTEMPTS) {
+					throw e;
+				}
+				last = e;
+				logger.log("[skilltest] MCP " + toolName + " connect attempt " + attempt + "/" + MAX_ATTEMPTS //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+						+ " failed (" + rootMessage(e) + "); retrying in " + (RETRY_DELAY_MS / 1000) + "s"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				Thread.sleep(RETRY_DELAY_MS);
+			}
+		}
+		throw last; // unreachable (loop either returns or throws), kept for the compiler
+	}
+
+	/** @return true if {@code e} or any cause is a connection-level failure worth retrying. */
+	private static boolean isTransientConnect(Throwable e) {
+		for (Throwable c = e; c != null; c = c.getCause()) {
+			if (c instanceof java.net.ConnectException || c instanceof java.nio.channels.ClosedChannelException) {
+				return true;
+			}
+			String m = c.getMessage();
+			if (m != null && m.contains("failed to initialize by explicit API call")) { //$NON-NLS-1$
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String rootMessage(Throwable e) {
+		Throwable c = e;
+		while (c.getCause() != null) {
+			c = c.getCause();
+		}
+		return c.getClass().getSimpleName() + (c.getMessage() != null ? ": " + c.getMessage() : ""); //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	private String callDevToolOnce(String toolName, Map<String, Object> args) throws Exception {
 		String endpoint = "/dev_mcp/servoy-dev"; //$NON-NLS-1$
 		String token = readSessionAuthToken();
 		ObjectMapper om = new ObjectMapper();
