@@ -173,6 +173,15 @@ pipeline {
                     // tycho-surefire also writes its own surefire reports. allowEmptyResults:false
                     // so a run that produced NO report (e.g. the workbench never came up) fails the
                     // build instead of a silent SUCCESS.
+                    // Capture the workbench's own log + opencode output BEFORE the next
+                    // `clean` wipes target/. The opencode setup (OpencodeFolderCreatorJob,
+                    // RunOpencodeCommand, kiro-auth) logs via ServoyLog to the Eclipse
+                    // .metadata/.log, which the Jenkins console does NOT show - this is where
+                    // "opencode server did not become ready" has its real cause. Also grab any
+                    // opencode/npm logs under the bundle state location. archiveArtifacts (not the
+                    // workspace browser) so hidden dotfiles are actually downloadable.
+                    archiveArtifacts artifacts: '**/target/work/data/.metadata/.log, **/target/work/**/opencode/**/*.log, skilltest-reports/**',
+                                     allowEmptyArchive: true, fingerprint: false
                     junit allowEmptyResults: false,
                           testResults: 'skilltest-reports/TEST-*.xml, **/target/surefire-reports/TEST-*.xml'
                 }
