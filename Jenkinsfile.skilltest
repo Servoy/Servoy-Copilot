@@ -79,7 +79,11 @@ pipeline {
                 sh '''
                     rm -f "$WORKSPACE/skilltest-skills.zip"
                     cp "$WORKSPACE/skill4servoy/opencode_servoy.json" "$WORKSPACE/skill4servoy/.opencode-shippable/opencode.json"
-                    (cd "$WORKSPACE/skill4servoy/.opencode-shippable" && zip -r "$WORKSPACE/skilltest-skills.zip" . -x '*/node_modules/*')
+                    # Use the JDK's jar (always present via the Java tool) rather than `zip`,
+                    # which is not installed on the CI agent. -C zips entries relative to
+                    # .opencode-shippable so opencode.json / skills/ land at the zip root.
+                    rm -rf "$WORKSPACE/skill4servoy/.opencode-shippable/.opencode"
+                    jar -cf "$WORKSPACE/skilltest-skills.zip" -C "$WORKSPACE/skill4servoy/.opencode-shippable" .
                 '''
             }
         }
