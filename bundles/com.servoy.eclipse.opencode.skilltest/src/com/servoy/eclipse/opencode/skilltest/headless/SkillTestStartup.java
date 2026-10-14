@@ -49,6 +49,16 @@ public class SkillTestStartup implements IStartup {
 		if (!isRunRequested()) {
 			return;
 		}
+		if (isUnderTestHarness()) {
+			// Running under tycho-surefire (CI): SkillTestCiRunnerTest is the driver and
+			// calls SkillTestHeadlessRunner.runInWorkbench() itself. If this IStartup ALSO
+			// ran it, the embedded web server / app server would be started twice -> the
+			// second start fails with "Address already in use" / "servlet not unique" and
+			// opencode never becomes ready. So defer to the test and do nothing here.
+			System.out.println("[skilltest] test harness detected (org.eclipse.ui.testing); " //$NON-NLS-1$
+					+ "SkillTestCiRunnerTest drives the run, IStartup skips."); //$NON-NLS-1$
+			return;
+		}
 		Thread t = new Thread(SkillTestStartup::runAndExit, "servoy-skilltest-runner"); //$NON-NLS-1$
 		t.setDaemon(false);
 		t.start();
@@ -59,6 +69,15 @@ public class SkillTestStartup implements IStartup {
 			return true;
 		}
 		return Boolean.parseBoolean(System.getenv().getOrDefault(RUN_ENV, "false")); //$NON-NLS-1$
+	}
+
+	/**
+	 * True when launched by the tycho-surefire UI test harness (it sets
+	 * {@code -Dorg.eclipse.ui.testing=true}). In that mode the JUnit ignition
+	 * drives the run, so this IStartup must not also run it.
+	 */
+	private static boolean isUnderTestHarness() {
+		return Boolean.parseBoolean(System.getProperty("org.eclipse.ui.testing", "false")); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	private static void runAndExit() {
