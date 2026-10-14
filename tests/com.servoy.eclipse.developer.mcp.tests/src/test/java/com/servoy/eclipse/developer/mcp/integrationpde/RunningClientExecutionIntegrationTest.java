@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.integrationpde.utils.AbstractTitaniumIntegrationTestCopy;
+import com.servoy.eclipse.developer.mcp.servers.ServoyDebugServer;
 import com.servoy.eclipse.developer.mcp.services.RunningClientExecutionService;
 import com.servoy.j2db.IApplication;
 import com.servoy.j2db.IDebugClient;
@@ -140,6 +141,24 @@ public class RunningClientExecutionIntegrationTest extends AbstractTitaniumInteg
 				"without a client execute must return an actionable message: " + result);
 		assertFalse(result.contains("Timed out"),
 				"a missing client must NOT be misreported as a timeout: " + result);
+	}
+
+	@Test
+	public void executeInRunningClientTool_noClient_returnsActionableMessage() {
+		// The thin MCP tool layer (ServoyDebugServer.executeInRunningClient) with a valid
+		// request but no running client. This exercises the same blocking
+		// ApplicationServerRegistry.get() path as execute() above, so it needs a live app
+		// server and belongs here rather than in the plainjunit ServoyDebugServerTest (where
+		// it would hang forever instead of returning a message).
+		ServoyDebugServer server = new ServoyDebugServer();
+		if (debugReadyClientOrNull() != null) {
+			return;
+		}
+		String result = server.executeInRunningClient("application.output('x')", null, null, 5);
+		assertNotNull(result, "tool must never return null");
+		assertTrue(result.contains("No running Servoy client")
+				|| result.contains("debug environment is not available"),
+				"without a client the tool must return an actionable message: " + result);
 	}
 
 	// -----------------------------------------------------------------------

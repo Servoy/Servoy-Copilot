@@ -139,15 +139,15 @@ public class ServoyDebugServerTest {
 				"empty request must surface the documented guard message: " + result);
 	}
 
-	@Test
-	@DisplayName("a valid request with no client is reported as an actionable message, never as a tool failure")
-	void executeInRunningClient_noClient_returnsActionableMessage() {
-		String result = server.executeInRunningClient("application.output('x')", null, null, 5);
-		assertNotNull(result);
-		assertTrue(
-				result.contains("No running Servoy client") || result.contains("debug environment is not available"),
-				"without a client the tool must return an actionable message: " + result);
-	}
+	// NOTE: the "valid request with no client" case is deliberately NOT tested here.
+	// With a non-blank script, executeInRunningClient() delegates to
+	// RunningClientExecutionService.execute(), which falls through to
+	// ApplicationServerRegistry.get(). That call BLOCKS (as_instanceRef.wait()) until an
+	// application server is registered - which never happens in the plain-JUnit environment -
+	// so the test would hang forever (not fail). That path needs a live app server and is
+	// covered by the integration test
+	// RunningClientExecutionIntegrationTest.executeInRunningClientTool_noClient_returnsActionableMessage.
+	// Only the empty-request guard above (which returns before touching the runtime) belongs here.
 
 	// -----------------------------------------------------------------------
 	// helpers
