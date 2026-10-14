@@ -325,7 +325,11 @@ public class SkillTestHeadlessRunner implements IApplication {
 			Baseline baseline = entry.baseline();
 			try {
 				setup.prepare(baseline);
-				results.add(runner.runBaseline(baseline));
+				// Pass the baseline's ACTUAL on-disk folder (entry.folder(), from the CI
+				// -Dservoy.skilltest.baselines dir) so JSUnit verify scripts resolve there.
+				// Without it the runner recomputes the folder from the workspace baselines
+				// root, which doesn't match in CI -> "verify script not found".
+				results.add(runner.runBaseline(baseline, entry.folder()));
 			} catch (Exception setupEx) {
 				ServoyLog.logError("Setup failed for baseline " + baseline.id(), setupEx);
 				output("[skilltest] " + baseline.id() + " setup failed: " + setupEx.getMessage());

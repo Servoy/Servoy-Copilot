@@ -127,6 +127,23 @@ public final class SkillTestRunner {
 	}
 
 	/**
+	 * Runs a single baseline using an EXPLICIT on-disk folder for the baseline's
+	 * assets (verify scripts, etc.). Prefer this when the caller already knows the
+	 * folder the baseline was loaded from (e.g. a CI {@code -Dservoy.skilltest.baselines}
+	 * dir), because {@link #resolveBaselineFolder} otherwise recomputes the folder
+	 * from {@link SkillTestPaths#baselinesRoot()} (the workspace path), which does
+	 * NOT match when baselines live elsewhere - the cause of
+	 * "verify script not found: verify/scopes/skilltest_verify.js" in CI.
+	 *
+	 * @param baseline       the baseline to run
+	 * @param baselineFolder the baseline's folder on disk (verify-script source)
+	 * @return the outcome
+	 */
+	public SkillTestResult runBaseline(Baseline baseline, java.io.File baselineFolder) {
+		return runBaseline(baseline, () -> false, baselineFolder);
+	}
+
+	/**
 	 * Runs a single baseline, cooperatively cancellable via {@code cancelled}.
 	 *
 	 * @param baseline  the baseline to run
@@ -134,6 +151,15 @@ public final class SkillTestRunner {
 	 * @return the outcome
 	 */
 	public SkillTestResult runBaseline(Baseline baseline, java.util.function.BooleanSupplier cancelled) {
+		return runBaseline(baseline, cancelled, null);
+	}
+
+	/**
+	 * @param baselineFolder explicit baseline folder, or {@code null} to resolve it
+	 *                       from {@link SkillTestPaths#baselinesRoot()}
+	 */
+	public SkillTestResult runBaseline(Baseline baseline, java.util.function.BooleanSupplier cancelled,
+			java.io.File baselineFolder) {
 		java.util.function.BooleanSupplier cancel = cancelled != null ? cancelled : () -> false;
 		String basePrompt = baseline.effectivePrompt();
 		if (basePrompt == null || basePrompt.isBlank()) {
@@ -239,7 +265,8 @@ public final class SkillTestRunner {
 				// passes only if BOTH the outcome check and (a required) JSUnit pass.
 				JsUnitVerifier.Result jsUnit = null;
 				if (baseline.hasJsUnitVerify()) {
-					jsUnit = new JsUnitVerifier(logger).verify(baseline, resolveBaselineFolder(baseline));
+					java.io.File vf = baselineFolder != null ? baselineFolder : resolveBaselineFolder(baseline);
+					jsUnit = new JsUnitVerifier(logger).verify(baseline, vf);
 					boolean jsUnitBlocks = baseline.jsUnitVerify().required() && !jsUnit.pass();
 					if (jsUnitBlocks) {
 						match = false;
