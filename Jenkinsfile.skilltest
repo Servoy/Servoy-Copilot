@@ -51,6 +51,13 @@ pipeline {
             // changes are handled by their own triggers (webhook/poll), not here.
             when {
                 anyOf {
+                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
+                    // is "Started by user ..." = UserIdCause). The changeset gate below only
+                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
+                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
+                    // a build manually is the on-demand way to run it. A GitHub-push build
+                    // that touches no gated path still correctly skips (deploy-only).
+                    triggeredBy 'UserIdCause'
                     changeset "bundles/com.servoy.eclipse.developer.mcp/**"
                     changeset "bundles/com.servoy.eclipse.opencode/**"
                     changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
@@ -78,6 +85,13 @@ pipeline {
         stage('Checkout + zip skills (skill4servoy)') {
             when {
                 anyOf {
+                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
+                    // is "Started by user ..." = UserIdCause). The changeset gate below only
+                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
+                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
+                    // a build manually is the on-demand way to run it. A GitHub-push build
+                    // that touches no gated path still correctly skips (deploy-only).
+                    triggeredBy 'UserIdCause'
                     changeset "bundles/com.servoy.eclipse.developer.mcp/**"
                     changeset "bundles/com.servoy.eclipse.opencode/**"
                     changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
@@ -115,6 +129,13 @@ pipeline {
         stage('Run skill-test scenarios') {
             when {
                 anyOf {
+                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
+                    // is "Started by user ..." = UserIdCause). The changeset gate below only
+                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
+                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
+                    // a build manually is the on-demand way to run it. A GitHub-push build
+                    // that touches no gated path still correctly skips (deploy-only).
+                    triggeredBy 'UserIdCause'
                     changeset "bundles/com.servoy.eclipse.developer.mcp/**"
                     changeset "bundles/com.servoy.eclipse.opencode/**"
                     changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
