@@ -26,7 +26,7 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
-import io.modelcontextprotocol.json.schema.jackson2.DefaultJsonSchemaValidator;
+import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 
@@ -78,7 +78,21 @@ public final class McpToolClient {
 					})
 					.build();
 			client = McpClient.sync(transport)
-					.jsonSchemaValidator(new DefaultJsonSchemaValidator(om))
+					// Lenient validator instead of DefaultJsonSchemaValidator: the default
+					// constructor loads the JSON Schema 2020-12 meta-schema from the classpath
+					// (classpath:draft/2020-12/schema), which is NOT present in the headless
+					// tycho test runtime -> SchemaException "Failed to load json schema from
+					// https://json-schema.org/draft/2020-12/schema" -> every MCP tool call
+					// (createSolution/activateSolution) fails in baseline setup (SVY-21366).
+					// We only call our own servoy-dev tools with known args here, so output-schema
+					// validation adds nothing; skip it. (validate() returns valid; the schema
+					// conformance methods already default to no-op in the interface.)
+					.jsonSchemaValidator(new JsonSchemaValidator() {
+						@Override
+						public ValidationResponse validate(Map<String, Object> schema, Object structuredContent) {
+							return ValidationResponse.asValid(null);
+						}
+					})
 					.requestTimeout(Duration.ofMinutes(2))
 					.build();
 			client.initialize();
