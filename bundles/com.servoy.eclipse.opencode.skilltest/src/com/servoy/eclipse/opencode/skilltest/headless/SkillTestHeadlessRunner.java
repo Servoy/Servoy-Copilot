@@ -280,6 +280,15 @@ public class SkillTestHeadlessRunner implements IApplication {
 		// the opencode npm launch does not block forever on the extraction latch.
 		com.servoy.eclipse.ngclient.ui.Activator ngActivator = com.servoy.eclipse.ngclient.ui.Activator.getInstance();
 		if (ngActivator != null) {
+			// CRITICAL: under tycho-surefire ModelUtils.isTestRunning() is true, so
+			// ngclient.ui.Activator starts with nodeExtractionAndTitaniumBuildDisabled=true.
+			// In that state extractNode() returns IMMEDIATELY WITHOUT counting down its
+			// nodeReady latch - so OpencodeFolderCreatorJob's createNPMCommand() ->
+			// waitForNodeExtraction() blocks forever and opencode never starts ("opencode
+			// server did not become ready"). The skill test genuinely needs node (opencode
+			// is a node app), so re-enable extraction before triggering it. The setter is
+			// provided for exactly this ("each test class can change it at will").
+			com.servoy.eclipse.ngclient.ui.Activator.setNodeExtractionAndTitaniumBuildDisabled(false);
 			ngActivator.extractNode();
 		} else {
 			outputError("ngclient.ui Activator not available - opencode npm launch may hang.");
