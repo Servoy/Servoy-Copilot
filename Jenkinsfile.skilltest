@@ -129,10 +129,16 @@ pipeline {
                 // passed as -DGENAI_API_KEY (see the mvn line) only to satisfy the opencode setup
                 // gate; real auth is KIRO_API_KEY. cloud creds are no longer used (kept bound but
                 // unused) now that the Kiro key skips the cloud login.
+                // GIT_TOKEN: the git-source baselines clone a PRIVATE repo (Servoy/servoy_test)
+                // over HTTPS via jgit. Headless, jgit must not fall back to EGit's UI credentials
+                // provider (it calls a null workbench UI service -> "A null service reference is
+                // not allowed", SVY-21366). SolutionSetup reads GIT_TOKEN and uses a
+                // UsernamePasswordCredentialsProvider instead. Reuse the same GitHub App
+                // credential the checkouts use; its password/token is the clone token.
                 withCredentials([
                         string(credentialsId: 'servoy-kiro-api-key', variable: 'KIRO_API_KEY'),
-                        usernamePassword(credentialsId: 'servoy-cloud-svc',
-                        usernameVariable: 'CLOUD_USER', passwordVariable: 'CLOUD_PASS')]) {
+                        usernamePassword(credentialsId: 'servoy-github-app',
+                        usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
                     wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
                         configFileProvider([
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),

@@ -471,6 +471,27 @@ public final class SolutionSetup {
 	 * {@code null} (JGit default / SSH keys) when EGit is unavailable.
 	 */
 	private static org.eclipse.jgit.transport.CredentialsProvider resolveCredentialsProvider() {
+		// Headless/CI FIRST: a token supplied out-of-band. EGit's provider must NOT be
+		// used headless - cloning a private repo over HTTPS hits its auth path, which
+		// calls callCredentialsUI() -> BundleContext.getService(<UI service>) that is
+		// null without a workbench UI, throwing "A null service reference is not
+		// allowed." (SVY-21366). A UsernamePasswordCredentialsProvider answers jgit's
+		// prompts directly, so EGit's UI path is never reached.
+		//
+		// Token source (first non-blank wins): -Dservoy.skilltest.gitToken, or the
+		// GIT_TOKEN / GITHUB_TOKEN env var. For GitHub a PAT works as the password with
+		// any non-empty username ("x-access-token" by convention).
+		String token = firstNonBlank(System.getProperty("servoy.skilltest.gitToken"), //$NON-NLS-1$
+				System.getenv("GIT_TOKEN"), System.getenv("GITHUB_TOKEN")); //$NON-NLS-1$ //$NON-NLS-2$
+		if (token != null) {
+			// Use the bound username when provided (same credential the Jenkins checkout of
+			// the other private repos uses); fall back to the GitHub PAT convention otherwise.
+			String user = firstNonBlank(System.getProperty("servoy.skilltest.gitUser"), //$NON-NLS-1$
+					System.getenv("GIT_USER"), "x-access-token"); //$NON-NLS-1$ //$NON-NLS-2$
+			return new org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(user, token);
+		}
+		// Interactive IDE use: EGit's provider reuses the IDE's stored credentials.
+		// Only reached when no token is set AND a workbench UI is present.
 		try {
 			Class<?> cls = Class
 					.forName("org.eclipse.egit.core.internal.credentials.EGitCredentialsProvider"); //$NON-NLS-1$
@@ -479,6 +500,17 @@ public final class SolutionSetup {
 			// EGit not available / internal API changed - use JGit default (SSH keys).
 			return null;
 		}
+	}
+
+	private static String firstNonBlank(String... values) {
+		if (values != null) {
+			for (String v : values) {
+				if (v != null && !v.isBlank()) {
+					return v;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**
