@@ -249,10 +249,8 @@ public class FormPreviewService
 				ProcessBuilder pb = new ProcessBuilder(command);
 				pb.directory(cypressDir.toFile());
 				pb.redirectErrorStream(true);
-				String existingPath = System.getenv("PATH");
-				pb.environment().put("PATH",
-					nodePath.getParent() + File.pathSeparator + nodeModulesBin + File.pathSeparator + (existingPath != null ? existingPath : ""));
-				pb.environment().put("NODE_PATH", cypressDir.resolve("node_modules").toString());
+				// sets PATH (node first), NODE_PATH and CYPRESS_CACHE_FOLDER the same way the Cypress runner does (SVY-21515)
+				specRunner.configureCypressEnvironment(pb, cypressDir);
 				Process process = pb.start();
 
 				StringBuilder output = new StringBuilder();
