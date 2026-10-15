@@ -64,24 +64,48 @@ import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 public class GitService
 {
 
+	/**
+	 * Resolves the Git repository to operate on. When {@code repo} is given it takes precedence and is
+	 * matched against the workspace's repositories directly (by name or working-tree path), independent
+	 * of any Eclipse project; this is the repository-centric path (SVY-21524). When {@code repo} is
+	 * {@code null}/blank the legacy project-centric path is used, resolving the repository from the
+	 * Eclipse project named by {@code projectName}.
+	 *
+	 * @param projectName the Eclipse project name (legacy path); may be {@code null} when {@code repo} is given
+	 * @param repo a repository name or working-tree path (repository-centric path); may be {@code null}
+	 * @return the resolved repository, never {@code null}
+	 */
+	private Repository resolveRepository(String projectName, String repo)
+	{
+		if (repo != null && !repo.trim().isEmpty())
+		{
+			return getRepositoryByNameOrPath(repo.trim());
+		}
+		return getRepository(projectName);
+	}
+
 	private Repository getRepository(String projectName)
 	{
+		if (projectName == null || projectName.trim().isEmpty())
+		{
+			throw new RuntimeException("No project name given." + availableRepositoriesHint());
+		}
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (!project.exists())
 		{
-			throw new RuntimeException("Project not found: " + projectName);
+			throw new RuntimeException("Project not found: " + projectName + availableRepositoriesHint());
 		}
 		try
 		{
 			RepositoryMapping mapping = RepositoryMapping.getMapping(project);
 			if (mapping == null)
 			{
-				throw new RuntimeException("Project is not mapped to a Git repository: " + projectName);
+				throw new RuntimeException("Project is not mapped to a Git repository: " + projectName + availableRepositoriesHint());
 			}
 			Repository repo = mapping.getRepository();
 			if (repo == null)
 			{
-				throw new RuntimeException("Could not obtain Git repository for project: " + projectName);
+				throw new RuntimeException("Could not obtain Git repository for project: " + projectName + availableRepositoriesHint());
 			}
 			return repo;
 		}
@@ -90,6 +114,131 @@ public class GitService
 			if (e.getMessage() != null) throw e;
 			throw new RuntimeException("Failed to get Git repository for project: " + projectName, e);
 		}
+	}
+
+	/**
+	 * Matches a repository name (its working-tree folder name) or working-tree path against the
+	 * repositories known to the workspace. The match is exact on name first, then on the working-tree
+	 * path (absolute or workspace-relative). A target that matches nothing - or matches more than one
+	 * repository - is refused with a message that lists the available repositories, so the caller can
+	 * pick the real one instead of silently operating on the wrong tree (SVY-21524).
+	 */
+	private Repository getRepositoryByNameOrPath(String target)
+	{
+		Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
+		if (all.length == 0)
+		{
+			throw new RuntimeException("No Git repositories are open in the workspace.");
+		}
+
+		java.util.List<Repository> matches = new java.util.ArrayList<>();
+		String normalizedTarget = normalizePath(target);
+		for (Repository r : all)
+		{
+			String name = org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(r);
+			java.io.File workTree = r.isBare() ? r.getDirectory() : r.getWorkTree();
+			String workTreePath = workTree == null ? null : normalizePath(workTree.getAbsolutePath());
+			if (target.equals(name) || (workTreePath != null && workTreePath.equals(normalizedTarget)))
+			{
+				matches.add(r);
+			}
+		}
+
+		if (matches.size() == 1)
+		{
+			return matches.get(0);
+		}
+		if (matches.isEmpty())
+		{
+			throw new RuntimeException("No repository matches '" + target + "'." + availableRepositoriesHint());
+		}
+		throw new RuntimeException("Repository '" + target + "' is ambiguous - it matches " + matches.size() +
+			" repositories by name. Use the working-tree path instead." + availableRepositoriesHint());
+	}
+
+	private static String normalizePath(String path)
+	{
+		if (path == null) return null;
+		String p = path.replace('\\', '/');
+		if (p.length() > 1 && p.endsWith("/")) p = p.substring(0, p.length() - 1);
+		return p;
+	}
+
+	/**
+	 * Lists the Git repositories known to the workspace - each with its name, working-tree path and
+	 * current branch - so a caller can discover a valid {@code repo} target instead of guessing a
+	 * project name (SVY-21524).
+	 */
+	public String listRepositories()
+	{
+		Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
+		if (all.length == 0)
+		{
+			return "No Git repositories are open in the workspace.";
+		}
+		StringBuilder sb = new StringBuilder();
+		sb.append("Git repositories (").append(all.length).append("):\n");
+		for (Repository r : all)
+		{
+			String name = org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(r);
+			java.io.File workTree = r.isBare() ? r.getDirectory() : r.getWorkTree();
+			String branch;
+			try
+			{
+				branch = r.getBranch();
+			}
+			catch (Exception e)
+			{
+				branch = "(unknown)";
+			}
+			sb.append("  ").append(name)
+				.append("  path: ").append(workTree == null ? "(none)" : workTree.getAbsolutePath())
+				.append("  branch: ").append(branch).append("\n");
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * Builds a trailing hint listing the available repository names, appended to a resolution failure so
+	 * the caller can pick a real target. Best-effort: returns an empty string if the cache cannot be read.
+	 */
+	private String availableRepositoriesHint()
+	{
+		try
+		{
+			Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
+			if (all.length == 0)
+			{
+				return " No Git repositories are open in the workspace.";
+			}
+			StringBuilder sb = new StringBuilder(" Available repositories (pass one as 'repo'): ");
+			for (int i = 0; i < all.length; i++)
+			{
+				if (i > 0) sb.append(", ");
+				sb.append(org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(all[i]));
+			}
+			return sb.toString();
+		}
+		catch (Exception e)
+		{
+			return "";
+		}
+	}
+
+	/**
+	 * Refreshes the Eclipse workspace after a change. On the project-centric path {@code projectName}
+	 * names the single project to refresh. On the repository-centric path {@code projectName} is
+	 * {@code null}; the whole working tree changed, so every workspace project located under the
+	 * repository's working tree is refreshed instead (SVY-21524).
+	 */
+	private void refreshAfterChange(String projectName, Repository repository)
+	{
+		if (projectName != null && !projectName.trim().isEmpty())
+		{
+			refreshProject(projectName);
+			return;
+		}
+		refreshRepositoryProjects(repository);
 	}
 
 	private void refreshProject(String projectName)
@@ -105,9 +254,42 @@ public class GitService
 		}
 	}
 
+	/**
+	 * Refreshes every open workspace project whose location is inside the given repository's working
+	 * tree. Used by the repository-centric path, where no single project name is available.
+	 */
+	private void refreshRepositoryProjects(Repository repository)
+	{
+		if (repository == null || repository.isBare()) return;
+		java.io.File workTree = repository.getWorkTree();
+		if (workTree == null) return;
+		java.nio.file.Path workTreePath = workTree.toPath().toAbsolutePath().normalize();
+		for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects())
+		{
+			if (!project.isOpen() || project.getLocation() == null) continue;
+			java.nio.file.Path projectPath = project.getLocation().toFile().toPath().toAbsolutePath().normalize();
+			if (projectPath.startsWith(workTreePath))
+			{
+				try
+				{
+					project.refreshLocal(IResource.DEPTH_INFINITE, null);
+				}
+				catch (CoreException e)
+				{
+					Platform.getLog(GitService.class).error("Failed to refresh project: " + project.getName(), e);
+				}
+			}
+		}
+	}
+
 	public String getStatus(String projectName)
 	{
-		Repository repository = getRepository(projectName);
+		return getStatus(projectName, null);
+	}
+
+	public String getStatus(String projectName, String repo)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var status = git.status().call();
@@ -193,7 +375,13 @@ public class GitService
 	@SuppressWarnings("deprecation")
 	public String getLog(String projectName, int maxCount)
 	{
-		Repository repository = getRepository(projectName);
+		return getLog(projectName, null, maxCount);
+	}
+
+	@SuppressWarnings("deprecation")
+	public String getLog(String projectName, String repo, int maxCount)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var log = git.log().setMaxCount(maxCount).call();
@@ -221,12 +409,17 @@ public class GitService
 
 	public String addFiles(String projectName, String filePattern)
 	{
-		Repository repository = getRepository(projectName);
+		return addFiles(projectName, null, filePattern);
+	}
+
+	public String addFiles(String projectName, String repo, String filePattern)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			git.add().addFilepattern(filePattern).call();
 			git.add().setUpdate(true).addFilepattern(filePattern).call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Added: " + filePattern;
 		}
 		catch (Exception e)
@@ -237,11 +430,16 @@ public class GitService
 
 	public String commit(String projectName, String message)
 	{
-		Repository repository = getRepository(projectName);
+		return commit(projectName, null, message);
+	}
+
+	public String commit(String projectName, String repo, String message)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			RevCommit commit = git.commit().setMessage(message).setAllowEmpty(false).call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Committed: " + commit.getName() + " " + commit.getShortMessage();
 		}
 		catch (org.eclipse.jgit.api.errors.EmptyCommitException e)
@@ -256,7 +454,12 @@ public class GitService
 
 	public String getDiff(String projectName, boolean staged)
 	{
-		Repository repository = getRepository(projectName);
+		return getDiff(projectName, null, staged);
+	}
+
+	public String getDiff(String projectName, String repo, boolean staged)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository);
 			ByteArrayOutputStream out = new ByteArrayOutputStream())
 		{
@@ -287,7 +490,12 @@ public class GitService
 
 	public String listBranches(String projectName, boolean includeRemote)
 	{
-		Repository repository = getRepository(projectName);
+		return listBranches(projectName, null, includeRemote);
+	}
+
+	public String listBranches(String projectName, String repo, boolean includeRemote)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			String currentBranch = repository.getBranch();
@@ -322,7 +530,12 @@ public class GitService
 
 	public String createBranch(String projectName, String branchName, String startPoint)
 	{
-		Repository repository = getRepository(projectName);
+		return createBranch(projectName, null, branchName, startPoint);
+	}
+
+	public String createBranch(String projectName, String repo, String branchName, String startPoint)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.branchCreate().setName(branchName);
@@ -331,7 +544,7 @@ public class GitService
 				cmd.setStartPoint(startPoint);
 			}
 			cmd.call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Created branch: " + branchName;
 		}
 		catch (Exception e)
@@ -342,7 +555,12 @@ public class GitService
 
 	public String deleteBranch(String projectName, String branchName, boolean force)
 	{
-		Repository repository = getRepository(projectName);
+		return deleteBranch(projectName, null, branchName, force);
+	}
+
+	public String deleteBranch(String projectName, String repo, String branchName, boolean force)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.branchDelete().setBranchNames(branchName).setForce(force);
@@ -357,11 +575,16 @@ public class GitService
 
 	public String checkoutBranch(String projectName, String branchName)
 	{
-		Repository repository = getRepository(projectName);
+		return checkoutBranch(projectName, null, branchName);
+	}
+
+	public String checkoutBranch(String projectName, String repo, String branchName)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			git.checkout().setName(branchName).call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Switched to branch: " + branchName;
 		}
 		catch (Exception e)
@@ -372,11 +595,16 @@ public class GitService
 
 	public String resetFiles(String projectName, String filePattern)
 	{
-		Repository repository = getRepository(projectName);
+		return resetFiles(projectName, null, filePattern);
+	}
+
+	public String resetFiles(String projectName, String repo, String filePattern)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			git.reset().addPath(filePattern).call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Unstaged: " + filePattern;
 		}
 		catch (Exception e)
@@ -387,7 +615,12 @@ public class GitService
 
 	public String stash(String projectName, String message)
 	{
-		Repository repository = getRepository(projectName);
+		return stash(projectName, null, message);
+	}
+
+	public String stash(String projectName, String repo, String message)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.stashCreate();
@@ -396,7 +629,7 @@ public class GitService
 				cmd.setWorkingDirectoryMessage(message);
 			}
 			var stashRef = cmd.call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			if (stashRef == null)
 			{
 				return "No local changes to stash.";
@@ -411,12 +644,17 @@ public class GitService
 
 	public String stashPop(String projectName)
 	{
-		Repository repository = getRepository(projectName);
+		return stashPop(projectName, null);
+	}
+
+	public String stashPop(String projectName, String repo)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			git.stashApply().call();
 			git.stashDrop().call();
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Applied and dropped stash.";
 		}
 		catch (Exception e)
@@ -427,7 +665,12 @@ public class GitService
 
 	public String stashList(String projectName)
 	{
-		Repository repository = getRepository(projectName);
+		return stashList(projectName, null);
+	}
+
+	public String stashList(String projectName, String repo)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git git = new Git(repository))
 		{
 			var stashes = git.stashList().call();
@@ -454,7 +697,12 @@ public class GitService
 
 	public String stagePatch(String projectName, String patch)
 	{
-		Repository repository = getRepository(projectName);
+		return stagePatch(projectName, null, patch);
+	}
+
+	public String stagePatch(String projectName, String repo, String patch)
+	{
+		Repository repository = resolveRepository(projectName, repo);
 		try (Git gitCmd = new Git(repository))
 		{
 			java.io.File workTree = repository.getWorkTree();
@@ -521,7 +769,7 @@ public class GitService
 			for (var entry : savedWorkingTree.entrySet())
 				Files.write(entry.getKey().toPath(), entry.getValue());
 
-			refreshProject(projectName);
+			refreshAfterChange(projectName, repository);
 			return "Patch staged successfully. Files: " + result.getUpdatedFiles().size();
 		}
 		catch (Exception e)
