@@ -50,7 +50,7 @@
                     <!-- Plain unit tests: everything under the plainjunit package. There are no
                          @Suite aggregator classes - tests are selected by package. -->
                     <includes>
-                        <include>**/plainjunit/**/*Test.java</include>
+                        <include>**/plainjunit/**/*.java</include>
                     </includes>
                     <argLine>-Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED</argLine>
                 </configuration>
@@ -201,7 +201,7 @@
                                  aggregator classes. -->
                             <providerHint>junit6</providerHint>
                             <includes>
-                                <include>**/integrationpde/**/*Test.java</include>
+                                <include>**/integrationpde/**/*.java</include>
                             </includes>
                             <useUIHarness>true</useUIHarness>
                             <useUIThread>false</useUIThread>
