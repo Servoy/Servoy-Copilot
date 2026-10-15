@@ -240,9 +240,13 @@ public class GitService
 		Repository repository = getRepository(projectName);
 		try (Git git = new Git(repository))
 		{
-			RevCommit commit = git.commit().setMessage(message).call();
+			RevCommit commit = git.commit().setMessage(message).setAllowEmpty(false).call();
 			refreshProject(projectName);
 			return "Committed: " + commit.getName() + " " + commit.getShortMessage();
+		}
+		catch (org.eclipse.jgit.api.errors.EmptyCommitException e)
+		{
+			return "Nothing to commit - no staged changes.";
 		}
 		catch (Exception e)
 		{

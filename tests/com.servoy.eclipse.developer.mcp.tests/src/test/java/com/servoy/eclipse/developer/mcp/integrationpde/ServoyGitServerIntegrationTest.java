@@ -16,6 +16,7 @@
 */
 package com.servoy.eclipse.developer.mcp.integrationpde;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +34,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.egit.core.op.ConnectProviderOperation;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -191,6 +193,30 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 	}
 
 	@Test
+	public void testGitCommit_nothingStaged_isRefusedAndWritesNoCommit() throws Exception {
+		// Working tree is clean after setUp()'s initial commit - nothing staged or modified.
+		String statusBefore = gitServer.gitStatus(PROJECT_NAME);
+		assertTrue(statusBefore.contains("nothing to commit, working tree clean"));
+
+		String headBefore = resolveHead();
+		assertNotNull(headBefore);
+
+		String commitResult = gitServer.gitCommit(PROJECT_NAME, "empty commit attempt");
+
+		// The tool must refuse rather than report a committed sha (SVY-21524).
+		assertNotNull(commitResult);
+		assertFalse(commitResult.contains("Committed"),
+				"gitCommit with nothing staged must not report a committed change, but was: " + commitResult);
+		assertTrue(commitResult.contains("Nothing to commit"),
+				"gitCommit with nothing staged should return a clear refusal, but was: " + commitResult);
+
+		// And, crucially, HEAD must not have moved - no empty commit in history.
+		String headAfter = resolveHead();
+		assertEquals(headBefore, headAfter,
+				"HEAD moved: an empty commit was written to history even though nothing was staged");
+	}
+
+	@Test
 	public void testGitDiff_unstaged() {
 		createTestFile("initial.txt", "modified line");
 
@@ -294,6 +320,15 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		String stagedDiff = gitServer.gitDiff(PROJECT_NAME, "true");
 		assertNotNull(stagedDiff);
 		assertTrue(stagedDiff.contains("changed_line2") || stagedDiff.contains("new_line4"));
+	}
+
+	private String resolveHead() {
+		try {
+			ObjectId head = repository.resolve("HEAD");
+			return head == null ? null : head.getName();
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to resolve HEAD", e);
+		}
 	}
 
 	private void createTestFile(String path, String content) {
