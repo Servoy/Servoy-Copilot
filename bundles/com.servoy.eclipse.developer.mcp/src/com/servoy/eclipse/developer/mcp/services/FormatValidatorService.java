@@ -198,6 +198,13 @@ public class FormatValidatorService
 	 * Validates a single pattern string against the column type by constructing the
 	 * appropriate JDK formatter.  Returns an error message on failure, or {@code null}
 	 * when the pattern is acceptable.
+	 * <p>
+	 * For NUMBER / INTEGER the pattern is additionally required to contain at least one
+	 * digit placeholder ({@code 0} or {@code #}) outside of quoted literals. A
+	 * {@link DecimalFormat} pattern with no placeholder is a legal formatter that renders
+	 * as literal text for every value (e.g. {@code @@@bad}, {@code ZZZZ}), so this check
+	 * makes the validator deliberately stricter than the platform {@code ServoyFormBuilder}
+	 * build-time check it otherwise replicates.
 	 */
 	private static String validatePattern(String pattern, int columnType, String role)
 	{
@@ -212,6 +219,11 @@ public class FormatValidatorService
 			else if (columnType == IColumnTypes.NUMBER || columnType == IColumnTypes.INTEGER)
 			{
 				new DecimalFormat(pattern, RoundHalfUpDecimalFormat.getDecimalFormatSymbols(Locale.getDefault()));
+				if (!hasNumericPlaceholder(pattern))
+				{
+					return "Invalid " + role + " format pattern '" + pattern +
+						"': pattern has no numeric placeholder (0 or #) \u2014 it would render as literal text for every value.";
+				}
 			}
 			// TEXT / MEDIA: no JVM-level pattern validation needed
 		}
@@ -220,6 +232,31 @@ public class FormatValidatorService
 			return "Invalid " + role + " format pattern '" + pattern + "': " + ex.getMessage();
 		}
 		return null;
+	}
+
+	/**
+	 * Returns {@code true} when the given {@link DecimalFormat} pattern contains at least one
+	 * digit placeholder ({@code 0} or {@code #}) outside of a quoted literal. In a
+	 * {@code DecimalFormat} pattern a single-quote toggles quoted-literal state (and the
+	 * escaped-apostrophe sequence {@code ''} toggles in then out), so placeholders that occur
+	 * only inside quotes (e.g. {@code '0#'}) do not count.
+	 */
+	private static boolean hasNumericPlaceholder(String pattern)
+	{
+		boolean inQuote = false;
+		for (int i = 0; i < pattern.length(); i++)
+		{
+			char c = pattern.charAt(i);
+			if (c == '\'')
+			{
+				inQuote = !inQuote;
+			}
+			else if (!inQuote && (c == '0' || c == '#'))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

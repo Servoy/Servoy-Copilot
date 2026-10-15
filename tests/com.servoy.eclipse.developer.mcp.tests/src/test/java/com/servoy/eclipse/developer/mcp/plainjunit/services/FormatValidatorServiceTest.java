@@ -21,9 +21,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
+
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.servoy.eclipse.developer.mcp.services.FormatValidatorService;
 
@@ -441,5 +449,114 @@ public class FormatValidatorServiceTest
 	void testColumnTypeToName_unknown()
 	{
 		assertNull(FormatValidatorService.columnTypeToName(9999));
+	}
+
+	// -------------------------------------------------------------------------
+	// SVY-21522 - NUMBER/INTEGER patterns must contain a digit placeholder (0 or #)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Legal {@link java.text.DecimalFormat} patterns with no digit placeholder render as
+	 * literal text for every value. Before SVY-21522 these were reported Valid; they must
+	 * now be Invalid with a clear error.
+	 */
+	@Nested
+	class NumericPlaceholderCheck
+	{
+		static Stream<Arguments> garbagePatterns()
+		{
+			return Stream.of(arguments("@@@bad", "NUMBER"), arguments("nonsense", "INTEGER"), arguments("ZZZZ", "INTEGER"));
+		}
+
+		@ParameterizedTest(name = "[{index}] \"{0}\" / {1} has no placeholder -> Invalid")
+		@MethodSource("garbagePatterns")
+		@DisplayName("garbage numeric patterns with no placeholder are Invalid")
+		void garbageNumericPattern_isInvalid(String pattern, String dataType)
+		{
+			FormatValidatorService.ValidationResult r = service.validateFormat(pattern, dataType);
+			assertFalse(r.valid(), "placeholder-less numeric pattern must be invalid: " + pattern);
+			assertNotNull(r.error(), "error message expected for: " + pattern);
+			assertFalse(r.error().isBlank(), "error message must not be blank for: " + pattern);
+		}
+
+		@Test
+		@DisplayName("placeholder only inside a quoted literal does not count ('0#' is Invalid)")
+		void quotedOnlyPlaceholder_isInvalid()
+		{
+			FormatValidatorService.ValidationResult r = service.validateFormat("'0#'", "NUMBER");
+			assertFalse(r.valid(), "quoted-only placeholder must be invalid");
+			assertNotNull(r.error(), "error message expected");
+			assertFalse(r.error().isBlank(), "error message must not be blank");
+		}
+
+		static Stream<Arguments> validPatterns()
+		{
+			return Stream.of(arguments("0.##", "NUMBER"), arguments("#,##0", "INTEGER"), arguments("#,###.00", "NUMBER"),
+				arguments("\u00a4#,##0.00", "NUMBER"), arguments("'lit'0.00", "NUMBER"));
+		}
+
+		@ParameterizedTest(name = "[{index}] \"{0}\" / {1} stays Valid")
+		@MethodSource("validPatterns")
+		@DisplayName("legitimate numeric patterns with a real placeholder stay Valid")
+		void validNumericPattern_staysValid(String pattern, String dataType)
+		{
+			FormatValidatorService.ValidationResult r = service.validateFormat(pattern, dataType);
+			assertTrue(r.valid(), r.error());
+			assertNull(r.error(), "no error expected for valid pattern: " + pattern);
+		}
+
+		@Test
+		@DisplayName("empty-string format on NUMBER stays Valid (no format)")
+		void emptyStringNumber_staysValid()
+		{
+			FormatValidatorService.ValidationResult r = service.validateFormat("", "NUMBER");
+			assertTrue(r.valid(), "empty NUMBER format is 'no format' and must be valid");
+			assertNull(r.error(), "no error expected");
+		}
+
+		@Test
+		@DisplayName("placeholder-less edit numeric pattern error echoes role and pattern")
+		void placeholderlessEditPattern_errorEchoesRoleAndPattern()
+		{
+			// valid display + placeholder-less edit -> edit path fails
+			FormatValidatorService.ValidationResult r = service.validateFormat("0.##|nonsense", "NUMBER");
+			assertFalse(r.valid(), "placeholder-less edit pattern must be invalid");
+			assertNotNull(r.error(), "error message expected");
+			assertTrue(r.error().contains("edit"), "error mentions the edit role");
+			assertTrue(r.error().contains("nonsense"), "error echoes the offending pattern");
+		}
+
+		@Test
+		@DisplayName("placeholder-less display numeric pattern error echoes role and pattern")
+		void placeholderlessDisplayPattern_errorEchoesRoleAndPattern()
+		{
+			FormatValidatorService.ValidationResult r = service.validateFormat("@@@bad", "NUMBER");
+			assertFalse(r.valid(), "placeholder-less display pattern must be invalid");
+			assertNotNull(r.error(), "error message expected");
+			assertTrue(r.error().contains("display"), "error mentions the display role");
+			assertTrue(r.error().contains("@@@bad"), "error echoes the offending pattern");
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// SVY-21522 - unaffected behaviour (DATETIME / TEXT unchanged)
+	// -------------------------------------------------------------------------
+
+	@Test
+	void testDatetime_garbagePattern_staysInvalid()
+	{
+		// '!' etc. are illegal SimpleDateFormat pattern letters - unchanged by the numeric check
+		FormatValidatorService.ValidationResult r = service.validateFormat("qqzz!!", "DATETIME");
+		assertFalse(r.valid(), "garbage datetime pattern must stay invalid");
+		assertNotNull(r.error());
+	}
+
+	@Test
+	void testText_placeholderlessPattern_staysValid()
+	{
+		// The numeric placeholder check never runs for TEXT.
+		FormatValidatorService.ValidationResult r = service.validateFormat("(###) ###-####", "TEXT");
+		assertTrue(r.valid(), r.error());
+		assertEquals("(###) ###-####", r.displayFormat());
 	}
 }
