@@ -60,6 +60,8 @@ import com.servoy.eclipse.developer.mcp.services.FormatValidatorService;
 import com.servoy.eclipse.developer.mcp.services.GitService;
 import com.servoy.eclipse.developer.mcp.services.JsCodeValidatorService;
 import com.servoy.eclipse.developer.mcp.services.MenuService;
+import com.servoy.eclipse.developer.mcp.services.PersistDuplicateService;
+import com.servoy.eclipse.developer.mcp.services.PersistRenameService;
 import com.servoy.eclipse.developer.mcp.services.ScriptContextService;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.developer.mcp.services.ServoyDocumentationService;
@@ -711,7 +713,7 @@ public class ServoyDevServer {
 	// SVY-21179: renameFile MCP tool
 	// -------------------------------------------------------------------------
 
-	private final com.servoy.eclipse.developer.mcp.services.PersistRenameService persistRenameService = new com.servoy.eclipse.developer.mcp.services.PersistRenameService();
+	private final PersistRenameService persistRenameService = new PersistRenameService();
 
 	@Tool(name = "renameFile",
 			description = "Renames a Servoy artifact (form, relation, valuelist, scope, media, "
@@ -735,7 +737,7 @@ public class ServoyDevServer {
 	// SVY-21138: duplicatePersist MCP tool
 	// -------------------------------------------------------------------------
 
-	private final com.servoy.eclipse.developer.mcp.services.PersistDuplicateService persistDuplicateService = new com.servoy.eclipse.developer.mcp.services.PersistDuplicateService();
+	private final PersistDuplicateService persistDuplicateService = new PersistDuplicateService();
 
 	@Tool(name = "duplicatePersist", description = "Duplicates a Servoy persist (form, relation, valuelist, or media) "
 			+ "creating a copy with a new name. Optionally places the copy in a different solution/module. "

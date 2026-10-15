@@ -25,6 +25,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
+import com.servoy.eclipse.developer.mcp.services.IdeStateService;
+import com.servoy.eclipse.developer.mcp.services.MarkdownService;
+import com.servoy.eclipse.developer.mcp.services.ProjectService;
+import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 
 /**
  * JUnit 4 tests for {@link ServoyIdeServer}.
@@ -40,10 +44,10 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
 public class ServoyIdeServerTest
 {
 	private final ServoyIdeServer server = new ServoyIdeServer(
-		new com.servoy.eclipse.developer.mcp.services.ProjectService(),
-		new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
-		new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
-		new com.servoy.eclipse.developer.mcp.services.IdeStateService());
+		new ProjectService(),
+		new WorkspaceService(),
+		new MarkdownService(),
+		new IdeStateService());
 
 	// --- Annotation and registration checks ---
 
@@ -76,10 +80,10 @@ public class ServoyIdeServerTest
 	public void testServoyIdeServer_canBeInstantiated()
 	{
 		ServoyIdeServer instance = new ServoyIdeServer(
-			new com.servoy.eclipse.developer.mcp.services.ProjectService(),
-			new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
-			new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
-			new com.servoy.eclipse.developer.mcp.services.IdeStateService());
+			new ProjectService(),
+			new WorkspaceService(),
+			new MarkdownService(),
+			new IdeStateService());
 		assertNotNull(instance);
 	}
 

@@ -32,6 +32,7 @@ import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
+import com.servoy.eclipse.developer.mcp.services.TestFileService;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
@@ -490,7 +491,7 @@ public class ServoyTestingServer
 				}
 			}
 
-			return com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance().createTestFile(testFileName,
+			return TestFileService.getInstance().createTestFile(testFileName,
 				actualSolutionName);
 		}
 		catch (Exception e)
@@ -517,7 +518,7 @@ public class ServoyTestingServer
 			}
 
 			String solutionName = activeProject.getProject().getName();
-			return com.servoy.eclipse.developer.mcp.services.TestFileService.getInstance().addTestMethod(testFileName,
+			return TestFileService.getInstance().addTestMethod(testFileName,
 				testMethodName, testCode, solutionName);
 		}
 		catch (Exception e)

@@ -36,6 +36,10 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.integrationpde.utils.TestUtilitiesClassCopy;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.servers.ServoyIdeServer;
+import com.servoy.eclipse.developer.mcp.services.IdeStateService;
+import com.servoy.eclipse.developer.mcp.services.MarkdownService;
+import com.servoy.eclipse.developer.mcp.services.ProjectService;
+import com.servoy.eclipse.developer.mcp.services.WorkspaceService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 
 public class CreateSolutionIntegrationTest extends TestUtilitiesClassCopy {
@@ -204,10 +208,10 @@ public class CreateSolutionIntegrationTest extends TestUtilitiesClassCopy {
 			ensureSolutionReadyAndOptionallyActive(solB, true);
 
 			ServoyIdeServer ideServer = new ServoyIdeServer(
-				new com.servoy.eclipse.developer.mcp.services.ProjectService(),
-				new com.servoy.eclipse.developer.mcp.services.WorkspaceService(),
-				new com.servoy.eclipse.developer.mcp.services.MarkdownService(),
-				new com.servoy.eclipse.developer.mcp.services.IdeStateService());
+				new ProjectService(),
+				new WorkspaceService(),
+				new MarkdownService(),
+				new IdeStateService());
 
 			String result = ideServer.getCompilationErrors(solB, "ERROR", null, null, "true");
 

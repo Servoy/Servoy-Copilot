@@ -223,7 +223,7 @@ public class CodeEditingServiceTest {
 		}
 
 		@ParameterizedTest(name = "detectDominantLineEnding: {0}")
-		@MethodSource("com.servoy.eclipse.developer.mcp.services.CodeEditingServiceTest#dominantLineEndingCases")
+		@MethodSource("com.servoy.eclipse.developer.mcp.plainjunit.services.CodeEditingServiceTest#dominantLineEndingCases")
 		@DisplayName("detectDominantLineEnding unit cases")
 		void detectDominant(String name, String content, String expected) {
 			assertEquals(expected, CodeEditingService.detectDominantLineEnding(content));
@@ -243,7 +243,7 @@ public class CodeEditingServiceTest {
 	class JoinLines {
 
 		@ParameterizedTest(name = "joinLines eol={1} trailing={2}")
-		@MethodSource("com.servoy.eclipse.developer.mcp.services.CodeEditingServiceTest#joinLinesCases")
+		@MethodSource("com.servoy.eclipse.developer.mcp.plainjunit.services.CodeEditingServiceTest#joinLinesCases()")
 		@DisplayName("joins with the given eol and trailing state")
 		void joins(List<String> lines, String eol, boolean trailing, String expected) {
 			assertEquals(expected, CodeEditingService.joinLines(lines, eol, trailing));
@@ -261,7 +261,7 @@ public class CodeEditingServiceTest {
 	class FuzzShouldMatch {
 
 		@ParameterizedTest(name = "{0}")
-		@MethodSource("com.servoy.eclipse.developer.mcp.services.CodeEditingServiceTest#fuzzShouldMatchCases")
+		@MethodSource("com.servoy.eclipse.developer.mcp.plainjunit.services.CodeEditingServiceTest#fuzzShouldMatchCases()")
 		@DisplayName("whitespace-tolerant context still applies")
 		void shouldMatch(String name, String file, String patch, String expected) {
 			assertEquals(expected, applyRoundTrip(file, patch));

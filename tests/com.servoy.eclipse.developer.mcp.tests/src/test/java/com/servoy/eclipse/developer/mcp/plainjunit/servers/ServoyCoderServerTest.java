@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
+import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 
 /**
  * JUnit 4 tests for {@link ServoyCoderServer}.
@@ -37,7 +38,7 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyCoderServer;
  */
 public class ServoyCoderServerTest {
 	private final ServoyCoderServer server = new ServoyCoderServer(
-			new com.servoy.eclipse.developer.mcp.services.CodeEditingService());
+			new CodeEditingService());
 
 	// --- Null-input error paths ---
 

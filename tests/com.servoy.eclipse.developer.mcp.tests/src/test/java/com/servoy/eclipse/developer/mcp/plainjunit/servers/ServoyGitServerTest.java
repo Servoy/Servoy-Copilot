@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.servers.ServoyGitServer;
+import com.servoy.eclipse.developer.mcp.services.GitService;
 
 /**
  * JUnit 4 tests for {@link ServoyGitServer}.
@@ -71,7 +72,7 @@ public class ServoyGitServerTest
 	@Test
 	public void testServoyGitServer_canBeInstantiated()
 	{
-		ServoyGitServer instance = new ServoyGitServer(new com.servoy.eclipse.developer.mcp.services.GitService());
+		ServoyGitServer instance = new ServoyGitServer(new GitService());
 		assertNotNull(instance);
 	}
 

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import com.servoy.eclipse.developer.mcp.cache.CachedEntry;
 import com.servoy.eclipse.developer.mcp.cache.ServoyResourceCache;
 import com.servoy.eclipse.developer.mcp.servers.ServoyContextServer;
+import com.servoy.eclipse.developer.mcp.services.LocalHistoryService;
 
 /**
  * JUnit 4 tests for {@link ServoyContextServer}.
@@ -48,7 +49,7 @@ public class ServoyContextServerTest {
 
 	@BeforeEach
 	public void setUp() throws Exception {
-		server = new ServoyContextServer(new com.servoy.eclipse.developer.mcp.services.LocalHistoryService());
+		server = new ServoyContextServer(new LocalHistoryService());
 		// Clear the singleton cache between tests
 		ServoyResourceCache cache = ServoyResourceCache.getInstance();
 		Field entriesField = ServoyResourceCache.class.getDeclaredField("entries");

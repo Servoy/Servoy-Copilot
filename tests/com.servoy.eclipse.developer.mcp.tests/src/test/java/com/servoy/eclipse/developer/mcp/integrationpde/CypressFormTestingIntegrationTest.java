@@ -41,6 +41,7 @@ import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.integrationpde.utils.AbstractTitaniumIntegrationTestCopy;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
+import com.servoy.eclipse.developer.mcp.services.TestFileService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.Form;
@@ -897,7 +898,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 		String fileName = "test_exists_check_" + System.currentTimeMillis() + ".js";
 		testingServer.createTestFile(fileName, "TARGET");
 
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+		TestFileService tfs = TestFileService
 				.getInstance();
 		String solutionName = activeProject.getProject().getName();
 
@@ -906,7 +907,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 	@Test
 	public void testTestFileExists_nonExistentFile_returnsFalse() {
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+		TestFileService tfs = TestFileService
 				.getInstance();
 		String solutionName = activeProject.getProject().getName();
 
@@ -916,7 +917,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 	@Test
 	public void testTestFileExists_nullSolution_returnsFalse() {
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+		TestFileService tfs = TestFileService
 				.getInstance();
 
 		assertFalse(tfs.testFileExists("test_something.js", null),
@@ -925,7 +926,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 	@Test
 	public void testTestFileExists_invalidSolution_returnsFalse() {
-		com.servoy.eclipse.developer.mcp.services.TestFileService tfs = com.servoy.eclipse.developer.mcp.services.TestFileService
+		TestFileService tfs = TestFileService
 				.getInstance();
 
 		assertFalse(tfs.testFileExists("test_something.js", "nonexistent_solution_xyz_99999"),
