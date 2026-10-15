@@ -92,7 +92,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitStatus("NonExistentProject_XYZ");
+			server.gitStatus("NonExistentProject_XYZ", null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -106,7 +106,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitLog("NonExistentProject_XYZ", null);
+			server.gitLog("NonExistentProject_XYZ", null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -120,7 +120,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitDiff("NonExistentProject_XYZ", null);
+			server.gitDiff("NonExistentProject_XYZ", null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -134,7 +134,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitAdd("NonExistentProject_XYZ", ".");
+			server.gitAdd("NonExistentProject_XYZ", null, ".");
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -148,7 +148,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitCommit("NonExistentProject_XYZ", "test message");
+			server.gitCommit("NonExistentProject_XYZ", null, "test message");
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -162,7 +162,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitBranch("NonExistentProject_XYZ", null);
+			server.gitBranch("NonExistentProject_XYZ", null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -176,7 +176,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitCreateBranch("NonExistentProject_XYZ", "new-branch", null);
+			server.gitCreateBranch("NonExistentProject_XYZ", null, "new-branch", null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -190,7 +190,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitCheckout("NonExistentProject_XYZ", "main");
+			server.gitCheckout("NonExistentProject_XYZ", null, "main");
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -204,7 +204,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitReset("NonExistentProject_XYZ", ".");
+			server.gitReset("NonExistentProject_XYZ", null, ".");
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -218,7 +218,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitStash("NonExistentProject_XYZ", null);
+			server.gitStash("NonExistentProject_XYZ", null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -232,7 +232,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitStashPop("NonExistentProject_XYZ");
+			server.gitStashPop("NonExistentProject_XYZ", null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -246,7 +246,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitStashList("NonExistentProject_XYZ");
+			server.gitStashList("NonExistentProject_XYZ", null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
