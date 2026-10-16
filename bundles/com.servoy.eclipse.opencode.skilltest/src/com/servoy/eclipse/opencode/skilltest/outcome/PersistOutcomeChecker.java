@@ -175,8 +175,17 @@ public final class PersistOutcomeChecker {
 
 		List<Node> childNodes = new ArrayList<>();
 		if (!assertion.children().isEmpty()) {
-			List<IPersist> childPool = childrenOf(match);
 			for (OutcomeAssertion child : assertion.children()) {
+				// On a responsive form the form's immediate children are layout
+				// containers (rows/columns), and the real components live nested
+				// several container levels below. Matching only the direct children
+				// would report every component "missing" (SVY-21366). So for a child
+				// that targets a leaf element (component/field/label), search the whole
+				// descendant subtree, descending THROUGH layout containers; for a child
+				// that is itself a container (or any other kind), keep the direct-child
+				// pool so nesting structure can still be asserted explicitly.
+				List<IPersist> childPool = isLeafElementKind(child.kind()) ? descendantsOf(match)
+						: childrenOf(match);
 				Node childNode = checkOne(child, childPool, diff, indent + "  "); //$NON-NLS-1$
 				childNodes.add(childNode);
 				ok &= childNode.pass();
@@ -406,5 +415,45 @@ public final class PersistOutcomeChecker {
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * All descendants of a persist, flattened depth-first, so a component nested
+	 * inside a responsive form's layout containers (rows/columns) is reachable
+	 * when matching a form's declared child elements. Layout containers themselves
+	 * are included in the pool (so a {@code layoutcontainer} assertion can still
+	 * match one), and the walk descends into every {@link ISupportChilds}.
+	 */
+	private static List<IPersist> descendantsOf(IPersist persist) {
+		List<IPersist> out = new ArrayList<>();
+		collectDescendants(persist, out);
+		return out;
+	}
+
+	private static void collectDescendants(IPersist persist, List<IPersist> out) {
+		if (!(persist instanceof ISupportChilds childs)) {
+			return;
+		}
+		Iterator<IPersist> it = childs.getAllObjects();
+		while (it != null && it.hasNext()) {
+			IPersist child = it.next();
+			if (child == null) {
+				continue;
+			}
+			out.add(child);
+			collectDescendants(child, out);
+		}
+	}
+
+	/**
+	 * @return {@code true} for assertion kinds that target a leaf form element
+	 *         (web component, field, graphical component/label), which on a
+	 *         responsive form may be nested inside layout containers and so must
+	 *         be searched for across the whole descendant subtree, not just the
+	 *         parent's direct children
+	 */
+	private static boolean isLeafElementKind(PersistKind kind) {
+		return kind == PersistKind.COMPONENT || kind == PersistKind.FIELD
+				|| kind == PersistKind.GRAPHICALCOMPONENT;
 	}
 }

@@ -45,7 +45,7 @@ class TranscriptComparatorTest {
 
 	private static Baseline baseline(Baseline.Compare compare, McpToolCall... goldenCalls) {
 		return new Baseline("id", "title", true, null, null, null, 3, 180, null, (Baseline.Source) null,
-				(java.util.List<String>) null, (Baseline.Fixture) null, compare,
+				(java.util.List<String>) null, (java.util.List<Baseline.Input>) null, (Baseline.Fixture) null, compare,
 				(java.util.List<com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion>) null,
 				(Baseline.JsUnitVerify) null, transcript(goldenCalls));
 	}

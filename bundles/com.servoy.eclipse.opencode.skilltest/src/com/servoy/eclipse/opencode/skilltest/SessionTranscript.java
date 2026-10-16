@@ -143,25 +143,17 @@ public final class SessionTranscript {
 		long minCreated = Long.MAX_VALUE;
 		long maxCompleted = Long.MIN_VALUE;
 
+		// The agent/model may live either on the session-level `info` (older/other
+		// exports) or, in the opencode v2 export shape, only on each assistant
+		// message's own `info` (`messages[].info.agent` / `.model`) with the session
+		// `info` carrying none. Read the session level first, then fall back to the
+		// first assistant message that declares them - otherwise the replay sees
+		// agent=null/model=null and runs the server default instead of the agent and
+		// model the golden was actually recorded with (SVY-21366).
 		JsonNode sessionInfo = exportRoot.get("info"); //$NON-NLS-1$
-		String agent = sessionInfo != null ? textValue(sessionInfo, "agent") : null; //$NON-NLS-1$
 		String directory = sessionInfo != null ? textValue(sessionInfo, "directory") : null; //$NON-NLS-1$
-		String model = null;
-		if (sessionInfo != null) {
-			JsonNode modelNode = sessionInfo.get("model"); //$NON-NLS-1$
-			if (modelNode != null && modelNode.isObject()) {
-				String providerId = textValue(modelNode, "providerID"); //$NON-NLS-1$
-				String modelId = textValue(modelNode, "modelID"); //$NON-NLS-1$
-				if (modelId == null) {
-					modelId = textValue(modelNode, "id"); //$NON-NLS-1$
-				}
-				if (modelId != null) {
-					model = providerId != null ? providerId + "/" + modelId : modelId; //$NON-NLS-1$
-				}
-			} else if (modelNode != null && modelNode.isValueNode()) {
-				model = modelNode.asText();
-			}
-		}
+		String agent = sessionInfo != null ? textValue(sessionInfo, "agent") : null; //$NON-NLS-1$
+		String model = sessionInfo != null ? modelSpec(sessionInfo.get("model")) : null; //$NON-NLS-1$
 
 		JsonNode messages = exportRoot.get("messages"); //$NON-NLS-1$
 		if (messages != null && messages.isArray()) {
@@ -173,6 +165,18 @@ public final class SessionTranscript {
 				String role = textValue(message, "role"); //$NON-NLS-1$
 				String v2Type = textValue(message, "type"); //$NON-NLS-1$
 				JsonNode info = message.get("info"); //$NON-NLS-1$
+				// v2 export: agent/model are on each assistant message's `info`, not the
+				// session `info`. Take them from the first message that declares them,
+				// so a session that only records them per-message still replays with the
+				// right agent + model instead of the server default.
+				if (info != null) {
+					if (agent == null) {
+						agent = textValue(info, "agent"); //$NON-NLS-1$
+					}
+					if (model == null) {
+						model = modelSpec(info.get("model")); //$NON-NLS-1$
+					}
+				}
 				if (role == null && v2Type != null) {
 					role = "assistant".equals(v2Type) ? "assistant" : v2Type; //$NON-NLS-1$ //$NON-NLS-2$
 				}
@@ -216,6 +220,35 @@ public final class SessionTranscript {
 	 * @param messageResponse the response JSON node
 	 * @return a parsed transcript (never {@code null})
 	 */
+	/**
+	 * Formats an export {@code model} node as {@code providerID/modelID}. The node
+	 * is either an object ({@code { providerID, modelID|id }}) or a plain string.
+	 *
+	 * @param modelNode the {@code model} JSON node (may be {@code null})
+	 * @return the {@code providerID/modelID} spec, or {@code null} when absent
+	 */
+	private static String modelSpec(JsonNode modelNode) {
+		if (modelNode == null || modelNode.isNull()) {
+			return null;
+		}
+		if (modelNode.isObject()) {
+			String providerId = textValue(modelNode, "providerID"); //$NON-NLS-1$
+			String modelId = textValue(modelNode, "modelID"); //$NON-NLS-1$
+			if (modelId == null) {
+				modelId = textValue(modelNode, "id"); //$NON-NLS-1$
+			}
+			if (modelId == null) {
+				return null;
+			}
+			return providerId != null ? providerId + "/" + modelId : modelId; //$NON-NLS-1$
+		}
+		if (modelNode.isValueNode()) {
+			String text = modelNode.asText();
+			return text != null && !text.isBlank() ? text : null;
+		}
+		return null;
+	}
+
 	public static SessionTranscript fromMessageResponse(JsonNode messageResponse) {
 		if (messageResponse == null) {
 			return new SessionTranscript(null, Collections.emptyList());

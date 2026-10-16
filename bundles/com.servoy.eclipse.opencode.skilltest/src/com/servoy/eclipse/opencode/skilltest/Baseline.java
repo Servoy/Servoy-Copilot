@@ -87,6 +87,31 @@ public final class Baseline {
 	}
 
 	/**
+	 * A baseline-owned input file staged into the agent's working directory before
+	 * each replay, so a prompt that refers to a file "in this workspace" (e.g. a
+	 * UI mockup under {@code specs/}) finds it regardless of the machine or the
+	 * {@code source} kind - including {@code empty}, which has no checkout.
+	 * <p>
+	 * Owned by the <b>baseline</b>, not the solution (the same way the JSUnit
+	 * {@link JsUnitVerify#scripts} are): the file lives under the baseline folder
+	 * and is copied in at setup time, so nothing is committed into the solution
+	 * repo and the input travels with the test.
+	 * </p>
+	 *
+	 * @param from the source path <b>relative to the baseline folder</b> (e.g.
+	 *             {@code inputs/specs/03_order_tabs.html}); must stay inside the
+	 *             baseline folder
+	 * @param to   the destination path <b>relative to the agent's working
+	 *             directory</b> - the active project's git root, the same CWD
+	 *             opencode runs in (e.g. {@code specs/03_order_tabs.html}); must
+	 *             stay inside that directory. When blank, defaults to the
+	 *             {@code from} path with its leading {@code inputs/} segment
+	 *             stripped.
+	 */
+	public record Input(String from, String to) {
+	}
+
+	/**
 	 * The workspace fixture to reset before each replay attempt, JUnit
 	 * {@code @Before}-style, so every run starts from the same state the golden was
 	 * recorded against. Parsed from the {@code precondition} block of the sidecar.
@@ -208,6 +233,7 @@ public final class Baseline {
 	private final String solution;
 	private final Source source;
 	private final List<String> cleanProjects;
+	private final List<Input> inputs;
 	private final Fixture fixture;
 	private final Compare compare;
 	private final List<OutcomeAssertion> expected;
@@ -216,8 +242,8 @@ public final class Baseline {
 
 	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
 			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
-			Fixture fixture, Compare compare, List<OutcomeAssertion> expected, JsUnitVerify jsUnitVerify,
-			SessionTranscript goldenTranscript) {
+			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
+			JsUnitVerify jsUnitVerify, SessionTranscript goldenTranscript) {
 		this.id = id;
 		this.title = title;
 		this.active = active;
@@ -229,6 +255,7 @@ public final class Baseline {
 		this.solution = solution;
 		this.source = source == null ? Source.empty() : source;
 		this.cleanProjects = cleanProjects == null ? Collections.emptyList() : List.copyOf(cleanProjects);
+		this.inputs = inputs == null ? Collections.emptyList() : List.copyOf(inputs);
 		this.fixture = fixture;
 		this.compare = compare == null ? Compare.defaults() : compare;
 		this.expected = expected == null ? Collections.emptyList() : List.copyOf(expected);
@@ -281,6 +308,15 @@ public final class Baseline {
 	 */
 	public List<String> cleanProjects() {
 		return cleanProjects;
+	}
+
+	/**
+	 * @return the baseline-owned input files to stage into the agent's working
+	 *         directory before each replay (parsed from {@code precondition.inputs}).
+	 *         Never {@code null}; empty when the baseline declares none.
+	 */
+	public List<Input> inputs() {
+		return inputs;
 	}
 
 	/**

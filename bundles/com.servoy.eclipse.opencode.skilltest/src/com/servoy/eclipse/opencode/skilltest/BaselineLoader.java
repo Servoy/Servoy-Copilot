@@ -410,12 +410,14 @@ public final class BaselineLoader {
 		Baseline.Fixture fixture = null;
 		Baseline.Source source = null;
 		List<String> cleanProjects = List.of();
+		List<Baseline.Input> inputs = List.of();
 		JsonNode precondition = root.get("precondition"); //$NON-NLS-1$
 		if (precondition != null) {
 			solution = optText(precondition, "solution"); //$NON-NLS-1$
 			fixture = parseFixture(precondition, solution);
 			source = parseSource(precondition.get("source")); //$NON-NLS-1$
 			cleanProjects = stringArray(precondition.get("cleanProjects")); //$NON-NLS-1$
+			inputs = parseInputs(precondition.get("inputs")); //$NON-NLS-1$
 		}
 
 		Baseline.Compare compare = parseCompare(root.get("compare")); //$NON-NLS-1$
@@ -426,7 +428,71 @@ public final class BaselineLoader {
 		SessionTranscript golden = loadExport(new File(folder, exportName));
 
 		return new Baseline(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution,
-				source, cleanProjects, fixture, compare, expected, jsUnitVerify, golden);
+				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, golden);
+	}
+
+	/**
+	 * Parses the {@code precondition.inputs} block: baseline-owned files staged
+	 * into the agent's working directory before replay, so a prompt referring to a
+	 * file "in this workspace" (e.g. a mockup under {@code specs/}) finds it on any
+	 * machine and with any {@code source} kind. Shape:
+	 *
+	 * <pre>
+	 * "inputs": [
+	 *   { "from": "inputs/specs/03_order_tabs.html", "to": "specs/03_order_tabs.html" },
+	 *   "inputs/specs/legend.html"
+	 * ]
+	 * </pre>
+	 *
+	 * <p>
+	 * An entry may be an object with {@code from}/{@code to}, or a bare string
+	 * (then {@code to} defaults to {@code from} with a leading {@code inputs/}
+	 * segment stripped). {@code from} is relative to the baseline folder; {@code to}
+	 * is relative to the agent's working directory (the active project's git root).
+	 * </p>
+	 *
+	 * @param inputsNode the {@code inputs} JSON node (may be {@code null})
+	 * @return the parsed inputs (never {@code null}; empty when none)
+	 */
+	private static List<Baseline.Input> parseInputs(JsonNode inputsNode) {
+		List<Baseline.Input> result = new ArrayList<>();
+		if (inputsNode == null || !inputsNode.isArray()) {
+			return result;
+		}
+		for (JsonNode entry : inputsNode) {
+			String from;
+			String to;
+			if (entry.isObject()) {
+				from = optText(entry, "from"); //$NON-NLS-1$
+				to = optText(entry, "to"); //$NON-NLS-1$
+			} else if (entry.isValueNode() && !entry.isNull()) {
+				from = entry.asText();
+				to = null;
+			} else {
+				continue;
+			}
+			if (from == null || from.isBlank()) {
+				continue;
+			}
+			if (to == null || to.isBlank()) {
+				to = stripInputsPrefix(from);
+			}
+			result.add(new Baseline.Input(from, to));
+		}
+		return result;
+	}
+
+	/**
+	 * Drops a leading {@code inputs/} (or {@code inputs\}) segment from a
+	 * baseline-relative {@code from} path, so {@code inputs/specs/x.html} maps to a
+	 * default destination of {@code specs/x.html} in the agent's working directory.
+	 */
+	private static String stripInputsPrefix(String path) {
+		String normalised = path.replace('\\', '/');
+		if (normalised.startsWith("inputs/")) { //$NON-NLS-1$
+			return normalised.substring("inputs/".length()); //$NON-NLS-1$
+		}
+		return normalised;
 	}
 
 	/**

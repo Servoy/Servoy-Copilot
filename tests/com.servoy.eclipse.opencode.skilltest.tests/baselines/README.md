@@ -10,6 +10,46 @@ suite (SVY-21366). Each sub-folder is one baseline:
   precondition solution, and the `compare` block: `ordered`, `strict`,
   `forbidden`, `argOverrides`).
 
+## Baseline-owned input files (`precondition.inputs`)
+
+When a prompt refers to a file that must already be present "in the workspace"
+— e.g. a UI mockup the agent is asked to reproduce — the file is owned by the
+**baseline**, not the solution (the same way the JSUnit `verify` scripts are).
+Declare it in `precondition.inputs` and store it under the baseline folder:
+
+```
+baselines/create-order-tabs/
+├── baseline.json
+├── export.json
+└── inputs/
+    └── specs/
+        └── 03_order_tabs.html
+```
+
+```json
+"precondition": {
+  "solution": "aiTests",
+  "source": { "type": "empty" },
+  "inputs": [
+    { "from": "inputs/specs/03_order_tabs.html", "to": "specs/03_order_tabs.html" }
+  ]
+}
+```
+
+- `from` is relative to the **baseline folder** and must stay inside it.
+- `to` is relative to the **agent's working directory** (the active project's
+  git root — the same CWD opencode runs in) and must stay inside it.
+- A bare string entry (`"inputs/specs/03_order_tabs.html"`) is shorthand: `to`
+  defaults to the `from` path with a leading `inputs/` segment stripped.
+
+The runner copies each input in right after the fixture reset and before the
+prompt, overwriting any file a previous attempt left. Because the file comes
+from the baseline, this works with **any** `source` kind — including `empty`,
+which has no checkout to carry such a file — and is machine-independent, so it
+behaves the same on the Jenkins test workspace. Keep the prompt path relative
+(e.g. "the folder called `specs`" / `specs/03_order_tabs.html`), never an
+absolute machine path.
+
 ## Placeholder notice
 
 The `export.json` files committed here are **minimal placeholders**. They are

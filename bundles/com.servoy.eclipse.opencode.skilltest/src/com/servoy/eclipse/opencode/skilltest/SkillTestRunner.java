@@ -219,6 +219,15 @@ public final class SkillTestRunner {
 				// @Before-style fixture reset: return the workspace to the golden's
 				// starting state so the agent isn't blocked by its own prior output.
 				new WorkspaceFixture(logger).reset(baseline.fixture());
+				// Stage the baseline-owned input files (e.g. a specs/ mockup the prompt
+				// refers to) into the agent's working directory AFTER the fixture reset
+				// (which may delete files) and BEFORE the prompt, so the agent can read
+				// them. Resolve the baseline folder the same way JSUnit verify does.
+				if (!baseline.inputs().isEmpty()) {
+					java.io.File inputsFolder = baselineFolder != null ? baselineFolder
+							: resolveBaselineFolder(baseline);
+					new WorkspaceInputs(logger).stage(baseline.inputs(), inputsFolder);
+				}
 				sessionId = client.createSession(baseline.title());
 				// Fire-and-poll rather than one long blocking POST: an Orchestrator
 				// baseline fans out into child sub-agent sessions and can run for
