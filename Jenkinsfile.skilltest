@@ -19,7 +19,16 @@ pipeline {
     }
 
     triggers {
-        githubPush()
+        // Run at most once per day, at 03:00, and ONLY when the AI-plugin code
+        // changed. pollSCM checks the repo at 03:00; if there are no new commits
+        // it does NOT start a build at all (no success/failure record), unlike a
+        // plain cron which would fire every day. The path filtering is done by the
+        // GitSCM `includedRegions` on the SCM checkout below (Checkout stage), so a
+        // commit that touches only docs/poms/other bundles is ignored by polling and
+        // never starts a build. The three gated paths are the AI bundles:
+        // com.servoy.eclipse.developer.mcp, com.servoy.eclipse.opencode and
+        // com.servoy.eclipse.opencode.skilltest (SVY-21366).
+        pollSCM('H 3 * * *')
     }
 
     environment {
@@ -38,33 +47,30 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                // Path-filtered checkout: `includedRegions` makes pollSCM ignore commits
+                // that touch ONLY paths outside the three AI bundles, so polling starts a
+                // build exclusively for in-path changes and leaves no build record for
+                // off-path commits (SVY-21366). The regions are the SCM-relative paths of
+                // the gated bundles. Everything else (branch, credentials, URL) is taken
+                // from the job's own SCM config via `scm`, extended with the include filter.
+                checkout([$class: 'GitSCM',
+                    branches: scm.branches,
+                    userRemoteConfigs: scm.userRemoteConfigs,
+                    extensions: scm.extensions + [[$class: 'PathRestriction',
+                        includedRegions: '''bundles/com.servoy.eclipse.developer.mcp/.*
+bundles/com.servoy.eclipse.opencode/.*
+bundles/com.servoy.eclipse.opencode.skilltest/.*''',
+                        excludedRegions: '']]])
             }
         }
 
         stage('Checkout baselines') {
-            // Only run the heavy skilltest work when this push actually touched the AI
-            // plugin code (MCP tools / skilltest / opencode). githubPush() still STARTS
-            // the job on every push, but these stages skip to a fast no-op otherwise, so
-            // doc/pom-only commits don't spend 2 minutes launching a workbench.
-            // NOTE: changeset only sees Servoy-Copilot's own diff - baselines/skill4servoy
-            // changes are handled by their own triggers (webhook/poll), not here.
-            when {
-                anyOf {
-                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
-                    // is "Started by user ..." = UserIdCause). The changeset gate below only
-                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
-                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
-                    // a build manually is the on-demand way to run it. A GitHub-push build
-                    // that touches no gated path still correctly skips (deploy-only).
-                    triggeredBy 'UserIdCause'
-                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
-                    changeset "bundles/com.servoy.eclipse.opencode/**"
-                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
-                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
-                    changeset "Jenkinsfile.skilltest"
-                }
-            }
+            // No per-stage gate: the daily poll (pollSCM + includedRegions, see triggers)
+            // only STARTS a build when one of the three AI bundles changed, and a manual
+            // "Build Now" is an explicit on-demand run. In both cases the scenarios should
+            // run, so the stage runs unconditionally once the build has started. (The old
+            // changeset gates were needed only because githubPush fired on every push,
+            // including off-path/deploy-only commits; path-filtered polling removes that.)
             steps {
                 // The baseline scenarios are curated by testers in a SEPARATE private repo
                 // (Servoy/servoy-ai-skilltest-baselines) they have access to, independent of
@@ -83,22 +89,9 @@ pipeline {
         }
 
         stage('Checkout + zip skills (skill4servoy)') {
-            when {
-                anyOf {
-                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
-                    // is "Started by user ..." = UserIdCause). The changeset gate below only
-                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
-                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
-                    // a build manually is the on-demand way to run it. A GitHub-push build
-                    // that touches no gated path still correctly skips (deploy-only).
-                    triggeredBy 'UserIdCause'
-                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
-                    changeset "bundles/com.servoy.eclipse.opencode/**"
-                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
-                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
-                    changeset "Jenkinsfile.skilltest"
-                }
-            }
+            // Runs unconditionally once the build has started - see 'Checkout baselines'.
+            // Path-filtered polling (triggers) already ensures the build only starts for an
+            // in-path AI-bundle change or a manual run.
             steps {
                 // The Kiro path needs the SERVOY (not public/sample) skills: skill4servoy's
                 // .opencode-shippable, zipped so SkillsZipExtractor extracts it into
@@ -127,22 +120,9 @@ pipeline {
         }
 
         stage('Run skill-test scenarios') {
-            when {
-                anyOf {
-                    // A manual "Build Now" ALWAYS runs the scenarios (verified: such a build
-                    // is "Started by user ..." = UserIdCause). The changeset gate below only
-                    // sees Servoy-Copilot's own diff, NOT the baselines or skill4servoy repos,
-                    // so changing a baseline (e.g. servoy_test -> empty source) and triggering
-                    // a build manually is the on-demand way to run it. A GitHub-push build
-                    // that touches no gated path still correctly skips (deploy-only).
-                    triggeredBy 'UserIdCause'
-                    changeset "bundles/com.servoy.eclipse.developer.mcp/**"
-                    changeset "bundles/com.servoy.eclipse.opencode/**"
-                    changeset "bundles/com.servoy.eclipse.opencode.skilltest/**"
-                    changeset "tests/com.servoy.eclipse.opencode.skilltest.tests/**"
-                    changeset "Jenkinsfile.skilltest"
-                }
-            }
+            // Runs unconditionally once the build has started - see 'Checkout baselines'.
+            // Path-filtered polling (triggers) already ensures the build only starts for an
+            // in-path AI-bundle change or a manual run.
             steps {
                 // KIRO_API_KEY is bound as an ENV VAR (not -D): the @servoy/opencode-kiro-auth
                 // plugin in the opencode child process reads it from the environment, which the
@@ -228,6 +208,10 @@ pipeline {
         }
 
         stage('Deploy skilltest p2 site') {
+            // Deploy only runs when the build itself ran, and the build only STARTS for an
+            // in-path AI-bundle change (daily poll) or a manual run - so there is no separate
+            // "skip when unchanged" gate needed here: an unchanged day never starts a build,
+            // so this stage never executes on a no-change day (SVY-21366).
             steps {
                 // Build + publish the internal skilltest update site to
                 // build.servoy.com/latest/servoy_ai_skilltest/. Separate invocation because the
