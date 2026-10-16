@@ -316,7 +316,7 @@ public class RunningClientExecutionServiceTest {
 			String result = serializeResult(array);
 			assertFalse(result.startsWith("[Ljava"),
 					"an Object[] must not be rendered as its Java toString reference: " + result);
-			assertEquals("[5,4,5]", result, "an Object[] must render as a JS array: " + result);
+			assertEquals("[5, 4, 5]", result, "an Object[] must render as a JS array: " + result);
 		}
 	}
 
