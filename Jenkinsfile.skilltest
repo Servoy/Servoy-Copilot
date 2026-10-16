@@ -141,6 +141,15 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                         usernamePassword(credentialsId: 'servoy-github-app',
                         usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
                     wrap([$class: 'Xvfb', installationName: 'xvfb', autoDisplayName: true]) {
+                      // Quiet the headless GTK/SWT noise that otherwise floods the console:
+                      // SWT drives GTK off-screen under Xvfb, and GTK emits benign
+                      // 'Gtk-CRITICAL ... gtk_box_gadget_distribute: assertion size >= 0'
+                      // (and a11y/at-spi) messages to stderr for zero-size offscreen widgets.
+                      // These are cosmetic, not test failures. NO_AT_BRIDGE=1 drops the
+                      // accessibility-bus warnings; G_MESSAGES_DEBUG= (empty) enables no GLib
+                      // debug domains; GTK_MODULES= clears any auto-loaded a11y module. This is
+                      // the env-only approach (SVY-21366) - it does not touch the test output.
+                      withEnv(['NO_AT_BRIDGE=1', 'G_MESSAGES_DEBUG=', 'GTK_MODULES=']) {
                         configFileProvider([
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                             configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
@@ -171,6 +180,7 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dservoy.skilltest.kiroApiKey="$KIRO_API_KEY" \
                                 -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip"'''
                         }
+                      }
                     }
                 }
             }
