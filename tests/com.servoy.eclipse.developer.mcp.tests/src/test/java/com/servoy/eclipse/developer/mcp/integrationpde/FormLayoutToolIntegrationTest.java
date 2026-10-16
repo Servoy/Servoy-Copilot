@@ -38,6 +38,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.integrationpde.utils.AbstractTitaniumIntegrationTestCopy;
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.DialogExpectationCopy;
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.TestDialogInterceptorCopy;
 import com.servoy.eclipse.developer.mcp.servers.ServoyFormServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -109,6 +111,18 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	@BeforeEach
 	public void setUp() throws Exception {
 		tool = new ServoyFormServer();
+
+		// On a headless agent (no embedded Chromium/WebKit) BrowserFactory.createBrowser
+		// throws an SWTError. getFormLayout catches it and returns the NO_BROWSER named
+		// message (so the render tests SKIP, see envelopeOf), but the platform ALSO routes
+		// that SWTError to the IDE error handler, which pops a modal "Internal Error - An
+		// SWT error has occurred ... Do you want to exit the workbench?" dialog. Left alone
+		// that modal dialog would be flagged by the DialogGuard (and, unanswered, could
+		// block the UI thread), so pre-register an expectation that answers "No" (keep the
+		// workbench running) whenever it appears. Harmless when it never does: an unmatched
+		// expectation is simply cleared after the test.
+		TestDialogInterceptorCopy.expect(DialogExpectationCopy.withTitleContaining("Internal Error")
+				.messageContains("SWT error").clickButtonContains("No"));
 
 		assertNotNull(Display.getDefault(), "No Display available - test requires a running Eclipse UI");
 
