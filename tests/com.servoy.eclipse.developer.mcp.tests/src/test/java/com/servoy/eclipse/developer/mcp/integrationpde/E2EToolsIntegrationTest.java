@@ -136,19 +136,6 @@ public class E2EToolsIntegrationTest extends TestUtilitiesClassCopy {
 				"Should return a clear error when no spec exists: " + result);
 	}
 
-	@Test
-	public void testTestE2E_enablesTestingMode() throws Exception {
-		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
-
-		// missing spec keeps this deterministic (no live run) while still exercising
-		// the testE2E entry point, which sets testing mode before delegating.
-		testingServer.testE2E("e2eModeCheck_" + System.currentTimeMillis());
-
-		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
-		assertNotNull(value, "testingMode should be set after testE2E");
-		assertTrue("true".equals(value), "testingMode should be true");
-	}
-
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------

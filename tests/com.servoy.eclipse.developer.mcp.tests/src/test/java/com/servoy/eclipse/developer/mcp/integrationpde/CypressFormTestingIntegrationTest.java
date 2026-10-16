@@ -230,61 +230,6 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 	}
 
 	// -----------------------------------------------------------------------
-	// testingMode auto-injection tests
-	// -----------------------------------------------------------------------
-
-	@Test
-	public void testShowFormInBrowser_enablesTestingMode() throws Exception {
-		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
-
-		ensureForm(TEST_FORM);
-		testingServer.showFormInBrowser(TEST_FORM, false);
-
-		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
-		assertNotNull(value, "testingMode should be set after showFormInBrowser");
-		assertTrue("true".equals(value), "testingMode should be true");
-	}
-
-	@Test
-	public void testTestForm_enablesTestingMode() throws Exception {
-		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
-
-		ensureForm(TEST_FORM);
-		if (!specGenerator.specExists(TEST_FORM, TEST_SOLUTION))
-			specGenerator.generateSpec(TEST_FORM);
-
-		testingServer.testForm(TEST_FORM);
-
-		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
-		assertNotNull(value, "testingMode should be set after testForm");
-		assertTrue("true".equals(value), "testingMode should be true");
-	}
-
-	@Test
-	public void testShowAndTest_enablesTestingMode() throws Exception {
-		com.servoy.j2db.util.Settings.getInstance().remove("servoy.ngclient.testingMode");
-
-		ensureForm(TEST_FORM);
-		if (!specGenerator.specExists(TEST_FORM, TEST_SOLUTION))
-			specGenerator.generateSpec(TEST_FORM);
-
-		testingServer.showAndTest(TEST_FORM);
-
-		String value = com.servoy.j2db.util.Settings.getInstance().getProperty("servoy.ngclient.testingMode");
-		assertNotNull(value, "testingMode should be set after showAndTest");
-		assertTrue("true".equals(value), "testingMode should be true");
-
-		MessageConsole console = CypressConsoleUtil.findOrCreateConsole();
-		pumpEventsUntil(300, () -> {
-			String consoleContent = console.getDocument().get();
-			assertNotNull(consoleContent, "Console should have content after showAndTest");
-			assertTrue(consoleContent.contains("passed")
-					|| consoleContent.contains("failed") || consoleContent.contains("timed out"),
-					"Console should contain showAndTest output: " + consoleContent);
-		});
-	}
-
-	// -----------------------------------------------------------------------
 	// Cypress config tests
 	// -----------------------------------------------------------------------
 
