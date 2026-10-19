@@ -120,7 +120,40 @@ public final class OutcomeAssertions {
 				}
 			}
 		}
-		return new OutcomeAssertion(kind, name, scope, exists, props, children);
+
+		// Optional inline expected .frm: the form's items array (the tester pastes a
+		// real .frm and trims it to the properties worth checking; the volatile ids
+		// are stripped automatically at check time). Kept as a raw JsonNode (array)
+		// and compared by StructureMatcher (subset, SQL-LIKE on string leaves). The
+		// baseline key is "form"; "structure" stays accepted for older baselines.
+		JsonNode frmNode = node.get("form"); //$NON-NLS-1$
+		if (frmNode == null || !frmNode.isArray()) {
+			frmNode = node.get("structure"); //$NON-NLS-1$
+		}
+		JsonNode structure = frmNode != null && frmNode.isArray() ? frmNode : null;
+
+		OutcomeAssertion.LessExpectation less = parseLess(node.get("less")); //$NON-NLS-1$
+
+		return new OutcomeAssertion(kind, name, scope, exists, props, children, structure, less);
+	}
+
+	/**
+	 * Parses the optional {@code less} block a form assertion may carry. Shape:
+	 * {@code { "exists": true, "definesReferencedClasses": true, "containsSvgIcons":
+	 * true, "containsColors": true }}; any flag omitted defaults to {@code false}.
+	 *
+	 * @param lessNode the {@code less} node (may be {@code null})
+	 * @return the parsed expectation, or {@code null} when the block is absent
+	 */
+	private static OutcomeAssertion.LessExpectation parseLess(JsonNode lessNode) {
+		if (lessNode == null || !lessNode.isObject()) {
+			return null;
+		}
+		return new OutcomeAssertion.LessExpectation(
+				lessNode.path("exists").asBoolean(false), //$NON-NLS-1$
+				lessNode.path("definesReferencedClasses").asBoolean(false), //$NON-NLS-1$
+				lessNode.path("containsSvgIcons").asBoolean(false), //$NON-NLS-1$
+				lessNode.path("containsColors").asBoolean(false)); //$NON-NLS-1$
 	}
 
 	/**
@@ -165,6 +198,17 @@ public final class OutcomeAssertions {
 			for (OutcomeAssertion c : a.children()) {
 				children.add(assertionToJson(c, f));
 			}
+		}
+		if (a.structure() != null) {
+			node.set("form", a.structure()); //$NON-NLS-1$
+		}
+		if (a.less() != null) {
+			OutcomeAssertion.LessExpectation l = a.less();
+			ObjectNode less = node.putObject("less"); //$NON-NLS-1$
+			less.put("exists", l.exists()); //$NON-NLS-1$
+			less.put("definesReferencedClasses", l.definesReferencedClasses()); //$NON-NLS-1$
+			less.put("containsSvgIcons", l.containsSvgIcons()); //$NON-NLS-1$
+			less.put("containsColors", l.containsColors()); //$NON-NLS-1$
 		}
 		return node;
 	}

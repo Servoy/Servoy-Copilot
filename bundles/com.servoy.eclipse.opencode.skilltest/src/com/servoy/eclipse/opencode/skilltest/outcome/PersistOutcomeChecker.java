@@ -25,6 +25,7 @@ import java.util.Map;
 
 import com.servoy.eclipse.opencode.skilltest.ArgMatcher;
 import com.servoy.j2db.persistence.AbstractBase;
+import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.ISupportChilds;
 import com.servoy.j2db.persistence.ISupportName;
@@ -191,8 +192,225 @@ public final class PersistOutcomeChecker {
 				ok &= childNode.pass();
 			}
 		}
+
+		// Optional structural (items-tree) match: serialize the matched persist to
+		// its .frm JSON, normalize both sides, and compare order-independently with
+		// matcher-aware leaves (SVY-21366).
+		if (assertion.structure() != null) {
+			Node structureNode = checkStructure(assertion, match, diff, indent);
+			childNodes.add(structureNode);
+			ok &= structureNode.pass();
+		}
+
+		// Optional form .less contract (form assertions only): existence, every
+		// referenced class defined, SVG icon masks, colours.
+		if (assertion.less() != null && match instanceof Form form) {
+			Node lessNode = checkLess(assertion, form, diff, indent);
+			childNodes.add(lessNode);
+			ok &= lessNode.pass();
+		}
+
 		return new Node(assertion.label(), true, ok, "found", propChecks, childNodes); //$NON-NLS-1$
 	}
+
+	/**
+	 * Serialises {@code match} to its {@code .frm} JSON via
+	 * {@link SolutionSerializer#generateJSONObject}, normalises the actual
+	 * {@code items} and the expected inline {@code .frm} identically (volatile ids
+	 * / names stripped from both), and compares them with {@link StructureMatcher}
+	 * (subset per object, items order-independent, SQL-LIKE on string leaves).
+	 * Returns a {@link Node} describing the first divergence, if any.
+	 */
+	private Node checkStructure(OutcomeAssertion assertion, IPersist match, StringBuilder diff, String indent) {
+		String label = assertion.label() + " form"; //$NON-NLS-1$
+		try {
+			com.fasterxml.jackson.databind.JsonNode actualItems = serializeItems(match);
+			com.fasterxml.jackson.databind.node.ArrayNode normActual = FormStructureNormalizer
+					.normalizeActual(actualItems, assertion.structure());
+			com.fasterxml.jackson.databind.node.ArrayNode normExpected = FormStructureNormalizer
+					.normalizeExpected(assertion.structure());
+			StructureMatcher.Result r = StructureMatcher.matchItems(normExpected, normActual);
+			if (r.match()) {
+				return new Node(label, true, true, "form matches", List.of(), List.of()); //$NON-NLS-1$
+			}
+			diff.append(indent).append("- ").append(assertion.label()).append(" form: ") //$NON-NLS-1$ //$NON-NLS-2$
+					.append(r.describe()).append('\n');
+			return new Node(label, true, false, r.describe(),
+					List.of(new PropCheck(r.path(), r.expected(), r.actual(), false)), List.of());
+		} catch (RuntimeException e) {
+			String msg = "could not serialize/compare form: " + e.getMessage(); //$NON-NLS-1$
+			diff.append(indent).append("- ").append(assertion.label()).append(" form: ").append(msg) //$NON-NLS-1$ //$NON-NLS-2$
+					.append('\n');
+			return new Node(label, true, false, msg, List.of(), List.of());
+		}
+	}
+
+	/**
+	 * Serialises a persist to its {@code .frm} JSON (recursive, non-flattened, the
+	 * on-disk shape) and returns the {@code items} array as a Jackson node. Uses
+	 * {@link SolutionSerializer#generateJSONObject} then re-parses the
+	 * {@code ServoyJSONObject}'s text with Jackson so the normalizer/matcher work
+	 * on one JSON model.
+	 */
+	private static com.fasterxml.jackson.databind.JsonNode serializeItems(IPersist match) {
+		try {
+			com.servoy.j2db.util.ServoyJSONObject obj = com.servoy.eclipse.model.repository.SolutionSerializer
+					.generateJSONObject(match, true, false,
+							(com.servoy.j2db.persistence.IDeveloperRepository) match.getRootObject().getRepository(),
+							true, null);
+			com.fasterxml.jackson.databind.JsonNode root = JACKSON.readTree(obj.toString());
+			return root.get("items"); //$NON-NLS-1$
+		} catch (Exception e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Checks a form's {@code .less} contract: the file at
+	 * {@code SolutionSerializer.getFormLESSFile(form)} exists / is non-empty, and
+	 * (optionally) defines every CSS class the form's {@code .frm} references, has
+	 * SVG icon masks, and defines colours. Needs the workbench ({@code IFile}), so
+	 * it runs only under the PDE/workbench runner.
+	 */
+	private Node checkLess(OutcomeAssertion assertion, Form form, StringBuilder diff, String indent) {
+		String label = assertion.label() + " .less"; //$NON-NLS-1$
+		OutcomeAssertion.LessExpectation exp = assertion.less();
+		List<PropCheck> checks = new ArrayList<>();
+		boolean ok = true;
+
+		String less = readFormLess(form);
+		boolean exists = less != null && !less.isBlank();
+		if (exp.exists()) {
+			checks.add(new PropCheck("exists", "non-empty forms/" + form.getName() + ".less", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					exists ? "present" : "(absent/empty)", exists)); //$NON-NLS-1$ //$NON-NLS-2$
+			ok &= exists;
+		}
+		if (exists && exp.definesReferencedClasses()) {
+			java.util.Set<String> referenced = referencedClasses(form);
+			java.util.List<String> missing = new ArrayList<>();
+			for (String cls : referenced) {
+				if (!definesClass(less, cls)) {
+					missing.add(cls);
+				}
+			}
+			boolean pass = missing.isEmpty();
+			checks.add(new PropCheck("definesReferencedClasses", referenced.size() + " class(es)", //$NON-NLS-1$ //$NON-NLS-2$
+					pass ? "all defined" : "missing: " + missing, pass)); //$NON-NLS-1$ //$NON-NLS-2$
+			ok &= pass;
+		}
+		if (exists && exp.containsSvgIcons()) {
+			boolean pass = less.contains("mask-image") && less.contains("data:image/svg+xml"); //$NON-NLS-1$ //$NON-NLS-2$
+			checks.add(new PropCheck("containsSvgIcons", "SVG mask-image", //$NON-NLS-1$ //$NON-NLS-2$
+					pass ? "present" : "(none)", pass)); //$NON-NLS-1$ //$NON-NLS-2$
+			ok &= pass;
+		}
+		if (exists && exp.containsColors()) {
+			boolean pass = HEX_COLOR.matcher(less).find();
+			checks.add(new PropCheck("containsColors", "#rrggbb colour", //$NON-NLS-1$ //$NON-NLS-2$
+					pass ? "present" : "(none)", pass)); //$NON-NLS-1$ //$NON-NLS-2$
+			ok &= pass;
+		}
+		if (!ok) {
+			for (PropCheck c : checks) {
+				if (!c.pass()) {
+					diff.append(indent).append("- ").append(assertion.label()).append(" .less '") //$NON-NLS-1$ //$NON-NLS-2$
+							.append(c.property()).append("' expected ").append(c.expected()) //$NON-NLS-1$
+							.append(" but was ").append(c.actual()).append('\n'); //$NON-NLS-1$
+				}
+			}
+		}
+		return new Node(label, exists, ok, exists ? "checked" : "missing", checks, List.of()); //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/** Reads the form's {@code .less} workspace file as text, or {@code null}. */
+	private static String readFormLess(Form form) {
+		try {
+			org.eclipse.core.resources.IFile file = com.servoy.eclipse.model.repository.SolutionSerializer
+					.getFormLESSFile(form);
+			if (file == null || !file.exists()) {
+				return null;
+			}
+			try (java.io.InputStream in = file.getContents()) {
+				return new String(in.readAllBytes(),
+						file.getCharset() != null ? file.getCharset() : "UTF-8"); //$NON-NLS-1$
+			}
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Collects every CSS class the form's {@code .frm} references: component
+	 * {@code json.styleClass}, container {@code customProperties.attributes.class},
+	 * and the {@code class='...'} attributes inside tab/label {@code text} HTML.
+	 */
+	private static java.util.Set<String> referencedClasses(Form form) {
+		java.util.Set<String> classes = new java.util.LinkedHashSet<>();
+		try {
+			com.fasterxml.jackson.databind.JsonNode root = JACKSON.readTree(
+					com.servoy.eclipse.model.repository.SolutionSerializer.generateJSONObject(form, true, false,
+							(com.servoy.j2db.persistence.IDeveloperRepository) form.getRootObject().getRepository(),
+							true, null).toString());
+			collectClasses(root, classes);
+		} catch (Exception ignore) {
+			// best effort - an unreadable form yields no referenced classes
+		}
+		return classes;
+	}
+
+	private static void collectClasses(com.fasterxml.jackson.databind.JsonNode node,
+			java.util.Set<String> out) {
+		if (node == null) {
+			return;
+		}
+		if (node.isObject()) {
+			com.fasterxml.jackson.databind.JsonNode sc = node.get("styleClass"); //$NON-NLS-1$
+			if (sc != null && sc.isTextual()) {
+				addClasses(sc.asText(), out);
+			}
+			com.fasterxml.jackson.databind.JsonNode attrs = node.at("/customProperties/attributes/class"); //$NON-NLS-1$
+			if (attrs != null && attrs.isTextual()) {
+				addClasses(attrs.asText(), out);
+			}
+			com.fasterxml.jackson.databind.JsonNode text = node.get("text"); //$NON-NLS-1$
+			if (text != null && text.isTextual()) {
+				java.util.regex.Matcher m = CLASS_ATTR.matcher(text.asText());
+				while (m.find()) {
+					addClasses(m.group(1), out);
+				}
+			}
+			node.fields().forEachRemaining(e -> collectClasses(e.getValue(), out));
+		} else if (node.isArray()) {
+			node.forEach(c -> collectClasses(c, out));
+		}
+	}
+
+	private static void addClasses(String value, java.util.Set<String> out) {
+		if (value == null) {
+			return;
+		}
+		for (String token : value.trim().split("\\s+")) { //$NON-NLS-1$
+			if (!token.isEmpty()) {
+				out.add(token);
+			}
+		}
+	}
+
+	/** @return {@code true} if the {@code .less} text has a selector for {@code cls} */
+	private static boolean definesClass(String less, String cls) {
+		return less.matches("(?s).*(^|[^A-Za-z0-9_-])\\." + java.util.regex.Pattern.quote(cls) //$NON-NLS-1$
+				+ "([^A-Za-z0-9_-]|$).*"); //$NON-NLS-1$
+	}
+
+	private static final com.fasterxml.jackson.databind.ObjectMapper JACKSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+	/** {@code class='a b'} or {@code class="a b"} inside tab/label text HTML. */
+	private static final java.util.regex.Pattern CLASS_ATTR = java.util.regex.Pattern
+			.compile("class\\s*=\\s*['\"]([^'\"]*)['\"]"); //$NON-NLS-1$
+
+	/** A hex colour literal. */
+	private static final java.util.regex.Pattern HEX_COLOR = java.util.regex.Pattern
+			.compile("#[0-9a-fA-F]{3,8}\\b"); //$NON-NLS-1$
 
 	/**
 	 * @return {@code true} if the matcher still holds an inference placeholder the

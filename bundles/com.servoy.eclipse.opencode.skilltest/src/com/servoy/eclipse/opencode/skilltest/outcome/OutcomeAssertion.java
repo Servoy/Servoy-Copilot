@@ -52,13 +52,56 @@ import com.servoy.eclipse.opencode.skilltest.ArgMatcher;
  *                 of the found persist (recursively)
  */
 public record OutcomeAssertion(PersistKind kind, String name, String scope, boolean exists,
-		Map<String, ArgMatcher> props, List<OutcomeAssertion> children) {
+		Map<String, ArgMatcher> props, List<OutcomeAssertion> children,
+		com.fasterxml.jackson.databind.JsonNode structure, LessExpectation less) {
 
 	public OutcomeAssertion {
 		props = props == null ? Collections.emptyMap()
 				: Collections.unmodifiableMap(new LinkedHashMap<>(props));
 		children = children == null ? Collections.emptyList()
 				: Collections.unmodifiableList(new ArrayList<>(children));
+	}
+
+	/**
+	 * Backwards-compatible 6-arg constructor for the many call sites that predate
+	 * the structural ({@code structure}) and form-{@code less} outcome additions
+	 * (SVY-21366); delegates with both {@code null}.
+	 */
+	public OutcomeAssertion(PersistKind kind, String name, String scope, boolean exists,
+			Map<String, ArgMatcher> props, List<OutcomeAssertion> children) {
+		this(kind, name, scope, exists, props, children, null, null);
+	}
+
+	/**
+	 * @return a copy of this assertion with its inline expected {@code .frm}
+	 *         ({@code structure}) replaced - used by the <i>Edit expected
+	 *         outcomes</i> / import-confirm capture to pre-fill a form assertion
+	 *         from the live workspace form. Everything else is carried over.
+	 */
+	public OutcomeAssertion withStructure(com.fasterxml.jackson.databind.JsonNode newStructure) {
+		return new OutcomeAssertion(kind, name, scope, exists, props, children, newStructure, less);
+	}
+
+	/**
+	 * The {@code .less} contract a form assertion may carry: that the form's own
+	 * {@code forms/<name>.less} exists and (optionally) defines every CSS class
+	 * the form references, carries SVG icon masks, and defines colours
+	 * (SVY-21366). All flags default to {@code false} (not asserted).
+	 *
+	 * @param exists                  the form's {@code .less} file must exist and
+	 *                                be non-empty
+	 * @param definesReferencedClasses every {@code styleClass} /
+	 *                                {@code attributes.class} / tab-text class the
+	 *                                {@code .frm} uses must have a selector in the
+	 *                                {@code .less}
+	 * @param containsSvgIcons        the {@code .less} must contain at least one
+	 *                                SVG icon mask ({@code mask-image} with a
+	 *                                {@code data:image/svg+xml} URI)
+	 * @param containsColors          the {@code .less} must define at least one
+	 *                                colour value ({@code #rrggbb})
+	 */
+	public record LessExpectation(boolean exists, boolean definesReferencedClasses,
+			boolean containsSvgIcons, boolean containsColors) {
 	}
 
 	/**
