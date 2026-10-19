@@ -60,9 +60,9 @@ Added `tests/com.servoy.eclipse.opencode.tests` to the existing "Integration Tes
 mvn ... verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests,tests/com.servoy.eclipse.opencode.tests -am ...
 ```
 
-### 3.5 Shared launcher: `PDEIntegrationTestsBaseCopy`
+### 3.5 Shared launchers: `PDEIntegrationTestsBaseCopy-<servoy-branch>`
 
-The canonical shared JUnit Plug-in Test launch config, `PDEIntegrationTestsBase.launch`, lives in servoy-eclipse's `com.servoy.eclipse.core.tests`. This repo keeps its own copy, `com.servoy.eclipse.developer.mcp.tests/PDEIntegrationTestsBaseCopy.launch` — same shape (full `selected_workspace_bundles`/`selected_target_bundles` sets, VM args), differing only in its `-Dproperty-file` (points at this repo's own `testresources/servoy.properties`) and its checked-in default target. The two files are expected to be kept in sync for everything else.
+The canonical shared JUnit Plug-in Test launch config, `PDEIntegrationTestsBase.launch`, lives in servoy-eclipse's `com.servoy.eclipse.core.tests`. This repo's `master` is built against several servoy-eclipse branches (`release`, `lts_2026`), whose bundle selections and JRE differ, so it keeps one copy per branch in `com.servoy.eclipse.developer.mcp.tests/`: `PDEIntegrationTestsBaseCopy-release.launch` and `PDEIntegrationTestsBaseCopy-lts_2026.launch` (originally a single `PDEIntegrationTestsBaseCopy.launch`). Each has the same shape as its same-branch servoy-eclipse counterpart (full `selected_workspace_bundles`/`selected_target_bundles` sets, VM args), differing only in its `-Dproperty-file` (points at this repo's own `testresources/servoy.properties`) and its checked-in default target. Each file is expected to be kept in sync with the same-branch servoy-eclipse launcher for everything else.
 
 `testresources/servoy.properties` itself remains a deliberate duplicate of servoy-eclipse's copy (not shared via any build dependency, for the same cross-reactor reason as 3.2) — both repos' `AGENTS.md` document this and ask that both be updated together when the content needs to change.
 
@@ -74,10 +74,10 @@ The canonical shared JUnit Plug-in Test launch config, `PDEIntegrationTestsBase.
 4. Create the seven `Copy`-suffixed utility classes under `com.servoy.eclipse.developer.mcp.integrationpde.utils`, each a faithful duplicate of its servoy-eclipse counterpart, cross-referenced via Javadoc.
 5. Update every integration test class that previously imported the shared (non-`Copy`) classes to import the local `Copy` versions instead.
 6. Split `com.servoy.eclipse.opencode.tests` into `plainjunit`/`integrationpde` and add matching `pom.xml` wiring.
-7. Create `PDEIntegrationTestsBaseCopy.launch`, pointed at this repo's own property-file path; verify via `eclipse-pde_runJUnitPluginTests`.
+7. Create `PDEIntegrationTestsBaseCopy-<servoy-branch>.launch` (one per supported servoy-eclipse branch: `release`, `lts_2026`), pointed at this repo's own property-file path; verify via `eclipse-pde_runJUnitPluginTests`.
 8. Add `tests/com.servoy.eclipse.opencode.tests` to the Jenkinsfile's integration-tests `-pl` list.
 9. Document the convention changes (`plainjunit`/`integrationpde`, no-cross-repo-dependency, `Copy` classes, shared launcher copy) in `AGENTS.md`.
-10. Verify: compile clean for `com.servoy.eclipse.developer.mcp.tests` and `com.servoy.eclipse.opencode.tests`; a full `integrationpde` PDE run (verified: 688/688 passed via `PDEIntegrationTestsBaseCopy` + `packageName` override).
+10. Verify: compile clean for `com.servoy.eclipse.developer.mcp.tests` and `com.servoy.eclipse.opencode.tests`; a full `integrationpde` PDE run (verified: 688/688 passed via `PDEIntegrationTestsBaseCopy-release` + `packageName` override).
 
 ## 5. Acceptance criteria
 
@@ -86,7 +86,7 @@ The canonical shared JUnit Plug-in Test launch config, `PDEIntegrationTestsBase.
 - [x] All seven shared base classes have a local `Copy`-suffixed duplicate under `com.servoy.eclipse.developer.mcp.integrationpde.utils`, each cross-referencing its servoy-eclipse counterpart in Javadoc.
 - [x] `com.servoy.eclipse.opencode.tests` has a `plainjunit`/`integrationpde` split with matching `pom.xml` wiring.
 - [x] `Jenkinsfile`'s integration stage includes both `com.servoy.eclipse.developer.mcp.tests` and `com.servoy.eclipse.opencode.tests`.
-- [x] `PDEIntegrationTestsBaseCopy.launch` exists and a real run against `com.servoy.eclipse.developer.mcp.integrationpde` passes (688/688).
+- [x] `PDEIntegrationTestsBaseCopy-release.launch` and `PDEIntegrationTestsBaseCopy-lts_2026.launch` exist and a real run against `com.servoy.eclipse.developer.mcp.integrationpde` passes (688/688).
 - [x] Both affected projects compile with 0 errors.
 - [ ] A full `mvn verify -Pintegration` run on the real Jenkins node (covering both projects together) — not run this session; left for the user to verify on Jenkins.
 
