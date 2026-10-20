@@ -411,6 +411,32 @@ public final class OpencodeHttpClient {
 	}
 
 	/**
+	 * Exports a session via {@code GET /api/experimental/session/:id/export} and
+	 * returns the parsed export root (a {@code { info, messages:[...] }} object,
+	 * {@code data}-unwrapped). Unlike {@link #getMessages}, the export inlines each
+	 * message's {@code content} blocks (the assistant's text and tool calls), which
+	 * the {@code /session/:id/message} list endpoint omits - so this is the source
+	 * to read an assistant's final text answer from (SVY-21366).
+	 *
+	 * @param sessionId the session id
+	 * @return the export root JSON (with a {@code messages} array), or {@code null}
+	 *         when the body is not parseable
+	 * @throws IOException          on transport or protocol failure
+	 * @throws InterruptedException if interrupted while waiting
+	 */
+	public JsonNode getExport(String sessionId) throws IOException, InterruptedException {
+		HttpRequest request = request(API + "/experimental/session/" + enc(sessionId) + "/export", //$NON-NLS-1$ //$NON-NLS-2$
+				Duration.ofSeconds(30)).GET().build();
+		HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+		if (response.statusCode() < 200 || response.statusCode() >= 300) {
+			throw new IOException("getExport failed: HTTP " + response.statusCode() + " " + response.body()); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		JsonNode parsed = MAPPER.readTree(response.body());
+		// Unwrap the 2.x { data: { info, messages } } envelope when present.
+		return parsed.has("data") ? parsed.get("data") : parsed; //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/**
 	 * Aborts an in-flight message on a session.
 	 *
 	 * @param sessionId the session id

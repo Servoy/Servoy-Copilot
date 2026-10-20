@@ -343,6 +343,86 @@ class BaselineLoaderTest {
 	}
 
 	@Nested
+	class AcceptanceVerifyParsing {
+
+		private String sidecarWithVerify(String verifyBody) {
+			return "{"
+					+ "\"id\":\"av\",\"title\":\"av\",\"active\":true,\"export\":\"export.json\","
+					+ "\"promptOverride\":\"p\",\"maxAttempts\":3,\"timeoutSeconds\":180,"
+					+ "\"precondition\":{\"solution\":\"test\"},"
+					+ "\"verify\":" + verifyBody + "}";
+		}
+
+		@Test
+		@DisplayName("parses criteria, judgeModel and required")
+		void parsesAcceptanceCriteria(@TempDir Path root) throws IOException {
+			File folder = writeBaseline(root, "av", sidecarWithVerify(
+					"{\"acceptanceCriteria\":{"
+							+ "\"criteria\":[\"A form named order_tabs exists and is responsive\","
+							+ "\"A tab panel with 5 tabs: Overview, Items, Shipping, Notes, History\","
+							+ "\"The History tab is disabled\"],"
+							+ "\"judgeModel\":\"anthropic/claude-sonnet-4-6\",\"required\":true}}"),
+					GOLDEN_EXPORT);
+			Baseline b = BaselineLoader.load(folder);
+			Baseline.AcceptanceVerify av = b.acceptanceVerify();
+			assertAll(
+					() -> assertNotNull(av),
+					() -> assertTrue(b.hasAcceptanceVerify()),
+					() -> assertEquals(3, av.criteria().size()),
+					() -> assertEquals("The History tab is disabled", av.criteria().get(2)),
+					() -> assertEquals("anthropic/claude-sonnet-4-6", av.judgeModel()),
+					() -> assertTrue(av.required()));
+		}
+
+		@Test
+		@DisplayName("required defaults to true and judgeModel may be omitted")
+		void requiredDefaultsTrue(@TempDir Path root) throws IOException {
+			File folder = writeBaseline(root, "av", sidecarWithVerify(
+					"{\"acceptanceCriteria\":{\"criteria\":[\"something must hold\"]}}"), GOLDEN_EXPORT);
+			Baseline.AcceptanceVerify av = BaselineLoader.load(folder).acceptanceVerify();
+			assertAll(
+					() -> assertNotNull(av),
+					() -> assertTrue(av.required()),
+					() -> assertNull(av.judgeModel()));
+		}
+
+		@Test
+		@DisplayName("an acceptanceCriteria block with no criteria is treated as absent")
+		void emptyCriteriaIsAbsent(@TempDir Path root) throws IOException {
+			File folder = writeBaseline(root, "av", sidecarWithVerify(
+					"{\"acceptanceCriteria\":{\"criteria\":[]}}"), GOLDEN_EXPORT);
+			Baseline b = BaselineLoader.load(folder);
+			assertAll(
+					() -> assertNull(b.acceptanceVerify()),
+					() -> assertFalse(b.hasAcceptanceVerify()));
+		}
+
+		@Test
+		@DisplayName("no verify block means no acceptance verification")
+		void absentVerify(@TempDir Path root) throws IOException {
+			File folder = writeBaseline(root, "cv", sidecar("cv", true, null), GOLDEN_EXPORT);
+			Baseline b = BaselineLoader.load(folder);
+			assertAll(
+					() -> assertNull(b.acceptanceVerify()),
+					() -> assertFalse(b.hasAcceptanceVerify()));
+		}
+
+		@Test
+		@DisplayName("acceptanceCriteria coexists with jsunit under the same verify block")
+		void coexistsWithJsUnit(@TempDir Path root) throws IOException {
+			File folder = writeBaseline(root, "av", sidecarWithVerify(
+					"{\"jsunit\":{\"scripts\":[],\"scope\":\"ALL\",\"timeoutSeconds\":180,\"required\":true},"
+							+ "\"acceptanceCriteria\":{\"criteria\":[\"c1\"],\"required\":false}}"),
+					GOLDEN_EXPORT);
+			Baseline b = BaselineLoader.load(folder);
+			assertAll(
+					() -> assertNotNull(b.jsUnitVerify()),
+					() -> assertTrue(b.hasAcceptanceVerify()),
+					() -> assertFalse(b.acceptanceVerify().required()));
+		}
+	}
+
+	@Nested
 	class StripLeadingNonJson {
 
 		@Test

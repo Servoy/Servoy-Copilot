@@ -170,10 +170,22 @@ public final class SolutionSetup {
 	 * integration tests' {@code deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES)}.
 	 */
 	private void cleanBeforeMaterialize(String solution, Baseline baseline) {
+		// The set of projects THIS baseline owns and may reset: its own solution plus
+		// its declared cleanProjects. Deletion is hard-scoped to this set so a run can
+		// never wipe a solution belonging to another scenario sharing the workspace
+		// (SVY-21366). An empty set means nothing is deleted.
+		java.util.Set<String> own = new java.util.LinkedHashSet<>();
 		if (solution != null && !solution.isBlank()) {
-			deleteProjectWithContent(solution);
+			own.add(solution);
 		}
-		deleteProjects(baseline.cleanProjects().toArray(new String[0]));
+		for (String cp : baseline.cleanProjects()) {
+			if (cp != null && !cp.isBlank()) {
+				own.add(cp);
+			}
+		}
+		for (String name : own) {
+			deleteProjectWithContent(name, own);
+		}
 	}
 
 	/**
@@ -884,23 +896,25 @@ public final class SolutionSetup {
 	 *
 	 * @param projectNames the projects to clean (solution, resources, modules, ...)
 	 */
-	private void deleteProjects(String... projectNames) {
-		if (projectNames == null) {
-			return;
-		}
-		for (String name : projectNames) {
-			if (name != null && !name.isBlank()) {
-				deleteProjectWithContent(name);
-			}
-		}
-	}
-
 	/**
 	 * Deletes the given project from the workspace <b>including its content on
 	 * disk</b>, so a subsequent import is not blocked by leftover files. Missing
 	 * projects are tolerated.
+	 * <p>
+	 * Hard-scoped: refuses to delete any project not in {@code ownProjects} (this
+	 * baseline's own solution + declared cleanProjects), so a run can never wipe a
+	 * solution belonging to another scenario in the same workspace (SVY-21366).
+	 *
+	 * @param projectName  the project to delete
+	 * @param ownProjects  the names this baseline is allowed to delete; a name
+	 *                     outside this set is logged and skipped
 	 */
-	private void deleteProjectWithContent(String projectName) {
+	private void deleteProjectWithContent(String projectName, java.util.Set<String> ownProjects) {
+		if (ownProjects != null && !ownProjects.contains(projectName)) {
+			logger.log("[skilltest] refusing to delete project '" + projectName //$NON-NLS-1$
+					+ "': not this baseline's own solution/cleanProjects"); //$NON-NLS-1$
+			return;
+		}
 		try {
 			IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
 			IProject project = root.getProject(projectName);
@@ -958,7 +972,17 @@ public final class SolutionSetup {
 					}
 				}
 			}
-			root.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+			// Do NOT refresh the whole workspace root here: a DEPTH_INFINITE refresh on
+			// the root fires ServoyModel's POST_CHANGE handler over every project, which
+			// has been seen to wedge the setup Job indefinitely in an interactive
+			// Developer (SVY-21366 - thread parked in ServoyModel resource-change
+			// handling). It is also unnecessary: project.delete already updates the
+			// workspace model, and an orphan on-disk folder Eclipse never tracked needs
+			// no refresh. Refresh only the specific project, and only if it somehow still
+			// exists as a resource (defensive; normally gone after the delete above).
+			if (project.exists()) {
+				project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+			}
 		} catch (CoreException e) {
 			ServoyLog.logError("Failed to clean solution project '" + projectName + "'.", e); //$NON-NLS-1$ //$NON-NLS-2$
 			logger.log("[skilltest] WARN: could not clean project '" + projectName + "': " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$

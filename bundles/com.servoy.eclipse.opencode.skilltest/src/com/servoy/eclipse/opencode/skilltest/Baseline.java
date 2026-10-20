@@ -222,6 +222,39 @@ public final class Baseline {
 		}
 	}
 
+	/**
+	 * Optional acceptance-criteria verification graded by an automated LLM judge,
+	 * parsed from the {@code verify.acceptanceCriteria} block of the sidecar
+	 * (SVY-21366). Natural-language criteria authored by a human at baseline-setup
+	 * time; at run time a judge model (which must differ from the builder model)
+	 * reads the built form's source artifacts (the {@code .frm} JSON, the form and
+	 * solution {@code .less}/{@code css}, the form's {@code .js} with its
+	 * {@code onShow} handler) plus the UI mockup and decides pass/fail per
+	 * criterion - the way an SDD review agent signs off, rather than asserting a
+	 * frozen persist tree that a valid LLM run reproduces a different way.
+	 *
+	 * @param criteria   the natural-language acceptance criteria, each a single
+	 *                   must-hold statement (never {@code null})
+	 * @param judgeModel the model to grade with (e.g. {@code anthropic/claude-...});
+	 *                   MUST differ from the baseline's builder {@link #model()} so
+	 *                   the form's author is not its own judge. {@code null}/blank
+	 *                   = let the runner pick a default judge model that is not the
+	 *                   builder model
+	 * @param required   if {@code false}, a judge FAIL is reported but does not fail
+	 *                   the baseline (advisory); default {@code true} (gates)
+	 */
+	public record AcceptanceVerify(List<String> criteria, String judgeModel, boolean required) {
+
+		public AcceptanceVerify {
+			criteria = criteria == null ? Collections.emptyList() : List.copyOf(criteria);
+		}
+
+		/** @return {@code true} when there is at least one criterion to grade. */
+		public boolean hasCriteria() {
+			return !criteria.isEmpty();
+		}
+	}
+
 	private final String id;
 	private final String title;
 	private final boolean active;
@@ -238,12 +271,26 @@ public final class Baseline {
 	private final Compare compare;
 	private final List<OutcomeAssertion> expected;
 	private final JsUnitVerify jsUnitVerify;
+	private final AcceptanceVerify acceptanceVerify;
 	private final SessionTranscript goldenTranscript;
 
+	/**
+	 * Backwards-compatible constructor (no acceptance-criteria verification), for
+	 * the call sites that predate {@link AcceptanceVerify} (SVY-21366); delegates
+	 * with {@code acceptanceVerify = null}.
+	 */
 	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
 			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
 			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
 			JsUnitVerify jsUnitVerify, SessionTranscript goldenTranscript) {
+		this(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution, source,
+				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, null, goldenTranscript);
+	}
+
+	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
+			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
+			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
+			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, SessionTranscript goldenTranscript) {
 		this.id = id;
 		this.title = title;
 		this.active = active;
@@ -260,6 +307,7 @@ public final class Baseline {
 		this.compare = compare == null ? Compare.defaults() : compare;
 		this.expected = expected == null ? Collections.emptyList() : List.copyOf(expected);
 		this.jsUnitVerify = jsUnitVerify;
+		this.acceptanceVerify = acceptanceVerify;
 		this.goldenTranscript = goldenTranscript;
 	}
 
@@ -370,6 +418,22 @@ public final class Baseline {
 	 */
 	public boolean hasJsUnitVerify() {
 		return jsUnitVerify != null;
+	}
+
+	/**
+	 * @return the acceptance-criteria verification declared by this baseline
+	 *         ({@code verify.acceptanceCriteria}), or {@code null} if none
+	 */
+	public AcceptanceVerify acceptanceVerify() {
+		return acceptanceVerify;
+	}
+
+	/**
+	 * @return {@code true} if this baseline declares acceptance criteria to be
+	 *         graded by the LLM judge after the skill run
+	 */
+	public boolean hasAcceptanceVerify() {
+		return acceptanceVerify != null && acceptanceVerify.hasCriteria();
 	}
 
 	public SessionTranscript goldenTranscript() {

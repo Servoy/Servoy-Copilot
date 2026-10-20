@@ -118,7 +118,7 @@ public final class SkillTestRunner {
 	/**
 	 * Runs a single baseline: replay prompt, export, verify. Passes if any attempt
 	 * matches.
-	 *
+	 public *
 	 * @param baseline the baseline to run
 	 * @return the outcome
 	 */
@@ -183,6 +183,14 @@ public final class SkillTestRunner {
 		TranscriptComparator comparator = new TranscriptComparator(baseline);
 		String effectiveAgent = resolveAgent(baseline);
 		String effectiveModel = resolveModel(baseline);
+		// Acceptance-criteria judge (SVY-21366): built once when the baseline declares
+		// criteria, reused across trials. Grades the result with a model forced to
+		// differ from the builder (effectiveModel), reading the built form's sources.
+		com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge judge = baseline.hasAcceptanceVerify()
+				? com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.ready(logger::log)
+				: null;
+		String judgeFormName = firstFormName(baseline);
+		String judgeMockupPath = firstMockupPath(baseline);
 		logger.log("[skilltest] " + baseline.id() + " replay agent=" + effectiveAgent //$NON-NLS-1$ //$NON-NLS-2$
 				+ " model=" + effectiveModel); //$NON-NLS-1$
 
@@ -263,6 +271,11 @@ public final class SkillTestRunner {
 					match = outcome.match();
 					diff = outcome.diff();
 					outcomeNodes = outcome.nodes();
+				} else if (baseline.hasAcceptanceVerify()) {
+					// Judge-authoritative baseline: no persist/transcript gate - the LLM
+					// judge below is the sole verdict. Start matched; the judge may fail it.
+					match = true;
+					diff = ""; //$NON-NLS-1$
 				} else {
 					TranscriptComparator.Result result = comparator.compare(actual);
 					match = result.match();
@@ -281,6 +294,26 @@ public final class SkillTestRunner {
 						match = false;
 						diff = (diff == null ? "" : diff) //$NON-NLS-1$
 								+ "\n--- JSUnit verification failed ---\n" + jsUnit.report(); //$NON-NLS-1$
+					}
+				}
+
+				// Acceptance-criteria tier (SVY-21366): an automated LLM judge (a model
+				// forced to differ from the builder) reviews the built form's sources
+				// against the baseline's natural-language criteria. A run passes only if
+				// the (required) judge also passes. Robust to layout variation the
+				// structural check cannot tolerate.
+				if (baseline.hasAcceptanceVerify()) {
+					Baseline.AcceptanceVerify av = baseline.acceptanceVerify();
+					com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict verdict = judge != null
+							? judge.judge(judgeFormName, judgeMockupPath, av.criteria(), av.judgeModel(),
+									effectiveModel, cancel)
+							: com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict
+									.error("acceptance judge unavailable (opencode server not ready)", null); //$NON-NLS-1$
+					if (av.required() && !verdict.pass()) {
+						match = false;
+						diff = (diff == null ? "" : diff) //$NON-NLS-1$
+								+ "\n--- Acceptance criteria (LLM judge) FAILED ---\n" //$NON-NLS-1$
+								+ renderVerdict(verdict);
 					}
 				}
 
@@ -409,6 +442,59 @@ public final class SkillTestRunner {
 			return baseline.model();
 		}
 		return baseline.goldenTranscript() != null ? baseline.goldenTranscript().getModel() : null;
+	}
+
+	/**
+	 * @return the name of the first {@code kind:form} expected assertion - the form
+	 *         the acceptance judge should inspect ({@code forms/<name>.frm}) - or
+	 *         {@code null} when the baseline declares no form assertion
+	 */
+	private static String firstFormName(Baseline baseline) {
+		for (com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion a : baseline.expected()) {
+			if (a.kind() == com.servoy.eclipse.opencode.skilltest.outcome.PersistKind.FORM && a.name() != null
+					&& !a.name().isBlank()) {
+				return a.name();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @return the working-directory-relative path of the first HTML mockup input
+	 *         (its {@code to}, or {@code from} with a leading {@code inputs/}
+	 *         stripped when {@code to} is blank), or {@code null} when the baseline
+	 *         stages no {@code .html}/{@code .htm} input
+	 */
+	private static String firstMockupPath(Baseline baseline) {
+		for (Baseline.Input in : baseline.inputs()) {
+			String from = in.from();
+			if (from == null) {
+				continue;
+			}
+			String lower = from.toLowerCase();
+			if (!lower.endsWith(".html") && !lower.endsWith(".htm")) { //$NON-NLS-1$ //$NON-NLS-2$
+				continue;
+			}
+			if (in.to() != null && !in.to().isBlank()) {
+				return in.to();
+			}
+			return from.startsWith("inputs/") ? from.substring("inputs/".length()) : from; //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		return null;
+	}
+
+	/** Renders a judge verdict as a short block for the run diff/report. */
+	private static String renderVerdict(com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict verdict) {
+		StringBuilder sb = new StringBuilder();
+		sb.append(verdict.summary()).append('\n');
+		for (com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.CriterionResult r : verdict.results()) {
+			sb.append("  [").append(r.pass() ? "PASS" : "FAIL").append("] ").append(r.criterion()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			if (r.reason() != null && !r.reason().isBlank()) {
+				sb.append(" - ").append(r.reason()); //$NON-NLS-1$
+			}
+			sb.append('\n');
+		}
+		return sb.toString();
 	}
 
 	/** The outcome of a persist-model outcome check (match + diff + structured nodes). */

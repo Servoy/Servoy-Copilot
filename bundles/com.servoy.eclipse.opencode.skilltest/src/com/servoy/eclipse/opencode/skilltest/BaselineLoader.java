@@ -423,12 +423,13 @@ public final class BaselineLoader {
 		Baseline.Compare compare = parseCompare(root.get("compare")); //$NON-NLS-1$
 		List<OutcomeAssertion> expected = OutcomeAssertions.parse(root.get("expect")); //$NON-NLS-1$
 		Baseline.JsUnitVerify jsUnitVerify = parseJsUnitVerify(root.get("verify")); //$NON-NLS-1$
+		Baseline.AcceptanceVerify acceptanceVerify = parseAcceptanceVerify(root.get("verify")); //$NON-NLS-1$
 
 		String exportName = text(root, "export", "export.json"); //$NON-NLS-1$ //$NON-NLS-2$
 		SessionTranscript golden = loadExport(new File(folder, exportName));
 
 		return new Baseline(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution,
-				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, golden);
+				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, golden);
 	}
 
 	/**
@@ -537,6 +538,42 @@ public final class BaselineLoader {
 		boolean required = jsunit.path("required").asBoolean(true); //$NON-NLS-1$
 		return new Baseline.JsUnitVerify(scripts, existingScripts, scope, method, timeoutSeconds, warmupTimeoutSeconds,
 				required);
+	}
+
+	/**
+	 * Parses the {@code verify.acceptanceCriteria} block that declares an optional
+	 * LLM-judged acceptance check (SVY-21366). Natural-language criteria graded by
+	 * a judge model that must differ from the builder model. Shape:
+	 *
+	 * <pre>
+	 * "verify": { "acceptanceCriteria": {
+	 *   "criteria": [ "A form named order_tabs exists and is responsive",
+	 *                 "A tab panel with 5 tabs in order: Overview, Items, Shipping, Notes, History",
+	 *                 "The History tab is disabled" ],
+	 *   "judgeModel": "anthropic/claude-sonnet-4-6",
+	 *   "required": true
+	 * } }
+	 * </pre>
+	 *
+	 * @param verifyNode the {@code verify} JSON node (may be {@code null})
+	 * @return the parsed config, or {@code null} when the block is absent or has no
+	 *         criteria
+	 */
+	private static Baseline.AcceptanceVerify parseAcceptanceVerify(JsonNode verifyNode) {
+		if (verifyNode == null || verifyNode.isNull()) {
+			return null;
+		}
+		JsonNode node = verifyNode.get("acceptanceCriteria"); //$NON-NLS-1$
+		if (node == null || node.isNull()) {
+			return null;
+		}
+		List<String> criteria = stringArray(node.get("criteria")); //$NON-NLS-1$
+		if (criteria.isEmpty()) {
+			return null;
+		}
+		String judgeModel = optText(node, "judgeModel"); //$NON-NLS-1$
+		boolean required = node.path("required").asBoolean(true); //$NON-NLS-1$
+		return new Baseline.AcceptanceVerify(criteria, judgeModel, required);
 	}
 
 	/**
