@@ -19,8 +19,8 @@
         <servoy.install.tarball.for.appserver>/data/www/latest/servoy_lts_2026/servoy_linux.tar.gz</servoy.install.tarball.for.appserver>
         <!-- tomcat ports patched into the extracted application_server by the integration profiles, so the developer started by the
              integration tests does not clash with other Servoy/tomcat processes on the build agent (each repo uses its own set) -->
-        <servoy.test.http.port>19080</servoy.test.http.port>
-        <servoy.test.shutdown.port>19006</servoy.test.shutdown.port>
+        <servoy.test.http.port>11080</servoy.test.http.port>
+        <servoy.test.shutdown.port>11006</servoy.test.shutdown.port>
         <!-- Skill-test run (SVY-21366). The CI job overrides these with -D; defaults here
              keep the properties from resolving to literal '${...}' when unset (which would
              reach the forked test JVM as garbage). run=false means the scenario ignition
