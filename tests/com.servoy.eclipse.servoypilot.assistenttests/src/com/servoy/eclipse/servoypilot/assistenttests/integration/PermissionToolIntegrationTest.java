@@ -19,15 +19,19 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.servoy.eclipse.core.ServoyModelManager;
-import com.servoy.eclipse.core.tests.integration.ServoyRunnerTestBase;
+import com.servoy.eclipse.developer.mcp.integrationpde.utils.ServoyRunnerTestBaseCopy;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.servoypilot.tools.security.SecurityToolsHelper;
 import com.servoy.j2db.persistence.Form;
 
-public class PermissionToolIntegrationTest extends ServoyRunnerTestBase
+public class PermissionToolIntegrationTest extends ServoyRunnerTestBaseCopy
 {
 	private SecurityToolsHelper helper;
 	private String uniqueSuffix;
+
+	public PermissionToolIntegrationTest() {
+		super(null, null);
+	}
 
 	@Before
 	public void setUp() throws Exception

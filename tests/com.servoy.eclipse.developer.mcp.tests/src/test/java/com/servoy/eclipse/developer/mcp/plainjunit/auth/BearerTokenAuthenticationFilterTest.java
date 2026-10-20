@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
-
 import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilter;
 
 import jakarta.servlet.ServletException;
