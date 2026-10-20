@@ -18,13 +18,16 @@ package com.servoy.eclipse.developer.mcp.servers;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.services.CypressLoginSupport;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
-import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.developer.mcp.services.FormInteractiveElementsFormatter;
+import com.servoy.eclipse.developer.mcp.services.FormInteractiveElementsService;
+import com.servoy.eclipse.developer.mcp.services.FormLocatorService;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
@@ -50,6 +53,8 @@ public class ServoyTestingServer
 	private final FormSpecRunner specRunner = new FormSpecRunner();
 	private final FormNavigationGraphService navigationService = new FormNavigationGraphService();
 	private final ServoySolutionService solutionService = new ServoySolutionService();
+	private final FormInteractiveElementsService elementsService = new FormInteractiveElementsService();
+	private final FormLocatorService locatorService = new FormLocatorService();
 	private final CypressLoginSupport loginSupport = new CypressLoginSupport();
 
 	public ServoyTestingServer()
@@ -666,7 +671,8 @@ public class ServoyTestingServer
 		"Use this when you know a form by its UI label (e.g. 'Query performance popup', 'Customer detail dialog') " +
 		"but not its internal programmatic name. " +
 		"Returns matching forms sorted by relevance with internal name, title, module, datasource, and layout type. " +
-		"Pass the returned internal name to other tools like getFormNavigationGraph, showFormInBrowser, or getSource.", type = "object")
+		"Pass the returned internal name to other tools like getFormNavigationGraph, getNavigationPath, getFormInteractiveElements (elements, handlers and data-cy selectors) or getSource. " +
+		"Use locateForm instead when you want find + path + elements in one call and a clear 'ambiguous' answer when several forms match equally well.", type = "object")
 	public String findForm(
 		@ToolParam(name = "query", description = "The description, UI title, or partial name to search for (e.g. 'Query performance popup', 'customer', 'orders'). Leave blank to list all forms.", required = false) String query)
 	{
@@ -682,7 +688,7 @@ public class ServoyTestingServer
 	}
 
 	@Tool(name = "getFormNavigationGraph", description = "Returns the form navigation graph of the active Servoy solution as JSON. " +
-		"This is for E2E test planning only — do NOT use for single-form tests (use generateFormSpec for form tests). " +
+		"Use for E2E planning and for bug triage (how to reach a screen from the main form). Do NOT use for single-form tests (use generateFormSpec for form tests). " +
 		"Shows which forms contain which other forms via TabPanels, WebComponents with form-typed properties, " +
 		"navigators, and script-based navigation (showFormInDialog, form property assignments). " +
 		"Each edge includes containerName, containerType, tabName, confidence (static/dynamic), and a suggested cypressSelector. " +
@@ -741,15 +747,8 @@ public class ServoyTestingServer
 					summary.put("targetFormExists", graph.hasForm(formName.trim()));
 					if (edges.isEmpty())
 					{
-						if (mainForm != null && mainForm.equals(formName.trim()))
-						{
-							summary.put("reachability", "isMainForm");
-						}
-						else
-						{
-							summary.put("reachability", graph.hasForm(formName.trim())
-								? "unreachable" : "unknownForm");
-						}
+						summary.put("reachability",
+							FormNavigationGraphService.describeSubgraphReachability(graph, mainForm, formName));
 					}
 					java.util.List<NavigationEdge> path = graph.findPath(mainForm != null ? mainForm : "",
 						formName.trim());
@@ -782,14 +781,8 @@ public class ServoyTestingServer
 				result.put("targetFormExists", graph.hasForm(formName.trim()));
 				if (edges.isEmpty())
 				{
-					if (mainForm != null && mainForm.equals(formName.trim()))
-					{
-						result.put("reachability", "isMainForm");
-					}
-					else
-					{
-						result.put("reachability", graph.hasForm(formName.trim()) ? "unreachable" : "unknownForm");
-					}
+					result.put("reachability",
+						FormNavigationGraphService.describeSubgraphReachability(graph, mainForm, formName));
 				}
 				java.util.List<NavigationEdge> path = graph.findPath(mainForm != null ? mainForm : "", formName.trim());
 				com.fasterxml.jackson.databind.node.ArrayNode pathArray = mapper.createArrayNode();
@@ -817,7 +810,7 @@ public class ServoyTestingServer
 	}
 
 	@Tool(name = "getNavigationPath", description = "Returns the navigation path (ordered list of steps) from one form to another in the active Servoy solution. " +
-		"This is for E2E test planning only — do NOT use for single-form tests (use generateFormSpec for form tests). " +
+		"Use for E2E planning and for bug triage (how to reach a screen from the main form). Do NOT use for single-form tests (use generateFormSpec for form tests). " +
 		"Each step includes the form, container, action type, and a suggested cypressSelector for generating Cypress E2E navigation commands. " +
 		"Use this to generate Cypress test scripts that navigate through the real application instead of using isolated formpreview URLs.", type = "object")
 	public String getNavigationPath(
@@ -872,26 +865,60 @@ public class ServoyTestingServer
 	private com.fasterxml.jackson.databind.node.ObjectNode edgeToJson(
 		com.fasterxml.jackson.databind.ObjectMapper mapper, NavigationEdge edge)
 	{
-		com.fasterxml.jackson.databind.node.ObjectNode node = mapper.createObjectNode();
-		node.put("from", edge.getFrom());
-		node.put("to", edge.getTo());
-		node.put("containerName", edge.getContainerName());
-		node.put("containerType", edge.getContainerType());
-		node.put("confidence", edge.getConfidence());
-		if (edge.getPropertyName() != null)
-			node.put("propertyName", edge.getPropertyName());
-		if (edge.getTabName() != null)
-			node.put("tabName", edge.getTabName());
-		if (edge.getTabIndex() >= 0)
-			node.put("tabIndex", edge.getTabIndex());
-		if (edge.getRelationName() != null)
-			node.put("relationName", edge.getRelationName());
-		if (edge.getTrigger() != null)
-			node.put("trigger", edge.getTrigger());
-		String selector = edge.getCypressSelector();
-		if (selector != null)
-			node.put("cypressSelector", selector);
-		return node;
+		return FormNavigationGraphService.edgeToJson(mapper, edge);
+	}
+
+	@Tool(name = "getFormInteractiveElements", description = "Lists the interactive elements of ONE Servoy form from the design-time model: for each element its name, type, " +
+		"kind (control/input/container), dataprovider, bound handlers (event, resolved method name, owner forms.X or scopes.Y) and the data-cy selector " +
+		"(data-cy=\"<form>.<element>\") to use for Cypress tests or to tell a developer exactly what to click when reproducing a bug. " +
+		"Takes the EXACT internal form name: if you only have a description or UI title, call findForm (or locateForm) first. " +
+		"Use getNavigationPath to see how to reach the form from the main form. " +
+		"Elements inherited from a super form are included with inherited=true; elements in layout containers carry their container. " +
+		"Reads the model only, nothing is run. Unnamed elements cannot be targeted by data-cy and are reported in notes.", type = "object")
+	public String getFormInteractiveElements(
+		@ToolParam(name = "formName", description = "Exact internal form name (use findForm to resolve a description or UI title).") String formName,
+		@ToolParam(name = "includeStatic", description = "If true, also list named elements with no handler and no dataprovider (labels, images, containers). Default false.", type = "boolean", required = false) boolean includeStatic,
+		@ToolParam(name = "maxElements", description = "Maximum number of elements to return. Default 100, maximum 500.", type = "integer", required = false) int maxElements)
+	{
+		try
+		{
+			if (formName == null || formName.trim().isEmpty())
+			{
+				return "Error: formName parameter is required";
+			}
+			return elementsService.getElements(formName.trim(), includeStatic, FormInteractiveElementsFormatter.clampMaxElements(maxElements));
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in getFormInteractiveElements tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "locateForm", description = "Locates the screen a user describes in plain words (bug triage) in one call: resolves the wording to a form " +
+		"(same search as findForm), tells how to reach it from the main form (reachability and the navigation path, as in getNavigationPath) and " +
+		"lists its interactive elements with handlers and data-cy selectors (as in getFormInteractiveElements, useful for Cypress reproduction). " +
+		"It never guesses: status is 'resolved' only when one form clearly beats the others; if several forms match equally well the status is " +
+		"'ambiguous' and only the candidates are returned (no path, no elements) - ask the user which one is meant. 'notFound' means no form matched. " +
+		"Example query: 'query performance tab'.", type = "object")
+	public String locateForm(
+		@ToolParam(name = "query", description = "The user's wording: UI title, description, partial name or datasource, e.g. 'query performance tab'.") String query,
+		@ToolParam(name = "includeElements", description = "Include the interactive elements of the resolved form. Default true.", type = "boolean", required = false) Boolean includeElements)
+	{
+		try
+		{
+			if (query == null || query.trim().isEmpty())
+			{
+				return "Error: query parameter is required";
+			}
+			// an omitted argument arrives as null (ToolExecutor only turns primitives into defaults), and the documented default is true
+			return locatorService.locate(query, includeElements == null || includeElements.booleanValue());
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in locateForm tool", e);
+			return "Error: " + e.getMessage();
+		}
 	}
 
 	@Tool(name = "generateCypressE2ETest", description = "Generates a Cypress E2E (end-to-end) navigation test file for a multi-form workflow. " +

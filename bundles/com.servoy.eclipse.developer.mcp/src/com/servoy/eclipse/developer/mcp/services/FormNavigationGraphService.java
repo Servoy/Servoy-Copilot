@@ -4,12 +4,11 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,6 +20,12 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.sablo.specification.PropertyDescription;
+import org.sablo.specification.SpecProviderState;
+import org.sablo.specification.WebComponentSpecProvider;
+import org.sablo.specification.WebObjectSpecification;
+import org.sablo.specification.property.ICustomType;
+import org.sablo.specification.property.IPropertyType;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
@@ -36,13 +41,6 @@ import com.servoy.j2db.persistence.Tab;
 import com.servoy.j2db.persistence.TabPanel;
 import com.servoy.j2db.persistence.WebComponent;
 import com.servoy.j2db.server.ngclient.property.types.FormPropertyType;
-
-import org.sablo.specification.PropertyDescription;
-import org.sablo.specification.SpecProviderState;
-import org.sablo.specification.WebComponentSpecProvider;
-import org.sablo.specification.WebObjectSpecification;
-import org.sablo.specification.property.ICustomType;
-import org.sablo.specification.property.IPropertyType;
 
 @Creatable
 public class FormNavigationGraphService {
@@ -107,6 +105,73 @@ public class FormNavigationGraphService {
 
 		Form firstForm = fs.getForm(firstFormId);
 		return firstForm != null ? firstForm.getName() : null;
+	}
+
+	public static final String REACHABILITY_IS_MAIN_FORM = "isMainForm";
+	public static final String REACHABILITY_REACHABLE = "reachable";
+	public static final String REACHABILITY_UNREACHABLE = "unreachable";
+	public static final String REACHABILITY_UNKNOWN_FORM = "unknownForm";
+	public static final String REACHABILITY_NO_MAIN_FORM = "noMainForm";
+
+	/**
+	 * Describes how a form relates to the solution's main form, computed from the BFS result
+	 * ({@link NavigationGraph#findPath}) and not from the size of a subgraph.
+	 * <ul>
+	 * <li>{@code isMainForm}: the form is the main/entry form (trivially reachable, no incoming path)</li>
+	 * <li>{@code noMainForm}: the solution has no start form, so reachability cannot be decided</li>
+	 * <li>{@code reachable}: a static/script path from the main form exists</li>
+	 * <li>{@code unreachable}: the form is in the graph but no path from the main form was found</li>
+	 * <li>{@code unknownForm}: the graph has never seen the form (typo, or not referenced anywhere)</li>
+	 * </ul>
+	 */
+	public static String describeReachability(NavigationGraph graph, String mainForm, String form) {
+		if (form == null || form.isBlank())
+			return REACHABILITY_UNKNOWN_FORM;
+		String target = form.trim();
+		if (mainForm != null && mainForm.equals(target))
+			return REACHABILITY_IS_MAIN_FORM;
+		if (mainForm == null)
+			return REACHABILITY_NO_MAIN_FORM;
+		if (!graph.findPath(mainForm, target).isEmpty())
+			return REACHABILITY_REACHABLE;
+		return graph.hasForm(target) ? REACHABILITY_UNREACHABLE : REACHABILITY_UNKNOWN_FORM;
+	}
+
+	/**
+	 * The value {@code getFormNavigationGraph} has always emitted for its {@code reachability} field (only when the
+	 * subgraph has no edges): without a main form it falls back to unreachable/unknownForm instead of noMainForm.
+	 */
+	public static String describeSubgraphReachability(NavigationGraph graph, String mainForm, String form) {
+		String reachability = describeReachability(graph, mainForm, form);
+		if (REACHABILITY_NO_MAIN_FORM.equals(reachability)) {
+			return graph.hasForm(form != null ? form.trim() : null) ? REACHABILITY_UNREACHABLE : REACHABILITY_UNKNOWN_FORM;
+		}
+		return reachability;
+	}
+
+	/** Serializes one navigation step; shared by the navigation tools and {@code locateForm}. */
+	public static com.fasterxml.jackson.databind.node.ObjectNode edgeToJson(
+			com.fasterxml.jackson.databind.ObjectMapper mapper, NavigationEdge edge) {
+		com.fasterxml.jackson.databind.node.ObjectNode node = mapper.createObjectNode();
+		node.put("from", edge.getFrom());
+		node.put("to", edge.getTo());
+		node.put("containerName", edge.getContainerName());
+		node.put("containerType", edge.getContainerType());
+		node.put("confidence", edge.getConfidence());
+		if (edge.getPropertyName() != null)
+			node.put("propertyName", edge.getPropertyName());
+		if (edge.getTabName() != null)
+			node.put("tabName", edge.getTabName());
+		if (edge.getTabIndex() >= 0)
+			node.put("tabIndex", edge.getTabIndex());
+		if (edge.getRelationName() != null)
+			node.put("relationName", edge.getRelationName());
+		if (edge.getTrigger() != null)
+			node.put("trigger", edge.getTrigger());
+		String selector = edge.getCypressSelector();
+		if (selector != null)
+			node.put("cypressSelector", selector);
+		return node;
 	}
 
 	private void buildStaticGraph(FlattenedSolution fs, NavigationGraph graph) {

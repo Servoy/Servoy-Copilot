@@ -19,6 +19,7 @@ import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.repository.EclipseRepository;
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.j2db.FlattenedSolution;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IRootObject;
@@ -112,47 +113,9 @@ public class ServoySolutionService
 		String activeSolutionName = servoyProject.getEditingSolution().getName();
 		String queryLower = (query == null) ? "" : query.toLowerCase().trim();
 
-		// collect all forms from active solution + modules
-		List<Form> allForms = new ArrayList<>();
-		Iterator<Form> activeForms = servoyProject.getEditingSolution().getForms(null, false);
-		while (activeForms.hasNext()) allForms.add(activeForms.next());
-		for (ServoyProject module : servoyModel.getModulesOfActiveProject())
-		{
-			if (module != null && module.getEditingSolution() != null && !module.equals(servoyProject))
-			{
-				Iterator<Form> moduleForms = module.getEditingSolution().getForms(null, false);
-				while (moduleForms.hasNext()) allForms.add(moduleForms.next());
-			}
-		}
-
-		// score each form: 3=exact name, 2=name/title contains, 1=datasource/comment contains, 0=no match
-		List<Form> matched = new ArrayList<>();
-		List<Integer> scores = new ArrayList<>();
-		for (Form form : allForms)
-		{
-			int score = scoreForm(form, queryLower);
-			if (queryLower.isEmpty() || score > 0)
-			{
-				matched.add(form);
-				scores.add(score);
-			}
-		}
-
-		// sort by score descending (simple insertion-sort since lists are small)
-		for (int i = 1; i < matched.size(); i++)
-		{
-			Form f = matched.get(i);
-			int s = scores.get(i);
-			int j = i - 1;
-			while (j >= 0 && scores.get(j) < s)
-			{
-				matched.set(j + 1, matched.get(j));
-				scores.set(j + 1, scores.get(j));
-				j--;
-			}
-			matched.set(j + 1, f);
-			scores.set(j + 1, s);
-		}
+		// legacy ordering: stable sort on the collapsed score (tier, or word-match count when the tier is 0)
+		List<FormCandidate> matched = collectCandidates(servoyProject, queryLower);
+		matched.sort((a, b) -> Integer.compare(legacyScore(b, queryLower), legacyScore(a, queryLower)));
 
 		if (matched.isEmpty())
 		{
@@ -166,8 +129,8 @@ public class ServoySolutionService
 
 		for (int i = 0; i < matched.size(); i++)
 		{
-			Form form = matched.get(i);
-			String origin = getSolutionName(form);
+			Form form = matched.get(i).form();
+			String origin = matched.get(i).module();
 			result.append("## ").append(form.getName()).append("\n");
 			String title = form.getTitleText();
 			if (title != null && !title.isBlank())
@@ -186,29 +149,103 @@ public class ServoySolutionService
 		return result.toString();
 	}
 
-	private static int scoreForm(Form form, String queryLower)
+	/** A form that matched a query, with its structured relevance. */
+	public record FormCandidate(Form form, String module, int tier, int wordMatches)
+	{
+	}
+
+	public static final String ERR_NO_ACTIVE_SOLUTION = "Error: No active Servoy solution project found";
+
+	/** Index of the tier in the array returned by {@link #score}. */
+	static final int TIER = 0;
+	/** Index of the word-match count in the array returned by {@link #score}. */
+	static final int WORD_MATCHES = 1;
+
+	/**
+	 * Returns forms matching the query, best first, with the structured relevance: tier 3 = exact name/title,
+	 * 2 = name/title contains, 1 = datasource/comment contains, 0 = matched on individual words only. Sorted by
+	 * (tier, wordMatches) descending; equal pairs keep the solution/module order. A blank query returns all forms
+	 * (tier 0). Returns an empty list when there is no active solution.
+	 */
+	public List<FormCandidate> rankForms(String query)
+	{
+		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		ServoyProject servoyProject = servoyModel.getActiveProject();
+		if (servoyProject == null || servoyProject.getEditingSolution() == null) return new ArrayList<>();
+
+		String queryLower = (query == null) ? "" : query.toLowerCase().trim();
+		List<FormCandidate> candidates = collectCandidates(servoyProject, queryLower);
+		candidates.sort(ServoySolutionService::compareCandidates);
+		return candidates;
+	}
+
+	/** Descending comparison on (tier, wordMatches). */
+	static int compareCandidates(FormCandidate a, FormCandidate b)
+	{
+		int byTier = Integer.compare(b.tier(), a.tier());
+		return byTier != 0 ? byTier : Integer.compare(b.wordMatches(), a.wordMatches());
+	}
+
+	/** All matching forms of the active solution and its modules, in collection order (not sorted). */
+	private List<FormCandidate> collectCandidates(ServoyProject servoyProject, String queryLower)
+	{
+		List<Form> allForms = new ArrayList<>();
+		FlattenedSolution fs = servoyProject.getEditingFlattenedSolution(); // the active solution and all its modules
+		if (fs == null) return new ArrayList<>();
+		Iterator<Form> forms = fs.getForms(false);
+		while (forms.hasNext()) allForms.add(forms.next());
+
+		List<FormCandidate> matched = new ArrayList<>();
+		for (Form form : allForms)
+		{
+			int[] score = score(form.getName(), form.getTitleText(), form.getDataSource(), form.getComment(), queryLower);
+			if (queryLower.isEmpty() || score[TIER] > 0 || score[WORD_MATCHES] > 0)
+			{
+				matched.add(new FormCandidate(form, getSolutionName(form), score[TIER], score[WORD_MATCHES]));
+			}
+		}
+		return matched;
+	}
+
+	/**
+	 * The collapsed single-int score the original {@code findForm} sorted on: the tier when it is above 0, otherwise
+	 * the word-match count, and 1 for a blank query. Kept only so the markdown order of {@code findForm} does not change.
+	 */
+	private static int legacyScore(FormCandidate candidate, String queryLower)
 	{
 		if (queryLower.isEmpty()) return 1;
-		String name = form.getName() != null ? form.getName().toLowerCase() : "";
-		String title = form.getTitleText() != null ? form.getTitleText().toLowerCase() : "";
-		String ds = form.getDataSource() != null ? form.getDataSource().toLowerCase() : "";
-		String comment = form.getComment() != null ? form.getComment().toLowerCase() : "";
-		if (name.equals(queryLower) || title.equals(queryLower)) return 3;
-		if (name.contains(queryLower) || title.contains(queryLower)) return 2;
-		if (ds.contains(queryLower) || comment.contains(queryLower)) return 1;
+		return candidate.tier() > 0 ? candidate.tier() : candidate.wordMatches();
+	}
+
+	/**
+	 * Pure relevance scoring. Returns {tier, wordMatches}: tier 3 = exact name/title, 2 = name/title contains,
+	 * 1 = datasource/comment contains, 0 = none of these. wordMatches counts the query words (3+ characters) found
+	 * in the name or title, and is only computed when the tier is 0. A blank query returns {0, 0}.
+	 *
+	 * @param queryLower the lower-cased, trimmed query
+	 */
+	static int[] score(String name, String title, String ds, String comment, String queryLower)
+	{
+		if (queryLower == null || queryLower.isEmpty()) return new int[] { 0, 0 };
+		String n = name != null ? name.toLowerCase() : "";
+		String t = title != null ? title.toLowerCase() : "";
+		String d = ds != null ? ds.toLowerCase() : "";
+		String c = comment != null ? comment.toLowerCase() : "";
+		if (n.equals(queryLower) || t.equals(queryLower)) return new int[] { 3, 0 };
+		if (n.contains(queryLower) || t.contains(queryLower)) return new int[] { 2, 0 };
+		if (d.contains(queryLower) || c.contains(queryLower)) return new int[] { 1, 0 };
 		// also try matching individual words from the query
 		String[] words = queryLower.split("\\s+");
 		int wordMatches = 0;
 		for (String word : words)
 		{
 			if (word.length() < 3) continue;
-			if (name.contains(word) || title.contains(word)) wordMatches++;
+			if (n.contains(word) || t.contains(word)) wordMatches++;
 		}
-		if (wordMatches > 0) return wordMatches;
-		return 0;
+		return new int[] { 0, wordMatches };
 	}
 
-	private static String getFormLayoutType(Form form)
+	static String getFormLayoutType(Form form)
 	{
 		if (form.isResponsiveLayout()) return "responsive";
 		if (Boolean.TRUE.equals(form.getUseCssPosition())) return "css";

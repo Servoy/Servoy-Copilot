@@ -1,7 +1,9 @@
 package com.servoy.eclipse.developer.mcp.plainjunit.servers;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -15,6 +17,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -50,6 +53,21 @@ class McpToolParamValidationTest {
 			}
 		}
 		return args.stream();
+	}
+
+	@ParameterizedTest(name = "{0}.{1}.required={2}")
+	@CsvSource({ "getFormInteractiveElements,formName,true", "getFormInteractiveElements,includeStatic,false",
+			"getFormInteractiveElements,maxElements,false", "locateForm,query,true", "locateForm,includeElements,false" })
+	@DisplayName("SVY-21573: required flags of the bug-triage tools")
+	void bugTriageToolRequiredFlags(String toolName, String paramName, boolean expectedRequired) {
+		Method method = Arrays.stream(ServoyTestingServer.class.getDeclaredMethods())
+				.filter(m -> m.isAnnotationPresent(Tool.class) && toolName.equals(m.getAnnotation(Tool.class).name()))
+				.findFirst().orElse(null);
+		assertNotNull(method, "Tool not found: " + toolName);
+		ToolParam param = Arrays.stream(method.getParameters()).map(p -> p.getAnnotation(ToolParam.class))
+				.filter(tp -> tp != null && paramName.equals(tp.name())).findFirst().orElse(null);
+		assertNotNull(param, "Parameter not found: " + toolName + "." + paramName);
+		assertEquals(expectedRequired, param.required(), toolName + "." + paramName + " required flag");
 	}
 
 	@ParameterizedTest(name = "{0}.{1}")

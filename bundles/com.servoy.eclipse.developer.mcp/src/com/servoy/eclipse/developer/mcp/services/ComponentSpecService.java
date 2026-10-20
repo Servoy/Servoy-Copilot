@@ -12,13 +12,17 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.sablo.specification.Package.IPackageReader;
 import org.sablo.specification.PackageSpecification;
 import org.sablo.specification.PropertyDescription;
 import org.sablo.specification.SpecProviderState;
@@ -27,7 +31,6 @@ import org.sablo.specification.WebObjectApiFunctionDefinition;
 import org.sablo.specification.WebObjectFunctionDefinition;
 import org.sablo.specification.WebObjectSpecification;
 import org.sablo.specification.WebServiceSpecProvider;
-import org.sablo.specification.Package.IPackageReader;
 import org.sablo.specification.property.IPropertyType;
 
 import com.servoy.j2db.util.Utils;
@@ -288,6 +291,23 @@ public class ComponentSpecService
 		{
 			return null;
 		}
+	}
+
+	/**
+	 * Returns the handler names (e.g. {@code onActionMethodID}, {@code onCellClick}) declared by the spec of a
+	 * single web component, exactly as written in the spec. Components only, never services.
+	 *
+	 * @param specName the spec name (e.g. "bootstrapcomponents-button").
+	 * @return the handler names, or an empty set when the spec (or the spec provider state) is unknown.
+	 */
+	public Set<String> getHandlerNames(String specName)
+	{
+		if (specName == null) return Collections.emptySet();
+		SpecProviderState state = getState(false);
+		if (state == null) return Collections.emptySet();
+		WebObjectSpecification spec = state.getWebObjectSpecification(specName);
+		if (spec == null || spec.getHandlers() == null) return Collections.emptySet();
+		return new LinkedHashSet<>(spec.getHandlers().keySet());
 	}
 
 	List<String> packageNames(boolean services)

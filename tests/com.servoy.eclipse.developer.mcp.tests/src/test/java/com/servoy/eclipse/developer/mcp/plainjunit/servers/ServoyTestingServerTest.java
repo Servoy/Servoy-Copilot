@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -153,7 +154,8 @@ public class ServoyTestingServerTest {
 		Method method = findToolMethod("showFormInBrowser");
 		assertNotNull(method);
 		Tool tool = method.getAnnotation(Tool.class);
-		assertTrue(tool.description().contains("spec"), "showFormInBrowser description should mention spec auto-generation");
+		assertTrue(tool.description().contains("spec"),
+				"showFormInBrowser description should mention spec auto-generation");
 	}
 
 	@Test
@@ -173,7 +175,8 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testServoyTestingServer_hasAnalyzeCodeForTestingTool() {
-		assertTrue(hasToolNamed("analyzeCodeForTesting"), "ServoyTestingServer must have an 'analyzeCodeForTesting' tool");
+		assertTrue(hasToolNamed("analyzeCodeForTesting"),
+				"ServoyTestingServer must have an 'analyzeCodeForTesting' tool");
 	}
 
 	@Test
@@ -208,14 +211,16 @@ public class ServoyTestingServerTest {
 	public void testServoyTestingServer_createTestFile_validatesPrefix() {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.createTestFile("invalid_name.js", "someSolution");
-		assertTrue(result.contains("Error") && result.contains("test_"), "createTestFile must reject names not starting with 'test_'");
+		assertTrue(result.contains("Error") && result.contains("test_"),
+				"createTestFile must reject names not starting with 'test_'");
 	}
 
 	@Test
 	public void testServoyTestingServer_createTestFile_validatesExtension() {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.createTestFile("test_something.txt", "someSolution");
-		assertTrue(result.contains("Error") && result.contains(".js"), "createTestFile must reject names not ending with '.js'");
+		assertTrue(result.contains("Error") && result.contains(".js"),
+				"createTestFile must reject names not ending with '.js'");
 	}
 
 	@Test
@@ -311,8 +316,10 @@ public class ServoyTestingServerTest {
 		Tool tool = m.getAnnotation(Tool.class);
 		assertTrue(tool.description().contains(".spec.cy.js"));
 		// SVY-21171: description must reference the new workspace-relative location
-		assertTrue(tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/cy-form"), "generateFormSpec description must reference the new cy-form location");
-		assertTrue(!tool.description().contains("medias/tests"), "generateFormSpec description must no longer reference medias/tests");
+		assertTrue(tool.description().contains("jenkins-custom/e2e-test-scripts/cypress/cy-form"),
+				"generateFormSpec description must reference the new cy-form location");
+		assertTrue(!tool.description().contains("medias/tests"),
+				"generateFormSpec description must no longer reference medias/tests");
 	}
 
 	@Test
@@ -344,7 +351,8 @@ public class ServoyTestingServerTest {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.generateTestCases(null, "funcName");
 		assertNotNull(result);
-		assertTrue(result.contains("Error") || result.contains("no clear function"), "generateTestCases should return error for null code: " + result);
+		assertTrue(result.contains("Error") || result.contains("no clear function"),
+				"generateTestCases should return error for null code: " + result);
 	}
 
 	@Test
@@ -352,7 +360,8 @@ public class ServoyTestingServerTest {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.generateTestCases("", "funcName");
 		assertNotNull(result);
-		assertTrue(result.contains("Error") || result.contains("no clear function"), "generateTestCases should return error for empty code: " + result);
+		assertTrue(result.contains("Error") || result.contains("no clear function"),
+				"generateTestCases should return error for empty code: " + result);
 	}
 
 	@Test
@@ -360,7 +369,8 @@ public class ServoyTestingServerTest {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.generateTestCases("function doWork(x) { return x * 2; }", null);
 		assertNotNull(result);
-		assertTrue(result.contains("Suggested Test Cases") || result.contains("test_"), "generateTestCases should return suggestions: " + result);
+		assertTrue(result.contains("Suggested Test Cases") || result.contains("test_"),
+				"generateTestCases should return suggestions: " + result);
 	}
 
 	@Test
@@ -557,7 +567,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m);
 		String desc = m.getAnnotation(Tool.class).description();
-		assertTrue(desc.contains("jenkins-custom/e2e-test-scripts/cypress/e2e/"), "Description should mention the E2E test directory");
+		assertTrue(desc.contains("jenkins-custom/e2e-test-scripts/cypress/e2e/"),
+				"Description should mention the E2E test directory");
 	}
 
 	@Test
@@ -645,7 +656,6 @@ public class ServoyTestingServerTest {
 		assertTrue(result.contains("Error"), "Should return error for blank targetForm: " + result);
 	}
 
-
 	// -----------------------------------------------------------------------
 	// runTestMethod tool tests (SVY-21189)
 	// -----------------------------------------------------------------------
@@ -682,7 +692,8 @@ public class ServoyTestingServerTest {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.runTestMethod(null, "ALL", 30);
 		assertNotNull(result);
-		assertTrue(result.startsWith("Error:"), "runTestMethod must return an error string for null testMethodName: " + result);
+		assertTrue(result.startsWith("Error:"),
+				"runTestMethod must return an error string for null testMethodName: " + result);
 	}
 
 	@Test
@@ -690,7 +701,8 @@ public class ServoyTestingServerTest {
 		ServoyTestingServer server = new ServoyTestingServer();
 		String result = server.runTestMethod("   ", "ALL", 30);
 		assertNotNull(result);
-		assertTrue(result.startsWith("Error:"), "runTestMethod must return an error string for blank testMethodName: " + result);
+		assertTrue(result.startsWith("Error:"),
+				"runTestMethod must return an error string for blank testMethodName: " + result);
 	}
 
 	// -----------------------------------------------------------------------
@@ -702,7 +714,9 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue(tool.description().contains("property type mismatches"), "screenshotForm description should name property type mismatches as the blocking gate: " + tool.description());
+		assertTrue(tool.description().contains("property type mismatches"),
+				"screenshotForm description should name property type mismatches as the blocking gate: "
+						+ tool.description());
 	}
 
 	@Test
@@ -710,7 +724,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue(tool.description().contains("markers"), "screenshotForm description should mention markers: " + tool.description());
+		assertTrue(tool.description().contains("markers"),
+				"screenshotForm description should mention markers: " + tool.description());
 	}
 
 	@Test
@@ -718,21 +733,27 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue(tool.description().contains("text error"), "screenshotForm description should mention returning text error: " + tool.description());
+		assertTrue(tool.description().contains("text error"),
+				"screenshotForm description should mention returning text error: " + tool.description());
 	}
 
 	/**
-	 * Problem markers no longer gate the screenshot. The description must say so, and must
-	 * not claim any file's markers block it.
+	 * Problem markers no longer gate the screenshot. The description must say so,
+	 * and must not claim any file's markers block it.
 	 */
 	@Test
 	public void testScreenshotForm_descriptionSaysMarkersDoNotBlock() {
 		Method m = findToolMethod("screenshotForm");
 		assertNotNull(m);
 		Tool tool = m.getAnnotation(Tool.class);
-		assertTrue(tool.description().contains("do not block the screenshot"), "screenshotForm description should state problem markers do not block the screenshot: " + tool.description());
-		assertFalse(tool.description().contains(".frm or .js") || tool.description().contains(".js files")
-						|| tool.description().contains("markers on its .frm file"), "screenshotForm description must not claim .frm/.js markers block the screenshot: " + tool.description());
+		assertTrue(tool.description().contains("do not block the screenshot"),
+				"screenshotForm description should state problem markers do not block the screenshot: "
+						+ tool.description());
+		assertFalse(
+				tool.description().contains(".frm or .js") || tool.description().contains(".js files")
+						|| tool.description().contains("markers on its .frm file"),
+				"screenshotForm description must not claim .frm/.js markers block the screenshot: "
+						+ tool.description());
 	}
 
 	// -----------------------------------------------------------------------
@@ -762,7 +783,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("showAndTestE2E");
 		assertNotNull(m, "showAndTestE2E tool not found");
 		assertEquals(1, m.getParameterCount(), "showAndTestE2E must have 1 parameter");
-		assertNotNull(m.getParameters()[0].getAnnotation(ToolParam.class), "showAndTestE2E parameter must have @ToolParam");
+		assertNotNull(m.getParameters()[0].getAnnotation(ToolParam.class),
+				"showAndTestE2E parameter must have @ToolParam");
 	}
 
 	// -----------------------------------------------------------------------
@@ -773,10 +795,12 @@ public class ServoyTestingServerTest {
 	public void testGenerateCypressE2ETest_outputFileNameParamMentionsCyTs() {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m, "generateCypressE2ETest tool not found");
-		// outputFileName is the 4th parameter (index 3): targetForm, scenario, fromForm, outputFileName, ...
+		// outputFileName is the 4th parameter (index 3): targetForm, scenario,
+		// fromForm, outputFileName, ...
 		ToolParam param = m.getParameters()[3].getAnnotation(ToolParam.class);
 		assertNotNull(param, "outputFileName parameter must have @ToolParam");
-		assertTrue(param.description().contains(".cy.ts"), "outputFileName @ToolParam description must mention .cy.ts: " + param.description());
+		assertTrue(param.description().contains(".cy.ts"),
+				"outputFileName @ToolParam description must mention .cy.ts: " + param.description());
 	}
 
 	@Test
@@ -784,7 +808,8 @@ public class ServoyTestingServerTest {
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m, "generateCypressE2ETest tool not found");
 		String desc = m.getAnnotation(Tool.class).description();
-		assertTrue(desc.contains("cy.ts") || desc.contains(".cy.ts"), "generateCypressE2ETest @Tool description must mention cy.ts: " + desc);
+		assertTrue(desc.contains("cy.ts") || desc.contains(".cy.ts"),
+				"generateCypressE2ETest @Tool description must mention cy.ts: " + desc);
 	}
 
 	// --- SVY-21102: behavioral tests for resolveE2EFileName and specPattern ---
@@ -827,17 +852,20 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testCypressE2ESpecPattern_containsCyTs() {
-		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.ts"), "CYPRESS_E2E_SPEC_PATTERN must include cy.ts");
+		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.ts"),
+				"CYPRESS_E2E_SPEC_PATTERN must include cy.ts");
 	}
 
 	@Test
 	public void testCypressE2ESpecPattern_containsSpecCyJs() {
-		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("spec.cy.js"), "CYPRESS_E2E_SPEC_PATTERN must include spec.cy.js for form specs");
+		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("spec.cy.js"),
+				"CYPRESS_E2E_SPEC_PATTERN must include spec.cy.js for form specs");
 	}
 
 	@Test
 	public void testCypressE2ESpecPattern_containsCyJs() {
-		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.js"), "CYPRESS_E2E_SPEC_PATTERN must include cy.js for backward compatibility");
+		assertTrue(ServoyTestingServer.CYPRESS_E2E_SPEC_PATTERN.contains("cy.js"),
+				"CYPRESS_E2E_SPEC_PATTERN must include cy.js for backward compatibility");
 	}
 
 	// -----------------------------------------------------------------------
@@ -893,5 +921,188 @@ public class ServoyTestingServerTest {
 				"showAndTestE2E targetForm @ToolParam description must mention .cy.js: " + param.description());
 		assertTrue(param.description().contains(".cy.ts"),
 				"showAndTestE2E targetForm @ToolParam description must mention .cy.ts: " + param.description());
+	}
+
+	// -----------------------------------------------------------------------
+	// getFormInteractiveElements / locateForm and bug-triage descriptions
+	// (SVY-21573)
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName("getFormInteractiveElements is registered")
+	void getFormInteractiveElements_isRegistered() {
+		assertTrue(hasToolNamed("getFormInteractiveElements"), "Expected getFormInteractiveElements tool");
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements has exactly three parameters, all annotated with @ToolParam")
+	void getFormInteractiveElements_hasThreeAnnotatedParams() {
+		Method m = findToolMethod("getFormInteractiveElements");
+		assertNotNull(m);
+		assertEquals(3, m.getParameterCount());
+		for (java.lang.reflect.Parameter p : m.getParameters()) {
+			assertNotNull(p.getAnnotation(ToolParam.class), "Parameter " + p.getName() + " must have @ToolParam");
+		}
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements: formName is required, includeStatic and maxElements are optional")
+	void getFormInteractiveElements_requiredFlags() {
+		Method m = findToolMethod("getFormInteractiveElements");
+		assertNotNull(m);
+		ToolParam formName = m.getParameters()[0].getAnnotation(ToolParam.class);
+		ToolParam includeStatic = m.getParameters()[1].getAnnotation(ToolParam.class);
+		ToolParam maxElements = m.getParameters()[2].getAnnotation(ToolParam.class);
+		org.junit.jupiter.api.Assertions.assertAll(() -> assertEquals("formName", formName.name()),
+				() -> assertTrue(formName.required(), "formName must be required"),
+				() -> assertEquals("includeStatic", includeStatic.name()),
+				() -> assertFalse(includeStatic.required(), "includeStatic must be optional"),
+				() -> assertEquals("boolean", includeStatic.type()),
+				() -> assertEquals("maxElements", maxElements.name()),
+				() -> assertFalse(maxElements.required(), "maxElements must be optional"),
+				() -> assertEquals("integer", maxElements.type()));
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements: every @ToolParam has a non-empty description")
+	void getFormInteractiveElements_paramDescriptionsNotEmpty() {
+		Method m = findToolMethod("getFormInteractiveElements");
+		assertNotNull(m);
+		for (java.lang.reflect.Parameter p : m.getParameters()) {
+			assertFalse(p.getAnnotation(ToolParam.class).description().isBlank(),
+					"@ToolParam description must not be empty for " + p.getAnnotation(ToolParam.class).name());
+		}
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements description mentions data-cy, findForm and Cypress")
+	void getFormInteractiveElements_descriptionKeywords() {
+		Method m = findToolMethod("getFormInteractiveElements");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		org.junit.jupiter.api.Assertions.assertAll(
+				() -> assertTrue(desc.contains("data-cy"), "should mention data-cy: " + desc),
+				() -> assertTrue(desc.contains("findForm"), "should mention findForm: " + desc),
+				() -> assertTrue(desc.contains("Cypress"), "should mention Cypress: " + desc));
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements returns String")
+	void getFormInteractiveElements_returnsString() {
+		Method m = findToolMethod("getFormInteractiveElements");
+		assertNotNull(m);
+		assertEquals(String.class, m.getReturnType());
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements(null, false, 0) returns the exact formName error")
+	void getFormInteractiveElements_nullFormName() {
+		assertEquals("Error: formName parameter is required",
+				new ServoyTestingServer().getFormInteractiveElements(null, false, 0));
+	}
+
+	@Test
+	@DisplayName("getFormInteractiveElements with a blank formName returns the exact formName error")
+	void getFormInteractiveElements_blankFormName() {
+		assertEquals("Error: formName parameter is required",
+				new ServoyTestingServer().getFormInteractiveElements("  ", false, 0));
+	}
+
+	@Test
+	@DisplayName("getFormNavigationGraph description mentions bug triage")
+	void getFormNavigationGraph_descriptionMentionsBugTriage() {
+		Method m = findToolMethod("getFormNavigationGraph");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue(desc.contains("bug triage"), "Description should mention bug triage: " + desc);
+	}
+
+	@Test
+	@DisplayName("getNavigationPath description mentions bug triage")
+	void getNavigationPath_descriptionMentionsBugTriage() {
+		Method m = findToolMethod("getNavigationPath");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue(desc.contains("bug triage"), "Description should mention bug triage: " + desc);
+	}
+
+	@Test
+	@DisplayName("findForm description points to getFormInteractiveElements and locateForm and no longer names showFormInBrowser")
+	void findForm_descriptionPointsToNewTools() {
+		Method m = findToolMethod("findForm");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		org.junit.jupiter.api.Assertions.assertAll(
+				() -> assertTrue(desc.contains("getFormInteractiveElements"),
+						"should name getFormInteractiveElements: " + desc),
+				() -> assertTrue(desc.contains("locateForm"), "should name locateForm: " + desc),
+				() -> assertFalse(desc.contains("showFormInBrowser"),
+						"must not name the deprecated showFormInBrowser: " + desc));
+	}
+
+	@Test
+	@DisplayName("locateForm description mentions Cypress, bug triage and the ambiguous status")
+	void locateForm_descriptionKeywords() {
+		Method m = findToolMethod("locateForm");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		org.junit.jupiter.api.Assertions.assertAll(
+				() -> assertTrue(desc.contains("Cypress"), "should mention Cypress: " + desc),
+				() -> assertTrue(desc.contains("bug triage"), "should mention bug triage: " + desc),
+				() -> assertTrue(desc.contains("'ambiguous'"), "should explain the 'ambiguous' status: " + desc),
+				() -> assertTrue(desc.contains("never guesses"), "should state that it never guesses: " + desc));
+	}
+
+	@Test
+	@DisplayName("locateForm is registered")
+	void locateForm_isRegistered() {
+		assertTrue(hasToolNamed("locateForm"), "Expected locateForm tool");
+	}
+
+	@Test
+	@DisplayName("locateForm has query (required) and includeElements (optional boolean)")
+	void locateForm_params() {
+		Method m = findToolMethod("locateForm");
+		assertNotNull(m);
+		assertEquals(2, m.getParameterCount());
+		ToolParam query = m.getParameters()[0].getAnnotation(ToolParam.class);
+		ToolParam includeElements = m.getParameters()[1].getAnnotation(ToolParam.class);
+		assertNotNull(query);
+		assertNotNull(includeElements);
+		org.junit.jupiter.api.Assertions.assertAll(() -> assertEquals("query", query.name()),
+				() -> assertTrue(query.required(), "query must be required"),
+				() -> assertFalse(query.description().isBlank()),
+				() -> assertEquals("includeElements", includeElements.name()),
+				() -> assertFalse(includeElements.required(), "includeElements must be optional"),
+				() -> assertEquals("boolean", includeElements.type()),
+				() -> assertFalse(includeElements.description().isBlank()));
+	}
+
+	@Test
+	@DisplayName("locateForm.includeElements is the Boolean wrapper so an omitted argument stays null instead of coercing to false")
+	void locateForm_includeElementsIsWrapperType() {
+		Method m = findToolMethod("locateForm");
+		assertNotNull(m);
+		assertEquals(Boolean.class, m.getParameterTypes()[1]);
+	}
+
+	@Test
+	@DisplayName("locateForm returns String")
+	void locateForm_returnsString() {
+		Method m = findToolMethod("locateForm");
+		assertNotNull(m);
+		assertEquals(String.class, m.getReturnType());
+	}
+
+	@Test
+	@DisplayName("locateForm(null, true) returns the exact query error")
+	void locateForm_nullQuery() {
+		assertEquals("Error: query parameter is required", new ServoyTestingServer().locateForm(null, true));
+	}
+
+	@Test
+	@DisplayName("locateForm with a blank query returns the exact query error")
+	void locateForm_blankQuery() {
+		assertEquals("Error: query parameter is required", new ServoyTestingServer().locateForm("   ", null));
 	}
 }
