@@ -17,6 +17,7 @@
 
 package com.servoy.eclipse.opencode.skilltest.outcome;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -150,5 +151,69 @@ class StructureMatcherTest { // SVY-21366
 		assertFalse(r.match());
 		assertTrue(r.describe().contains("Overview"));
 		assertTrue(r.describe().contains("Summary"));
+	}
+
+	// --- collectMismatches: report ALL divergences, not just the first (SVY-21366) ---
+
+	private static java.util.List<StructureMatcher.Mismatch> collect(String expected, String actual) throws Exception {
+		return StructureMatcher.collectMismatches(j(expected), j(actual));
+	}
+
+	@Test
+	@DisplayName("collect: empty list when the structures match (same verdict as matchItems)")
+	void collectEmptyOnMatch() throws Exception {
+		String tree = "[ { \"typeName\": \"label\", \"json\": { \"text\": \"Order %\" } } ]";
+		String actual = "[ { \"typeName\": \"label\", \"json\": { \"text\": \"Order 10643\" } } ]";
+		assertTrue(collect(tree, actual).isEmpty());
+		assertTrue(run(tree, actual).match());
+	}
+
+	@Test
+	@DisplayName("collect: ALL leaf divergences in one object are reported together")
+	void collectReportsEveryLeaf() throws Exception {
+		// Three diverging leaves in the same component json: styleClass, text, and a tab.
+		String expected = """
+				[ { "typeName": "label",
+				    "json": { "styleClass": "%title%", "text": "Order %",
+				              "tabs": [ { "text": "Overview" }, { "text": "Items%" } ] } } ]
+				""";
+		String actual = """
+				[ { "typeName": "label",
+				    "json": { "styleClass": "card", "text": "Invoice 7",
+				              "tabs": [ { "text": "Summary" }, { "text": "Items" } ] } } ]
+				""";
+		java.util.List<StructureMatcher.Mismatch> ms = collect(expected, actual);
+		// styleClass (%title% vs card), text (Order % vs Invoice 7), tab[0] (Overview vs Summary).
+		// tab[1] Items% matches "Items". So exactly 3 mismatches, all surfaced at once.
+		assertEquals(3, ms.size(), () -> "expected 3 mismatches, got: " + ms);
+		String all = ms.stream().map(StructureMatcher.Mismatch::describe).reduce("", (a, b) -> a + " | " + b);
+		assertTrue(all.contains("styleClass"), all);
+		assertTrue(all.contains("text"), all);
+		assertTrue(all.contains("tabs[0]"), all);
+	}
+
+	@Test
+	@DisplayName("collect: size mismatch on an items array is reported once, pairing skipped")
+	void collectSizeMismatch() throws Exception {
+		java.util.List<StructureMatcher.Mismatch> ms = collect(
+				"[ { \"typeName\": \"a\" }, { \"typeName\": \"b\" } ]", "[ { \"typeName\": \"a\" } ]");
+		assertEquals(1, ms.size());
+		assertTrue(ms.get(0).describe().contains("item(s)"));
+	}
+
+	@Test
+	@DisplayName("collect: order-independent items are paired to the least-diverging actual")
+	void collectUnorderedBestMatch() throws Exception {
+		// Expected two labels by text; actual has them swapped plus one text diverging.
+		String expected = """
+				[ { "json": { "text": "Alpha" } }, { "json": { "text": "Beta%" } } ]
+				""";
+		String actual = """
+				[ { "json": { "text": "Beta 2" } }, { "json": { "text": "Gamma" } } ]
+				""";
+		// Alpha pairs with the least-bad remaining (Gamma) -> 1 diff; Beta% matches "Beta 2" -> 0.
+		java.util.List<StructureMatcher.Mismatch> ms = collect(expected, actual);
+		assertEquals(1, ms.size(), () -> ms.toString());
+		assertTrue(ms.get(0).describe().contains("Alpha"));
 	}
 }

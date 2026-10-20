@@ -229,14 +229,22 @@ public final class PersistOutcomeChecker {
 					.normalizeActual(actualItems, assertion.structure());
 			com.fasterxml.jackson.databind.node.ArrayNode normExpected = FormStructureNormalizer
 					.normalizeExpected(assertion.structure());
-			StructureMatcher.Result r = StructureMatcher.matchItems(normExpected, normActual);
-			if (r.match()) {
+			// Collect EVERY divergence (not just the first) so a baseline can be
+			// fixed in one pass instead of one mismatch per CI run (SVY-21366).
+			java.util.List<StructureMatcher.Mismatch> mismatches = StructureMatcher.collectMismatches(normExpected,
+					normActual);
+			if (mismatches.isEmpty()) {
 				return new Node(label, true, true, "form matches", List.of(), List.of()); //$NON-NLS-1$
 			}
-			diff.append(indent).append("- ").append(assertion.label()).append(" form: ") //$NON-NLS-1$ //$NON-NLS-2$
-					.append(r.describe()).append('\n');
-			return new Node(label, true, false, r.describe(),
-					List.of(new PropCheck(r.path(), r.expected(), r.actual(), false)), List.of());
+			java.util.List<PropCheck> propChecks = new java.util.ArrayList<>();
+			for (StructureMatcher.Mismatch m : mismatches) {
+				diff.append(indent).append("- ").append(assertion.label()).append(" form: ") //$NON-NLS-1$ //$NON-NLS-2$
+						.append(m.describe()).append('\n');
+				propChecks.add(new PropCheck(m.path(), m.expected(), m.actual(), false));
+			}
+			String summary = mismatches.size() == 1 ? mismatches.get(0).describe()
+					: mismatches.size() + " structural mismatch(es); first: " + mismatches.get(0).describe(); //$NON-NLS-1$
+			return new Node(label, true, false, summary, propChecks, List.of());
 		} catch (RuntimeException e) {
 			String msg = "could not serialize/compare form: " + e.getMessage(); //$NON-NLS-1$
 			diff.append(indent).append("- ").append(assertion.label()).append(" form: ").append(msg) //$NON-NLS-1$ //$NON-NLS-2$

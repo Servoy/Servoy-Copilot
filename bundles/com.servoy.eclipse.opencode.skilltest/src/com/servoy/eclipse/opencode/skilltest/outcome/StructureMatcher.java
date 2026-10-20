@@ -79,13 +79,27 @@ public final class StructureMatcher { // SVY-21366 .frm subset compare with SQL-
 		}
 	}
 
+	/**
+	 * One divergence found by {@link #collectMismatches}: the JSON path, the
+	 * expected pattern/value and the actual value (both already shortened by
+	 * {@link #describe}). Same shape as the fields of {@link Result}, but a
+	 * comparison yields a whole list of these rather than only the first.
+	 */
+	public record Mismatch(String path, String expected, String actual) {
+		/** @return a one-line {@code path: expected X but was Y} description */
+		public String describe() {
+			return path + ": expected " + expected + " but was " + actual; //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
 	private StructureMatcher() {
 	}
 
 	/**
 	 * Compares an expected {@code structure} array against an actual {@code items}
 	 * array (both normalised). Treated as an order-independent {@code items} match
-	 * at the root.
+	 * at the root. Returns only the <b>first</b> divergence; use
+	 * {@link #collectMismatches} to get them all.
 	 *
 	 * @param expected normalised expected structure array (never {@code null})
 	 * @param actual   normalised actual items array (never {@code null})
@@ -94,6 +108,32 @@ public final class StructureMatcher { // SVY-21366 .frm subset compare with SQL-
 	 */
 	public static Result matchItems(JsonNode expected, JsonNode actual) {
 		return matchUnorderedArray(expected, actual, "items"); //$NON-NLS-1$
+	}
+
+	/**
+	 * Collects <b>every</b> divergence between an expected {@code structure} array
+	 * and an actual {@code items} array (both normalised), so the authoring / CI
+	 * loop can fix a baseline in one pass instead of one divergence per run
+	 * (SVY-21366). An empty list means the structures match - the same verdict
+	 * {@link #matchItems} gives, computed the same way, so the two never disagree
+	 * on pass/fail.
+	 * <p>
+	 * Policy per array kind: a {@code tabs}-style <b>positional</b> array is
+	 * compared slot by slot; an order-independent {@code items} array is paired
+	 * greedily - each expected item is matched to the remaining actual item it
+	 * diverges from least, and that best candidate's divergences are reported.
+	 * When the two arrays differ in size the size difference is reported and the
+	 * pairing is skipped (there is no meaningful per-item diff across different
+	 * counts).
+	 *
+	 * @param expected normalised expected structure array
+	 * @param actual   normalised actual items array
+	 * @return all divergences, in document order; empty when the structures match
+	 */
+	public static List<Mismatch> collectMismatches(JsonNode expected, JsonNode actual) {
+		List<Mismatch> out = new ArrayList<>();
+		collectUnorderedArray(expected, actual, "items", out); //$NON-NLS-1$
+		return out;
 	}
 
 	/** Dispatches a comparison based on the expected node's JSON shape. */
@@ -239,6 +279,148 @@ public final class StructureMatcher { // SVY-21366 .frm subset compare with SQL-
 			return Result.ok();
 		}
 		return Result.fail(path, describe(expected), describe(actual));
+	}
+
+	// --- collect-all-mismatches walk (mirrors the match()/matchObject()/... pass,
+	// but accumulates into `out` instead of returning on the first divergence) ---
+
+	/** Dispatches a collecting comparison based on the expected node's JSON shape. */
+	private static void collect(JsonNode expected, JsonNode actual, String path, List<Mismatch> out) {
+		if (expected == null || expected.isValueNode() || expected.isNull()) {
+			if (!leafMatches(expected, actual)) {
+				out.add(new Mismatch(path, describe(expected), describe(actual)));
+			}
+		} else if (expected.isObject()) {
+			collectObject(expected, actual, path, out);
+		} else if (expected.isArray()) {
+			collectPositionalArray(expected, actual, path, out);
+		} else if (!leafMatches(expected, actual)) {
+			out.add(new Mismatch(path, describe(expected), describe(actual)));
+		}
+	}
+
+	private static void collectObject(JsonNode expected, JsonNode actual, String path, List<Mismatch> out) {
+		if (actual == null || !actual.isObject()) {
+			out.add(new Mismatch(path, "object", describe(actual))); //$NON-NLS-1$
+			return;
+		}
+		for (Iterator<Map.Entry<String, JsonNode>> it = expected.fields(); it.hasNext();) {
+			Map.Entry<String, JsonNode> e = it.next();
+			String key = e.getKey();
+			JsonNode expectedChild = e.getValue();
+			JsonNode actualChild = actual.get(key);
+			String childPath = path.isEmpty() ? key : path + "." + key; //$NON-NLS-1$
+			if ("items".equals(key)) { //$NON-NLS-1$
+				collectUnorderedArray(expectedChild, actualChild, childPath, out);
+			} else if (actualChild == null) {
+				out.add(new Mismatch(childPath, describe(expectedChild), "(absent)")); //$NON-NLS-1$
+			} else {
+				collect(expectedChild, actualChild, childPath, out);
+			}
+		}
+	}
+
+	/** Positional array: same length, element-by-element; all divergences collected. */
+	private static void collectPositionalArray(JsonNode expected, JsonNode actual, String path, List<Mismatch> out) {
+		if (actual == null || !actual.isArray()) {
+			out.add(new Mismatch(path, "array[" + expected.size() + "]", describe(actual))); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
+		}
+		if (expected.size() != actual.size()) {
+			out.add(new Mismatch(path, "array of " + expected.size() + " item(s)", //$NON-NLS-1$ //$NON-NLS-2$
+					"array of " + actual.size() + " item(s)")); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
+		}
+		for (int i = 0; i < expected.size(); i++) {
+			collect(expected.get(i), actual.get(i), path + "[" + i + "]", out); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	/**
+	 * Order-independent array: greedily pairs each expected item with the remaining
+	 * actual item it diverges from least, and reports that candidate's divergences.
+	 * A size difference is reported and the pairing skipped.
+	 */
+	private static void collectUnorderedArray(JsonNode expected, JsonNode actual, String path, List<Mismatch> out) {
+		if (expected == null || !expected.isArray()) {
+			collect(expected, actual, path, out);
+			return;
+		}
+		if (actual == null || !actual.isArray()) {
+			out.add(new Mismatch(path, "array[" + expected.size() + "]", describe(actual))); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
+		}
+		if (expected.size() != actual.size()) {
+			out.add(new Mismatch(path, "array of " + expected.size() + " item(s)", //$NON-NLS-1$ //$NON-NLS-2$
+					"array of " + actual.size() + " item(s)")); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
+		}
+		List<JsonNode> remaining = new ArrayList<>();
+		actual.forEach(remaining::add);
+		// Two passes so a fuzzy expected never "steals" an actual that an exact
+		// expected needs: pass 1 consumes every exact (zero-diff) pairing; pass 2
+		// greedily pairs each still-unmatched expected with the least-diverging
+		// remaining actual and reports that candidate's divergences.
+		boolean[] paired = new boolean[expected.size()];
+		for (int i = 0; i < expected.size(); i++) {
+			JsonNode expectedItem = expected.get(i);
+			String itemPath = path + "[" + i + "]"; //$NON-NLS-1$ //$NON-NLS-2$
+			for (int j = 0; j < remaining.size(); j++) {
+				List<Mismatch> trial = new ArrayList<>();
+				collect(expectedItem, remaining.get(j), itemPath, trial);
+				if (trial.isEmpty()) {
+					remaining.remove(j);
+					paired[i] = true;
+					break;
+				}
+			}
+		}
+		for (int i = 0; i < expected.size(); i++) {
+			if (paired[i]) {
+				continue;
+			}
+			JsonNode expectedItem = expected.get(i);
+			String itemPath = path + "[" + i + "]"; //$NON-NLS-1$ //$NON-NLS-2$
+			int bestIdx = -1;
+			List<Mismatch> bestDiffs = null;
+			for (int j = 0; j < remaining.size(); j++) {
+				List<Mismatch> trial = new ArrayList<>();
+				collect(expectedItem, remaining.get(j), itemPath, trial);
+				if (bestDiffs == null || trial.size() < bestDiffs.size()) {
+					bestDiffs = trial;
+					bestIdx = j;
+				}
+			}
+			if (bestIdx >= 0) {
+				remaining.remove(bestIdx);
+				out.addAll(bestDiffs);
+			}
+		}
+	}
+
+	/**
+	 * The leaf comparison verdict shared by the collecting walk - the same rules
+	 * {@link #matchLeaf} applies: a textual expected is an SQL-{@code LIKE} pattern
+	 * ({@link #like}), numbers and booleans compare by value, JSON {@code null}
+	 * matches a {@code null}/absent actual. Kept in step with {@code matchLeaf}.
+	 */
+	private static boolean leafMatches(JsonNode expected, JsonNode actual) {
+		if (expected == null || expected.isNull()) {
+			return actual == null || actual.isNull();
+		}
+		if (actual == null || actual.isNull()) {
+			return false;
+		}
+		if (expected.isTextual()) {
+			return actual.isValueNode() && like(expected.asText(), actual.asText());
+		}
+		if (expected.isBoolean()) {
+			return actual.isBoolean() && expected.booleanValue() == actual.booleanValue();
+		}
+		if (expected.isNumber()) {
+			return actual.isNumber() && expected.asDouble() == actual.asDouble();
+		}
+		return expected.asText().equals(describe(actual));
 	}
 
 	/**
