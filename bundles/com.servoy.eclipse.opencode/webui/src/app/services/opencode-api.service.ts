@@ -73,10 +73,14 @@ export class OpencodeApiService {
     return this.http.patch<void>(`${this.base}/session/${encodeURIComponent(id)}`, { title });
   }
 
-  // NOTE: there is no archive endpoint. opencode 2.0.26's PATCH /session/:id
-  // (session.update) only honours title/metadata/permissions - a `time.archived`
-  // stamp is ignored, and no route sets it - so a client-side "archive" cannot
-  // work. The Archive action was removed from the UI; delete is the only removal.
+  // NOTE: the UI deliberately does not archive sessions. opencode 2.1.x DID add
+  // archiving back - PATCH /session/:id now honours an `archived` boolean (there
+  // are session.archive/unarchive operations, a `session.archived` bus event and
+  // a `time.archived` stamp) - but we do not surface it: the Archive action was
+  // removed from the UI and delete is the only removal. (The startup-session
+  // picker still skips any session that carries `time.archived`, so a session
+  // archived by another client stays hidden.) Re-add archiving here if the UI
+  // ever wants it again.
 
   /** Permanently delete a session (V2 {@code DELETE /session/:id}, 204). */
   deleteSession(id: string): Observable<void> {
