@@ -451,7 +451,6 @@
         <setEntry value="com.servoy.eclipse.opencode.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.opencode@default:default"/>
         <setEntry value="com.servoy.eclipse.profiler@default:default"/>
-        <setEntry value="com.servoy.eclipse.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.ui.tests@default:false"/>
         <setEntry value="com.servoy.eclipse.ui.tweaks@3:true"/>
         <setEntry value="com.servoy.eclipse.ui@default:default"/>
