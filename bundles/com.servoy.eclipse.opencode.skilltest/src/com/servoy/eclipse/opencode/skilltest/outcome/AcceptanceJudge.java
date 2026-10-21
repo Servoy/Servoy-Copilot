@@ -76,8 +76,13 @@ public final class AcceptanceJudge {
 	private static final Pattern FENCED_JSON = Pattern.compile(
 			"```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL); //$NON-NLS-1$
 
+	/** Sink for a one-line progress / diagnostic message (never {@code null}). */
+	public interface Logger {
+		void log(String message);
+	}
+
 	private final OpencodeHttpClient client;
-	private final ExpectationLlmGenerator.Logger logger;
+	private final Logger logger;
 
 	/**
 	 * The judge's verdict on one criterion.
@@ -123,7 +128,7 @@ public final class AcceptanceJudge {
 	 * @param port   the embedded opencode server port
 	 * @param logger a diagnostic sink; {@code null} becomes a no-op
 	 */
-	public AcceptanceJudge(int port, ExpectationLlmGenerator.Logger logger) {
+	public AcceptanceJudge(int port, Logger logger) {
 		this.client = new OpencodeHttpClient(port);
 		this.logger = logger != null ? logger : m -> {
 		};
@@ -136,7 +141,7 @@ public final class AcceptanceJudge {
 	 * @param logger a diagnostic sink; may be {@code null}
 	 * @return a ready judge, or {@code null}
 	 */
-	public static AcceptanceJudge ready(ExpectationLlmGenerator.Logger logger) {
+	public static AcceptanceJudge ready(Logger logger) {
 		com.servoy.eclipse.opencode.Activator activator = com.servoy.eclipse.opencode.Activator.getInstance();
 		if (activator == null) {
 			return null;
