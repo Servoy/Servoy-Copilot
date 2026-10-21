@@ -52,6 +52,12 @@ public class JSUnitRunnerService
 {
 	private static final long POLL_INTERVAL_MS = 500;
 
+	/**
+	 * Getters for which {@link #readIntNoThrow} already logged an unavailability warning, so the
+	 * (SVY-21414) terminal-condition degradation is reported once rather than every 500 ms poll.
+	 */
+	private static final java.util.Set<String> loggedMissingCounterGetters = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
 	public String runTests(String scopeOrAll, int timeoutSeconds)
 	{
 		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
@@ -489,8 +495,19 @@ public class JSUnitRunnerService
 			Object v = target.getClass().getMethod(getter).invoke(target);
 			return v instanceof Integer ? ((Integer)v).intValue() : -1;
 		}
-		catch (Exception ignored)
+		catch (Exception ex)
 		{
+			// SVY-21414: the whole-run terminal condition (started >= total) depends on these
+			// reflective counters. If a getter is gone (DLTK version/API change), isTerminalRun can
+			// never be satisfied and every run degrades to a misleading timeout, so warn (once per
+			// getter) to make that failure mode diagnosable instead of silent.
+			if (loggedMissingCounterGetters.add(getter))
+			{
+				ServoyLog.logWarning(
+					"JSUnit runner: could not read DLTK session counter '" + getter + "' reflectively; " +
+						"run-completion detection may fall back to the timeout and report partial results.",
+					ex);
+			}
 			return -1;
 		}
 	}
