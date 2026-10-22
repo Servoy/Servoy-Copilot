@@ -348,8 +348,12 @@ public class FormInteractiveElementsIntegrationTest extends TestUtilitiesClassCo
 		moduleProject.saveEditingSolutionNodes(new IPersist[] { moduleForm }, true);
 
 		waitForWorkspaceBuildJobs();
-		pumpEventsUntil(10_000, () -> assertNotNull(active.getEditingFlattenedSolution().getForm(MODULE_FORM),
-				"Module form must resolve in the flattened solution"));
+		pumpEventsUntil(10_000, () -> {
+			FlattenedSolution editingFs = active.getEditingFlattenedSolution();
+			assertNotNull(editingFs.getScriptMethod(scopeMethod.getUUID().toString()),
+					"Scope method must resolve in the flattened solution (first saveEditingSolutionNodes should have finished)");
+			assertNotNull(editingFs.getForm(MODULE_FORM), "Module form must resolve in the flattened solution (the second saveEditingSolutionNodes should have finished)");
+		});
 	}
 
 	private static void discoverInstalledComponent() {
