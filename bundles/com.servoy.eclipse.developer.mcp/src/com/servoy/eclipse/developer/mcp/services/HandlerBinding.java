@@ -16,16 +16,22 @@ package com.servoy.eclipse.developer.mcp.services;
  * @param owner {@code forms.<form>} or {@code scopes.<scope>}, {@code null} when unresolved
  * @param unresolved true when the raw id could not be turned into a method
  * @param methodId the raw persisted value, only set when unresolved
+ * @param declaration the full source of the resolved method (doc comment and function header included), {@code null} when unresolved or not carried
  */
-public record HandlerBinding(String handler, String method, String owner, boolean unresolved, String methodId)
+public record HandlerBinding(String handler, String method, String owner, boolean unresolved, String methodId, String declaration)
 {
 	public static HandlerBinding resolved(String handler, String method, String owner)
 	{
-		return new HandlerBinding(handler, method, owner, false, null);
+		return new HandlerBinding(handler, method, owner, false, null, null);
+	}
+
+	public static HandlerBinding resolved(String handler, String method, String owner, String declaration)
+	{
+		return new HandlerBinding(handler, method, owner, false, null, declaration);
 	}
 
 	public static HandlerBinding unresolved(String handler, String methodId)
 	{
-		return new HandlerBinding(handler, null, null, true, methodId);
+		return new HandlerBinding(handler, null, null, true, methodId, null);
 	}
 }

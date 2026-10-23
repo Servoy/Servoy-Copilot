@@ -21,6 +21,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.services.CypressLoginSupport;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecModel;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -30,6 +31,7 @@ import com.servoy.eclipse.developer.mcp.services.FormInteractiveElementsService;
 import com.servoy.eclipse.developer.mcp.services.FormLocatorService;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
+import com.servoy.eclipse.developer.mcp.services.FormSpecModelBuilder;
 import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
 import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
@@ -50,6 +52,7 @@ public class ServoyTestingServer
 	private final JSUnitCoverageService coverageService = new JSUnitCoverageService();
 	private final FormPreviewService formPreview = new FormPreviewService();
 	private final FormSpecGenerator specGenerator = new FormSpecGenerator();
+	private final FormSpecModelBuilder specModelBuilder = new FormSpecModelBuilder();
 	private final FormSpecRunner specRunner = new FormSpecRunner();
 	private final FormNavigationGraphService navigationService = new FormNavigationGraphService();
 	private final ServoySolutionService solutionService = new ServoySolutionService();
@@ -202,7 +205,7 @@ public class ServoyTestingServer
 			if (!result.startsWith("Error") && !specGenerator.specExists(formName, ServoyModelManager
 				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String specResult = specGenerator.generateSpec(formName);
+				String specResult = generateSpecWithModel(formName);
 				if (!specResult.startsWith("Error"))
 				{
 					result += "\n" + specResult;
@@ -269,7 +272,7 @@ public class ServoyTestingServer
 			if (!specGenerator.specExists(formName, ServoyModelManager
 				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String genResult = specGenerator.generateSpec(formName);
+				String genResult = generateSpecWithModel(formName);
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
@@ -295,7 +298,7 @@ public class ServoyTestingServer
 			if (!specGenerator.specExists(formName, ServoyModelManager
 				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String genResult = specGenerator.generateSpec(formName);
+				String genResult = generateSpecWithModel(formName);
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
@@ -405,19 +408,42 @@ public class ServoyTestingServer
 		}
 	}
 
+	/**
+	 * Generates the form spec from the handler model of the form; falls back to the legacy .frm based spec when no model can be built.
+	 */
+	private String generateSpecWithModel(String formName)
+	{
+		FormSpecModel model = null;
+		try
+		{
+			model = specModelBuilder.build(formName);
+		}
+		catch (RuntimeException e)
+		{
+			ServoyLog.logError("Could not build the form spec model for form " + formName + ", using the basic spec", e);
+		}
+		return specGenerator.generateSpec(formName, model);
+	}
+
 	@Tool(name = "generateFormSpec", description = "Creates a FORM TEST for a single Servoy form. " +
 		"USE THIS when the user asks to 'create form test', 'generate form test', or 'add form test'. " +
 		"This is NOT for E2E tests (use generateCypressE2ETest for multi-form navigation/E2E tests). " +
 		"Creates two files: a .spec.cy.js in jenkins-custom/e2e-test-scripts/cypress/cy-form/ (Cypress UI assertions with data-cy selectors) " +
 		"and a .spec.js in jenkins-custom/e2e-test-scripts/cypress/cy-form-spec/ (Servoy setUp/tearDown scope with DLTK code completion). " +
-		"Reads the form's .frm file to extract element names, dataSource, and structure. " +
+		"The generated .spec.cy.js asserts that the form loads without errors and that its controls and inputs are visible, " +
+		"then adds one case per event handler bound to an element: it performs the trigger (click, right click, or change for text inputs) " +
+		"and asserts the effects the handler method has on the form (visible, enabled, text, style classes). " +
+		"Effects that cannot be asserted are written as labelled comments: '// OFF-FORM (not asserted)' for calls outside the form, " +
+		"'// BRANCHING' for handlers with conditional code. Events without a known trigger and unresolved handlers become skipped cases. " +
+		"Elements hidden in the form (visible=false on the element or on a container around it) are left out of the visibility check and their handlers become skipped cases. " +
+		"If the form cannot be analysed (no active solution), it falls back to a basic render and visibility spec. Never overwrites an existing spec. " +
 		"Requires servoy.ngclient.testingMode=true in servoy.properties for data-cy attributes.", type = "object")
 	public String generateFormSpec(
 		@ToolParam(name = "formName", description = "The name of the form to generate a spec for (e.g. 'mainForm', 'orderDetails')") String formName)
 	{
 		try
 		{
-			return specGenerator.generateSpec(formName);
+			return generateSpecWithModel(formName);
 		}
 		catch (Exception e)
 		{

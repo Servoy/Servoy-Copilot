@@ -247,7 +247,7 @@ public class FormInteractiveElementsService
 				if (includeStatic && nonBlank(name))
 				{
 					result.add(new InteractiveElement(name, simpleTypeName(persist), InteractiveElement.KIND_STATIC, null, container, isInherited(persist),
-						false, List.of()));
+						false, !isHidden(persist), List.of()));
 				}
 				String childContainer = nonBlank(name) ? name : container;
 				for (IPersist child : layoutContainer.getAllObjectsAsList())
@@ -272,7 +272,7 @@ public class FormInteractiveElementsService
 			if (handlerNames == null)
 			{
 				// spec not installed: handlers cannot be listed, but the element is still reported
-				result.add(new InteractiveElement(name, typeName, InteractiveElement.KIND_CONTROL, null, container, inherited, true, List.of()));
+				result.add(new InteractiveElement(name, typeName, InteractiveElement.KIND_CONTROL, null, container, inherited, true, !isHidden(wc), List.of()));
 				return;
 			}
 
@@ -306,7 +306,7 @@ public class FormInteractiveElementsService
 			else if (dataProvider != null) kind = InteractiveElement.KIND_INPUT;
 			else if (!handlers.isEmpty()) kind = InteractiveElement.KIND_CONTROL;
 			else kind = InteractiveElement.KIND_STATIC;
-			add(name, typeName, kind, dataProvider, container, inherited, handlers);
+			add(name, typeName, kind, dataProvider, container, inherited, !isHidden(wc), handlers);
 		}
 
 		private void addLegacy(IPersist persist, String container)
@@ -340,13 +340,41 @@ public class FormInteractiveElementsService
 			else if (dataProvider != null) kind = InteractiveElement.KIND_INPUT;
 			else if (!handlers.isEmpty()) kind = InteractiveElement.KIND_CONTROL;
 			else kind = InteractiveElement.KIND_STATIC;
-			add(name, simpleTypeName(persist), kind, dataProvider, container, isInherited(persist), handlers);
+			add(name, simpleTypeName(persist), kind, dataProvider, container, isInherited(persist), !isHidden(persist), handlers);
 		}
 
-		private void add(String name, String type, String kind, String dataProvider, String container, boolean inherited, List<HandlerBinding> handlers)
+		private void add(String name, String type, String kind, String dataProvider, String container, boolean inherited, boolean visible,
+			List<HandlerBinding> handlers)
 		{
 			if (InteractiveElement.KIND_STATIC.equals(kind) && (!includeStatic || !nonBlank(name))) return;
-			result.add(new InteractiveElement(name, type, kind, dataProvider, container, inherited, false, handlers));
+			result.add(new InteractiveElement(name, type, kind, dataProvider, container, inherited, false, visible, handlers));
+		}
+
+		/** True when the persist, or any container around it up to the form, has visible=false. A hidden element is not rendered at all. */
+		private static boolean isHidden(IPersist persist)
+		{
+			for (IPersist current = persist; current != null && !(current instanceof Form); current = current.getParent())
+			{
+				if (isHiddenItself(current)) return true;
+			}
+			return false;
+		}
+
+		private static boolean isHiddenItself(IPersist persist)
+		{
+			IPersist target = persist instanceof IFlattenedPersistWrapper< ? > wrapper ? wrapper.getWrappedPersist() : persist;
+			if (target instanceof WebComponent wc)
+			{
+				if (Boolean.FALSE.equals(wc.getProperty("visible"))) return true;
+				JSONObject json = wc.getFlattenedJson();
+				return json != null && json.has("visible") && !json.optBoolean("visible", true);
+			}
+			if (target instanceof AbstractBase base)
+			{
+				// legacy persists and layout containers: a missing property means visible
+				return Boolean.FALSE.equals(base.getProperty("visible"));
+			}
+			return false;
 		}
 
 		private HandlerBinding resolveHandler(String handlerKey, String raw)
@@ -364,7 +392,7 @@ public class FormInteractiveElementsService
 				}
 			}
 			if (method == null) return HandlerBinding.unresolved(handlerKey, raw);
-			return HandlerBinding.resolved(handlerKey, method.getName(), ownerOf(method));
+			return HandlerBinding.resolved(handlerKey, method.getName(), ownerOf(method), method.getDeclaration());
 		}
 
 		private static String ownerOf(ScriptMethod method)

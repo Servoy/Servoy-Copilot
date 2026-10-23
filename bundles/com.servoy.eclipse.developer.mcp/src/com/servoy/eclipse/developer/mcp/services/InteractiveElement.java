@@ -20,10 +20,11 @@ import java.util.List;
  * @param container name of the enclosing layout container / portal, {@code null} when there is none
  * @param inherited true when the element is defined in a super form
  * @param specMissing true when the web component spec is not installed (handlers cannot be listed)
+ * @param visible false when the element, or a container around it, is hidden in the form (visible=false); such an element is not in the page
  * @param handlers the bound handlers, never {@code null}
  */
 public record InteractiveElement(String name, String type, String kind, String dataProvider, String container, boolean inherited,
-	boolean specMissing, List<HandlerBinding> handlers)
+	boolean specMissing, boolean visible, List<HandlerBinding> handlers)
 {
 	public static final String KIND_CONTROL = "control";
 	public static final String KIND_INPUT = "input";
@@ -33,6 +34,13 @@ public record InteractiveElement(String name, String type, String kind, String d
 	public InteractiveElement
 	{
 		handlers = handlers == null ? List.of() : List.copyOf(handlers);
+	}
+
+	/** An element that is shown in the form, which is what almost every element is. */
+	public InteractiveElement(String name, String type, String kind, String dataProvider, String container, boolean inherited,
+		boolean specMissing, List<HandlerBinding> handlers)
+	{
+		this(name, type, kind, dataProvider, container, inherited, specMissing, true, handlers);
 	}
 
 	public boolean isUnnamed()
