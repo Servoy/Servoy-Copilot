@@ -11,7 +11,8 @@ pipeline {
     
     parameters {
         // Standaard goals voor dit specifieke project overgenomen uit de oude config
-        string(name: 'goals', defaultValue: 'clean install -Dtycho.localArtifacts=ignore -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/', trim: false)
+        string(name: 'goals', defaultValue: 'clean install', trim: false)
+        string(name: 'Dproperties', defaultValue: '-Dtycho.localArtifacts=ignore -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/ ', trim: false)
     }
     
     environment {
@@ -65,7 +66,7 @@ pipeline {
                         configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
                         configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                     ]) {
-                        sh 'export MAVEN_OPTS="-Dmaven.test.failure.ignore=true" && mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" $goals'
+                        sh 'export MAVEN_OPTS="-Dmaven.test.failure.ignore=true" && mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" $goals $Dproperties'
                     }
                 }
             }
@@ -92,7 +93,7 @@ pipeline {
                         configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
                     ]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests,tests/com.servoy.eclipse.opencode.tests -am -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'
+                            sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" verify -Pintegration -pl tests/com.servoy.eclipse.developer.mcp.tests,tests/com.servoy.eclipse.opencode.tests -am $Dproperties'
                         }
                     }
                 }
