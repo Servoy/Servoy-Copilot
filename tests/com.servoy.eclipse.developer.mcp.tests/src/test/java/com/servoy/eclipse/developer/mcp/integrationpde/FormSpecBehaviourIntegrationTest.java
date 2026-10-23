@@ -239,6 +239,6 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 	public void testGenerateFormSpec_unknownFormFallsBackToLegacyPath() {
 		String result = testingServer.generateFormSpec(UNKNOWN_FORM);
 
-		assertEquals("Error: Form file not found: forms/" + UNKNOWN_FORM + ".frm", result);
+		assertEquals("Error: Form not found: " + UNKNOWN_FORM, result);
 	}
 }
