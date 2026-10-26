@@ -61,9 +61,6 @@ public final class VerificationPlanAgent {
 	/** The skill whose prose carries the authoritative check-selection + generation rules. */
 	static final String SKILL_NAME = "skilltest-authoring"; //$NON-NLS-1$
 
-	/** Default judge model proposed for an acceptance-criteria check when the agent names none. */
-	private static final String DEFAULT_JUDGE_MODEL = AcceptanceJudge.DEFAULT_JUDGE_MODEL;
-
 	/** How often the completion wait polls the session status. */
 	private static final Duration POLL = Duration.ofSeconds(2);
 
@@ -300,9 +297,11 @@ public final class VerificationPlanAgent {
 		if (criteria.isEmpty()) {
 			return null;
 		}
+		// Leave judgeModel null unless the agent named one: the runner then reuses
+		// the builder's model in a separate session (the judge need not differ).
 		String judgeModel = textAt(node, "judgeModel"); //$NON-NLS-1$
-		if (judgeModel == null || judgeModel.isBlank()) {
-			judgeModel = DEFAULT_JUDGE_MODEL;
+		if (judgeModel != null && judgeModel.isBlank()) {
+			judgeModel = null;
 		}
 		boolean required = node.path("required").asBoolean(true); //$NON-NLS-1$
 		return new Baseline.AcceptanceVerify(criteria, judgeModel, required);

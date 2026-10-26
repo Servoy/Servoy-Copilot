@@ -106,8 +106,9 @@ public class AcceptanceCriteriaWizardPage extends WizardPage {
 		new Label(body, SWT.NONE).setText("Judge model (optional):"); //$NON-NLS-1$
 		judgeModelText = new Text(body, SWT.BORDER);
 		judgeModelText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-		judgeModelText.setToolTipText("Leave blank to let the runner pick a default; always forced to differ " //$NON-NLS-1$
-				+ "from the builder model."); //$NON-NLS-1$
+		judgeModelText.setToolTipText("Leave blank to reuse the builder's model. The judge runs as a " //$NON-NLS-1$
+				+ "separate Judge agent in its own session, so the same model is fine; set a different " //$NON-NLS-1$
+				+ "model here for a decorrelated review."); //$NON-NLS-1$
 
 		requiredCheck = new Button(body, SWT.CHECK);
 		requiredCheck.setText("Required (a judge FAIL fails the baseline; unchecked = advisory)"); //$NON-NLS-1$

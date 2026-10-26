@@ -226,8 +226,9 @@ public final class Baseline {
 	 * Optional acceptance-criteria verification graded by an automated LLM judge,
 	 * parsed from the {@code verify.acceptanceCriteria} block of the sidecar
 	 * (SVY-21366). Natural-language criteria authored by a human at baseline-setup
-	 * time; at run time a judge model (which must differ from the builder model)
-	 * reads the built form's source artifacts (the {@code .frm} JSON, the form and
+	 * time; at run time a judge - running in a separate opencode session, which may
+	 * use the same model as the builder - reads the built form's source artifacts
+	 * (the {@code .frm} JSON, the form and
 	 * solution {@code .less}/{@code css}, the form's {@code .js} with its
 	 * {@code onShow} handler) plus the UI mockup and decides pass/fail per
 	 * criterion - the way an SDD review agent signs off, rather than asserting a

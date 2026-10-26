@@ -184,8 +184,9 @@ public final class SkillTestRunner {
 		String effectiveAgent = resolveAgent(baseline);
 		String effectiveModel = resolveModel(baseline);
 		// Acceptance-criteria judge (SVY-21366): built once when the baseline declares
-		// criteria, reused across trials. Grades the result with a model forced to
-		// differ from the builder (effectiveModel), reading the built form's sources.
+		// criteria, reused across trials. Grades the result in a separate session
+		// (the judge model may equal the builder's effectiveModel), reading the built
+		// form's sources.
 		com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge judge = baseline.hasAcceptanceVerify()
 				? com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.ready(logger::log)
 				: null;

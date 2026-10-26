@@ -44,35 +44,41 @@ class AcceptanceJudgeTest {
 			"A tab panel with 5 tabs in order: Overview, Items, Shipping, Notes, History",
 			"The History tab is disabled");
 
-	// --- judge model resolution: must always differ from the builder ---
+	// --- judge model resolution: separate session, model MAY equal the builder ---
 
 	@Test
-	@DisplayName("configured judge model is used when it differs from the builder")
+	@DisplayName("a configured judge model is used as-is")
 	void configuredModelUsed() {
 		assertEquals("anthropic/claude", AcceptanceJudge.resolveJudgeModel("anthropic/claude", "kiro/auto"));
 	}
 
 	@Test
-	@DisplayName("a configured model equal to the builder is rejected in favour of the default")
-	void configuredEqualToBuilderFallsBackToDefault() {
-		assertEquals(AcceptanceJudge.DEFAULT_JUDGE_MODEL,
-				AcceptanceJudge.resolveJudgeModel("kiro/auto", "kiro/auto"));
+	@DisplayName("no configured model reuses the builder's model (same model, different session)")
+	void reusesBuilderModelWhenUnconfigured() {
+		assertEquals("kiro/auto", AcceptanceJudge.resolveJudgeModel(null, "kiro/auto"));
 	}
 
 	@Test
-	@DisplayName("no configured model uses the default, which differs from the kiro/auto builder")
-	void defaultUsedWhenUnconfigured() {
-		String m = AcceptanceJudge.resolveJudgeModel(null, "kiro/auto");
-		assertEquals(AcceptanceJudge.DEFAULT_JUDGE_MODEL, m);
-		assertFalse(m.equalsIgnoreCase("kiro/auto"));
+	@DisplayName("a configured model equal to the builder is allowed (not forced to differ)")
+	void configuredEqualToBuilderIsAllowed() {
+		assertEquals("kiro/auto", AcceptanceJudge.resolveJudgeModel("kiro/auto", "kiro/auto"));
 	}
 
 	@Test
-	@DisplayName("when the default would equal the builder, a different fallback is chosen")
-	void fallbackWhenDefaultEqualsBuilder() {
-		String m = AcceptanceJudge.resolveJudgeModel(null, AcceptanceJudge.DEFAULT_JUDGE_MODEL);
-		assertFalse(m.equalsIgnoreCase(AcceptanceJudge.DEFAULT_JUDGE_MODEL),
-				"must not judge with the builder model");
+	@DisplayName("the default is used only when neither a configured nor a builder model is known")
+	void defaultOnlyWhenNothingKnown() {
+		assertEquals(AcceptanceJudge.DEFAULT_JUDGE_MODEL, AcceptanceJudge.resolveJudgeModel(null, null));
+		assertEquals(AcceptanceJudge.DEFAULT_JUDGE_MODEL, AcceptanceJudge.resolveJudgeModel("  ", "  "));
+	}
+
+	@Test
+	@DisplayName("the judge runs as the dedicated 'Judge' agent (separate agent, not the builder's)")
+	void judgeRunsAsDedicatedJudgeAgent() {
+		// The judge's independence is a separate AGENT in a separate session. The
+		// agent must be the dedicated 'Judge' primary agent (skills pack), not the
+		// hidden read-only 'Reviewer' subagent (which cannot be a session agent and
+		// would block servoy-form_getFormLayout), and never the builder's agent.
+		assertEquals("Judge", AcceptanceJudge.JUDGE_AGENT);
 	}
 
 	// --- prompt building ---

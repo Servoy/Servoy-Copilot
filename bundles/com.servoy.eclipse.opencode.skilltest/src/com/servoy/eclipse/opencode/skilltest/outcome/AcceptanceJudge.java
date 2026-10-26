@@ -35,8 +35,9 @@ import com.servoy.eclipse.opencode.skilltest.OpencodeHttpClient;
  * than asserting a frozen persist tree a valid run reproduces a different way
  * (SVY-21366).
  * <p>
- * The judge runs as its own embedded-opencode session with its own tools and
- * skills, in the active solution's working directory. The prompt hands it the
+ * The judge runs as a <b>separate agent in its own session</b>: a fresh
+ * {@code createSession} prompted as the dedicated read-only {@link #JUDGE_AGENT
+ * Judge} agent, distinct from the builder's agent. The prompt hands it the
  * natural-language criteria and tells it to <b>read for itself</b> the mockup it
  * was asked to reproduce, the built form's {@code .frm}/{@code .js}, the form
  * and solution {@code .less}/{@code css}, and whatever else it needs, then
@@ -44,10 +45,13 @@ import com.servoy.eclipse.opencode.skilltest.OpencodeHttpClient;
  * prompt - the judge inspects the real files.
  * </p>
  * <p>
- * The judge model <b>must differ from the builder model</b> (the model that
- * produced the form): a form's author should not be its own judge. The baseline
- * may name a {@code judgeModel}; otherwise a default is used, and in all cases
- * the choice is forced away from the builder model.
+ * The separate Reviewer agent + fresh session is what keeps the judge distinct
+ * from the run it grades (a different persona reviewing cold, like the SDD
+ * reviewer). The judge <b>model</b> need not differ from the builder's - a
+ * same-model review in a separate agent/session is a consistency check; for a
+ * decorrelated review name a different {@code judgeModel}. When the baseline
+ * names none, the runner reuses the builder's model, or the
+ * {@link #DEFAULT_JUDGE_MODEL} when the builder model is unknown.
  * </p>
  * <p>
  * Every failure path - no server, HTTP error, an unparseable answer - yields a
@@ -58,11 +62,19 @@ import com.servoy.eclipse.opencode.skilltest.OpencodeHttpClient;
  */
 public final class AcceptanceJudge {
 
-	/** Default judge model when the baseline names none; must differ from the builder. */
+	/** Judge model used only when neither the baseline nor the builder names one. */
 	public static final String DEFAULT_JUDGE_MODEL = "kiro/claude-sonnet-4-6"; //$NON-NLS-1$
 
-	/** Fallback judge model used when the default would equal the builder model. */
-	private static final String FALLBACK_JUDGE_MODEL = "kiro/claude-sonnet-5"; //$NON-NLS-1$
+	/**
+	 * The dedicated agent the judge runs as - the read-only {@code Judge} primary
+	 * agent (defined in the skills pack), distinct from the builder's agent.
+	 * Combined with the fresh session, this is what makes the judge a <b>separate
+	 * agent in its own session</b> rather than the ambient default agent grading
+	 * the run (SVY-21366). A dedicated primary agent (not the hidden {@code
+	 * Reviewer} subagent) is used so the judge can run as a top-level session agent
+	 * and still reach the read + {@code servoy-form_getFormLayout} tools it needs.
+	 */
+	static final String JUDGE_AGENT = "Judge"; //$NON-NLS-1$
 
 	/** How often the completion wait polls the session status. */
 	private static final Duration POLL = Duration.ofSeconds(2);
@@ -163,26 +175,24 @@ public final class AcceptanceJudge {
 	}
 
 	/**
-	 * Chooses the model to judge with: the configured one when it is set and
-	 * differs from the builder; otherwise the {@link #DEFAULT_JUDGE_MODEL}; and in
-	 * every case forced away from {@code builderModel} so the builder never judges
-	 * its own output.
+	 * Chooses the model to judge with: the configured {@code judgeModel} when set,
+	 * otherwise the builder's own model (the judge may reuse it - independence comes
+	 * from the separate session, not a different model), and the
+	 * {@link #DEFAULT_JUDGE_MODEL} only when neither is known.
 	 *
-	 * @param configured  the baseline's {@code judgeModel} (may be {@code null})
+	 * @param configured   the baseline's {@code judgeModel} (may be {@code null})
 	 * @param builderModel the model that built the form (may be {@code null} =
 	 *                     server default)
 	 * @return the judge model to use (never {@code null})
 	 */
 	static String resolveJudgeModel(String configured, String builderModel) {
-		String builder = builderModel == null ? "" : builderModel.trim(); //$NON-NLS-1$
-		if (configured != null && !configured.isBlank() && !configured.trim().equalsIgnoreCase(builder)) {
+		if (configured != null && !configured.isBlank()) {
 			return configured.trim();
 		}
-		String chosen = DEFAULT_JUDGE_MODEL;
-		if (chosen.equalsIgnoreCase(builder)) {
-			chosen = FALLBACK_JUDGE_MODEL;
+		if (builderModel != null && !builderModel.isBlank()) {
+			return builderModel.trim();
 		}
-		return chosen;
+		return DEFAULT_JUDGE_MODEL;
 	}
 
 	/**
@@ -216,9 +226,11 @@ public final class AcceptanceJudge {
 			String prompt = buildPrompt(formName, mockupPath, criteria);
 			sessionId = client.createSession("Skill-test acceptance judge"); //$NON-NLS-1$
 			logger.log("[skilltest] acceptance judge: grading " + criteria.size() + " criterion(s) for form '" //$NON-NLS-1$ //$NON-NLS-2$
-					+ formName + "' with model " + model + " (session " + sessionId + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-			// Default agent, explicit judge model (forced != builder).
-			client.promptAsync(sessionId, prompt, null, model);
+					+ formName + "' as the " + JUDGE_AGENT + " agent, model " + model + " (session " + sessionId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					+ ")"); //$NON-NLS-1$
+			// Run as the dedicated Judge agent in this fresh session (separate
+			// agent + separate session). The model may equal the builder's.
+			client.promptAsync(sessionId, prompt, JUDGE_AGENT, model);
 			client.waitForCompletion(sessionId, POLL, notCancelled);
 			// Read the verdict from the EXPORT (inlines each message's `content`),
 			// NOT the /message list endpoint, which returns metadata with empty parts

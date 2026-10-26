@@ -112,9 +112,12 @@ additive tiers that can be layered on top and combined.
   tuned by the `compare` block (`ordered`, `strict`, `forbidden`, `argOverrides`).
 - **Acceptance criteria (LLM judge) — `verify.acceptanceCriteria`.** The most
   robust check for LLM-built UI, where structural persist-tree equality is too
-  brittle (valid runs legitimately produce different layouts). A **separate**
-  LLM — the "judge", forced to differ from the builder model so a form's author
-  is never its own judge — reads the built form's artifacts for itself (the
+  brittle (valid runs legitimately produce different layouts). The judge runs as
+  a **separate agent in its own session** — the dedicated read-only **Judge**
+  agent, distinct from the builder's agent, in a fresh session (the model may be
+  the same one that built the form; a same-model review is a consistency check,
+  a different `judgeModel` makes it decorrelated). It reads the built
+  form's artifacts for itself (the
   `.frm`, the form `.js` incl. `onShow`, the form and solution `.less`/`css`,
   and the UI mockup; it may call `servoy-form_getFormLayout` with
   `screenshot=true` for visual fidelity) and grades each natural-language
@@ -141,7 +144,7 @@ additive tiers that can be layered on top and combined.
         "There is a tab panel with exactly five tabs in order: Overview, Items, Shipping, Notes, History.",
         "The History tab is disabled; the other four are enabled."
       ],
-      "judgeModel": "kiro/claude-sonnet-4-6", // optional; default picks a model != the builder
+      "judgeModel": null,                      // optional; null = reuse the builder's model (separate session)
       "required": true                         // false = report but don't fail the baseline
     }
   }
@@ -277,6 +280,9 @@ seeded come from `${skilltest.baselines.dir}`.
   verdict from the export (`OpencodeHttpClient.getExport`) — reading the message
   list instead is what caused an early "judge returned no text" even though the
   judge had answered.
-- **The judge model is always forced away from the builder model**, even when a
-  `judgeModel` is configured that happens to equal it — a form's author must not
-  grade its own output.
+- **The judge runs as a separate agent (the `Judge`) in its own session, and
+  may use the same model** as the builder — the separate agent + fresh session is
+  what distinguishes it, not a different model. Leave `judgeModel` null to reuse
+  the builder's model (a consistency check); set a different `judgeModel` for a
+  decorrelated review. The default (`kiro/claude-sonnet-4-6`) is only used when
+  the builder model is unknown.

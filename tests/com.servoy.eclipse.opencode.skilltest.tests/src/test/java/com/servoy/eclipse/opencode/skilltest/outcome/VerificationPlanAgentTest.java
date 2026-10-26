@@ -99,16 +99,33 @@ class VerificationPlanAgentTest {
 	}
 
 	@Test
-	@DisplayName("a null judgeModel defaults to a non-builder judge model")
-	void defaultsJudgeModel() {
+	@DisplayName("a null/blank judgeModel is left null so the runner reuses the builder model in a separate session")
+	void nullJudgeModelStaysNull() {
 		VerificationPlan plan = AGENT.parsePlan("""
 				```json
 				{ "acceptanceCriteria": { "criteria": [ "x" ], "judgeModel": null } }
 				```
 				""");
 		assertNotNull(plan);
-		assertNotNull(plan.acceptance().judgeModel(), "a default judge model is filled in");
-		assertFalse(plan.acceptance().judgeModel().isBlank());
+		assertNull(plan.acceptance().judgeModel(), "null judgeModel must stay null (runner picks)");
+
+		VerificationPlan blank = AGENT.parsePlan("""
+				```json
+				{ "acceptanceCriteria": { "criteria": [ "x" ], "judgeModel": "  " } }
+				```
+				""");
+		assertNull(blank.acceptance().judgeModel(), "a blank judgeModel is treated as null");
+	}
+
+	@Test
+	@DisplayName("an explicit judgeModel is kept")
+	void explicitJudgeModelKept() {
+		VerificationPlan plan = AGENT.parsePlan("""
+				```json
+				{ "acceptanceCriteria": { "criteria": [ "x" ], "judgeModel": "anthropic/claude" } }
+				```
+				""");
+		assertEquals("anthropic/claude", plan.acceptance().judgeModel());
 	}
 
 	@Test

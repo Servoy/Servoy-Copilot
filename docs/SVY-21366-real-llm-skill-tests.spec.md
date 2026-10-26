@@ -546,10 +546,16 @@ human-authored natural-language criteria. The design points:
   how the form actually renders (design-time, no data) and compare pixels to the mockup. When the
   baseline declares no form name (a judge-authoritative baseline, below), the judge is told to
   **discover** the created form itself.
-- **The judge model MUST differ from the builder model** — a form's author must not grade its own
-  output. The baseline may name a `judgeModel`; otherwise a default (`kiro/claude-sonnet-4-6`) is
-  used, and in **every** case `AcceptanceJudge.resolveJudgeModel` forces the choice away from the
-  builder model (falling back to `kiro/claude-sonnet-5` if the default would equal it).
+- **The judge runs as a SEPARATE AGENT in its own session — the model need not differ.** The judge is
+  prompted as the dedicated read-only `Judge` agent (`AcceptanceJudge.JUDGE_AGENT`, a primary agent in
+  the skills pack) in a fresh `createSession`, distinct from the builder's agent — that separation, not
+  a different model, is what makes it an independent reviewer (the same spirit as the SDD Reviewer). The
+  dedicated `Judge` primary agent is used rather than the hidden read-only `Reviewer` subagent so the
+  judge can run as a top-level session agent and still reach `servoy-form_getFormLayout`. The model may equal
+  the builder's: a same-model review in a separate agent/session is a consistency check, and naming a
+  different `judgeModel` makes it decorrelated. When the baseline names none,
+  `AcceptanceJudge.resolveJudgeModel` reuses the builder's model, falling back to
+  `kiro/claude-sonnet-4-6` only when the builder model is unknown.
 - **Per-criterion verdict, gated like the SDD reviewer.** The judge answers with exactly one fenced
   ```json block — `{ overall, criteria:[{ criterion, pass, reason }] }`. `overall` is trusted only
   when no criterion failed. `required:true` (default) gates the baseline; `required:false` reports a
@@ -584,7 +590,7 @@ human-authored natural-language criteria. The design points:
       "There is a tab panel with exactly five tabs, in order: Overview, Items, Shipping, Notes, History.",
       "The History tab is disabled; the other four tabs are enabled."
     ],
-    "judgeModel": "kiro/claude-sonnet-4-6",  // optional; default != builder, always forced != builder
+    "judgeModel": null,  // optional; null = reuse the builder's model in a separate session
     "required": true                          // false = advisory (report, don't fail)
   }
 }
@@ -1095,7 +1101,7 @@ main remaining work, plus a full reactor build and a guarded end-to-end run.
       skipped; otherwise it falls back to the same MCP tool calls with equivalent arguments under a
       tolerant comparison. Text/prose is never compared.
 - [ ] A baseline may declare `verify.acceptanceCriteria` — natural-language criteria graded by a
-      **separate LLM judge** (model forced to differ from the builder) that reads the built form's
+      **separate LLM judge** (the `Judge` agent in a fresh session; the model may equal the builder's) that reads the built form's
       artifacts and the mockup itself (§3.4d). When it declares criteria but **no** `expect.persists`
       the judge is the **sole, authoritative** verdict (judge-authoritative); when both are present
       the required judge gates on top of the outcome check. The judge reads its verdict from the

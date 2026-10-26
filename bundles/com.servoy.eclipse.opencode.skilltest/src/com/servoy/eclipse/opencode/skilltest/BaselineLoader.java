@@ -543,7 +543,8 @@ public final class BaselineLoader {
 	/**
 	 * Parses the {@code verify.acceptanceCriteria} block that declares an optional
 	 * LLM-judged acceptance check (SVY-21366). Natural-language criteria graded by
-	 * a judge model that must differ from the builder model. Shape:
+	 * a judge in a separate session (its {@code judgeModel} may be the same as the
+	 * builder; {@code null} = reuse the builder's model). Shape:
 	 *
 	 * <pre>
 	 * "verify": { "acceptanceCriteria": {
