@@ -623,7 +623,7 @@ public final class BaselineLoader {
 	 * @throws IOException if the export is unreadable/invalid or the target exists
 	 */
 	public static File importExport(File exportFile, File baselinesRoot, String id, String title) throws IOException {
-		return importExport(exportFile, baselinesRoot, id, title, null);
+		return importExport(exportFile, baselinesRoot, id, title, (List<OutcomeAssertion>) null);
 	}
 
 	/**
@@ -670,6 +670,114 @@ public final class BaselineLoader {
 	}
 
 	/**
+	 * Imports an export as a new baseline, writing the full verification plan an AI
+	 * baseline-authoring agent proposed and the human confirmed (SVY-21366): the
+	 * sidecar's {@code expect.persists} + {@code verify.acceptanceCriteria} +
+	 * {@code verify.jsunit}, and - when the plan carries a JSUnit script - the
+	 * generated script file under {@code verify/scopes/<name>.js} in the baseline
+	 * folder (the solution-relative path the sidecar's {@code verify.jsunit.scripts}
+	 * then references, matching what the verifier injects).
+	 *
+	 * @param exportFile    the export JSON file the user picked from disk
+	 * @param baselinesRoot the baselines root to create the new folder under
+	 * @param id            the baseline id / folder name
+	 * @param title         an optional title (defaults to {@code id})
+	 * @param plan          the confirmed verification plan (never {@code null})
+	 * @return the created baseline folder
+	 * @throws IOException if the export is unreadable/invalid or the target exists
+	 */
+	public static File importExport(File exportFile, File baselinesRoot, String id, String title,
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan) throws IOException {
+		return importExport(exportFile, baselinesRoot, id, title, plan, ImportConfig.defaults());
+	}
+
+	/**
+	 * Like {@link #importExport(File, File, String, String, com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan)}
+	 * but also writes the per-baseline run configuration the wizard collected
+	 * (starting-solution source, solution name, git/folder location+ref, number of
+	 * runs) into the sidecar's {@code precondition} + {@code maxAttempts}, instead
+	 * of the hardcoded defaults (SVY-21366).
+	 *
+	 * @param config the run configuration; {@code null} = {@link ImportConfig#defaults()}
+	 */
+	public static File importExport(File exportFile, File baselinesRoot, String id, String title,
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan, ImportConfig config)
+			throws IOException {
+		if (exportFile == null || !exportFile.isFile()) {
+			throw new IOException("export file not found: " + exportFile); //$NON-NLS-1$
+		}
+		if (id == null || !id.matches("[A-Za-z0-9._-]+")) { //$NON-NLS-1$
+			throw new IOException(
+					"invalid baseline id '" + id + "': only letters, digits, '.', '_' and '-' are allowed"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		String raw = Files.readString(exportFile.toPath(), StandardCharsets.UTF_8);
+		String normalised = stripLeadingNonJson(raw);
+		JsonNode node = MAPPER.readTree(normalised); // throws if invalid JSON
+		SessionTranscript transcript = SessionTranscript.fromExport(node);
+
+		File targetFolder = new File(baselinesRoot, id);
+		if (targetFolder.exists()) {
+			throw new IOException("baseline folder already exists: " + targetFolder); //$NON-NLS-1$
+		}
+		if (!targetFolder.mkdirs()) {
+			throw new IOException("cannot create baseline folder: " + targetFolder); //$NON-NLS-1$
+		}
+		Files.writeString(new File(targetFolder, "export.json").toPath(), normalised, StandardCharsets.UTF_8); //$NON-NLS-1$
+
+		// Write the generated JSUnit script into the baseline folder (if any), so
+		// the sidecar's verify.jsunit.scripts can reference its solution-relative path.
+		String jsScriptSolutionRelative = null;
+		if (plan != null && plan.hasJsUnit()) {
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan.JsUnitPlan js = plan.jsunit();
+			String base = sanitizeScriptName(js.scriptName());
+			jsScriptSolutionRelative = "scopes/" + base + ".js"; //$NON-NLS-1$ //$NON-NLS-2$
+			File scriptFile = new File(targetFolder, "verify/" + jsScriptSolutionRelative); //$NON-NLS-1$
+			File parent = scriptFile.getParentFile();
+			if (parent != null) {
+				parent.mkdirs();
+			}
+			Files.writeString(scriptFile.toPath(), js.scriptSource(), StandardCharsets.UTF_8);
+		}
+
+		Files.writeString(new File(targetFolder, "baseline.json").toPath(), //$NON-NLS-1$
+				starterSidecar(id, title != null && !title.isBlank() ? title : id, transcript.getPrompt(), plan,
+						jsScriptSolutionRelative, config),
+				StandardCharsets.UTF_8);
+		return targetFolder;
+	}
+
+	/**
+	 * The per-baseline run configuration the import wizard collects on its details
+	 * page and writes into the new sidecar's {@code precondition} + {@code maxAttempts}
+	 * (SVY-21366): the starting-solution source (empty/git/folder), the solution to
+	 * create/activate, the git/folder location and ref, and the number of replay
+	 * trials. {@code null} defaults to an {@code empty} source on
+	 * {@link #DEFAULT_SOLUTION} with {@link #DEFAULT_MAX_ATTEMPTS} trials.
+	 *
+	 * @param source      the source kind (never {@code null})
+	 * @param solution    the solution project to create/activate (never blank)
+	 * @param location    git URL / folder path, or {@code null} for an empty source
+	 * @param ref         optional git branch/tag/commit, or {@code null}
+	 * @param maxAttempts the number of replay trials (>= 1)
+	 */
+	public record ImportConfig(Baseline.Source.Type source, String solution, String location, String ref,
+			int maxAttempts) {
+
+		/** @return the default config: empty source, {@link #DEFAULT_SOLUTION}, {@link #DEFAULT_MAX_ATTEMPTS}. */
+		public static ImportConfig defaults() {
+			return new ImportConfig(Baseline.Source.Type.EMPTY, DEFAULT_SOLUTION, null, null, DEFAULT_MAX_ATTEMPTS);
+		}
+	}
+
+	/** A valid scope/file base name for a generated JSUnit script, defaulting when blank. */
+	private static String sanitizeScriptName(String name) {
+		String base = name == null ? "" : name.trim(); //$NON-NLS-1$
+		base = base.replaceAll("\\.js$", "").replaceAll("[^A-Za-z0-9_]+", "_"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		base = base.replaceAll("^_+", "").replaceAll("_+$", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		return base.isEmpty() ? "skilltest_verify" : base; //$NON-NLS-1$
+	}
+
+	/**
 	 * Overwrites an existing baseline's {@code expect} block with the given
 	 * assertions, preserving every other sidecar field. Used by the view's
 	 * "edit assertions" action.
@@ -693,6 +801,73 @@ public final class BaselineLoader {
 	private static String starterSidecar(String id, String title, String prompt, List<OutcomeAssertion> expected)
 			throws IOException {
 		ObjectMapper mapper = MAPPER.copy().enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+		com.fasterxml.jackson.databind.node.ObjectNode root = starterSidecarRoot(mapper, id, title, prompt,
+				ImportConfig.defaults());
+		// Expected outcomes (the authoritative "focus on the outcome" check): write
+		// the confirmed/inferred assertions so the runner checks the real persist
+		// tree rather than the transcript.
+		root.set("expect", OutcomeAssertions.toJson(expected != null ? expected : java.util.List.of())); //$NON-NLS-1$
+		return mapper.writeValueAsString(root);
+	}
+
+	/**
+	 * Builds the starter sidecar for an import whose verification strategy an AI
+	 * authoring agent proposed and the human confirmed (SVY-21366): writes
+	 * {@code expect.persists} and, when the plan carries them, a {@code verify}
+	 * block with {@code acceptanceCriteria} and/or {@code jsunit} (the latter
+	 * referencing the already-written script at {@code jsScriptSolutionRelative}).
+	 */
+	private static String starterSidecar(String id, String title, String prompt,
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan, String jsScriptSolutionRelative,
+			ImportConfig config) throws IOException {
+		ObjectMapper mapper = MAPPER.copy().enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+		com.fasterxml.jackson.databind.node.ObjectNode root = starterSidecarRoot(mapper, id, title, prompt, config);
+		List<OutcomeAssertion> persists = plan != null ? plan.persists() : java.util.List.of();
+		root.set("expect", OutcomeAssertions.toJson(persists)); //$NON-NLS-1$
+
+		boolean hasAcceptance = plan != null && plan.hasAcceptance();
+		boolean hasJsUnit = plan != null && plan.hasJsUnit() && jsScriptSolutionRelative != null;
+		if (hasAcceptance || hasJsUnit) {
+			com.fasterxml.jackson.databind.node.ObjectNode verify = root.putObject("verify"); //$NON-NLS-1$
+			if (hasAcceptance) {
+				Baseline.AcceptanceVerify av = plan.acceptance();
+				com.fasterxml.jackson.databind.node.ObjectNode ac = verify.putObject("acceptanceCriteria"); //$NON-NLS-1$
+				com.fasterxml.jackson.databind.node.ArrayNode arr = ac.putArray("criteria"); //$NON-NLS-1$
+				for (String c : av.criteria()) {
+					arr.add(c);
+				}
+				if (av.judgeModel() != null && !av.judgeModel().isBlank()) {
+					ac.put("judgeModel", av.judgeModel()); //$NON-NLS-1$
+				} else {
+					ac.putNull("judgeModel"); //$NON-NLS-1$
+				}
+				ac.put("required", av.required()); //$NON-NLS-1$
+			}
+			if (hasJsUnit) {
+				com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan.JsUnitPlan js = plan.jsunit();
+				com.fasterxml.jackson.databind.node.ObjectNode ju = verify.putObject("jsunit"); //$NON-NLS-1$
+				ju.putArray("scripts").add(jsScriptSolutionRelative); //$NON-NLS-1$
+				ju.put("scope", js.scope()); //$NON-NLS-1$
+				if (js.method() != null && !js.method().isBlank()) {
+					ju.put("method", js.method()); //$NON-NLS-1$
+				} else {
+					ju.putNull("method"); //$NON-NLS-1$
+				}
+				ju.put("required", js.required()); //$NON-NLS-1$
+			}
+		}
+		return mapper.writeValueAsString(root);
+	}
+
+	/**
+	 * The common head of a starter sidecar (id/title/active/export/prompt/agent/
+	 * model/maxAttempts/timeout/precondition/compare), shared by both the
+	 * persists-only and the full-plan import paths. The caller adds {@code expect}
+	 * and (optionally) {@code verify}.
+	 */
+	private static com.fasterxml.jackson.databind.node.ObjectNode starterSidecarRoot(ObjectMapper mapper, String id,
+			String title, String prompt, ImportConfig config) {
+		ImportConfig cfg = config != null ? config : ImportConfig.defaults();
 		com.fasterxml.jackson.databind.node.ObjectNode root = mapper.createObjectNode();
 		root.put("id", id); //$NON-NLS-1$
 		root.put("title", title); //$NON-NLS-1$
@@ -705,23 +880,29 @@ public final class BaselineLoader {
 		}
 		root.putNull("agent"); //$NON-NLS-1$
 		root.putNull("model"); //$NON-NLS-1$
-		root.put("maxAttempts", DEFAULT_MAX_ATTEMPTS); //$NON-NLS-1$
+		root.put("maxAttempts", cfg.maxAttempts() >= 1 ? cfg.maxAttempts() : DEFAULT_MAX_ATTEMPTS); //$NON-NLS-1$
 		root.put("timeoutSeconds", DEFAULT_TIMEOUT_SECONDS); //$NON-NLS-1$
-		// Precondition: an 'empty' source must know which solution to create, so seed
-		// a default solution + empty source. The team edits this per baseline.
+		// Precondition: the wizard-chosen starting-solution source + solution name.
+		// An 'empty' source must know which solution to create; git/folder also carry
+		// the location (and git an optional ref).
 		com.fasterxml.jackson.databind.node.ObjectNode precondition = root.putObject("precondition"); //$NON-NLS-1$
-		precondition.put("solution", DEFAULT_SOLUTION); //$NON-NLS-1$
-		precondition.putObject("source").put("type", "empty"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		String solution = cfg.solution() != null && !cfg.solution().isBlank() ? cfg.solution() : DEFAULT_SOLUTION;
+		precondition.put("solution", solution); //$NON-NLS-1$
+		Baseline.Source.Type type = cfg.source() != null ? cfg.source() : Baseline.Source.Type.EMPTY;
+		com.fasterxml.jackson.databind.node.ObjectNode sourceNode = precondition.putObject("source"); //$NON-NLS-1$
+		sourceNode.put("type", type.name().toLowerCase(java.util.Locale.ROOT)); //$NON-NLS-1$
+		if (type != Baseline.Source.Type.EMPTY && cfg.location() != null && !cfg.location().isBlank()) {
+			sourceNode.put("location", cfg.location().trim()); //$NON-NLS-1$
+		}
+		if (type == Baseline.Source.Type.GIT && cfg.ref() != null && !cfg.ref().isBlank()) {
+			sourceNode.put("ref", cfg.ref().trim()); //$NON-NLS-1$
+		}
 		com.fasterxml.jackson.databind.node.ObjectNode compare = root.putObject("compare"); //$NON-NLS-1$
 		compare.put("ordered", false); //$NON-NLS-1$
 		compare.put("strict", false); //$NON-NLS-1$
 		compare.putArray("forbidden"); //$NON-NLS-1$
 		compare.putObject("argOverrides"); //$NON-NLS-1$
-		// Expected outcomes (the authoritative "focus on the outcome" check): write
-		// the confirmed/inferred assertions so the runner checks the real persist
-		// tree rather than the transcript.
-		root.set("expect", OutcomeAssertions.toJson(expected != null ? expected : java.util.List.of())); //$NON-NLS-1$
-		return mapper.writeValueAsString(root);
+		return root;
 	}
 
 	/**

@@ -62,11 +62,15 @@ import com.servoy.eclipse.opencode.Activator;
  * The toolbar exposes three actions:
  * </p>
  * <ul>
- * <li><b>Import export…</b> — pick an opencode {@code export.json} from disk
- * and register it as a new baseline (via
+ * <li><b>Import export…</b> — the blessed way a baseline enters the library:
+ * pick an opencode {@code export.json} from disk, after which an AI
+ * baseline-authoring agent analyzes the session and proposes the verification
+ * checks (expected persists, acceptance criteria, and/or JSUnit) for the human
+ * to review, edit and approve (via {@link ImportBaselineWizard} +
  * {@link BaselineLoader#importExport}).</li>
- * <li><b>Record baseline…</b> — run a fresh prompt against the live server and
- * capture its transcript as a golden baseline.</li>
+ * <li><b>Record baseline…</b> — <b>deprecated</b>. Recording a session is the
+ * opencode view's responsibility (it owns the session); import the export it
+ * produces instead. Kept only for backwards compatibility.</li>
  * <li><b>Run</b> — run all active baselines and populate the results.</li>
  * </ul>
  */
@@ -303,22 +307,63 @@ public class SkillTestView extends ViewPart {
 	// --- actions ---
 
 	private void importExport() {
-		File baselinesRoot = resolveBaselinesRoot();
-		ImportBaselineDialog dialog = new ImportBaselineDialog(getSite().getShell(), baselinesRoot);
-		if (dialog.open() != Window.OK) {
+		openImportWizard(new ImportBaselineWizard(resolveBaselinesRoot()));
+	}
+
+	/**
+	 * Opens the import wizard. On Finish, logs + refreshes. When the user chose
+	 * "Run in background" on the analyze step, the dialog closed early: re-run the
+	 * analysis off-screen on a background Job and reopen the wizard - primed with
+	 * the result - when it finishes (SVY-21366).
+	 */
+	private void openImportWizard(ImportBaselineWizard wizard) {
+		org.eclipse.jface.wizard.WizardDialog dialog = new org.eclipse.jface.wizard.WizardDialog(getSite().getShell(),
+				wizard);
+		// A primed reopen (after a background analysis) already has its result, so
+		// jump straight to the analyze/review page instead of the details page.
+		if (wizard.isPrimed()) {
+			dialog.create();
+			dialog.showPage(wizard.getAnalyzePage());
+		}
+		int code = dialog.open();
+		if (wizard.isBackgrounded()) {
+			runImportAnalysisInBackground(wizard);
 			return;
 		}
-		File exportFile = dialog.getExportFile();
-		String id = dialog.getBaselineId();
-		String title = dialog.getBaselineTitle();
-		try {
-			BaselineLoader.importExport(exportFile, baselinesRoot, id, title, dialog.getInferredAssertions());
-			log("Imported baseline '" + id + "' from " + exportFile); //$NON-NLS-1$ //$NON-NLS-2$
-			refresh();
-		} catch (IOException e) {
-			MessageDialog.openError(getSite().getShell(), "Import failed", e.getMessage()); //$NON-NLS-1$
-			log("Import failed: " + e.getMessage()); //$NON-NLS-1$
+		if (code != Window.OK) {
+			return;
 		}
+		File created = wizard.getCreatedFolder();
+		log("Imported baseline '" + wizard.getBaselineId() + "'" //$NON-NLS-1$ //$NON-NLS-2$
+				+ (created != null ? " to " + created : "")); //$NON-NLS-1$ //$NON-NLS-2$
+		refresh();
+	}
+
+	/**
+	 * Re-runs the authoring agent + persist loosener off-screen (the "Run in
+	 * background" handoff) and, when it completes on the UI thread, reopens a fresh
+	 * import wizard primed with the inputs + the computed plan so the user can
+	 * finish the import (SVY-21366).
+	 */
+	private void runImportAnalysisInBackground(ImportBaselineWizard prior) {
+		final File baselinesRoot = resolveBaselinesRoot();
+		final File exportFile = prior.getExportFile();
+		final String id = prior.getBaselineId();
+		final String title = prior.getBaselineTitle();
+		final File mockup = prior.getMockupFile();
+		final Baseline.Source.Type sourceType = prior.getSourceType();
+		final String solution = prior.getSolution();
+		final String location = prior.getLocation();
+		final String ref = prior.getRef();
+		final int maxAttempts = prior.getMaxAttempts();
+		log("Analyzing '" + id + "' in the background; the import reopens when it is ready\u2026"); //$NON-NLS-1$ //$NON-NLS-2$
+		com.servoy.eclipse.opencode.skilltest.outcome.AiExpectationGeneration.chooseAndPlan(null, exportFile, mockup,
+				this::log, plan -> {
+					ImportBaselineWizard reopened = new ImportBaselineWizard(baselinesRoot);
+					reopened.prime(exportFile, id, title, mockup, sourceType, solution, location, ref, maxAttempts,
+							plan);
+					openImportWizard(reopened);
+				});
 	}
 
 	private void runActive() {

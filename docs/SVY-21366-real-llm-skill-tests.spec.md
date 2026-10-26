@@ -333,7 +333,9 @@ The primary, authoritative definition of "same result" is over the **real in-mem
 tree** of the active solution after the run, not over the transcript. A baseline declares expected
 outcomes in an `expect.persists` block; **when present, the runner uses ONLY this check and skips the
 transcript comparison entirely** (§3.3, precedence: outcome-authoritative when `expect.persists`
-present). This is what the `create-customerdetail-form-with-data-bindings` baseline uses today, and
+present). (A baseline may instead omit `expect.persists` and rely on the §3.4d LLM judge as the sole
+verdict — "judge-authoritative"; and when both are present the judge is an additive gate.) This is
+what the `create-customerdetail-form-with-data-bindings` baseline uses today, and
 it is why an equivalent run that reorders tools, delegates to a sub-agent, explores with extra
 read-only calls, or rephrases a sub-agent prompt still passes: the check asks *"does the right persist
 exist with the right properties?"*, not *"were the right tools called?"*.
@@ -522,6 +524,133 @@ wait → format" pattern §2.3 modelled the whole runner on, one layer down:
 > `SkillTestHtml`, and folded into the JUnit XML (`<failure>` on fail, `<system-out>` on pass) by
 > `JUnitXmlReporter`. The skilltest bundle gained `Require-Bundle: com.servoy.eclipse.developer.mcp`.
 
+### 3.4d Acceptance-criteria tier — an LLM judge (robust verification for LLM-built UI)
+> **Update (2026-10, SVY-21366):** structural persist-tree equality (`expect.persists`) is too
+> brittle for **LLM-built UI**: a valid run legitimately produces a different-but-correct layout each
+> time, so a frozen persist tree fails green-for-green on cosmetics. The behavioural `verify.jsunit`
+> tier proves *scripted behaviour* but says nothing about *visual/structural fidelity to a mockup*. A
+> third verification tier closes that gap: a **natural-language acceptance-criteria check graded by a
+> separate LLM judge**, the way the SDD code-review agent signs off rather than asserting a frozen
+> structure.
+
+A baseline may declare `verify.acceptanceCriteria`. After the replay goes idle, an **automated LLM
+judge** — its own embedded-opencode session, in the active solution's working directory, with its own
+tools and skills — is asked to decide, criterion by criterion, whether the built form meets a list of
+human-authored natural-language criteria. The design points:
+
+- **The judge reads the artifacts itself; nothing is serialized into the prompt.** The prompt names
+  the form and the mockup, lists the criteria, and instructs the judge to inspect the **real files**
+  with its own tools: the form `.frm` (components, tab panel, tabs), the form `.js` (handlers such as
+  `onShow`), the form and solution `.less`/`.css` (styleClasses, colours, SVG icon masks), and the UI
+  mockup it must reproduce. It **may** call `servoy-form_getFormLayout` with `screenshot=true` to see
+  how the form actually renders (design-time, no data) and compare pixels to the mockup. When the
+  baseline declares no form name (a judge-authoritative baseline, below), the judge is told to
+  **discover** the created form itself.
+- **The judge model MUST differ from the builder model** — a form's author must not grade its own
+  output. The baseline may name a `judgeModel`; otherwise a default (`kiro/claude-sonnet-4-6`) is
+  used, and in **every** case `AcceptanceJudge.resolveJudgeModel` forces the choice away from the
+  builder model (falling back to `kiro/claude-sonnet-5` if the default would equal it).
+- **Per-criterion verdict, gated like the SDD reviewer.** The judge answers with exactly one fenced
+  ```json block — `{ overall, criteria:[{ criterion, pass, reason }] }`. `overall` is trusted only
+  when no criterion failed. `required:true` (default) gates the baseline; `required:false` reports a
+  FAIL without failing it.
+- **Judge-authoritative baselines (no `expect.persists`).** When a baseline declares
+  `verify.acceptanceCriteria` but **no** `expect.persists`, `SkillTestRunner` **skips the
+  persist/transcript gate entirely** (starts the trial "matched") and the judge is the **sole**
+  verdict. This is how a brittle structural scenario (e.g. `order_tabs`) is made robust: drop the
+  structural `form` block and let the judge decide; keep a minimal form-exists assertion only if a
+  structural sanity check is still wanted. When both are present the judge is an additive gate on top
+  of the outcome check.
+- **Criteria are outcome statements, not implementation prescriptions.** "The tab headers render
+  their HTML markup as styled elements — any enabling mechanism counts" is correct; "an `onShow`
+  handler sets property X" is wrong, because it fails a valid run that reached the same result another
+  way. Likewise a styling criterion should require the CSS to live in the `.less`/`css` (not inlined)
+  but treat design-token usage as *preferred where matching tokens exist*, not a hard fail on any
+  literal value.
+- **The verdict is read from the session EXPORT, not the message list.** In opencode v2
+  `GET /session/:id/message` returns message metadata with empty `parts`; the assistant's text lives
+  under `content`, which only `GET /api/experimental/session/:id/export` inlines. The judge calls
+  `OpencodeHttpClient.getExport` and reads the last assistant message's `content` text blocks
+  (falling back to the v1 `parts` shape). Reading the message list instead produced an early "judge
+  returned no text" even though the judge had answered — a bug fixed by switching to the export.
+
+**Sidecar shape** (`verify.acceptanceCriteria`):
+
+```jsonc
+"verify": {
+  "acceptanceCriteria": {
+    "criteria": [
+      "A form named order_tabs exists and is fully responsive (not absolute/css-position layout).",
+      "There is a tab panel with exactly five tabs, in order: Overview, Items, Shipping, Notes, History.",
+      "The History tab is disabled; the other four tabs are enabled."
+    ],
+    "judgeModel": "kiro/claude-sonnet-4-6",  // optional; default != builder, always forced != builder
+    "required": true                          // false = advisory (report, don't fail)
+  }
+}
+```
+
+> **Status:** **implemented** (2026-10). Implementation: `Baseline.AcceptanceVerify` (sidecar record),
+> `BaselineLoader.parseAcceptanceVerify` (reads `verify.acceptanceCriteria`), and
+> **`AcceptanceJudge`** (`outcome/AcceptanceJudge.java`: `resolveJudgeModel`, `buildPrompt`,
+> `judge(...)` → async prompt + `waitForCompletion` + `getExport` → `parseVerdict`, with a
+> `describeMessages` no-text diagnostic). `SkillTestRunner` builds the judge once per baseline when
+> `hasAcceptanceVerify()`, resolves the form name + mockup path from the baseline, runs the judge as
+> the third verify tier after the outcome/transcript and JSUnit checks, and ANDs a `required` judge
+> verdict into the baseline pass/fail; a judge FAIL is rendered under `--- Acceptance criteria (LLM
+> judge) FAILED ---` in the trial diff. `AcceptanceJudge.Logger` is a self-contained nested interface
+> (it does **not** depend on the de-scoped expectation-generation path).
+
+### 3.4f AI baseline-authoring agent (choosing + generating the checks at import)
+> **Update (2026-10, SVY-21366):** with three verification tiers available
+> (`expect.persists` §3.4a, `verify.jsunit` §3.4b, `verify.acceptanceCriteria` §3.4d), choosing the
+> right one for a given run — and hand-writing it — is the hard part of authoring a baseline. A run
+> that builds a valuelist wants `expect.persists`; a run that reproduces a mockup wants
+> `acceptanceCriteria` and emphatically *not* a frozen persist tree; a run that writes a calculation
+> wants `jsunit`. An AI **baseline-authoring agent** makes that decision and generates the checks at
+> import time, so the human reviews/edits/approves rather than authors from scratch.
+
+At **import** (§3.7), after the user picks an `export.json`, an AI agent analyzes the session and
+proposes a **verification plan**; the human then reviews, edits and approves it before the baseline is
+written. This replaces the earlier persists-only "generate expectations with AI" pass.
+
+- **`VerificationPlanAgent`** (`outcome/VerificationPlanAgent.java`) runs as its own embedded-opencode
+  session with its own tools and skills, exactly like the `AcceptanceJudge` (self-contained `Logger`,
+  `ready()`, reads its answer from the **export** via `getExport` + `content`, never the empty-`parts`
+  `/message` list). The prompt hands it the export + optional mockup path and tells it to **read for
+  itself** the builder's prompt and tool calls and the artifacts the run produced, then follow the
+  **`skilltest-authoring` skill** and answer with one fenced JSON plan. Nothing is serialized into the
+  prompt.
+- **The decision rules live in the `skilltest-authoring` skill** (`skills4servoy` repo), not in Java:
+  when each check kind fits (deterministic structural artifact → persists; visual/layout fidelity →
+  acceptance criteria; behaviour that must run → jsunit), how to generate each (outcome-not-mechanism
+  criteria, name-tolerant JSUnit, stable-only persists), and the answer contract. Tuning the rules is a
+  skill edit, not a code change.
+- **`VerificationPlan`** (`outcome/VerificationPlan.java`) is the parsed result: `persists`
+  (List<OutcomeAssertion>), `acceptance` (`Baseline.AcceptanceVerify`), `jsunit`
+  (`VerificationPlan.JsUnitPlan` — the generated script **source** + scope/method/required), and the
+  agent's `rationale`. Any combination; a plan carrying nothing is rejected.
+- **Degrades, never hard-breaks.** No server, an unparseable answer, or a missing
+  `skilltest-authoring` skill all fall back to a **persists-only** plan inferred offline from
+  `OutcomeInference.infer(exportFile)`, logged so the degradation is diagnosable. The human still gets
+  a usable (if literal) starting point.
+- **Incremental human review (`ImportBaselineDialog` → `AiExpectationGeneration.chooseAndPlan`).** The
+  agent runs in a cancelable background `Job` (Eclipse stays responsive); the proposed plan is
+  delivered on the UI thread, where the human is walked through only the checks the agent proposed:
+  the existing `PersistAssertionEditorDialog` for `expect.persists`, then a small
+  `AcceptanceCriteriaEditorDialog` (criteria one-per-line, judge model, required, an "include this
+  check" toggle) and `JsUnitScriptEditorDialog` (script source, scope, method, required, include
+  toggle) for the other two. Each editor lets the human **exclude** its check. The confirmed plan is
+  written by `BaselineLoader.importExport(..., VerificationPlan)`, which emits
+  `expect.persists` + `verify.acceptanceCriteria` + `verify.jsunit` and drops the generated JSUnit
+  script into `verify/scopes/<name>.js`.
+
+> **Status:** **implemented** (2026-10). `VerificationPlanAgent` + `VerificationPlan` +
+> `BaselineLoader.importExport(..., VerificationPlan)` + the `AcceptanceCriteriaEditorDialog` /
+> `JsUnitScriptEditorDialog` review editors, wired through `ImportBaselineDialog`; decision/generation
+> rules in the `skilltest-authoring` skill. `ExpectationLlmGenerator` was also fixed to read the export
+> `content` (the same v2 `parts` bug as the judge).
+
 ### 3.5 Non-determinism handling (retries)
 Each baseline declares `maxAttempts` (suite default **3**), editable per baseline in the view
 ("Set max attempts…" context action; shown in an **Attempts** column; persisted to the sidecar via
@@ -602,9 +731,16 @@ change (the Angular chat UI / reverted session-tracking) removed, and recording 
 session owner anyway.
 
 A baseline therefore enters the library one of two ways:
-- **Import export…** — pick an `opencode export` JSON from disk; `BaselineLoader.importExport`
-  validates it, extracts the prompt, and writes `<root>/<id>/{export.json, baseline.json}`.
+- **Import export…** (the blessed path) — pick an `opencode export` JSON from disk; the AI
+  baseline-authoring agent (§3.4f) then analyzes the session and proposes the verification checks for
+  the human to review/edit/approve, and `BaselineLoader.importExport(..., VerificationPlan)` writes
+  `<root>/<id>/{export.json, baseline.json}` (+ any generated `verify/` script).
 - **Hand-author / commit** a `baseline.json` (+ `export.json`) folder directly.
+
+> **Record baseline is deprecated.** A "Record baseline…" action may still be present for backwards
+> compatibility, but recording a session is the opencode view's responsibility (it owns the session);
+> import the export it produces instead. New baselines come in through **Import export…** + the
+> authoring agent.
 
 Re-recording an *intended* behaviour change means producing a new export (via the opencode view)
 and re-importing it, then reviewing the diff in the PR.
@@ -920,7 +1056,7 @@ materializes the product + AI plugin), kept distinct from the internal plugin in
 
 1. **Internal bundle `com.servoy.eclipse.opencode.skilltest`** (`Require-Bundle:
    com.servoy.eclipse.opencode`): `OpencodeHttpClient` (HTTP/1.1-pinned; `promptAsync`,
-   `getStatus`, `waitForCompletion`, `getMessages`), `SessionExporter` (delegates to
+   `getStatus`, `waitForCompletion`, `getMessages`, `getExport`), `SessionExporter` (delegates to
    `RunOpencodeCommand.exportSession`), `SessionTranscript` (+ agent/model/directory),
    `McpToolCall`, `TranscriptComparator` (+ `ArgMatcher`), `Baseline`, `BaselineLoader`,
    `SkillTestResult`, `SkillTestRunner` (`runBaseline`/`runAll` with a `cancelled` supplier,
@@ -958,6 +1094,12 @@ main remaining work, plus a full reactor build and a guarded end-to-end run.
       in-memory persist tree** (`PersistOutcomeChecker`, §3.4a) and the transcript comparison is
       skipped; otherwise it falls back to the same MCP tool calls with equivalent arguments under a
       tolerant comparison. Text/prose is never compared.
+- [ ] A baseline may declare `verify.acceptanceCriteria` — natural-language criteria graded by a
+      **separate LLM judge** (model forced to differ from the builder) that reads the built form's
+      artifacts and the mockup itself (§3.4d). When it declares criteria but **no** `expect.persists`
+      the judge is the **sole, authoritative** verdict (judge-authoritative); when both are present
+      the required judge gates on top of the outcome check. The judge reads its verdict from the
+      session **export** (`getExport`), not the message list.
 - [ ] The outcome check resolves the active editing `Solution`, matches each `OutcomeAssertion`
       generically (kind → name/scope → property matchers) with children walked recursively, reads
       properties through the multi-source fallback (flat map → `getProperty` → bean getter →

@@ -97,7 +97,10 @@ public class PersistAssertionEditorDialog extends TitleAreaDialog {
 		setTitle(heading != null ? heading : "Expected outcomes"); //$NON-NLS-1$
 		setMessage("Edit the expected Servoy persists as JSON. " //$NON-NLS-1$
 				+ "Each entry has a kind (form, valuelist, component, scriptmethod, \u2026), an optional name/scope, " //$NON-NLS-1$
-				+ "props (property matchers), and optional children.", IMessageProvider.INFORMATION);
+				+ "props (property matchers), and optional children. A form entry may carry a 'form' array - the " //$NON-NLS-1$
+				+ "captured .frm items, pre-filled from the workspace with volatile ids/names stripped: trim it to " //$NON-NLS-1$
+				+ "what matters, and a string value may be a SQL-LIKE pattern (% = any run, _ = one char).", //$NON-NLS-1$
+				IMessageProvider.INFORMATION);
 
 		Composite area = (Composite) super.createDialogArea(parent);
 		Composite body = new Composite(area, SWT.NONE);

@@ -456,4 +456,152 @@ class BaselineLoaderTest {
 			assertEquals("{}", BaselineLoader.stripLeadingNonJson("no json here at all"));
 		}
 	}
+
+	@Nested
+	class ImportWithPlan {
+
+		private static File writeExport(Path root) throws IOException {
+			File export = root.resolve("src-export.json").toFile();
+			Files.writeString(export.toPath(), GOLDEN_EXPORT, StandardCharsets.UTF_8);
+			return export;
+		}
+
+		private static com.fasterxml.jackson.databind.JsonNode sidecarOf(File baselineFolder) throws IOException {
+			return new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(new File(baselineFolder, "baseline.json"));
+		}
+
+		@Test
+		@DisplayName("a full plan writes expect.persists + verify.acceptanceCriteria + verify.jsunit, and the script file")
+		void fullPlanWritten(@TempDir Path root) throws IOException {
+			File export = writeExport(root);
+			File baselinesRoot = root.resolve("baselines").toFile();
+			assertTrue(baselinesRoot.mkdirs());
+
+			com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion form = new com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion(
+					com.servoy.eclipse.opencode.skilltest.outcome.PersistKind.FORM, "order_tabs", null, true,
+					java.util.Map.of(), List.of(), null, null);
+			Baseline.AcceptanceVerify av = new Baseline.AcceptanceVerify(List.of("A tab panel with five tabs"),
+					"kiro/claude-sonnet-4-6", true);
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan.JsUnitPlan js = new com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan.JsUnitPlan(
+					"skilltest_verify", "skilltest_verify", "function test_x() { }", null, true);
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan = new com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan(
+					List.of(form), av, js, "a mix");
+
+			File folder = BaselineLoader.importExport(export, baselinesRoot, "built-order-tabs", "Order tabs", plan);
+
+			assertTrue(new File(folder, "export.json").isFile(), "export copied");
+			File script = new File(folder, "verify/scopes/skilltest_verify.js");
+			assertTrue(script.isFile(), "jsunit script written into the baseline folder");
+			assertEquals("function test_x() { }", Files.readString(script.toPath(), StandardCharsets.UTF_8));
+
+			com.fasterxml.jackson.databind.JsonNode root2 = sidecarOf(folder);
+			assertAll(
+					() -> assertTrue(root2.path("expect").path("persists").isArray()),
+					() -> assertEquals(1, root2.path("expect").path("persists").size()),
+					() -> assertEquals("A tab panel with five tabs",
+							root2.path("verify").path("acceptanceCriteria").path("criteria").get(0).asText()),
+					() -> assertTrue(root2.path("verify").path("acceptanceCriteria").path("required").asBoolean()),
+					() -> assertEquals("scopes/skilltest_verify.js",
+							root2.path("verify").path("jsunit").path("scripts").get(0).asText()),
+					() -> assertEquals("skilltest_verify",
+							root2.path("verify").path("jsunit").path("scope").asText()));
+		}
+
+		@Test
+		@DisplayName("a judge-authoritative plan (criteria only) writes an empty expect.persists and no jsunit")
+		void judgeAuthoritativeWritten(@TempDir Path root) throws IOException {
+			File export = writeExport(root);
+			File baselinesRoot = root.resolve("baselines").toFile();
+			assertTrue(baselinesRoot.mkdirs());
+
+			Baseline.AcceptanceVerify av = new Baseline.AcceptanceVerify(List.of("Reproduces the mockup"), null,
+					true);
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan = com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan
+					.persistsOnly(List.of(), "judge only");
+			plan = new com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan(List.of(), av, null,
+					"judge only");
+
+			File folder = BaselineLoader.importExport(export, baselinesRoot, "judge-only", "Judge only", plan);
+			com.fasterxml.jackson.databind.JsonNode root2 = sidecarOf(folder);
+			assertAll(
+					() -> assertEquals(0, root2.path("expect").path("persists").size()),
+					() -> assertTrue(root2.path("verify").path("acceptanceCriteria").path("criteria").isArray()),
+					() -> assertTrue(root2.path("verify").path("jsunit").isMissingNode(), "no jsunit block"),
+					() -> assertFalse(new File(folder, "verify/scopes").exists(), "no script folder"));
+		}
+
+		@Test
+		@DisplayName("a persists-only plan writes no verify block and the baseline loads")
+		void persistsOnlyRoundTrips(@TempDir Path root) throws IOException {
+			File export = writeExport(root);
+			File baselinesRoot = root.resolve("baselines").toFile();
+			assertTrue(baselinesRoot.mkdirs());
+
+			com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion vl = new com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion(
+					com.servoy.eclipse.opencode.skilltest.outcome.PersistKind.VALUELIST, "colors", null, true,
+					java.util.Map.of(), List.of(), null, null);
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan = com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan
+					.persistsOnly(List.of(vl), "deterministic valuelist");
+
+			File folder = BaselineLoader.importExport(export, baselinesRoot, "vl-only", "VL only", plan);
+			com.fasterxml.jackson.databind.JsonNode root2 = sidecarOf(folder);
+			assertTrue(root2.path("verify").isMissingNode(), "no verify block");
+
+			Baseline b = BaselineLoader.load(folder);
+			assertAll(
+					() -> assertTrue(b.hasExpectedOutcomes()),
+					() -> assertFalse(b.hasAcceptanceVerify()),
+					() -> assertFalse(b.hasJsUnitVerify()));
+		}
+
+		@Test
+		@DisplayName("the import config writes precondition (source/solution/location/ref) + maxAttempts")
+		void configWrittenToPrecondition(@TempDir Path root) throws IOException {
+			File export = writeExport(root);
+			File baselinesRoot = root.resolve("baselines").toFile();
+			assertTrue(baselinesRoot.mkdirs());
+
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan = com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan
+					.persistsOnly(List.of(), "judge handles it");
+			BaselineLoader.ImportConfig config = new BaselineLoader.ImportConfig(Baseline.Source.Type.GIT,
+					"testcase_forms", "https://github.com/Servoy/servoy_test", "master", 2);
+
+			File folder = BaselineLoader.importExport(export, baselinesRoot, "git-cfg", "Git cfg", plan, config);
+			com.fasterxml.jackson.databind.JsonNode root2 = sidecarOf(folder);
+			assertAll(
+					() -> assertEquals(2, root2.path("maxAttempts").asInt()),
+					() -> assertEquals("testcase_forms", root2.path("precondition").path("solution").asText()),
+					() -> assertEquals("git", root2.path("precondition").path("source").path("type").asText()),
+					() -> assertEquals("https://github.com/Servoy/servoy_test",
+							root2.path("precondition").path("source").path("location").asText()),
+					() -> assertEquals("master", root2.path("precondition").path("source").path("ref").asText()));
+
+			Baseline b = BaselineLoader.load(folder);
+			assertAll(
+					() -> assertEquals(2, b.maxAttempts()),
+					() -> assertEquals("testcase_forms", b.solution()),
+					() -> assertEquals(Baseline.Source.Type.GIT, b.source().type()));
+		}
+
+		@Test
+		@DisplayName("an empty-source config writes no location/ref")
+		void emptySourceConfigOmitsLocation(@TempDir Path root) throws IOException {
+			File export = writeExport(root);
+			File baselinesRoot = root.resolve("baselines").toFile();
+			assertTrue(baselinesRoot.mkdirs());
+
+			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan = com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan
+					.persistsOnly(List.of(), null);
+			BaselineLoader.ImportConfig config = new BaselineLoader.ImportConfig(Baseline.Source.Type.EMPTY,
+					"aiTestSolution", null, null, 1);
+
+			File folder = BaselineLoader.importExport(export, baselinesRoot, "empty-cfg", "Empty cfg", plan, config);
+			com.fasterxml.jackson.databind.JsonNode src = sidecarOf(folder).path("precondition").path("source");
+			assertAll(
+					() -> assertEquals("empty", src.path("type").asText()),
+					() -> assertTrue(src.path("location").isMissingNode(), "empty source carries no location"),
+					() -> assertTrue(src.path("ref").isMissingNode(), "empty source carries no ref"));
+		}
+	}
 }
