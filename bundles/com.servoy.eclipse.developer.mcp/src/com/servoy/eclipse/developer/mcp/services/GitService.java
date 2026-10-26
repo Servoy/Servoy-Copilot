@@ -119,9 +119,12 @@ public class GitService
 	/**
 	 * Matches a repository name (its working-tree folder name) or working-tree path against the
 	 * repositories known to the workspace. The match is exact on name first, then on the working-tree
-	 * path (absolute or workspace-relative). A target that matches nothing - or matches more than one
-	 * repository - is refused with a message that lists the available repositories, so the caller can
-	 * pick the real one instead of silently operating on the wrong tree (SVY-21524).
+	 * path (absolute or workspace-relative). When neither matches, the target is tried as an Eclipse
+	 * project name and resolved through its {@link RepositoryMapping} - so a caller (typically an LLM)
+	 * that passes a solution/project name as {@code repo}, rather than the repository's own folder name,
+	 * still reaches the right working tree instead of being refused (SVY-21366). Only a target that
+	 * matches nothing at all - or matches more than one repository by name - is refused, with a message
+	 * that lists the available repositories so the caller can pick the real one (SVY-21524).
 	 */
 	private Repository getRepositoryByNameOrPath(String target)
 	{
@@ -150,10 +153,36 @@ public class GitService
 		}
 		if (matches.isEmpty())
 		{
+			// Nothing matched a repository name/path. Fall back to treating the target as an Eclipse
+			// project name (e.g. the Servoy solution the caller was working in) and resolve the repository
+			// that project is mapped to - the same resolution the projectName-centric path uses. An LLM
+			// naturally passes the solution name it knows rather than the repository's folder name, and
+			// that solution lives inside one of the open repositories (SVY-21366).
+			Repository viaProject = tryResolveByProjectName(target);
+			if (viaProject != null)
+			{
+				return viaProject;
+			}
 			throw new RuntimeException("No repository matches '" + target + "'." + availableRepositoriesHint());
 		}
 		throw new RuntimeException("Repository '" + target + "' is ambiguous - it matches " + matches.size() +
 			" repositories by name. Use the working-tree path instead." + availableRepositoriesHint());
+	}
+
+	/**
+	 * Attempts to resolve {@code target} as an Eclipse project name mapped to a Git repository. Returns
+	 * the repository, or {@code null} when the target is not an existing, mapped project - letting the
+	 * caller fall through to its own "no match" error rather than masking it (SVY-21366).
+	 */
+	private Repository tryResolveByProjectName(String target)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(target);
+		if (!project.exists())
+		{
+			return null;
+		}
+		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+		return mapping == null ? null : mapping.getRepository();
 	}
 
 	private static String normalizePath(String path)

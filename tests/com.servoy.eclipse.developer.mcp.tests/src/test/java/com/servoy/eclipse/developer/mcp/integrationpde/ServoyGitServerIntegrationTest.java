@@ -262,6 +262,21 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 	}
 
 	@Test
+	public void testRepoCentric_projectNameAsRepo_resolvesViaMapping() {
+		// SVY-21366: an agent (typically an LLM) that passes the Servoy SOLUTION / Eclipse PROJECT
+		// name as 'repo' - rather than the repository's own working-tree folder name - must still
+		// resolve, by falling back to the project's RepositoryMapping. This mirrors an empty-source
+		// skilltest solution that createSolution connected to the workspace-root repo (whose repo
+		// name is the workspace folder, not the solution): the agent only knows the solution name.
+		// Here the mapped repo's name happens to equal PROJECT_NAME, but the point is that resolution
+		// goes through the project mapping, not a repo-name match.
+		String status = gitServer.gitStatus(null, PROJECT_NAME);
+		assertNotNull(status);
+		assertTrue(status.contains("On branch"),
+				"passing the project name as 'repo' should resolve via the project mapping, but was: " + status);
+	}
+
+	@Test
 	public void testGitDiff_unstaged() {
 		createTestFile("initial.txt", "modified line");
 
