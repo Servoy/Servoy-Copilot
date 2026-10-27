@@ -57,6 +57,20 @@ import com.servoy.eclipse.ngclient.ui.StringOutputStream;
 public class Activator extends Plugin {
 	public static final String PLUGIN_ID = "com.servoy.eclipse.opencode";
 
+	/**
+	 * Grace window (ms) to wait for opencode to exit on its own after the Windows
+	 * stdin-lease close before the brute-force fallback is used. Windows gets a
+	 * longer window because the {@code --stdio} scoped shutdown has to cancel turns
+	 * and tear down MCP child trees itself.
+	 */
+	private static final long WINDOWS_GRACE_MS = 5000L;
+
+	/**
+	 * Grace window (ms) to wait for opencode to exit on its own after the POSIX
+	 * group {@code SIGTERM} before the brute-force fallback is used.
+	 */
+	private static final long POSIX_GRACE_MS = 2500L;
+
 	private static Activator instance;
 
 	/**
@@ -75,10 +89,10 @@ public class Activator extends Plugin {
 	private final OpencodeServerState serverState = new OpencodeServerState(RunOpencodeCommand.DEFAULT_PORT);
 
 	/**
-	 * Cached opencode install directory, captured while the bundle is fully
-	 * active. {@link #getStateLocation()} can throw once the bundle is stopping,
-	 * so the orphan sweep in {@link #stopServer()} relies on this cached value
-	 * instead of resolving the state location during shutdown.
+	 * Cached opencode install directory, captured while the bundle is fully active.
+	 * {@link #getStateLocation()} can throw once the bundle is stopping, so the
+	 * orphan sweep in {@link #stopServer()} relies on this cached value instead of
+	 * resolving the state location during shutdown.
 	 */
 	private volatile File cachedOpencodeDir;
 
@@ -233,16 +247,32 @@ public class Activator extends Plugin {
 	 * attempt after the process is killed.
 	 * </p>
 	 * <p>
-	 * Then {@link RunNPMCommand#cancel()} is called to set that job's cancel flag,
-	 * followed by {@link #killProcessTree} to kill the OS process directly. We
-	 * bypass {@code canceling()} in {@code RunNPMCommand} because during Eclipse
+	 * A graceful-first teardown runs before any brute-force kill:
+	 * </p>
+	 * <ol>
+	 * <li><b>Graceful phase:</b> on Windows the command's stdin lease is closed
+	 * ({@code closeStdinLease()}), giving the {@code serve --stdio} server its
+	 * stdin EOF; on POSIX a group {@code SIGTERM} is sent
+	 * ({@code terminateGroupGracefully()}). Then we wait up to
+	 * {@link #WINDOWS_GRACE_MS} / {@link #POSIX_GRACE_MS} for a clean exit using a
+	 * bounded {@code waitFor(timeout)}.</li>
+	 * <li><b>Fallback phase (demoted):</b> only if the process is still alive after
+	 * the grace window do we run {@link #killProcessTree} ({@code taskkill /F /T} /
+	 * {@code kill -9} + the orphan sweep + the async stream-closer) - 6d66456's
+	 * safety net, kept but no longer exercised on the happy path.</li>
+	 * </ol>
+	 * <p>
+	 * We bypass {@code canceling()} in {@code RunNPMCommand} because during Eclipse
 	 * shutdown the ngclient.ui activator is already null, causing
 	 * {@code canceling()} to NPE before ever touching the process, which leaves the
-	 * {@code readLine()} loop blocked.
+	 * {@code readLine()} loop blocked. A final {@link #killOrphansUnderOpencodeDir}
+	 * sweep always runs as a last safety net.
 	 * </p>
 	 */
 	public void stopServer() {
 		ServoyLog.logInfo("OpenCode: stopServer() called");
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+
 		// Cancel the outer job first so monitor.isCanceled() == true in
 		// RunOpencodeCommand.run()
 		Job job = serverJob;
@@ -256,22 +286,75 @@ public class Activator extends Plugin {
 
 		IRunNPMCommand cmd = serverCommand;
 		if (cmd != null) {
-			ServoyLog.logInfo("OpenCode: cancelling server command and killing process tree");
-			cmd.cancel();
-			killProcessTree(cmd);
+			// Graceful phase (preferred): let opencode end its running turns and tear
+			// down its own MCP child process trees before any brute-force kill.
+			//
+			// - Windows: close the child's stdin lease, which gives the
+			// `serve --stdio` server its stdin EOF (Windows has no real SIGTERM).
+			// - POSIX: send SIGTERM to opencode's whole process group.
+			//
+			// Then wait up to the platform grace window for a clean exit, using a
+			// bounded Process.waitFor(timeout) so a prompt exit returns immediately and
+			// a hung process cannot stall IDE shutdown.
+			Process process = cmd.getProcess();
+			boolean exitedGracefully = false;
+			try {
+				// The graceful hooks live only on RunExecutableCommand (this bundle), not
+				// on the IRunNPMCommand interface, so narrow to it. The one real opencode
+				// server launch is always a RunExecutableCommand; the npm-exec fallback
+				// command is not, and simply goes straight to the brute-force fallback
+				// (it never had a graceful shutdown path anyway).
+				if (cmd instanceof RunExecutableCommand exec) {
+					if (isWindows) {
+						ServoyLog.logInfo("OpenCode: graceful shutdown - closing stdin lease (Windows)");
+						exec.closeStdinLease();
+					} else {
+						ServoyLog.logInfo("OpenCode: graceful shutdown - SIGTERM to process group (POSIX)");
+						exec.terminateGroupGracefully();
+					}
+				}
+
+				if (process != null) {
+					long graceMs = isWindows ? WINDOWS_GRACE_MS : POSIX_GRACE_MS;
+					exitedGracefully = process.waitFor(graceMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+					ServoyLog.logInfo(
+							"OpenCode: graceful wait (" + graceMs + " ms) result - exited=" + exitedGracefully);
+				} else {
+					// No tracked process - treat as already gone for the fallback decision.
+					exitedGracefully = true;
+				}
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+				ServoyLog.logInfo("OpenCode: graceful wait interrupted: " + ie.getMessage());
+			} catch (Exception e) {
+				ServoyLog.logInfo("OpenCode: graceful shutdown phase error: " + e.getMessage());
+			}
+
+			// Fallback phase (demoted): only if the process did not exit on its own
+			// within the grace window do we run the brute-force taskkill / kill -9 +
+			// orphan-sweep path. This preserves 6d66456's orphan/port-lock safety net
+			// without exercising it on the happy path.
+			if (!exitedGracefully) {
+				ServoyLog.logInfo("OpenCode: grace window elapsed, process still alive - brute-force fallback");
+				cmd.cancel();
+				killProcessTree(cmd);
+			} else {
+				ServoyLog.logInfo("OpenCode: process exited gracefully - skipping brute-force kill");
+				// Still set the command's cancel flag so the runCommand() loop unwinds.
+				cmd.cancel();
+			}
 			serverCommand = null;
 		} else {
 			ServoyLog.logInfo("OpenCode: serverCommand was null");
 		}
 
 		// Always run the orphan sweep as a final safety net, even if there was no
-		// tracked command/process. opencode launches through an intermediate shell
-		// and spawns detached children (opencode.exe / bun.exe) that Windows no
-		// longer tracks as descendants once the shell exits or is reparented. Those
-		// orphans survive taskkill /T and the JDK descendants() fallback, keep the
-		// server port bound, and hold file locks on the install dir - which is what
-		// causes the "Folder In Use" error when the install dir is later cleaned up.
-		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		// tracked command/process or the process exited gracefully. opencode may
+		// spawn detached children (opencode.exe / bun.exe) that Windows no longer
+		// tracks as descendants once the shell exits or is reparented; a child that
+		// outlived its parent can keep the server port bound and hold file locks on
+		// the install dir - which is what causes the "Folder In Use" error when the
+		// install dir is later cleaned up. This sweep is cheap and covers that case.
 		killOrphansUnderOpencodeDir(isWindows);
 	}
 
@@ -279,13 +362,13 @@ public class Activator extends Plugin {
 	 * Kills the OS process (and its entire descendant tree) wrapped inside
 	 * {@code cmd}.
 	 * <p>
-	 * On Windows, uses {@code taskkill /F /T} to kill detached children that
-	 * Java's {@code process.descendants()} cannot see (e.g. bun spawned by
-	 * opencode). On other platforms, walks the Java process tree.
+	 * On Windows, uses {@code taskkill /F /T} to kill detached children that Java's
+	 * {@code process.descendants()} cannot see (e.g. bun spawned by opencode). On
+	 * other platforms, walks the Java process tree.
 	 * </p>
 	 * <p>
-	 * After killing, closes the process streams to unblock the
-	 * {@code readLine()} loop in {@code RunNPMCommand.runCommand()}.
+	 * After killing, closes the process streams to unblock the {@code readLine()}
+	 * loop in {@code RunNPMCommand.runCommand()}.
 	 * </p>
 	 */
 	private void killProcessTree(IRunNPMCommand cmd) {
@@ -310,11 +393,11 @@ public class Activator extends Plugin {
 			}
 		} else {
 			try {
-				new ProcessBuilder("pkill", "-9", "-P", String.valueOf(pid))
-						.redirectErrorStream(true).start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+				new ProcessBuilder("pkill", "-9", "-P", String.valueOf(pid)).redirectErrorStream(true).start()
+						.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
 				ServoyLog.logInfo("OpenCode: pkill -9 -P " + pid + " completed");
-				new ProcessBuilder("kill", "-9", String.valueOf(pid))
-						.redirectErrorStream(true).start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+				new ProcessBuilder("kill", "-9", String.valueOf(pid)).redirectErrorStream(true).start().waitFor(5,
+						java.util.concurrent.TimeUnit.SECONDS);
 				ServoyLog.logInfo("OpenCode: kill -9 " + pid + " completed");
 			} catch (Exception e) {
 				ServoyLog.logInfo("OpenCode: pkill/kill failed: " + e.getMessage());
@@ -376,16 +459,17 @@ public class Activator extends Plugin {
 
 	/**
 	 * Force-kills any remaining OS process whose command line references this
-	 * bundle's managed opencode install directory ({@code {stateLocation}/opencode}),
-	 * regardless of parent/child relationship. This is a safety net for processes
-	 * orphaned by {@link #killProcessTree} (see the comment there for why that can
-	 * happen), so leftover {@code opencode.exe} / {@code bun.exe} processes don't
-	 * keep running - and keep the port bound - after Eclipse shuts down.
+	 * bundle's managed opencode install directory
+	 * ({@code {stateLocation}/opencode}), regardless of parent/child relationship.
+	 * This is a safety net for processes orphaned by {@link #killProcessTree} (see
+	 * the comment there for why that can happen), so leftover {@code opencode.exe}
+	 * / {@code bun.exe} processes don't keep running - and keep the port bound -
+	 * after Eclipse shuts down.
 	 * <p>
 	 * The marker directory is this bundle's OSGi state location
 	 * ({@code getStateLocation()/opencode}), which resolves the same way whether
-	 * Eclipse is launched from source (workspace {@code .metadata/.plugins/...})
-	 * or from an installed Servoy Developer product (product's
+	 * Eclipse is launched from source (workspace {@code .metadata/.plugins/...}) or
+	 * from an installed Servoy Developer product (product's
 	 * {@code configuration/.../ .metadata/.plugins/...}) - both cases go through
 	 * the same {@code Plugin#getStateLocation()} API, so this sweep works
 	 * identically for both.
@@ -413,8 +497,7 @@ public class Activator extends Plugin {
 				// one opencode.exe alive after shutdown).
 				String script = "for ($i=0; $i -lt 5; $i++) {"
 						+ " $procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('"
-						+ escaped + "') };"
-						+ " if (-not $procs) { break }"
+						+ escaped + "') };" + " if (-not $procs) { break }"
 						+ " foreach ($p in $procs) { & taskkill /F /T /PID $p.ProcessId 2>$null | Out-Null }"
 						+ " Start-Sleep -Milliseconds 300 }";
 				Process ps = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)

@@ -52,12 +52,12 @@ import com.servoy.eclipse.ngclient.ui.StringOutputStream;
  * child that must be killed on shutdown is the process we started - the source
  * of the detached-orphan problem the npm path had.</li>
  * </ul>
- * Only the members {@link RunOpencodeCommand} and {@code Activator} actually use
- * are meaningful ({@link #runCommand}, {@link #getExitCode}, {@link #getProcess},
- * {@link #cancel}, {@link #setExtraEnvironment}, {@link #setOutputStream}); the
- * job-scheduling members of the interface are not used for the server command
- * (it is driven synchronously from {@link RunOpencodeCommand#run}) and are
- * implemented as no-ops.
+ * Only the members {@link RunOpencodeCommand} and {@code Activator} actually
+ * use are meaningful ({@link #runCommand}, {@link #getExitCode},
+ * {@link #getProcess}, {@link #cancel}, {@link #setExtraEnvironment},
+ * {@link #setOutputStream}); the job-scheduling members of the interface are
+ * not used for the server command (it is driven synchronously from
+ * {@link RunOpencodeCommand#run}) and are implemented as no-ops.
  */
 public class RunExecutableCommand implements IRunNPMCommand {
 
@@ -71,6 +71,19 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	private volatile Process process;
 	private volatile boolean cancelled;
 	private int exitCode = -1;
+
+	/**
+	 * On POSIX, set when the launch wrapped the executable in {@code setsid} so the
+	 * launched process is the leader of a new process group whose pgid equals its
+	 * pid. When {@code true}, {@link #terminateGroupGracefully()} can signal the
+	 * whole group via {@code kill -TERM -<pid>}.
+	 */
+	private volatile boolean newProcessGroupLeader;
+
+	/**
+	 * Guards against closing the stdin lease more than once (idempotency).
+	 */
+	private volatile boolean stdinLeaseClosed;
 
 	/**
 	 * @param executable       the executable to run (absolute path)
@@ -93,20 +106,41 @@ public class RunExecutableCommand implements IRunNPMCommand {
 		}
 
 		List<String> command = new ArrayList<>();
-		command.add(executable.getAbsolutePath());
-		command.addAll(arguments);
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		if (!isWindows && setsidAvailable()) {
+			// POSIX: launch opencode as the leader of a new session/process group via
+			// setsid, so its pgid equals its pid. That lets Activator.stopServer()
+			// signal the whole group (opencode + bun + MCP children) with a single
+			// SIGTERM/SIGKILL to -<pid> during graceful shutdown. setsid execs the
+			// target directly (it is not already a group leader as a JVM child), so
+			// the pid getProcess() reports is the group leader.
+			command.add("setsid");
+			command.add(executable.getAbsolutePath());
+			command.addAll(arguments);
+			newProcessGroupLeader = true;
+		} else {
+			command.add(executable.getAbsolutePath());
+			command.addAll(arguments);
+			newProcessGroupLeader = false;
+		}
 
 		ProcessBuilder builder = new ProcessBuilder(command);
 		if (workingDirectory != null) {
 			builder.directory(workingDirectory);
 		}
 		builder.environment().putAll(extraEnvironment);
+		// Keep the child's stdin as a JVM-held pipe (the ProcessBuilder default), so
+		// process.getOutputStream() is a usable write end. Closing that write end
+		// (closeStdinLease()) gives `opencode serve --stdio` its stdin EOF, which is
+		// the Windows graceful-shutdown signal. Do NOT redirect stdin to INHERIT.
+		builder.redirectInput(ProcessBuilder.Redirect.PIPE);
 		// Merge stderr into stdout so a single reader captures everything, exactly
 		// like the npm command did.
 		builder.redirectErrorStream(true);
 
 		writeConsole(console, "\n---- Launching opencode:\n" + String.join(" ", command));
-		writeConsole(console, "In dir: " + (workingDirectory != null ? workingDirectory.getAbsolutePath() : "<inherited>"));
+		writeConsole(console,
+				"In dir: " + (workingDirectory != null ? workingDirectory.getAbsolutePath() : "<inherited>"));
 
 		process = builder.start();
 
@@ -158,6 +192,75 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			p.destroy();
 		}
 		return true;
+	}
+
+	/**
+	 * Closes the write end of the child's stdin pipe, giving a
+	 * {@code opencode serve --stdio} server its stdin EOF. opencode's scoped server
+	 * effect ends on that EOF, which cancels running turns and stops its MCP child
+	 * process trees - the Windows graceful-shutdown mechanism.
+	 * <p>
+	 * Null-safe (no-op when the process never started) and idempotent (safe to call
+	 * repeatedly); never throws out of shutdown.
+	 */
+	public void closeStdinLease() {
+		if (stdinLeaseClosed) {
+			return;
+		}
+		stdinLeaseClosed = true;
+		Process p = process;
+		if (p == null) {
+			return;
+		}
+		try {
+			p.getOutputStream().close();
+			ServoyLog.logInfo("OpenCode: stdin lease closed (graceful --stdio shutdown signal)");
+		} catch (Exception e) {
+			// Stream already gone or process dead - graceful signal is best-effort.
+			ServoyLog.logInfo("OpenCode: closeStdinLease() - nothing to close: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * POSIX graceful group termination: sends {@code SIGTERM} to opencode's process
+	 * group so opencode and its children (bun, MCP servers) all receive it and can
+	 * dispose cleanly. Only effective when the launch put opencode in its own
+	 * process group (via {@code setsid}), in which case its pgid equals the tracked
+	 * pid and {@code kill -TERM -<pid>} reaches the whole group.
+	 *
+	 * @return {@code true} if a SIGTERM was issued to the group, {@code false}
+	 *         otherwise. Never throws.
+	 */
+	public boolean terminateGroupGracefully() {
+		Process p = process;
+		if (p == null || !newProcessGroupLeader) {
+			return false;
+		}
+		long pid = p.pid();
+		try {
+			// Negative pid targets the whole process group whose pgid == pid.
+			new ProcessBuilder("kill", "-TERM", "-" + pid).redirectErrorStream(true).start().waitFor(5,
+					java.util.concurrent.TimeUnit.SECONDS);
+			ServoyLog.logInfo("OpenCode: sent SIGTERM to process group -" + pid + " (graceful shutdown)");
+			return true;
+		} catch (Exception e) {
+			ServoyLog.logInfo("OpenCode: kill -TERM -" + pid + " failed: " + e.getMessage());
+			return false;
+		}
+	}
+
+	/**
+	 * @return {@code true} if a {@code setsid} executable can be found on PATH, so
+	 *         the POSIX launch can start opencode as a new-process-group leader.
+	 */
+	private static boolean setsidAvailable() {
+		try {
+			Process which = new ProcessBuilder("which", "setsid").redirectErrorStream(true).start();
+			boolean finished = which.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+			return finished && which.exitValue() == 0;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	@Override

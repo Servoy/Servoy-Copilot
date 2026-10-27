@@ -41,15 +41,16 @@ import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
  * Long-running Eclipse Job that starts the opencode server.
  * <p>
  * The opencode CLI ships as a native executable, so it is launched directly
- * (see {@link #resolveOpencodeExecutable(File)} and {@link RunExecutableCommand})
- * with the Servoy project root as its working directory. That working directory
- * matters: opencode derives a new session's location from {@code process.cwd()},
- * so launching in the project root is what makes a created session belong to the
- * project (and show up in the directory-scoped session list) rather than to the
- * managed install/state folder. Launching the executable directly also avoids an
- * intermediate npm/shell process, so the child tracked for shutdown is the
- * opencode process itself. If the executable cannot be resolved, the job falls
- * back to the original {@code npm exec} launch via
+ * (see {@link #resolveOpencodeExecutable(File)} and
+ * {@link RunExecutableCommand}) with the Servoy project root as its working
+ * directory. That working directory matters: opencode derives a new session's
+ * location from {@code process.cwd()}, so launching in the project root is what
+ * makes a created session belong to the project (and show up in the
+ * directory-scoped session list) rather than to the managed install/state
+ * folder. Launching the executable directly also avoids an intermediate
+ * npm/shell process, so the child tracked for shutdown is the opencode process
+ * itself. If the executable cannot be resolved, the job falls back to the
+ * original {@code npm exec} launch via
  * {@link com.servoy.eclipse.ngclient.ui.Activator#createNPMCommand(File, List)}.
  * </p>
  * <p>
@@ -63,6 +64,28 @@ import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
  * reschedules itself up to {@link #MAX_RETRIES} times. A daemon watchdog thread
  * polls the server HTTP endpoint and calls {@link Activator#serverStarted(int)}
  * once it responds.
+ * </p>
+ * <p>
+ * The serve arguments and launch shape differ per platform to enable a
+ * graceful-first shutdown (see {@link #computeServeArgs(int, boolean)} and
+ * {@link RunExecutableCommand}):
+ * </p>
+ * <ul>
+ * <li><b>Windows:</b> opencode is launched as {@code serve --stdio} with a
+ * JVM-held stdin pipe. Closing that stdin lease on teardown
+ * ({@code closeStdinLease()}) makes opencode's scoped server effect end on
+ * stdin EOF - cancelling running turns and stopping its MCP child process trees
+ * - since Windows has no real {@code SIGTERM}.</li>
+ * <li><b>POSIX:</b> opencode is launched in its own process group (via
+ * {@code setsid}, so its pgid equals the tracked pid) so a single group-wide
+ * {@code SIGTERM} ({@code terminateGroupGracefully()}) reaches opencode and its
+ * children; {@code --stdio} is not used there.</li>
+ * </ul>
+ * <p>
+ * In both cases {@code --port}/{@code --hostname 127.0.0.1} are kept so the
+ * HTTP port is still bound for the watchdog and the BFF servlet, and the
+ * existing brute-force kill ({@code taskkill}/{@code kill -9} + orphan sweep)
+ * remains as a last-resort fallback in {@code Activator.stopServer()}.
  * </p>
  *
  * @author jcompagner
@@ -122,7 +145,8 @@ public class RunOpencodeCommand extends Job {
 		// install layout) we fall back to the original `npm exec` launch.
 		File opencodeExe = resolveOpencodeExecutable(opencodeDir);
 		File serverCwd = (projectPath != null && !projectPath.isEmpty()) ? new File(projectPath) : opencodeDir;
-		List<String> serveArgs = List.of("serve", "--port", String.valueOf(port), "--hostname", "127.0.0.1");
+		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+		List<String> serveArgs = computeServeArgs(port, isWindows);
 		IRunNPMCommand serverCommand;
 		if (opencodeExe != null) {
 			serverCommand = new RunExecutableCommand(opencodeExe, serveArgs, serverCwd);
@@ -218,6 +242,32 @@ public class RunOpencodeCommand extends Job {
 	}
 
 	/**
+	 * Computes the {@code opencode serve} arguments for the given platform.
+	 * <p>
+	 * On Windows the {@code --stdio} flag is added so that closing the child's
+	 * stdin pipe (the "stdin lease") becomes a graceful-shutdown signal: opencode's
+	 * scoped server effect ends on stdin EOF, cancelling running turns and stopping
+	 * its MCP child process trees. Windows has no real {@code SIGTERM}, so stdin
+	 * close is the mechanism there. On POSIX the server is instead ended via a
+	 * group {@code SIGTERM}, so {@code --stdio} is <em>not</em> added.
+	 * </p>
+	 * <p>
+	 * {@code --port} and {@code --hostname 127.0.0.1} are kept on both platforms so
+	 * the HTTP port is still bound for the readiness watchdog and the BFF servlet.
+	 * </p>
+	 *
+	 * @param port      the TCP port opencode should bind
+	 * @param isWindows {@code true} for a Windows launch (adds {@code --stdio})
+	 * @return the ordered, immutable serve-argument list
+	 */
+	static List<String> computeServeArgs(int port, boolean isWindows) {
+		if (isWindows) {
+			return List.of("serve", "--stdio", "--port", String.valueOf(port), "--hostname", "127.0.0.1");
+		}
+		return List.of("serve", "--port", String.valueOf(port), "--hostname", "127.0.0.1");
+	}
+
+	/**
 	 * Polls {@code http://127.0.0.1:<port>/} every 500 ms (up to 120 s). Calls
 	 * {@link Activator#serverStarted(int)} on the first successful HTTP response.
 	 *
@@ -269,12 +319,12 @@ public class RunOpencodeCommand extends Job {
 	 * @return the first free port found, or {@code startPort} as a last resort
 	 */
 	/**
-	 * Resolves the native opencode executable inside the managed install
-	 * directory. The opencode CLI is published as a platform-specific native
-	 * binary under {@code node_modules/@opencode/cli/bin/}, named
-	 * {@code opencode.exe} on Windows and {@code opencode} elsewhere. The first
-	 * existing candidate is returned so a future layout tweak (or a fallback to
-	 * the {@code .bin} shim directory) does not silently break the launch.
+	 * Resolves the native opencode executable inside the managed install directory.
+	 * The opencode CLI is published as a platform-specific native binary under
+	 * {@code node_modules/@opencode/cli/bin/}, named {@code opencode.exe} on
+	 * Windows and {@code opencode} elsewhere. The first existing candidate is
+	 * returned so a future layout tweak (or a fallback to the {@code .bin} shim
+	 * directory) does not silently break the launch.
 	 *
 	 * @param opencodeDir the managed install directory ({@code {state}/opencode})
 	 * @return the executable {@link File}, or {@code null} if none was found (the
