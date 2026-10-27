@@ -17,7 +17,7 @@ This Git repository contains the following core projects/plugins:
 ### 2. `com.servoy.eclipse.opencode` ⬅ ACTIVE
 - **Type:** Eclipse Plugin / OSGi Bundle (`eclipse-plugin`)
 - **Main Role:** Opencode AI wrapper — installs, configures, and manages the lifecycle of the [opencode](https://opencode.ai) CLI tool embedded in the Servoy Developer IDE, **and hosts a custom Angular chat UI** (`webui/`) that talks to the opencode HTTP + SSE API through a same-origin BFF servlet.
-- **Key Focus:** Installs a PINNED exact version of the `@opencode/cli` npm package (currently `2.1.1`), starts the opencode HTTP server on a free port, serves the bundled Angular app in the embedded browser view, and merges MCP endpoint contributions from other bundles into `opencode.json`.
+- **Key Focus:** Installs a PINNED exact version of the `@opencode/cli` npm package (currently `2.2.0`), starts the opencode HTTP server on a free port, serves the bundled Angular app in the embedded browser view, and merges MCP endpoint contributions from other bundles into `opencode.json`.
 - **Custom chat UI, not opencode's own web:** The embedded browser no longer points at opencode's built-in web UI. It loads the Angular app served by `OpencodeChatServlet` at `/servoy_ai/`, which proxies opencode's API under `/servoy_ai/rest_api/**` (see the Angular frontend section below). The BFF injects the active project directory server-side and centralises the readiness gate, so the front-end never carries directory state and `EventSource` (SSE) works same-origin.
 - **Crucial Detail:** Requires two system properties to activate: `GENAI_API_KEY` and `SERVOY_SKILLS_ZIP`. Without them the setup job skips entirely and the view shows a "not configured" page.
 - **Key classes:**
