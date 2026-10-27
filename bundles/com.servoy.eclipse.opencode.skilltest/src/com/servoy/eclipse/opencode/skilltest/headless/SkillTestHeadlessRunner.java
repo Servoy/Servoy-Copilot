@@ -364,6 +364,19 @@ public class SkillTestHeadlessRunner implements IApplication {
 	// --- embedded web server ---------------------------------------------------
 
 	private int startAndWaitForWebServer() throws InterruptedException {
+		// The Servoy app server may have already started the embedded Tomcat during
+		// solution/workbench load - it binds the fixed web-server port. Calling
+		// startWebServer() a second time then tries to bind the same port and throws
+		// "java.net.BindException: Address already in use", logging a SEVERE connector
+		// failure plus a cascade of "naming context ... Context is read only" SEVEREs,
+		// even though the first instance is serving fine. Reuse the running server when
+		// its port is already live instead of starting a second one (SVY-21366).
+		int running = ApplicationServerRegistry.get().getWebServerPort();
+		if (running > 0) {
+			output("Embedded web server already running on port " + running + " - reusing it.");
+			return running;
+		}
+
 		IWebServerStarter webStarter = ApplicationServerRegistry.getService(IWebServerStarter.class);
 		if (webStarter == null) {
 			throw new IllegalStateException("No IWebServerStarter registered - cannot start the embedded web server.");
