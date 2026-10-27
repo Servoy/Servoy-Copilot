@@ -17,6 +17,7 @@
 
 package com.servoy.eclipse.opencode;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -51,9 +52,10 @@ import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
  * </p>
  * <p>
  * The helper methods {@link #needsInstall(File, File, String)},
- * {@link #readUrlContent(URL)}, and {@link #deleteDirectory(Path)} are
- * package-visible so they can be exercised by
- * {@code com.servoy.eclipse.opencode.tests} without an OSGi runtime.
+ * {@link #readUrlContent(URL)}, {@link #deleteDirectory(Path)} and
+ * {@link #isPlaceholderBinary(File)} are package-visible so they can be
+ * exercised by {@code com.servoy.eclipse.opencode.tests} without an OSGi
+ * runtime.
  * </p>
  *
  * @author jcompagner
@@ -133,8 +135,23 @@ public class OpencodeFolderCreatorJob extends Job {
 				ServoyLog.logError("OpencodeFolderCreatorJob: cannot write package.json", e);
 				return new Status(IStatus.ERROR, Activator.PLUGIN_ID, "Cannot write package.json: " + e.getMessage());
 			}
+
+			// Copy the committed package-manager build-approval config into the managed
+			// install dir so @opencode/cli's postinstall (which materializes the real
+			// native opencode binary) runs under both pnpm (strictDepBuilds + the
+			// version-scoped allowBuilds in pnpm-workspace.yaml) and npm
+			// (ignore-scripts=false in .npmrc). See SVY-21679. Copied on every clean
+			// reinstall so the files are always present, current and version-matched
+			// before the install runs. A missing bundle entry is logged but non-fatal so
+			// a packaging slip is diagnosable rather than a hard failure.
+			copyBundleResource(activator, "/opencode/pnpm-workspace.yaml", opencodeDir);
+			copyBundleResource(activator, "/opencode/.npmrc", opencodeDir);
 		}
 
+		// The second clause is defensive only: markerFile lives in stateLocation
+		// (not inside opencodeDir), so a missing marker always makes needsInstall()
+		// return true. There is therefore no path where the install runs but the
+		// build-approval config copied in the needsInstall block above was skipped.
 		if (needsInstall || !markerFile.exists()) {
 			// createNPMCommand internally waits for Node.js extraction (via
 			// waitForNodeExtraction)
@@ -153,6 +170,26 @@ public class OpencodeFolderCreatorJob extends Job {
 					activator.logToConsole("opencode installed successfully.");
 				} catch (IOException e) {
 					ServoyLog.logError("OpencodeFolderCreatorJob: cannot create marker file", e);
+				}
+
+				// Diagnostic: verify the install produced a real native binary rather than
+				// the ~229-byte placeholder shell script shipped inside the package. When
+				// the package manager skips @opencode/cli's postinstall (e.g. an
+				// outdated/missing allowBuilds approval under pnpm), resolveOpencodeExecutable
+				// later finds the placeholder and the launch fails opaquely on Windows with
+				// CreateProcess error=216. Reporting it loudly here (named log + WARNING
+				// status, consistent with the non-zero-exit path below) makes a
+				// build-approval misconfiguration diagnosable at install time. See SVY-21679.
+				File opencodeBin = RunOpencodeCommand.resolveOpencodeExecutable(opencodeDir);
+				if (isPlaceholderBinary(opencodeBin)) {
+					String binMsg = "Servoy AI: opencode install did not produce a real native binary (found "
+							+ (opencodeBin == null ? "no executable" : "placeholder " + opencodeBin)
+							+ "). The @opencode/cli postinstall script was likely skipped by the package manager;"
+							+ " the server will fail to launch. Verify the committed build-approval config"
+							+ " (opencode/pnpm-workspace.yaml allowBuilds / opencode/.npmrc) matches the pinned version.";
+					activator.logToConsole(binMsg);
+					ServoyLog.logWarning(binMsg, null);
+					return new Status(IStatus.WARNING, Activator.PLUGIN_ID, binMsg);
 				}
 			} else {
 				String msg = "npm install for opencode exited with code " + install.getExitCode();
@@ -274,6 +311,93 @@ public class OpencodeFolderCreatorJob extends Job {
 		} catch (IOException e) {
 			ServoyLog.logError("OpencodeFolderCreatorJob: cannot read sentinel file", e);
 			return true; // defensive: re-install on read error
+		}
+	}
+
+	/**
+	 * Copies a committed bundle resource (e.g.
+	 * {@code /opencode/pnpm-workspace.yaml}) into {@code targetDir}, keeping its
+	 * file name. A missing bundle entry is logged and ignored (non-fatal) so a
+	 * packaging slip surfaces as a clear log line rather than a hard failure.
+	 *
+	 * @param activator  the plugin activator used to resolve the bundle entry
+	 * @param bundlePath the bundle-relative resource path, e.g.
+	 *                   {@code "/opencode/.npmrc"}
+	 * @param targetDir  the directory to write the resource into
+	 */
+	static void copyBundleResource(Activator activator, String bundlePath, File targetDir) {
+		URL entry = activator.getBundle().getEntry(bundlePath);
+		if (entry == null) {
+			ServoyLog.logWarning("OpencodeFolderCreatorJob: " + bundlePath + " not found in bundle, skipping copy.",
+					null);
+			return;
+		}
+		String fileName = bundlePath.substring(bundlePath.lastIndexOf('/') + 1);
+		try {
+			String content = readUrlContent(entry);
+			Files.writeString(new File(targetDir, fileName).toPath(), content, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			ServoyLog.logError("OpencodeFolderCreatorJob: cannot copy bundle resource " + bundlePath, e);
+		}
+	}
+
+	/**
+	 * Size (bytes) below which a resolved opencode binary is assumed to be the
+	 * placeholder shell script rather than the real native executable. The shipped
+	 * placeholder is ~229 bytes; the real binary is MB-scale.
+	 */
+	public static final long PLACEHOLDER_MAX_SIZE_BYTES = 10 * 1024L;
+
+	/**
+	 * Heuristically decides whether {@code binFile} is the placeholder shell script
+	 * shipped inside {@code @opencode/cli} rather than the real native opencode
+	 * executable.
+	 * <p>
+	 * When the package manager skips {@code @opencode/cli}'s {@code postinstall}
+	 * (e.g. under pnpm's {@code strictDepBuilds} without a matching
+	 * {@code allowBuilds} approval), the installed {@code bin/opencode(.exe)} is a
+	 * ~229-byte text file whose first non-blank line starts with
+	 * {@code echo "Error: @opencode/cli's postinstall script was not run."}. A real
+	 * binary is orders of magnitude larger and does not start with that marker.
+	 * </p>
+	 * <p>
+	 * The heuristic is deliberately loose (no hardcoded exact size): a file is
+	 * treated as a placeholder when it is missing, below
+	 * {@link #PLACEHOLDER_MAX_SIZE_BYTES}, or its first non-blank line starts with
+	 * the {@code echo "Error:} marker. A file that is already past the size gate
+	 * but cannot be read as UTF-8 text (as a genuine binary often cannot) is
+	 * treated as a real binary.
+	 * </p>
+	 *
+	 * @param binFile the resolved opencode executable, may be {@code null}
+	 * @return {@code true} if the file is missing or looks like the placeholder
+	 */
+	public static boolean isPlaceholderBinary(File binFile) {
+		if (binFile == null || !binFile.isFile()) {
+			return true;
+		}
+		if (binFile.length() < PLACEHOLDER_MAX_SIZE_BYTES) {
+			return true;
+		}
+		// Inspect only the first non-blank line; never slurp a (potentially large)
+		// real binary into memory.
+		try (BufferedReader reader = Files.newBufferedReader(binFile.toPath(), StandardCharsets.UTF_8)) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				String trimmed = line.strip();
+				if (trimmed.isEmpty()) {
+					continue;
+				}
+				return trimmed.startsWith("echo \"Error:");
+			}
+			return false; // large file, no content lines -> assume real
+		} catch (IOException e) {
+			// A genuine native binary is not valid UTF-8 and may fail to read as lines;
+			// it is already past the size gate, so treat an unreadable, sufficiently
+			// large file as a real binary.
+			ServoyLog.logInfo("OpencodeFolderCreatorJob: could not read " + binFile
+					+ " as text while checking for placeholder; assuming real binary.");
+			return false;
 		}
 	}
 

@@ -143,7 +143,13 @@ rather than trusting the source alone.
 ### 4. Apply the version bump
 - Set `dependencies["@opencode/cli"]` in `opencode/package.json` to the exact
   target version (no range). Keep the explanatory `comment` field.
-- Changing this file changes the install sentinel, so
+- Rewrite the version-scoped `allowBuilds` key in
+  `opencode/pnpm-workspace.yaml` to `'@opencode/cli@<new-version>': true` so the
+  pre-approved build script matches the new pin (SVY-21679). This is required:
+  the key carries the version, so a bump that forgets it silently reverts to
+  skipping `@opencode/cli`'s postinstall and the native binary is not
+  materialized. Leave `opencode/.npmrc` as-is — it is not version-scoped.
+- Changing these files changes the install sentinel, so
   `OpencodeFolderCreatorJob.needsInstall()` triggers a clean reinstall on the
   next Servoy Developer start.
 
@@ -159,6 +165,10 @@ tests pin `{ uri, name }`, the `{ data, cursor }` pagination, etc.
 - If the Java BFF changed, `eclipse-ide_getCompilationErrors` on
   `com.servoy.eclipse.opencode` must be zero, and run its unit tests
   (`com.servoy.eclipse.opencode.tests`).
+- Run the guard test `OpencodePnpmApprovalTest` in
+  `com.servoy.eclipse.opencode.tests` and confirm it is green — it fails if the
+  `opencode/pnpm-workspace.yaml` `allowBuilds` key and the `opencode/package.json`
+  pinned version diverge, so it catches a forgotten approval-config bump.
 - Live-smoke the touched features in the Servoy AI view after a reload
   (upload, send, scroll-older, export, forms) when possible.
 

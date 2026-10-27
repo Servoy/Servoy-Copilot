@@ -1,0 +1,16 @@
+# Pre-approved build script for the opencode CLI native binary (SVY-21679).
+# @opencode/cli's postinstall downloads/copies the real native opencode executable
+# into node_modules/@opencode/cli/bin. Under pnpm's default strictDepBuilds this build
+# script is blocked unless explicitly allowed, which left a placeholder and caused the
+# Servoy AI server to fail to launch (CreateProcess error=216) in pnpm mode.
+#
+# This file ships the approval statically (committed, like a locked-down CI install) so
+# every end-user install is pre-configured and self-contained - no per-workspace prompt.
+# The allowBuilds key is VERSION-SCOPED on purpose: it MUST match the pinned @opencode/cli
+# version in package.json. Bumping @opencode/cli in package.json REQUIRES bumping the
+# version here too (the update-opencode skill does this; OpencodePnpmApprovalTest enforces it).
+nodeLinker: hoisted
+shamefullyHoist: true
+strictDepBuilds: true
+allowBuilds:
+  '@opencode/cli@2.1.1': true
