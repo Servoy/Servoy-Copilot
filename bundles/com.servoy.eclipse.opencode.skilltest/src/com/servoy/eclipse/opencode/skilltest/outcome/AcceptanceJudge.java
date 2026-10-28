@@ -294,10 +294,14 @@ public final class AcceptanceJudge {
 			sb.append("  - locate the created form, then read its `.frm`, its `.js` (handlers such as `onShow`), ") //$NON-NLS-1$
 					.append("and the form + solution `.less`/`.css` (styleClasses, colours, SVG icon masks);\n"); //$NON-NLS-1$
 		}
-		sb.append("  - OPTIONALLY, to judge VISUAL fidelity, call the `servoy-form_getFormLayout` tool with ") //$NON-NLS-1$
-				.append("`screenshot=true` for the form to see how it actually renders (design-time, no data), ") //$NON-NLS-1$
-				.append("and compare the pixels") //$NON-NLS-1$
-				.append(mockupPath != null && !mockupPath.isBlank() ? " to the mockup." : "."); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("  - for any criterion about how the form RENDERS (markup showing as styled elements not ") //$NON-NLS-1$
+				.append("literal text, styling/colours applied, an icon/SVG mask painting), call the ") //$NON-NLS-1$
+				.append("`servoy-form_getFormLayout` tool WITHOUT `screenshot` and judge from what it returns - the ") //$NON-NLS-1$
+				.append("rendered `html` (real tags, classes, nesting) and the `appearance` map (resolved colours/") //$NON-NLS-1$
+				.append("styles after the solution `.less`/theme). That html + css is the evidence; do not infer a ") //$NON-NLS-1$
+				.append("render outcome from the `.less` source. Request `screenshot=true` only for a genuine pixel ") //$NON-NLS-1$
+				.append("nuance you cannot read from `appearance`") //$NON-NLS-1$
+				.append(mockupPath != null && !mockupPath.isBlank() ? " when comparing to the mockup." : "."); //$NON-NLS-1$ //$NON-NLS-2$
 		sb.append('\n');
 		if (mockupPath != null && !mockupPath.isBlank()) {
 			sb.append("  - read the mockup it must reproduce, at `").append(mockupPath.trim()).append("`.\n"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -309,8 +313,11 @@ public final class AcceptanceJudge {
 		}
 		sb.append('\n');
 		sb.append("Grade each criterion independently as pass or fail, with a short concrete reason citing what ") //$NON-NLS-1$
-				.append("you found in the sources. Be strict: a criterion the sources do not clearly satisfy is a ") //$NON-NLS-1$
-				.append("fail. Answer with EXACTLY ONE fenced ```json block and nothing after it, of the form:\n\n") //$NON-NLS-1$
+				.append("you found (a source `file:line`, a quoted fragment, or the rendered `html`/`appearance` from ") //$NON-NLS-1$
+				.append("getFormLayout). Be strict: a criterion the evidence does not clearly satisfy is a fail - but ") //$NON-NLS-1$
+				.append("for a render criterion the evidence is the rendered html + css, so render the form first and ") //$NON-NLS-1$
+				.append("do not fail it on `.less` source ambiguity alone. Answer with EXACTLY ONE fenced ```json block ") //$NON-NLS-1$
+				.append("and nothing after it, of the form:\n\n") //$NON-NLS-1$
 				.append("```json\n") //$NON-NLS-1$
 				.append("{\n  \"overall\": \"pass\" | \"fail\",\n  \"criteria\": [\n") //$NON-NLS-1$
 				.append("    { \"criterion\": \"<the criterion text>\", \"pass\": true | false, \"reason\": \"<why>\" }\n") //$NON-NLS-1$
