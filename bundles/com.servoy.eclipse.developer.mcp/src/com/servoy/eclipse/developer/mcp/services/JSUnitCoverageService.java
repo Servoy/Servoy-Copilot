@@ -30,12 +30,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servoy.eclipse.model.util.ServoyLog;
 
-public class JSUnitCoverageService {
+public class JSUnitCoverageService
+{
 
 	private static final String DEFAULT_COVERAGE_FILE = "jsunit-coverage.json";
 
-	public String getCoverageReport(String coveragePath) {
-		try {
+	public String getCoverageReport(String coveragePath)
+	{
+		try
+		{
 			File file = resolveCoverageFile(coveragePath);
 			if (!file.exists()) {
 				return "No coverage report found at " + file.getAbsolutePath() +
@@ -57,21 +60,27 @@ public class JSUnitCoverageService {
 			double pct = total > 0 ? (100.0 * covered / total) : 0.0;
 			sb.append(String.format("**Coverage:** %d/%d lines (%.1f%%)\n\n", covered, total, pct));
 
-			appendSectionSummary(sb, root.path("scopes"), "Scopes");
-			appendSectionSummary(sb, root.path("forms"), "Forms");
+			String rootSolution = textOf(root, "solution");
+			appendSectionSummary(sb, root.path("scopes"), "Scopes", rootSolution);
+			appendSectionSummary(sb, root.path("forms"), "Forms", rootSolution);
 
 			sb.append("\n_File: ").append(file.getAbsolutePath()).append("_\n");
 			return sb.toString();
-		} catch (Exception e) {
+		}
+		catch (Exception e)
+		{
 			ServoyLog.logError("Error reading JSUnit coverage report", e);
 			return "Error reading coverage report: " + e.getMessage();
 		}
 	}
 
-	public String suggestTests(String coveragePath, int maxFunctions) {
-		try {
+	public String suggestTests(String coveragePath, int maxFunctions)
+	{
+		try
+		{
 			File file = resolveCoverageFile(coveragePath);
-			if (!file.exists()) {
+			if (!file.exists())
+			{
 				return "No coverage report found at " + file.getAbsolutePath() +
 					". Run JSUnit tests in debug mode first to generate the report.";
 			}
@@ -81,13 +90,15 @@ public class JSUnitCoverageService {
 
 			int limit = maxFunctions > 0 ? maxFunctions : 20;
 
+			String rootSolution = textOf(root, "solution");
 			List<FunctionCoverage> candidates = new ArrayList<>();
-			collectFunctions(root.path("scopes"), "scope", candidates);
-			collectFunctions(root.path("forms"), "form", candidates);
+			collectFunctions(root.path("scopes"), "scope", candidates, rootSolution);
+			collectFunctions(root.path("forms"), "form", candidates, rootSolution);
 
 			candidates.sort(Comparator.comparingInt(FunctionCoverage::uncoveredCount).reversed());
 
-			if (candidates.isEmpty()) {
+			if (candidates.isEmpty())
+			{
 				return "All functions have full coverage - no uncovered lines found.";
 			}
 
@@ -100,8 +111,10 @@ public class JSUnitCoverageService {
 			if (candidates.size() > limit) sb.append(" (showing top ").append(limit).append(")");
 			sb.append(":\n\n");
 
-			for (FunctionCoverage fc : top) {
-				sb.append("### `").append(fc.scopeName).append(".").append(fc.functionName).append("`");
+			for (FunctionCoverage fc : top)
+			{
+				sb.append("### `").append(fc.solution).append(" / ").append(fc.scopeName).append(".")
+					.append(fc.functionName).append("`");
 				sb.append(" (").append(fc.type).append(")\n");
 				sb.append("- Uncovered lines: ").append(formatLineList(fc.uncoveredLines)).append("\n");
 				sb.append("- Covered lines: ").append(fc.coveredLines.size()).append("\n");
@@ -112,91 +125,127 @@ public class JSUnitCoverageService {
 			}
 
 			return sb.toString();
-		} catch (Exception e) {
+		}
+		catch (Exception e)
+		{
 			ServoyLog.logError("Error generating JSUnit test suggestions from coverage", e);
 			return "Error generating test suggestions: " + e.getMessage();
 		}
 	}
 
-	private static File resolveCoverageFile(String coveragePath) {
-		if (coveragePath != null && !coveragePath.isBlank()) {
+	private static File resolveCoverageFile(String coveragePath)
+	{
+		if (coveragePath != null && !coveragePath.isBlank())
+		{
 			return new File(coveragePath);
 		}
 		return new File(Platform.getLocation().toOSString() + File.separator + DEFAULT_COVERAGE_FILE);
 	}
 
-	private static JsonNode readJson(File file) throws IOException {
+	private static JsonNode readJson(File file) throws IOException
+	{
 		String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
 		return new ObjectMapper().readTree(content);
 	}
 
-	private static String textOf(JsonNode node, String field) {
+	private static String textOf(JsonNode node, String field)
+	{
 		JsonNode f = node.path(field);
 		return f.isMissingNode() ? "(unknown)" : f.asText("(unknown)");
 	}
 
-	private static void appendSectionSummary(StringBuilder sb, JsonNode section, String label) {
+	private static void appendSectionSummary(StringBuilder sb, JsonNode section, String label, String rootSolution)
+	{
 		if (section.isMissingNode() || !section.isArray() || section.size() == 0) return;
 
 		sb.append("### ").append(label).append("\n\n");
-		sb.append("| Scope | Functions | Covered | Uncovered |\n");
-		sb.append("|-------|-----------|---------|----------|\n");
+		sb.append("| Solution | Scope | Functions | Covered | Uncovered |\n");
+		sb.append("|----------|-------|-----------|---------|----------|\n");
 
-		for (JsonNode scope : section) {
+		for (JsonNode scope : section)
+		{
 			String name = scope.path("name").asText("?");
+			String solution = resolveSolution(scope, rootSolution);
 			int funcs = 0, cov = 0, uncov = 0;
-			for (JsonNode fn : scope.path("functions")) {
+			for (JsonNode fn : scope.path("functions"))
+			{
 				funcs++;
 				cov += fn.path("coveredLines").size();
 				uncov += fn.path("uncoveredLines").size();
 			}
-			sb.append("| `").append(name).append("` | ").append(funcs)
+			sb.append("| `").append(solution).append("` | `").append(name).append("` | ").append(funcs)
 				.append(" | ").append(cov).append(" | ").append(uncov).append(" |\n");
 		}
 		sb.append("\n");
 	}
 
-	private static void collectFunctions(JsonNode section, String type, List<FunctionCoverage> out) {
+	/**
+	 * Reads the declaring solution from a scope/form entry's new {@code solution} field (SVY-21680).
+	 * Falls back to the top-level solution name for older reports that do not carry the field, and to
+	 * {@code "(unknown)"} when neither is available, so old-schema reports still render.
+	 */
+	private static String resolveSolution(JsonNode scope, String rootSolution)
+	{
+		JsonNode f = scope.path("solution");
+		if (!f.isMissingNode() && !f.asText("").isBlank())
+		{
+			return f.asText();
+		}
+		return (rootSolution != null && !rootSolution.isBlank()) ? rootSolution : "(unknown)";
+	}
+
+	private static void collectFunctions(JsonNode section, String type, List<FunctionCoverage> out, String rootSolution)
+	{
 		if (section.isMissingNode() || !section.isArray()) return;
-		for (JsonNode scope : section) {
+		for (JsonNode scope : section)
+		{
 			String scopeName = scope.path("name").asText("?");
-			for (JsonNode fn : scope.path("functions")) {
+			String solution = resolveSolution(scope, rootSolution);
+			for (JsonNode fn : scope.path("functions"))
+			{
 				List<Integer> uncovered = new ArrayList<>();
 				List<Integer> covered = new ArrayList<>();
 				for (JsonNode n : fn.path("uncoveredLines"))
 					uncovered.add(n.asInt());
 				for (JsonNode n : fn.path("coveredLines"))
 					covered.add(n.asInt());
-				if (!uncovered.isEmpty()) {
-					out.add(new FunctionCoverage(type, scopeName, fn.path("name").asText("?"), covered, uncovered));
+				if (!uncovered.isEmpty())
+				{
+					out.add(new FunctionCoverage(type, solution, scopeName, fn.path("name").asText("?"), covered, uncovered));
 				}
 			}
 		}
 	}
 
-	private static String formatLineList(List<Integer> lines) {
+	private static String formatLineList(List<Integer> lines)
+	{
 		if (lines.isEmpty()) return "(none)";
 		if (lines.size() <= 10) return lines.toString();
 		return lines.subList(0, 10).toString().replace("]", "") + ", ... +" + (lines.size() - 10) + " more]";
 	}
 
-	private static class FunctionCoverage {
+	private static class FunctionCoverage
+	{
 		final String type;
+		final String solution;
 		final String scopeName;
 		final String functionName;
 		final List<Integer> coveredLines;
 		final List<Integer> uncoveredLines;
 
-		FunctionCoverage(String type, String scopeName, String functionName,
-			List<Integer> coveredLines, List<Integer> uncoveredLines) {
+		FunctionCoverage(String type, String solution, String scopeName, String functionName,
+			List<Integer> coveredLines, List<Integer> uncoveredLines)
+		{
 			this.type = type;
+			this.solution = solution;
 			this.scopeName = scopeName;
 			this.functionName = functionName;
 			this.coveredLines = coveredLines;
 			this.uncoveredLines = uncoveredLines;
 		}
 
-		int uncoveredCount() {
+		int uncoveredCount()
+		{
 			return uncoveredLines.size();
 		}
 	}

@@ -1,6 +1,5 @@
 package com.servoy.eclipse.developer.mcp.plainjunit.services;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -299,7 +298,8 @@ public class JSUnitCoverageServiceTest {
 	public void testSuggestTests_moreLineTruncation() throws IOException {
 		StringBuilder uncoveredArray = new StringBuilder("[");
 		for (int i = 1; i <= 15; i++) {
-			if (i > 1) uncoveredArray.append(",");
+			if (i > 1)
+				uncoveredArray.append(",");
 			uncoveredArray.append(i);
 		}
 		uncoveredArray.append("]");
@@ -324,5 +324,153 @@ public class JSUnitCoverageServiceTest {
 		String result = service.suggestTests(file.toString(), 10);
 
 		assertTrue(result.contains("... +5 more"));
+	}
+
+	// --- SVY-21680: per-solution `solution` field ---
+
+	@Test
+	public void testGetCoverageReport_twoGlobalsDifferentSolutions_bothRowsDistinguishableBySolution()
+			throws IOException {
+		// Two `globals` scopes (same name) declared in different solutions A and B,
+		// plus a named scope.
+		String json = """
+				{
+				  "solution": "A",
+				  "timestamp": "2026-06-09T10:00:00Z",
+				  "summary": { "coveredLines": 6, "uncoveredLines": 2 },
+				  "scopes": [
+				    {
+				      "name": "globals",
+				      "solution": "A",
+				      "functions": [
+				        { "name": "helperA", "coveredLines": [1,2], "uncoveredLines": [3] }
+				      ]
+				    },
+				    {
+				      "name": "globals",
+				      "solution": "B",
+				      "functions": [
+				        { "name": "foo", "coveredLines": [6,7], "uncoveredLines": [] }
+				      ]
+				    },
+				    {
+				      "name": "test_globals",
+				      "solution": "A",
+				      "functions": [
+				        { "name": "test_foo", "coveredLines": [9,10], "uncoveredLines": [11] }
+				      ]
+				    }
+				  ],
+				  "forms": []
+				}
+				""";
+		Path file = writeCoverageJson(json);
+		String result = service.getCoverageReport(file.toString());
+
+		// Table now carries a Solution column.
+		assertTrue(result.contains("| Solution | Scope | Functions | Covered | Uncovered |"),
+				"table should have a Solution column header");
+		// Both globals rows must be present and distinguishable by solution (A and B),
+		// not collapsed.
+		assertTrue(result.contains("| `A` | `globals`"), "globals row for solution A should appear");
+		assertTrue(result.contains("| `B` | `globals`"), "globals row for solution B should appear");
+		// The named scope keeps its real name and correct solution.
+		assertTrue(result.contains("| `A` | `test_globals`"), "named scope row should carry its declaring solution A");
+	}
+
+	@Test
+	public void testSuggestTests_sameNamedGlobalsInDifferentSolutions_distinguishableBySolution() throws IOException {
+		// Same function name `foo` in `globals` of two different solutions, both with
+		// uncovered lines.
+		String json = """
+				{
+				  "solution": "A",
+				  "timestamp": "2026-06-09T10:00:00Z",
+				  "summary": { "coveredLines": 0, "uncoveredLines": 7 },
+				  "scopes": [
+				    {
+				      "name": "globals",
+				      "solution": "A",
+				      "functions": [
+				        { "name": "foo", "coveredLines": [], "uncoveredLines": [1,2,3] }
+				      ]
+				    },
+				    {
+				      "name": "globals",
+				      "solution": "B",
+				      "functions": [
+				        { "name": "foo", "coveredLines": [], "uncoveredLines": [4,5,6,7] }
+				      ]
+				    }
+				  ],
+				  "forms": []
+				}
+				""";
+		Path file = writeCoverageJson(json);
+		String result = service.suggestTests(file.toString(), 20);
+
+		// Both suggestions appear, each prefixed with its declaring solution so they
+		// are unambiguous.
+		assertTrue(result.contains("A / globals.foo"), "A-qualified globals.foo suggestion should appear");
+		assertTrue(result.contains("B / globals.foo"), "B-qualified globals.foo suggestion should appear");
+	}
+
+	@Test
+	public void testGetCoverageReport_noSolutionFieldOnEntries_fallsBackToTopLevelSolution() throws IOException {
+		// Old schema: entries carry no `solution` field. Must still render, falling
+		// back to the top-level solution.
+		String json = """
+				{
+				  "solution": "legacySolution",
+				  "timestamp": "2026-06-09T10:00:00Z",
+				  "summary": { "coveredLines": 3, "uncoveredLines": 2 },
+				  "scopes": [
+				    {
+				      "name": "myScope",
+				      "functions": [
+				        { "name": "doStuff", "coveredLines": [1,2,3], "uncoveredLines": [4,5] }
+				      ]
+				    }
+				  ],
+				  "forms": []
+				}
+				""";
+		Path file = writeCoverageJson(json);
+		String result = service.getCoverageReport(file.toString());
+
+		assertTrue(result.contains("## JSUnit Coverage Report"), "old-schema report should still render");
+		assertTrue(result.contains("| Solution | Scope | Functions | Covered | Uncovered |"),
+				"Solution column header should be present even for old schema");
+		// Falls back to the top-level solution name for the Solution cell.
+		assertTrue(result.contains("| `legacySolution` | `myScope`"),
+				"missing per-entry solution should fall back to the top-level solution name");
+	}
+
+	@Test
+	public void testSuggestTests_noSolutionFieldOnEntries_fallsBackToTopLevelSolution() throws IOException {
+		// Old schema for suggestions: no per-entry `solution`, falls back to top-level
+		// solution in the prefix.
+		String json = """
+				{
+				  "solution": "legacySolution",
+				  "timestamp": "2026-06-09T10:00:00Z",
+				  "summary": { "coveredLines": 1, "uncoveredLines": 3 },
+				  "scopes": [
+				    {
+				      "name": "scopeA",
+				      "functions": [
+				        { "name": "fnX", "coveredLines": [1], "uncoveredLines": [2,3,4] }
+				      ]
+				    }
+				  ],
+				  "forms": []
+				}
+				""";
+		Path file = writeCoverageJson(json);
+		String result = service.suggestTests(file.toString(), 20);
+
+		assertTrue(result.contains("## JSUnit Test Suggestions"), "old-schema suggestions should still render");
+		assertTrue(result.contains("legacySolution / scopeA.fnX"),
+				"missing per-entry solution should fall back to the top-level solution name in the suggestion prefix");
 	}
 }
