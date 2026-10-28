@@ -21,6 +21,7 @@ import com.servoy.base.query.IBaseSQLCondition;
 import com.servoy.base.query.IQueryConstants;
 import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
+import com.servoy.eclipse.core.ai.AiBridge;
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
@@ -50,6 +51,15 @@ import com.servoy.j2db.util.DataSourceUtils;
 @Creatable
 public class ServoyArtifactCreationService
 {
+	/**
+	 * Form events supported by {@link AiBridge#applyEventMethod(Form, String, String)}. Kept in
+	 * sync with the events {@code AiBridge} switches on; an event not in this set is reported back
+	 * as unrecognised rather than silently hitting the {@code default} branch.
+	 */
+	public static final java.util.Set<String> SUPPORTED_EVENTS = java.util.Set.of("onLoad", "onUnLoad", "onShow", "onHide",
+		"onBeforeHide", "onRecordSelection", "onBeforeRecordSelection", "onRecordEditStart", "onRecordEditStop",
+		"onElementDataChange", "onElementFocusGained", "onElementFocusLost", "onResize", "onSort");
+
 	// -------------------------------------------------------------------------
 	// Form creation
 	// -------------------------------------------------------------------------
@@ -116,7 +126,7 @@ public class ServoyArtifactCreationService
 				if (methodName != null && !methodName.isBlank())
 				{
 					String methodUUID = resolveOrCreateMethod(form, methodName, eventName, validator);
-					if (methodUUID != null) applyEventMethod(form, eventName, methodUUID);
+					if (methodUUID != null) AiBridge.applyEventMethod(form, eventName, methodUUID);
 				}
 			}
 		}
@@ -531,53 +541,96 @@ public class ServoyArtifactCreationService
 			if (methodName.equals(m.getName())) return m.getUUID().toString();
 		}
 
-		// Create new method with skeleton
+		// Create new method with a skeleton whose parameter list matches the event.
 		ScriptMethod method = form.createNewScriptMethod(validator, methodName);
-		String skeleton = "/**\n * @param {JSEvent} event\n */\nfunction " + methodName + "(event) {\n\t// TODO: implement\n}\n";
-		method.setDeclaration(skeleton);
+		method.setDeclaration(skeletonForEvent(eventName, methodName));
 		return method.getUUID().toString();
 	}
 
-	private void applyEventMethod(Form form, String eventName, String methodUUID)
+	/**
+	 * Builds a method skeleton whose Javadoc {@code @param}/{@code @return} block and function
+	 * parameter list match the real signature of the given Servoy form event. Any event not in the
+	 * table falls back to a plain {@code (event)} skeleton.
+	 *
+	 * @param eventName the form event name (e.g. {@code onShow}, {@code onRecordEditStop})
+	 * @param methodName the name of the method to generate
+	 * @return the full method declaration (Javadoc + function body)
+	 */
+	private String skeletonForEvent(String eventName, String methodName)
 	{
+		String doc;
+		String params;
 		switch (eventName)
 		{
-			case "onLoad" :
-				form.setOnLoadMethodID(methodUUID);
-				break;
-			case "onUnLoad" :
-				form.setOnUnLoadMethodID(methodUUID);
-				break;
-			case "onShow" :
-				form.setOnShowMethodID(methodUUID);
-				break;
-			case "onHide" :
-				form.setOnHideMethodID(methodUUID);
-				break;
-			case "onBeforeHide" :
-				form.setOnBeforeHideMethodID(methodUUID);
-				break;
-			case "onRecordSelection" :
-				form.setOnRecordSelectionMethodID(methodUUID);
-				break;
-			case "onRecordEditStart" :
-				form.setOnRecordEditStartMethodID(methodUUID);
-				break;
 			case "onRecordEditStop" :
-				form.setOnRecordEditStopMethodID(methodUUID);
+				doc = "/**\n * @param {JSRecord} record\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
+				params = "record, event";
 				break;
 			case "onElementDataChange" :
-				form.setOnElementDataChangeMethodID(methodUUID);
-				break;
-			case "onResize" :
-				form.setOnResizeMethodID(methodUUID);
+				doc = "/**\n * @param {Object} oldValue\n * @param {Object} newValue\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
+				params = "oldValue, newValue, event";
 				break;
 			case "onSort" :
-				form.setOnSortCmdMethodID(methodUUID);
+				doc = "/**\n * @param {String} dataProviderID\n * @param {Boolean} asc\n * @param {JSEvent} event\n */";
+				params = "dataProviderID, asc, event";
+				break;
+			case "onBeforeHide" :
+				doc = "/**\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
+				params = "event";
 				break;
 			default :
-				ServoyLog.logInfo("Unknown event: " + eventName);
+				doc = "/**\n * @param {JSEvent} event\n */";
+				params = "event";
 				break;
 		}
+		return doc + "\nfunction " + methodName + "(" + params + ") {\n\t// TODO: implement\n}\n";
+	}
+
+	/**
+	 * Resolves the just-created form from the active project's editing flattened solution and wires
+	 * the requested event handlers onto it: for each {@code eventName -> methodName} entry it
+	 * resolves or creates the backing method (with a per-event skeleton) and delegates the
+	 * event-to-setter wiring to the canonical {@link AiBridge#applyEventMethod(Form, String, String)}.
+	 * The form is re-saved and a short summary of what was wired is returned.
+	 *
+	 * @param formName the name of the form to wire events onto
+	 * @param events the {@code eventName -> methodName} map (event names validated against the
+	 *            supported set)
+	 * @return a one-line summary of the wired handlers, or an empty string when nothing was wired
+	 * @throws RepositoryException if the form cannot be resolved or saved
+	 */
+	public String applyEventsToForm(String formName, Map<String, String> events) throws RepositoryException
+	{
+		if (events == null || events.isEmpty()) return "";
+
+		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		ServoyProject project = servoyModel.getActiveProject();
+		if (project == null) throw new RepositoryException("No active Servoy solution project found");
+
+		com.servoy.j2db.FlattenedSolution fs = project.getEditingFlattenedSolution();
+		Form form = fs != null ? fs.getForm(formName) : null;
+		if (form == null) throw new RepositoryException("Form '" + formName + "' not found in the active solution");
+
+		IValidateName validator = servoyModel.getNameValidator();
+		List<String> wired = new ArrayList<>();
+		for (Map.Entry<String, String> entry : events.entrySet())
+		{
+			String eventName = entry.getKey();
+			String methodName = entry.getValue();
+			if (eventName == null || eventName.isBlank() || methodName == null || methodName.isBlank()) continue;
+			if (!SUPPORTED_EVENTS.contains(eventName)) continue;
+
+			String methodUUID = resolveOrCreateMethod(form, methodName, eventName, validator);
+			if (methodUUID != null)
+			{
+				AiBridge.applyEventMethod(form, eventName, methodUUID);
+				wired.add(eventName + " -> " + methodName);
+			}
+		}
+
+		project.saveEditingSolutionNodes(new IPersist[] { form }, true);
+
+		if (wired.isEmpty()) return "";
+		return "Wired events: " + String.join(", ", wired);
 	}
 }

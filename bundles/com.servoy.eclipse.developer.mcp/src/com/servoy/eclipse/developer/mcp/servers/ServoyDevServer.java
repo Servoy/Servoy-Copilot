@@ -1588,7 +1588,10 @@ public class ServoyDevServer {
 	@Tool(name = "createForm", description = "Creates a new Servoy form in the active solution. "
 			+ "Supports CSS-position and responsive layouts. "
 			+ "Optionally sets dataSource, parent form (inheritance), and event handlers. "
-			+ "Event handlers are auto-created as methods if they don't exist. "
+			+ "Event handlers are auto-created as methods if they don't exist, and are honoured together with 'columns' in the same call. "
+			+ "Each generated method skeleton matches that event's real parameter list (e.g. onRecordEditStop(record, event), onElementDataChange(oldValue, newValue, event)). "
+			+ "The 'events' value accepts both 'event:method' pairs and bare event names; a bare event name uses the event name itself as the method name (e.g. 'onShow' creates method 'onShow'). "
+			+ "Unrecognised or unsupported events are reported back in the result string instead of being silently dropped. "
 			+ "When 'columns' is provided (use '*' for all columns or a comma-separated list), "
 			+ "the form is created with label+field pairs for each column in a single call — no separate applyPatch needed. "
 			+ "Returns an error if a form with the same name already exists.", type = "object")
@@ -1599,9 +1602,37 @@ public class ServoyDevServer {
 			@ToolParam(name = "height", description = "Form height in pixels (default: 480)", required = false) String height,
 			@ToolParam(name = "dataSource", description = "DataSource (format: 'db:/server_name/table_name')", required = false) String dataSource,
 			@ToolParam(name = "extendsForm", description = "Parent form name for inheritance", required = false) String extendsForm,
-			@ToolParam(name = "events", description = "Comma-separated event:method pairs (e.g. 'onLoad:initForm,onShow:refreshData')", required = false) String events,
+			@ToolParam(name = "events", description = "Comma-separated event handlers. Each entry is either 'event:method' (e.g. 'onShow:refreshData') or a bare event name (e.g. 'onShow'), which uses the event name as the method name. Honoured together with 'columns'. Supported events: onLoad, onUnLoad, onShow, onHide, onBeforeHide, onRecordSelection, onBeforeRecordSelection, onRecordEditStart, onRecordEditStop, onElementDataChange, onElementFocusGained, onElementFocusLost, onResize, onSort.", required = false) String events,
 			@ToolParam(name = "columns", description = "Columns to generate label+field pairs for. Use '*' for all columns from the dataSource table, or a comma-separated list of column names. If omitted, the form is created empty (legacy behavior).", required = false) String columns) {
 		try {
+			// Parse events leniently BEFORE the columns branch so they are honoured either way.
+			Map<String, String> eventMap = new java.util.LinkedHashMap<>();
+			java.util.List<String> unrecognised = new java.util.ArrayList<>();
+			if (events != null && !events.isBlank()) {
+				for (String pair : events.split(",")) {
+					String entry = pair.trim();
+					if (entry.isEmpty()) continue;
+					String[] kv = entry.split(":");
+					if (kv.length == 1) {
+						String ev = kv[0].trim();
+						if (ServoyArtifactCreationService.SUPPORTED_EVENTS.contains(ev))
+							eventMap.put(ev, ev);
+						else
+							unrecognised.add(entry);
+					} else if (kv.length == 2) {
+						String ev = kv[0].trim();
+						String methodName = kv[1].trim();
+						if (!ev.isEmpty() && !methodName.isEmpty() && ServoyArtifactCreationService.SUPPORTED_EVENTS.contains(ev))
+							eventMap.put(ev, methodName);
+						else
+							unrecognised.add(entry);
+					} else {
+						unrecognised.add(entry);
+					}
+				}
+			}
+
+			String createResult;
 			if (columns != null && !columns.isBlank()) {
 				java.util.List<String> columnList = null;
 				if (!"*".equals(columns.trim())) {
@@ -1610,21 +1641,24 @@ public class ServoyDevServer {
 						if (!col.trim().isEmpty()) columnList.add(col.trim());
 					}
 				}
-				return artifactService.createFormWithFields(name, dataSource, style != null ? style : "responsive", columnList);
+				createResult = artifactService.createFormWithFields(name, dataSource, style != null ? style : "responsive", columnList);
+			} else {
+				int w = width != null ? Integer.parseInt(width) : 640;
+				int h = height != null ? Integer.parseInt(height) : 480;
+				createResult = artifactService.createForm(name, style != null ? style : "css", w, h, dataSource, extendsForm, null);
 			}
-			int w = width != null ? Integer.parseInt(width) : 640;
-			int h = height != null ? Integer.parseInt(height) : 480;
-			Map<String, String> eventMap = null;
-			if (events != null && !events.isBlank()) {
-				eventMap = new java.util.HashMap<>();
-				for (String pair : events.split(",")) {
-					String[] kv = pair.trim().split(":");
-					if (kv.length == 2)
-						eventMap.put(kv[0].trim(), kv[1].trim());
-				}
+
+			StringBuilder result = new StringBuilder(createResult);
+
+			// Wire events on the just-created form, regardless of the columns branch taken.
+			if (!eventMap.isEmpty()) {
+				String wired = artifactService.applyEventsToForm(name, eventMap);
+				if (wired != null && !wired.isBlank()) result.append("\n  ").append(wired);
 			}
-			return artifactService.createForm(name, style != null ? style : "css", w, h, dataSource, extendsForm,
-					eventMap);
+			if (!unrecognised.isEmpty()) {
+				result.append("\n  Skipped unrecognised events: ").append(String.join(", ", unrecognised));
+			}
+			return result.toString();
 		} catch (Exception e) {
 			ServoyLog.logError("Error creating form: " + name, e);
 			return "Error: " + e.getMessage();
