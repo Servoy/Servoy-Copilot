@@ -212,6 +212,18 @@ public class FormLayoutInspectionService
 	 */
 	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds)
 	{
+		return getFormLayout(formName, selector, screenshot, timeoutSeconds, true);
+	}
+
+	/**
+	 * As {@link #getFormLayout(String, String, boolean, int)}, with explicit control over sample data (SVY-21610).
+	 *
+	 * @param sampleData when true (the default) the server fills the render with synthetic, deterministic sample
+	 *            values - a value per dataprovider, 3 rows per foundset - so fields and grids show data instead of
+	 *            empty chrome. Pass false to inspect the bare component chrome.
+	 */
+	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds, boolean sampleData)
+	{
 		if (formName == null || formName.isBlank())
 		{
 			return FormLayoutResult.error("Error: Form name must not be null or empty.");
@@ -243,7 +255,8 @@ public class FormLayoutInspectionService
 				"The Servoy web server is not running; start Servoy Developer and open a solution, then try again.");
 		}
 
-		String url = "http://127.0.0.1:" + port + "/formtemplate/" + formName + ".html";
+		// sample data is the endpoint's default; only the opt-out needs to be requested explicitly
+		String url = "http://127.0.0.1:" + port + "/formtemplate/" + formName + ".html" + (sampleData ? "" : "?sampleData=false");
 		long timeoutMs = Math.max(1, timeoutSeconds) * 1000L;
 		String cssSelector = (selector != null && !selector.isBlank()) ? selector.trim() : null;
 

@@ -46,8 +46,11 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.ngclient.ui.Activator;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.GraphicalComponent;
+import com.servoy.j2db.persistence.IColumnTypes;
 import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.RepositoryException;
+import com.servoy.j2db.persistence.ScriptVariable;
 
 /**
  * Integration tests for the {@code getFormLayout} MCP tool (server
@@ -83,6 +86,10 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	private static final String FORM_CSS = "layoutCssForm";
 	private static final String FORM_OTHER = "layoutOtherForm";
 	private static final String FORM_MISSING = "noSuchFormAtAll";
+	/** SVY-21610: the form carrying a variable-bound label, used by the sample-data tests. */
+	private static final String FORM_SAMPLE = "layoutSampleDataForm";
+	/** The initialiser value of that form's variable; must survive into the rendered DOM. */
+	private static final String SAMPLE_VARIABLE_VALUE = "InitialisedValue";
 
 	private static final long RENDER_TIMEOUT_SECONDS = 20;
 
@@ -145,7 +152,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithButtonAndLabel(FORM_CSS);
 
 		JsonNode envelope = envelopeOf(
-				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS)));
+				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
 
 		assertEquals(FORM_CSS, envelope.path("form").asText(), "the read is for the requested form");
 		assertEquals(".svy-form", envelope.path("selector").asText(), "no selector -> the whole .svy-form");
@@ -185,7 +192,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		// only - so the label that is a sibling in the full form must NOT appear.
 		String selector = "[data-cy='" + FORM_CSS + ".btnAction']";
 		JsonNode envelope = envelopeOf(
-				tool.getFormLayout(FORM_CSS, selector, "false", Long.toString(RENDER_TIMEOUT_SECONDS)));
+				tool.getFormLayout(FORM_CSS, selector, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
 
 		assertEquals(selector, envelope.path("selector").asText(), "the read echoes the requested selector");
 
@@ -213,9 +220,9 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithButtonAndLabel(FORM_CSS);
 		ensureCssFormWithSingleLabel(FORM_OTHER, "lblOnlyHere", "Only here");
 
-		JsonNode first = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS)));
+		JsonNode first = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
 		JsonNode second = envelopeOf(
-				tool.getFormLayout(FORM_OTHER, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS)));
+				tool.getFormLayout(FORM_OTHER, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
 
 		assertEquals(FORM_CSS, first.path("form").asText(), "first call returns the first form");
 		assertEquals(FORM_OTHER, second.path("form").asText(),
@@ -228,13 +235,64 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	}
 
 	// -----------------------------------------------------------------------
+	// SVY-21610: sample data - a field bound to a dataprovider must render a value
+	// -----------------------------------------------------------------------
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21610: a label bound to a form variable with an initialiser renders that value with sampleData on")
+	public void sampleData_rendersVariableInitialiserValue() throws Exception {
+		Form form = ensureCssFormWithVariableBoundLabel(FORM_SAMPLE, "vFilled", "lblFilled");
+		assertNotNull(form, "the sample-data form must exist");
+
+		JsonNode envelope = envelopeOf(
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"));
+
+		String html = envelope.path("html").asText();
+		// the variable is declared with an initialiser, so its real initial value reaches the design-time render -
+		// this is the no-code answer to the SVY-21610 report (an onLoad assignment could never show up here)
+		assertTrue(html.contains(SAMPLE_VARIABLE_VALUE),
+				"a label bound to a variable with an initialiser must render that value: " + html);
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21610: the same form renders byte-identical HTML twice (sample data is deterministic)")
+	public void sampleData_isDeterministicAcrossRenders() throws Exception {
+		ensureCssFormWithVariableBoundLabel(FORM_SAMPLE, "vFilled", "lblFilled");
+
+		String first = envelopeOf(
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"))
+						.path("html").asText();
+		String second = envelopeOf(
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"))
+						.path("html").asText();
+
+		// THE contract of this feature: the agent loop is render -> change one thing -> render -> diff, so sample
+		// values must not vary between two renders of an unchanged form. A regression to a random/clock-based value
+		// would still "show data" and pass every other test here.
+		assertEquals(first, second, "two renders of an unchanged form must produce identical HTML");
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21610: sampleData=false keeps the bare chrome (no value rendered)")
+	public void sampleDataOff_rendersNoValue() throws Exception {
+		ensureCssFormWithVariableBoundLabel(FORM_SAMPLE, "vFilled", "lblFilled");
+
+		String html = envelopeOf(
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"))
+						.path("html").asText();
+
+		assertFalse(html.contains(SAMPLE_VARIABLE_VALUE),
+				"with sampleData off the render must carry no data values: " + html);
+	}
+
+	// -----------------------------------------------------------------------
 	// Not-found / named-message paths (valid even without the render prerequisite)
 	// -----------------------------------------------------------------------
 
 	@Test
 	@org.junit.jupiter.api.DisplayName("form not found returns the named actionable message")
 	public void formNotFound_returnsNamedMessage() {
-		Object result = tool.getFormLayout(FORM_MISSING, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS));
+		Object result = tool.getFormLayout(FORM_MISSING, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false");
 
 		assertInstanceOf(String.class, result, "a named message is returned as a plain String");
 		String message = (String) result;
@@ -245,7 +303,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	@Test
 	@org.junit.jupiter.api.DisplayName("blank form name returns an error, never a hang")
 	public void blankFormName_returnsError() {
-		Object result = tool.getFormLayout("   ", null, null, null);
+		Object result = tool.getFormLayout("   ", null, null, null, null);
 
 		assertInstanceOf(String.class, result, "an error is returned as a plain String");
 		assertTrue(((String) result).startsWith("Error"), "a blank form name yields an Error message: " + result);
@@ -407,6 +465,35 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		label.setText("Status");
 
 		saveEditingSolutionNodes(new IPersist[] { form });
+		return form;
+	}
+
+	/**
+	 * A css form carrying a form variable WITH AN INITIALISER plus a label bound to it as its dataprovider - the
+	 * SVY-21610 scenario (the reporter's agent used four such specimen fields).
+	 */
+	private Form ensureCssFormWithVariableBoundLabel(String formName, String variableName, String labelName)
+			throws Exception {
+		Form existing = activeProject.getEditingSolution().getForm(formName);
+		if (existing != null)
+			return existing;
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(formName);
+		assertNotNull(form, "form creation should succeed: " + formName);
+
+		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		ScriptVariable variable = form.createNewScriptVariable(validator, variableName, IColumnTypes.TEXT);
+		assertNotNull(variable, "variable creation should succeed: " + variableName);
+		// an initialiser, NOT an onLoad assignment: onLoad does not run in a stateless render, which is exactly why
+		// the agent's four onLoad-assigned specimen fields came out empty in the reported case
+		variable.setDefaultValue("'" + SAMPLE_VARIABLE_VALUE + "'");
+
+		GraphicalComponent label = form.createNewGraphicalComponent(new Point(20, 20));
+		label.setName(labelName);
+		label.setDataProviderID(variableName);
+
+		saveEditingSolutionNodes(new IPersist[] { form, variable });
 		return form;
 	}
 

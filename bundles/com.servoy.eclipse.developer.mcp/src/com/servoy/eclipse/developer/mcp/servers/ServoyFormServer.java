@@ -43,10 +43,14 @@ public class ServoyFormServer
 		"have created or edited a form (its .frm, its components, style classes, or the solution .less) and want to verify the " +
 		"result matches what you intended - layout, positioning, sizing, colours and styling. Prefer this over any other " +
 		"screenshot/preview tool for design-time layout checks: it is fast, needs no running client and no login.\n" +
-		"IMPORTANT - this is a DESIGN-TIME render: the form is rendered stateless from /formtemplate/<form>.html with NO DATA " +
-		"(empty fields, no foundset rows, no running client, no calculated/related values). Do NOT expect any data in the HTML, " +
-		"the appearance map or the screenshot - only the layout, structure, styling and empty component chrome. Use the " +
-		"running-client tools instead when you need to see the form populated with live data.\n" +
+		"IMPORTANT - this is a DESIGN-TIME render: stateless, from /formtemplate/<form>.html, with no running client, no " +
+		"login and no real database data. By default it is filled with SAMPLE DATA so you can actually judge the result: " +
+		"each dataprovider shows a synthetic value of the right type (text/number/date, a form variable shows its real " +
+		"initialiser value) and each foundset-based component (e.g. a data grid) shows 3 rows. The values are SYNTHETIC but " +
+		"DETERMINISTIC - the same form always renders the same values - so you can render, change something, render again and " +
+		"diff the two with confidence. Do NOT treat the values as the solution's real data, and do not 'fix' a form because a " +
+		"sample value looks arbitrary; use the running-client tools when you need to see real records. Set sampleData=false to " +
+		"get the bare component chrome with no values at all.\n" +
 		"By DEFAULT it returns the rendered form as TEXT, which is cheap and usually enough to verify a layout change:\n" +
 		"  1. 'html' - the full rendered outerHTML of the requested subtree (the whole form, or the element matched by " +
 		"'selector'): the real component tags (e.g. bootstrapcomponents-textbox), their id / data-svy-name identity attributes, " +
@@ -71,14 +75,16 @@ public class ServoyFormServer
 		@ToolParam(name = "formName", description = "The form to inspect, e.g. 'orderDetails'", required = true) String formName,
 		@ToolParam(name = "selector", description = "Optional CSS selector of the subtree to return (e.g. a component's tag or '#<id>'). When omitted the whole .svy-form is returned. A screenshot is only captured for the whole form, not a selected subtree.", required = false) String selector,
 		@ToolParam(name = "screenshot", description = "Whether to ALSO capture a PNG screenshot of the whole rendered form (saved + attached to the response). Default FALSE: the html + appearance text is returned either way and is usually enough. Set true only when you need to VISUALLY compare pixels - a PNG is large and token-expensive. Ignored when 'selector' is set.", type = "boolean", required = false) String screenshot,
-		@ToolParam(name = "timeoutSeconds", description = "Max seconds to wait for the form to render before reading. Default 15.", type = "integer", required = false) String timeoutSeconds)
+		@ToolParam(name = "timeoutSeconds", description = "Max seconds to wait for the form to render before reading. Default 15.", type = "integer", required = false) String timeoutSeconds,
+		@ToolParam(name = "sampleData", description = "Whether to fill the render with synthetic, deterministic sample data - a value per dataprovider and 3 rows per foundset - so fields and grids show content instead of empty chrome. Default TRUE, which is almost always what you want. Pass false only when you specifically want to inspect the empty component chrome.", type = "boolean", required = false) String sampleData)
 	{
 		try
 		{
 			boolean captureScreenshot = parseBoolean(screenshot, false);
 			int timeout = parseTimeout(timeoutSeconds);
+			boolean withSampleData = parseBoolean(sampleData, true);
 
-			FormLayoutResult result = inspectionService.getFormLayout(formName, selector, captureScreenshot, timeout);
+			FormLayoutResult result = inspectionService.getFormLayout(formName, selector, captureScreenshot, timeout, withSampleData);
 			if (result.error != null)
 			{
 				return result.error;
