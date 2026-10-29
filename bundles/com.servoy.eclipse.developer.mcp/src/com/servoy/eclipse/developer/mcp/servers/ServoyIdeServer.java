@@ -332,9 +332,9 @@ public class ServoyIdeServer {
 	@Tool(name = "getConsoleOutput", description = "Retrieves the recent output from Eclipse console(s).", type = "object")
 	public String getConsoleOutput(
 			@ToolParam(name = "consoleName", description = "Name of the specific console to retrieve (optional, leave empty for most recent console)", required = false) String consoleName,
-			@ToolParam(name = "maxLines", description = "Maximum number of lines to retrieve (default: 100)", required = false) String maxLines,
-			@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", required = false) String includeAllConsoles,
-			@ToolParam(name = "clear", description = "Whether to clear the console(s) after reading (default: false)", required = false) String clear) {
+			@ToolParam(name = "maxLines", description = "Maximum number of lines to retrieve (default: 100)", type = "integer", required = false) String maxLines,
+			@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", type = "boolean", required = false) String includeAllConsoles,
+			@ToolParam(name = "clear", description = "Whether to clear the console(s) after reading (default: false)", type = "boolean", required = false) String clear) {
 		int lines = Optional.ofNullable(maxLines).map(Integer::parseInt).orElse(100);
 		boolean allConsoles = Optional.ofNullable(includeAllConsoles).map(Boolean::parseBoolean).orElse(false);
 		boolean shouldClear = Optional.ofNullable(clear).map(Boolean::parseBoolean).orElse(false);
@@ -402,7 +402,7 @@ public class ServoyIdeServer {
 
 	@Tool(name = "getSource", description = "Get the JavaScript source for a Servoy form or scope by name.", type = "object")
 	public String getSource(
-			@ToolParam(name = "name", description = "Form name or scope name (e.g. 'customers', 'utils')", required = true) String name,
+			@ToolParam(name = "name", description = "Form or scope name. Pass it under the key 'name' (not 'formName'), e.g. name: 'customers' or name: 'utils'.", required = true) String name,
 			@ToolParam(name = "moduleName", description = "Module name to search in. If omitted, searches in the active solution.", required = false) String moduleName) {
 		if (name == null || name.isBlank())
 			throw new RuntimeException("Error: 'name' is required.");
