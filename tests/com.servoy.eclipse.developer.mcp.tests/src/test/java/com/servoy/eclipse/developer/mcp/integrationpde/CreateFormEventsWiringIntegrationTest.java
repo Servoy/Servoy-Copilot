@@ -37,6 +37,7 @@ import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.FlattenedSolution;
 import com.servoy.j2db.persistence.Form;
 import com.servoy.j2db.persistence.IPersist;
+import com.servoy.j2db.persistence.IPersistVisitor;
 import com.servoy.j2db.persistence.ScriptMethod;
 import com.servoy.j2db.persistence.WebComponent;
 
@@ -156,12 +157,13 @@ public class CreateFormEventsWiringIntegrationTest extends TestUtilitiesClassCop
 	}
 
 	private int countWebComponents(Form form) {
-		int count = 0;
-		for (IPersist p : form.getAllObjectsAsList()) {
-			if (p instanceof WebComponent)
-				count++;
-		}
-		return count;
+		int[] count = { 0 };
+		form.acceptVisitor(o -> {
+			if (o instanceof WebComponent)
+				count[0]++;
+			return IPersistVisitor.CONTINUE_TRAVERSAL;
+		});
+		return count[0];
 	}
 
 	/**
