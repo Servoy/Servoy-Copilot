@@ -30,19 +30,20 @@ import com.servoy.eclipse.opencode.skilltest.OpencodeHttpClient;
 
 /**
  * Grades a skill run's result against a baseline's natural-language acceptance
- * criteria by asking a <b>separate</b> LLM (the "judge") to review the built
- * form's source artifacts - the way an SDD code-review agent signs off, rather
+ * criteria by asking a <b>separate</b> LLM (the "judge") to review the produced
+ * artifact's source files - the way an SDD code-review agent signs off, rather
  * than asserting a frozen persist tree a valid run reproduces a different way
  * (SVY-21366).
  * <p>
  * The judge runs as a <b>separate agent in its own session</b>: a fresh
  * {@code createSession} prompted as the dedicated read-only {@link #JUDGE_AGENT
  * Judge} agent, distinct from the builder's agent. The prompt hands it the
- * natural-language criteria and tells it to <b>read for itself</b> the mockup it
- * was asked to reproduce, the built form's {@code .frm}/{@code .js}, the form
- * and solution {@code .less}/{@code css}, and whatever else it needs, then
- * return a structured per-criterion verdict. Nothing is serialized into the
- * prompt - the judge inspects the real files.
+ * natural-language criteria (plus the targeted artifact name and an optional
+ * mockup path) and the {@code Judge} agent's own instructions tell it to
+ * <b>read for itself</b> the produced artifact's source files - a form's
+ * {@code .frm}/{@code .js}/{@code .less}, or any other persist - and whatever
+ * else it needs, then return a structured per-criterion verdict. Nothing is
+ * serialized into the prompt - the judge inspects the real files.
  * </p>
  * <p>
  * The separate Reviewer agent + fresh session is what keeps the judge distinct
@@ -72,7 +73,7 @@ public final class AcceptanceJudge {
 	 * agent in its own session</b> rather than the ambient default agent grading
 	 * the run (SVY-21366). A dedicated primary agent (not the hidden {@code
 	 * Reviewer} subagent) is used so the judge can run as a top-level session agent
-	 * and still reach the read + {@code servoy-form_getFormLayout} tools it needs.
+	 * and still reach the read + component-spec tools it needs.
 	 */
 	static final String JUDGE_AGENT = "Judge"; //$NON-NLS-1$
 
@@ -181,7 +182,7 @@ public final class AcceptanceJudge {
 	 * {@link #DEFAULT_JUDGE_MODEL} only when neither is known.
 	 *
 	 * @param configured   the baseline's {@code judgeModel} (may be {@code null})
-	 * @param builderModel the model that built the form (may be {@code null} =
+	 * @param builderModel the model that built the artifact (may be {@code null} =
 	 *                     server default)
 	 * @return the judge model to use (never {@code null})
 	 */
@@ -199,19 +200,21 @@ public final class AcceptanceJudge {
 	 * Runs the judge against the criteria and returns its verdict. Blocking: run
 	 * off the UI thread.
 	 *
-	 * @param formName     the form the run was asked to build (e.g.
-	 *                     {@code order_tabs})
-	 * @param mockupPath   the working-dir-relative path of the mockup the form
-	 *                     reproduces (e.g. {@code specs/03_order_tabs.html}), or
+	 * @param subjectName  the primary artifact the run targeted - a form,
+	 *                     relation, valuelist, menu, media, ... (e.g.
+	 *                     {@code order_tabs}), or {@code null} when the baseline
+	 *                     names none
+	 * @param mockupPath   the working-dir-relative path of a mockup to reproduce
+	 *                     (e.g. {@code specs/03_order_tabs.html}), or
 	 *                     {@code null} when the baseline declares none
 	 * @param criteria     the natural-language acceptance criteria (never empty)
 	 * @param judgeModel   the baseline's configured judge model (may be
 	 *                     {@code null})
-	 * @param builderModel the model that built the form (may be {@code null})
+	 * @param builderModel the model that built the artifact (may be {@code null})
 	 * @param cancel       polled cooperatively; aborts the run when {@code true}
 	 * @return the verdict; on any failure an {@link Verdict#error error} verdict
 	 */
-	public Verdict judge(String formName, String mockupPath, List<String> criteria, String judgeModel,
+	public Verdict judge(String subjectName, String mockupPath, List<String> criteria, String judgeModel,
 			String builderModel, BooleanSupplier cancel) {
 		if (criteria == null || criteria.isEmpty()) {
 			return Verdict.error("no criteria to judge", null); //$NON-NLS-1$
@@ -223,10 +226,10 @@ public final class AcceptanceJudge {
 			if (!client.health()) {
 				return Verdict.error("opencode server not ready", null); //$NON-NLS-1$
 			}
-			String prompt = buildPrompt(formName, mockupPath, criteria);
+			String prompt = buildPrompt(subjectName, mockupPath, criteria);
 			sessionId = client.createSession("Skill-test acceptance judge"); //$NON-NLS-1$
-			logger.log("[skilltest] acceptance judge: grading " + criteria.size() + " criterion(s) for form '" //$NON-NLS-1$ //$NON-NLS-2$
-					+ formName + "' as the " + JUDGE_AGENT + " agent, model " + model + " (session " + sessionId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			logger.log("[skilltest] acceptance judge: grading " + criteria.size() + " criterion(s) for '" //$NON-NLS-1$ //$NON-NLS-2$
+					+ subjectName + "' as the " + JUDGE_AGENT + " agent, model " + model + " (session " + sessionId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 					+ ")"); //$NON-NLS-1$
 			// Run as the dedicated Judge agent in this fresh session (separate
 			// agent + separate session). The model may equal the builder's.
@@ -263,66 +266,34 @@ public final class AcceptanceJudge {
 	}
 
 	/**
-	 * Builds the judge prompt: it names the form and mockup, lists the criteria,
-	 * and instructs the judge to READ the relevant source files itself (the
-	 * {@code .frm}, the form and solution {@code .less}/{@code css}, the form's
-	 * {@code .js} incl. its {@code onShow} handler) and answer with one fenced
-	 * JSON verdict. No file contents are embedded - the judge inspects them.
+	 * Builds the judge prompt. This carries ONLY the per-run facts the judge
+	 * cannot know from its own instructions: the name of the main artifact the run
+	 * produced (a form, relation, valuelist, menu, media, ... - a hint, may be
+	 * absent), the acceptance criteria, and the optional mockup path. How to judge
+	 * - autonomy, which sources/specs to read, strictness, and the required JSON
+	 * verdict shape - lives in the {@code Judge} agent definition ({@code Judge.md}
+	 * in the skills pack), so it is NOT repeated here (it would otherwise be
+	 * prepended to every judge request and drift from the agent). The verdict shape
+	 * {@code parseVerdict} expects is defined there too.
+	 *
+	 * @param subjectName the primary artifact name the baseline targets, or
+	 *                    {@code null}/blank when the baseline names none (the judge
+	 *                    then discovers what the run produced)
 	 */
-	String buildPrompt(String formName, String mockupPath, List<String> criteria) {
+	String buildPrompt(String subjectName, String mockupPath, List<String> criteria) {
 		StringBuilder sb = new StringBuilder();
-		sb.append("[skill-test mode] You are an automated acceptance judge. Run fully autonomously: do not ask ") //$NON-NLS-1$
-				.append("questions, do not wait for confirmation, do not modify any file. If a relevant skill ") //$NON-NLS-1$
-				.append("(e.g. skilltest-expectations) is available, you may use it.\n\n"); //$NON-NLS-1$
-		boolean haveForm = formName != null && !formName.isBlank();
-		if (haveForm) {
-			sb.append("A previous agent was asked to build a Servoy form named `").append(formName) //$NON-NLS-1$
-					.append("`. "); //$NON-NLS-1$
-		} else {
-			sb.append("A previous agent was asked to build a Servoy form in the active solution (its name was its ") //$NON-NLS-1$
-					.append("own choice - discover it with your tools, e.g. list the solution's forms). "); //$NON-NLS-1$
+		sb.append("A previous agent carried out a Servoy skill-test task in the active solution."); //$NON-NLS-1$
+		if (subjectName != null && !subjectName.isBlank()) {
+			sb.append(" The main artifact it targeted is named `").append(subjectName).append("`."); //$NON-NLS-1$ //$NON-NLS-2$
 		}
-		sb.append("Your job is to decide, criterion by criterion, whether the built form meets the acceptance ") //$NON-NLS-1$
-				.append("criteria below. Judge the RESULT, not how it was built.\n\n"); //$NON-NLS-1$
-		sb.append("Inspect the actual result yourself using your tools - do not assume. As needed:\n"); //$NON-NLS-1$
-		if (haveForm) {
-			sb.append("  - read the form `forms/").append(formName).append(".frm` (components, tab panel, tabs);\n") //$NON-NLS-1$ //$NON-NLS-2$
-					.append("  - read the form's `forms/").append(formName).append(".js` (handlers such as `onShow`);\n") //$NON-NLS-1$ //$NON-NLS-2$
-					.append("  - read the form's `forms/").append(formName).append(".less` and the solution-level ") //$NON-NLS-1$ //$NON-NLS-2$
-					.append("`.less`/`.css` (styleClasses, colours, SVG icon masks);\n"); //$NON-NLS-1$
-		} else {
-			sb.append("  - locate the created form, then read its `.frm`, its `.js` (handlers such as `onShow`), ") //$NON-NLS-1$
-					.append("and the form + solution `.less`/`.css` (styleClasses, colours, SVG icon masks);\n"); //$NON-NLS-1$
-		}
-		sb.append("  - for any criterion about how the form RENDERS (markup showing as styled elements not ") //$NON-NLS-1$
-				.append("literal text, styling/colours applied, an icon/SVG mask painting), call the ") //$NON-NLS-1$
-				.append("`servoy-form_getFormLayout` tool WITHOUT `screenshot` and judge from what it returns - the ") //$NON-NLS-1$
-				.append("rendered `html` (real tags, classes, nesting) and the `appearance` map (resolved colours/") //$NON-NLS-1$
-				.append("styles after the solution `.less`/theme). That html + css is the evidence; do not infer a ") //$NON-NLS-1$
-				.append("render outcome from the `.less` source. Request `screenshot=true` only for a genuine pixel ") //$NON-NLS-1$
-				.append("nuance you cannot read from `appearance`") //$NON-NLS-1$
-				.append(mockupPath != null && !mockupPath.isBlank() ? " when comparing to the mockup." : "."); //$NON-NLS-1$ //$NON-NLS-2$
-		sb.append('\n');
+		sb.append(" Decide, criterion by criterion, whether the result meets the acceptance criteria below.\n\n"); //$NON-NLS-1$
 		if (mockupPath != null && !mockupPath.isBlank()) {
-			sb.append("  - read the mockup it must reproduce, at `").append(mockupPath.trim()).append("`.\n"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("Mockup to reproduce: `").append(mockupPath.trim()).append("`\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
-		sb.append('\n');
 		sb.append("Acceptance criteria:\n"); //$NON-NLS-1$
 		for (int i = 0; i < criteria.size(); i++) {
 			sb.append(i + 1).append(". ").append(criteria.get(i)).append('\n'); //$NON-NLS-1$
 		}
-		sb.append('\n');
-		sb.append("Grade each criterion independently as pass or fail, with a short concrete reason citing what ") //$NON-NLS-1$
-				.append("you found (a source `file:line`, a quoted fragment, or the rendered `html`/`appearance` from ") //$NON-NLS-1$
-				.append("getFormLayout). Be strict: a criterion the evidence does not clearly satisfy is a fail - but ") //$NON-NLS-1$
-				.append("for a render criterion the evidence is the rendered html + css, so render the form first and ") //$NON-NLS-1$
-				.append("do not fail it on `.less` source ambiguity alone. Answer with EXACTLY ONE fenced ```json block ") //$NON-NLS-1$
-				.append("and nothing after it, of the form:\n\n") //$NON-NLS-1$
-				.append("```json\n") //$NON-NLS-1$
-				.append("{\n  \"overall\": \"pass\" | \"fail\",\n  \"criteria\": [\n") //$NON-NLS-1$
-				.append("    { \"criterion\": \"<the criterion text>\", \"pass\": true | false, \"reason\": \"<why>\" }\n") //$NON-NLS-1$
-				.append("  ]\n}\n```\n"); //$NON-NLS-1$
-		sb.append("`overall` must be `pass` only if every criterion passes."); //$NON-NLS-1$
 		return sb.toString();
 	}
 
