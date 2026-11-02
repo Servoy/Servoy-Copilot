@@ -304,6 +304,15 @@ public final class ExpectationLlmGenerator {
 			props = new java.util.LinkedHashMap<>(loose.props());
 			props.put("typeName", capType); // restore the literal component type //$NON-NLS-1$
 		}
+		// A persist's NAME is its identity (a valuelist/form/relation name), not a
+		// free-choice value, so it must stay literal just like typeName. The model
+		// sometimes loosens it (e.g. "customerNames" -> "%customer%"), which makes
+		// the checker fail to find the persist. Restore the captured literal name
+		// whenever the model wildcarded a name the capture had literal (SVY-21366).
+		String name = loose.name();
+		if (cap != null && isWildcardedString(name) && cap.name() != null && !isWildcardedString(cap.name())) {
+			name = cap.name();
+		}
 		List<OutcomeAssertion> capChildren = cap != null ? cap.children() : java.util.List.of();
 		List<OutcomeAssertion> looseChildren = loose.children();
 		List<OutcomeAssertion> children = looseChildren;
@@ -314,7 +323,7 @@ public final class ExpectationLlmGenerator {
 				children.add(repairTypeName(capChild, looseChildren.get(i)));
 			}
 		}
-		return new OutcomeAssertion(loose.kind(), loose.name(), loose.scope(), loose.exists(), props, children,
+		return new OutcomeAssertion(loose.kind(), name, loose.scope(), loose.exists(), props, children,
 				loose.structure(), loose.less());
 	}
 
@@ -323,8 +332,12 @@ public final class ExpectationLlmGenerator {
 		if (matcher == null || matcher.getExpected() == null) {
 			return false;
 		}
-		String v = String.valueOf(matcher.getExpected());
-		return v.indexOf('%') >= 0 || v.indexOf('_') >= 0;
+		return isWildcardedString(String.valueOf(matcher.getExpected()));
+	}
+
+	/** @return true when the string carries a SQL-LIKE wildcard ({@code %} or {@code _}). */
+	private static boolean isWildcardedString(String v) {
+		return v != null && (v.indexOf('%') >= 0 || v.indexOf('_') >= 0);
 	}
 
 	/** The first ~200 chars of a string, single-lined, for a diagnostic log. */

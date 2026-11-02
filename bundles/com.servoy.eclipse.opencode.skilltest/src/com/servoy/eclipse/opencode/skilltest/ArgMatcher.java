@@ -74,8 +74,15 @@ public final class ArgMatcher {
 	/** Long run of digits that looks like an epoch timestamp (10+ digits). */
 	private static final Pattern EPOCH_PATTERN = Pattern.compile("\\b\\d{10,}\\b"); //$NON-NLS-1$
 
-	/** Absolute filesystem path (Unix /... or Windows C:\...). */
-	private static final Pattern ABS_PATH_PATTERN = Pattern.compile("(?:[A-Za-z]:\\\\|/)[^\\s\"']*"); //$NON-NLS-1$
+	/**
+	 * Absolute filesystem path (Unix {@code /...} or Windows {@code C:\...}). The
+	 * Unix branch requires the leading {@code /} NOT be preceded by a URI scheme
+	 * ({@code db:}, {@code mem:}, {@code http:}, ...), so a Servoy datasource such
+	 * as {@code db:/example_data/customers} - deterministic and spec-meaningful - is
+	 * left intact rather than masked as a volatile path (SVY-21366).
+	 */
+	private static final Pattern ABS_PATH_PATTERN = Pattern
+			.compile("(?:[A-Za-z]:\\\\|(?<![A-Za-z]:)(?<![A-Za-z])/)[^\\s\"']*"); //$NON-NLS-1$
 
 	private final Kind kind;
 	private final Object expected;
@@ -162,9 +169,21 @@ public final class ArgMatcher {
 		return true;
 	}
 
+
 	/**
 	 * Tolerant equality: scalar strings compared case-insensitively and
 	 * whitespace-normalised; collections compared as sets.
+	 * <p>
+	 * A scalar <em>expected</em> string that carries an unescaped SQL-{@code LIKE}
+	 * wildcard ({@code %} or {@code _}) is matched as a LIKE pattern against the
+	 * (whitespace-normalised) actual, not compared literally - so a baseline prop
+	 * such as {@code "customValues": "%low%medium%high%"} matches an actual
+	 * {@code "low\nmedium\nhigh"} the same way the {@code .frm} structure leaves
+	 * already do. One definition of {@code %} lives in {@link SqlLike}, shared with
+	 * {@code StructureMatcher} (SVY-21366). A string with no wildcard keeps the old
+	 * literal (normalised, case-insensitive) compare; {@code EXACT}/{@code EQUALS}
+	 * never reach here, so a literal {@code %} can still be pinned there.
+	 * </p>
 	 */
 	public static boolean tolerantEquals(Object expected, Object actual) {
 		if (expected == null) {
@@ -172,6 +191,15 @@ public final class ArgMatcher {
 		}
 		if (expected instanceof Collection || actual instanceof Collection) {
 			return asNormalizedSet(expected).equals(asNormalizedSet(actual));
+		}
+		String expectedStr = String.valueOf(expected);
+		if (SqlLike.looksLikePattern(expectedStr)) {
+			// The pattern is authored (not a volatile generated value), so it is only
+			// trimmed + whitespace-collapsed, never volatile-masked - masking could
+			// mangle the %/_ wildcards. The actual side is normalised as usual (which
+			// also collapses the .val's newlines to single spaces), and SqlLike's own
+			// (?is) makes the match case-insensitive.
+			return SqlLike.matches(expectedStr.trim().replaceAll("\\s+", " "), norm(actual)); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 		return norm(expected).equals(norm(actual));
 	}

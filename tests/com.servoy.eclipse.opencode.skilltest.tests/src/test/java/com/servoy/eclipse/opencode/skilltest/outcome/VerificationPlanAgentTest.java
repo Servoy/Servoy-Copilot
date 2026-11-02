@@ -40,7 +40,7 @@ class VerificationPlanAgentTest {
 	@Test
 	@DisplayName("prompt requires the skilltest-authoring skill and offers all three check kinds")
 	void promptNamesSkillAndChecks() {
-		String p = AGENT.buildPrompt("specs/03_order_tabs.html");
+		String p = AGENT.buildPrompt(null, "specs/03_order_tabs.html");
 		assertTrue(p.contains("skilltest-authoring"), "names the authoring skill");
 		assertTrue(p.contains("expectPersists"), "offers persists");
 		assertTrue(p.contains("acceptanceCriteria"), "offers acceptance criteria");
@@ -51,10 +51,28 @@ class VerificationPlanAgentTest {
 	@Test
 	@DisplayName("prompt mentions the mockup when one is given")
 	void promptMentionsMockup() {
-		assertTrue(AGENT.buildPrompt("specs/03_order_tabs.html").contains("specs/03_order_tabs.html"),
+		assertTrue(AGENT.buildPrompt(null, "specs/03_order_tabs.html").contains("specs/03_order_tabs.html"),
 				"names the mockup path");
-		assertFalse(AGENT.buildPrompt(null).contains("the UI mockup the run was asked to reproduce, at"),
+		assertFalse(AGENT.buildPrompt(null, null).contains("the UI mockup the run was asked to reproduce, at"),
 				"no mockup line when none is given");
+	}
+
+	@Test
+	@DisplayName("prompt embeds the builder's real prompt and the run's changed artifacts from the export")
+	void promptEmbedsRealRun() throws Exception {
+		java.io.File export = java.io.File.createTempFile("vpa-export", ".json");
+		export.deleteOnExit();
+		String json = """
+				{ "messages": [
+				  { "role": "user", "parts": [ { "type": "text", "text": "Create a database value list named customerNames based on db:/example_data/customers." } ] },
+				  { "role": "assistant", "parts": [ { "type": "text", "text": "Changed files:\\n- valuelists/customerNames.val\\n" } ] }
+				] }
+				""";
+		java.nio.file.Files.writeString(export.toPath(), json);
+		String p = AGENT.buildPrompt(export, null);
+		assertTrue(p.contains("customerNames"), "embeds the builder's real prompt");
+		assertTrue(p.contains("valuelists/customerNames.val"), "lists the run's changed artifact");
+		assertTrue(p.contains("assert ONLY these artifacts"), "scopes the agent to the run's artifacts");
 	}
 
 	// --- plan parsing ---

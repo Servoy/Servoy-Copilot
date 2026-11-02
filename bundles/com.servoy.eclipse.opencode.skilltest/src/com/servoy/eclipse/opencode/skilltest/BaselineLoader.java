@@ -361,7 +361,7 @@ public final class BaselineLoader {
 	}
 
 	/** Recursively finds a file named {@code fileName} under {@code dir}, or {@code null}. */
-	private static File findScriptByName(File dir, String fileName) {
+	static File findScriptByName(File dir, String fileName) {
 		if (dir == null || !dir.isDirectory() || fileName == null) {
 			return null;
 		}

@@ -435,29 +435,7 @@ public final class StructureMatcher { // SVY-21366 .frm subset compare with SQL-
 	 * @return {@code true} if {@code value} matches {@code pattern}
 	 */
 	static boolean like(String pattern, String value) {
-		if (pattern == null || value == null) {
-			return pattern == value;
-		}
-		StringBuilder re = new StringBuilder("(?is)^"); //$NON-NLS-1$ - case-insensitive, dotall
-		for (int i = 0; i < pattern.length(); i++) {
-			char c = pattern.charAt(i);
-			if (c == '\\' && i + 1 < pattern.length()) {
-				char next = pattern.charAt(++i);
-				if (next == '%' || next == '_' || next == '\\') {
-					re.append(java.util.regex.Pattern.quote(String.valueOf(next)));
-				} else {
-					re.append(java.util.regex.Pattern.quote("\\")).append(java.util.regex.Pattern.quote(String.valueOf(next))); //$NON-NLS-1$
-				}
-			} else if (c == '%') {
-				re.append(".*"); //$NON-NLS-1$
-			} else if (c == '_') {
-				re.append('.');
-			} else {
-				re.append(java.util.regex.Pattern.quote(String.valueOf(c)));
-			}
-		}
-		re.append('$');
-		return value.matches(re.toString());
+		return com.servoy.eclipse.opencode.skilltest.SqlLike.matches(pattern, value);
 	}
 
 	private static String describe(JsonNode node) {

@@ -152,4 +152,30 @@ public class ExpectationLlmGeneratorPromptTest {
 		assertEquals(null, ExpectationLlmGenerator.restoreTypeNames(List.of(), null));
 		assertTrue(ExpectationLlmGenerator.restoreTypeNames(List.of(), List.of()).isEmpty());
 	}
+
+	// --- a persist NAME is identity, not free-choice: never loosen it (SVY-21366) ---
+
+	@Test
+	void restoreRepairsAWildcardedValuelistName() {
+		// A db valuelist "customerNames" that the model loosened to "%customer%"
+		// would make the checker fail to find it. The captured literal name wins.
+		OutcomeAssertion cap = new OutcomeAssertion(PersistKind.VALUELIST, "customerNames", null, true, Map.of(),
+				List.of());
+		OutcomeAssertion loose = new OutcomeAssertion(PersistKind.VALUELIST, "%customer%", null, true, Map.of(),
+				List.of());
+
+		OutcomeAssertion fixed = ExpectationLlmGenerator.restoreTypeNames(List.of(cap), List.of(loose)).get(0);
+		assertEquals("customerNames", fixed.name(), "a wildcarded persist name must be restored to the literal");
+	}
+
+	@Test
+	void restoreKeepsAnAlreadyLiteralName() {
+		OutcomeAssertion cap = new OutcomeAssertion(PersistKind.VALUELIST, "priority", null, true, Map.of(),
+				List.of());
+		OutcomeAssertion loose = new OutcomeAssertion(PersistKind.VALUELIST, "priority", null, true, Map.of(),
+				List.of());
+
+		OutcomeAssertion fixed = ExpectationLlmGenerator.restoreTypeNames(List.of(cap), List.of(loose)).get(0);
+		assertEquals("priority", fixed.name(), "an already-literal name is untouched");
+	}
 }

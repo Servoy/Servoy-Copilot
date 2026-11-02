@@ -271,9 +271,10 @@ final class JsUnitVerifier {
 		}
 		String firstScope = null;
 		for (String rel : scripts) {
-			File src = new File(baselineFolder, rel);
-			if (!src.isFile()) {
-				throw new java.io.IOException("verify script not found: " + src); //$NON-NLS-1$
+			File src = resolveVerifyScript(baselineFolder, rel);
+			if (src == null) {
+				throw new java.io.IOException("verify script not found: " //$NON-NLS-1$
+						+ new File(baselineFolder, rel) + " (nor under " + new File(baselineFolder, "verify") + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			}
 			// The scope name is the file's base name; the file must sit in the project
 			// root as "<scopeName>.js" to be recognized as a global scope.
@@ -292,6 +293,28 @@ final class JsUnitVerifier {
 		}
 		solutionProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		return firstScope;
+	}
+
+	/**
+	 * Resolves a baseline verify-script path to the file on disk, tolerating a
+	 * sidecar/disk prefix mismatch. The sidecar stores a solution-relative path
+	 * (e.g. {@code scopes/skilltest_verify.js}) but {@code importExport} writes the
+	 * file under {@code <baseline>/verify/<that path>}. An older sidecar may also
+	 * carry the {@code verify/} prefix already. Try, in order: the path as given
+	 * under the baseline folder, the path under {@code <baseline>/verify}, then a
+	 * by-base-name search under {@code <baseline>/verify}. {@code null} when none
+	 * exists (SVY-21366).
+	 */
+	private static File resolveVerifyScript(File baselineFolder, String rel) {
+		File asGiven = new File(baselineFolder, rel);
+		if (asGiven.isFile()) {
+			return asGiven;
+		}
+		File underVerify = new File(new File(baselineFolder, "verify"), rel); //$NON-NLS-1$
+		if (underVerify.isFile()) {
+			return underVerify;
+		}
+		return BaselineLoader.findScriptByName(new File(baselineFolder, "verify"), new File(rel).getName()); //$NON-NLS-1$
 	}
 
 	/** Writes/overwrites a UTF-8 file directly in the project root. */

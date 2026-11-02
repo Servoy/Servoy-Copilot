@@ -157,6 +157,55 @@ class ArgMatcherTest {
 	}
 
 	@Nested
+	class TolerantLike {
+
+		@Test
+		@DisplayName("a bare %...% expectation is a SQL-LIKE pattern: %low%medium%high% matches the .val's low/medium/high")
+		void customValuesLikePatternMatches() {
+			// The .val stores "low\r\nmedium\r\nhigh"; the checker normalises that to
+			// "low medium high", and the authored LIKE pattern must match across the
+			// collapsed separators (SVY-21366).
+			assertTrue(ArgMatcher.tolerant("%low%medium%high%").matches("low\r\nmedium\r\nhigh"));
+			assertTrue(ArgMatcher.tolerant("%low%medium%high%").matches("low medium high"));
+		}
+
+		@Test
+		@DisplayName("a LIKE pattern is anchored and case-insensitive")
+		void likeIsAnchoredAndCaseInsensitive() {
+			assertTrue(ArgMatcher.tolerant("%LOW%").matches("low medium high"));
+			assertTrue(ArgMatcher.tolerant("low%").matches("low medium high"));
+			assertFalse(ArgMatcher.tolerant("%medium").matches("low medium high")); // not anchored at end
+		}
+
+		@Test
+		@DisplayName("underscore matches exactly one character")
+		void underscoreMatchesOne() {
+			assertTrue(ArgMatcher.tolerant("l_w").matches("low"));
+			assertFalse(ArgMatcher.tolerant("l_w").matches("loow"));
+		}
+
+		@Test
+		@DisplayName("an escaped \\% is a literal percent, not a wildcard")
+		void escapedPercentIsLiteral() {
+			assertTrue(ArgMatcher.tolerant("50\\%").matches("50%"));
+			assertFalse(ArgMatcher.tolerant("50\\%").matches("50 percent off"));
+		}
+
+		@Test
+		@DisplayName("a wildcard LIKE still fails when the stable tokens are absent")
+		void likeFailsWhenTokenMissing() {
+			assertFalse(ArgMatcher.tolerant("%low%medium%high%").matches("low high"));
+		}
+
+		@Test
+		@DisplayName("a no-wildcard tolerant string keeps the literal normalised compare")
+		void noWildcardKeepsLiteralCompare() {
+			assertTrue(ArgMatcher.tolerant("low medium high").matches("low  medium\thigh"));
+			assertFalse(ArgMatcher.tolerant("low medium high").matches("low medium"));
+		}
+	}
+
+	@Nested
 	class VolatileMasking {
 
 		@Test
@@ -177,6 +226,19 @@ class ArgMatcherTest {
 		void differingAbsolutePathMatches() {
 			assertTrue(ArgMatcher.tolerantEquals("saved to C:\\Users\\alice\\ws\\sol\\forms\\a.frm",
 					"saved to C:\\Users\\bob\\workspace\\sol\\forms\\a.frm"));
+		}
+
+		@Test
+		@DisplayName("a Servoy db:/ datasource is NOT masked as a volatile path (SVY-21366)")
+		void datasourceIsNotMaskedAsPath() {
+			// db:/example_data/customers is deterministic and spec-meaningful; the
+			// path masker must not swallow the '/...' after the 'db:' scheme.
+			assertTrue(ArgMatcher.tolerantEquals("db:/example_data/customers", "db:/example_data/customers"),
+					"identical datasources must match");
+			assertFalse(ArgMatcher.tolerantEquals("db:/example_data/customers", "db:/example_data/orders"),
+					"different datasources must NOT match (not both masked away)");
+			assertFalse(ArgMatcher.tolerantEquals("mem:cache", "mem:other"),
+					"a mem: datasource is likewise not masked");
 		}
 
 		@Test

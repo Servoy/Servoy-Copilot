@@ -88,6 +88,63 @@ public final class OutcomeInference {
 	}
 
 	/**
+	 * The builder's first user prompt recorded in the export, or {@code null} when
+	 * the file is absent/unparseable or has no user prompt. Used to tell the
+	 * authoring agent what the run was actually asked to do, rather than having it
+	 * hunt for an {@code export.json} that is not on disk yet (SVY-21366).
+	 *
+	 * @param exportFile the opencode export JSON (may be {@code null}/absent)
+	 * @return the first user prompt text, or {@code null}
+	 */
+	public static String promptText(File exportFile) {
+		JsonNode root = readRoot(exportFile);
+		return root != null ? firstUserPrompt(root) : null;
+	}
+
+	/**
+	 * The distinct base names of the workspace files the run created or changed, in
+	 * first-seen order (e.g. {@code customerNames}, {@code orderDetail}), scanned
+	 * from the export's changed-file bullets. Used to tell the authoring agent which
+	 * concrete artifacts THIS run produced, so it asserts those and not a canned
+	 * shape (SVY-21366).
+	 *
+	 * @param exportFile the opencode export JSON (may be {@code null}/absent)
+	 * @return the changed-file base names (never {@code null}; empty when none)
+	 */
+	public static List<String> changedArtifacts(File exportFile) {
+		JsonNode root = readRoot(exportFile);
+		if (root == null) {
+			return List.of();
+		}
+		String allText = collectText(root);
+		java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+		Matcher m = CHANGED_FILE.matcher(allText);
+		while (m.find()) {
+			String path = m.group(1);
+			String lower = path.toLowerCase();
+			// Skip IDE-generated companions; keep the primary persist artifacts.
+			if (lower.endsWith(".obj") || lower.endsWith(".dbi")) { //$NON-NLS-1$ //$NON-NLS-2$
+				continue;
+			}
+			names.add(path);
+		}
+		return new ArrayList<>(names);
+	}
+
+	/** Reads and parses an export file, tolerating a leading status line; {@code null} on any failure. */
+	private static JsonNode readRoot(File exportFile) {
+		if (exportFile == null || !exportFile.isFile()) {
+			return null;
+		}
+		try {
+			String raw = Files.readString(exportFile.toPath(), StandardCharsets.UTF_8);
+			return MAPPER.readTree(BaselineLoader.stripLeadingNonJson(raw));
+		} catch (Exception ex) {
+			return null;
+		}
+	}
+
+	/**
 	 * Infers assertions from an export file on disk.
 	 *
 	 * @param exportFile the opencode export JSON (may be {@code null}/absent)

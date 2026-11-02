@@ -61,6 +61,16 @@ public final class VerificationPlanAgent {
 	/** The skill whose prose carries the authoritative check-selection + generation rules. */
 	static final String SKILL_NAME = "skilltest-authoring"; //$NON-NLS-1$
 
+	/**
+	 * The dedicated agent the authoring call runs as - the read-only
+	 * {@code Baseline-Author} primary agent (defined in the skills pack), distinct
+	 * from the builder's agent and from the default {@code Orchestrator}. It is the
+	 * only agent that allows the {@link #SKILL_NAME} skill, so the authoring prompt
+	 * must run as it for that skill to load (SVY-21366). Mirrors how
+	 * {@code AcceptanceJudge} runs as the dedicated {@code Judge} agent.
+	 */
+	static final String AUTHOR_AGENT = "Baseline-Author"; //$NON-NLS-1$
+
 	/** How often the completion wait polls the session status. */
 	private static final Duration POLL = Duration.ofSeconds(2);
 
@@ -138,12 +148,14 @@ public final class VerificationPlanAgent {
 				logger.log("[skilltest] plan agent skipped: opencode server not ready; using inference fallback"); //$NON-NLS-1$
 				return fallback(exportFile);
 			}
-			String prompt = buildPrompt(mockupPath);
+			String prompt = buildPrompt(exportFile, mockupPath);
 			sessionId = client.createSession("Skill-test baseline authoring"); //$NON-NLS-1$
 			logger.log("[skilltest] plan agent: analyzing the export to propose verification checks (session " //$NON-NLS-1$
 					+ sessionId + ")"); //$NON-NLS-1$
-			// Default agent + server-default model: an authoring utility call.
-			client.promptAsync(sessionId, prompt, null, null);
+			// Run as the dedicated Baseline-Author agent (the only agent that allows
+			// the skilltest-authoring skill) in this fresh session, server-default
+			// model: an authoring utility call.
+			client.promptAsync(sessionId, prompt, AUTHOR_AGENT, null);
 			client.waitForCompletion(sessionId, POLL, notCancelled);
 			// Read from the EXPORT (inlines each message's `content`), NOT the
 			// /message list, which returns metadata with empty parts in opencode v2
@@ -194,21 +206,44 @@ public final class VerificationPlanAgent {
 	 * {@code skilltest-authoring} skill (the {@code skills4servoy} repo), not here;
 	 * the prompt names the skill, gives the per-call envelope (the export + optional
 	 * mockup to inspect) and the answer-format contract.
+	 * <p>
+	 * The builder's actual prompt and the concrete artifacts the run created are
+	 * read from {@code exportFile} and embedded verbatim, so the agent reasons from
+	 * THIS run rather than hunting for an {@code export.json} that is not written to
+	 * disk until the wizard finishes. Without this the agent had nothing to read and
+	 * hallucinated a generic form baseline (SVY-21366).
+	 * </p>
 	 */
-	String buildPrompt(String mockupPath) {
+	String buildPrompt(File exportFile, String mockupPath) {
+		String builderPrompt = OutcomeInference.promptText(exportFile);
+		List<String> changedArtifacts = OutcomeInference.changedArtifacts(exportFile);
 		StringBuilder sb = new StringBuilder();
 		sb.append("[skill-test mode] You are an automated skill-test baseline author. Use the `").append(SKILL_NAME) //$NON-NLS-1$
 				.append("` skill - it carries the authoritative rules for which verification checks fit a run and ") //$NON-NLS-1$
 				.append("how to generate each. Run fully autonomously: do not ask questions, do not wait for ") //$NON-NLS-1$
 				.append("confirmation, do not modify any file.\n\n"); //$NON-NLS-1$
-		sb.append("A previous agent built something in the active solution from a prompt. The recorded session is ") //$NON-NLS-1$
-				.append("the opencode export at `export.json` in this baseline's folder (the current working ") //$NON-NLS-1$
-				.append("directory's sibling, or ask your tools). Your job is to decide which verification checks ") //$NON-NLS-1$
-				.append("best prove this run succeeded, and generate them.\n\n"); //$NON-NLS-1$
-		sb.append("Inspect the actual result yourself using your tools - do not assume. As needed:\n"); //$NON-NLS-1$
-		sb.append("  - read the builder's prompt and tool calls in the export;\n"); //$NON-NLS-1$
-		sb.append("  - list the solution's forms/valuelists/relations/scopes and read the artifacts the run ") //$NON-NLS-1$
-				.append("produced (the `.frm`, the `.js`, the form + solution `.less`/`.css`);\n"); //$NON-NLS-1$
+		sb.append("A previous agent built something in the active solution from a prompt. Your job is to decide ") //$NON-NLS-1$
+				.append("which verification checks best prove THIS run succeeded, and generate them.\n\n"); //$NON-NLS-1$
+		if (builderPrompt != null && !builderPrompt.isBlank()) {
+			sb.append("The builder was asked, verbatim:\n"); //$NON-NLS-1$
+			sb.append("<<<PROMPT\n").append(builderPrompt.strip()).append("\nPROMPT\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		if (!changedArtifacts.isEmpty()) {
+			sb.append("This run created or changed exactly these workspace files - assert ONLY these artifacts, ") //$NON-NLS-1$
+					.append("nothing else in the solution:\n"); //$NON-NLS-1$
+			for (String art : changedArtifacts) {
+				sb.append("  - ").append(art).append('\n'); //$NON-NLS-1$
+			}
+			sb.append("Match each check to the kind of artifact its extension names (a `.val` is a valuelist, a ") //$NON-NLS-1$
+					.append("`.frm` a form, a `.rel` a relation, a `.js` a scope/form script) - do not assert a form ") //$NON-NLS-1$
+					.append("or component when the run built none.\n\n"); //$NON-NLS-1$
+		}
+		sb.append("The full recorded session is the opencode export at `export.json` in this baseline's folder ") //$NON-NLS-1$
+				.append("(the current working directory's sibling, or ask your tools). Inspect the actual result ") //$NON-NLS-1$
+				.append("yourself - do not assume beyond the prompt and file list above. As needed:\n"); //$NON-NLS-1$
+		sb.append("  - read the builder's tool calls and outputs in the export;\n"); //$NON-NLS-1$
+		sb.append("  - read the artifacts the run produced (the named `.val`/`.frm`/`.rel`/`.js`, plus the form ") //$NON-NLS-1$
+				.append("+ solution `.less`/`.css` when it built a form);\n"); //$NON-NLS-1$
 		sb.append("  - OPTIONALLY call `servoy-form_getFormLayout` with `screenshot=true` to see how a built form ") //$NON-NLS-1$
 				.append("renders.\n"); //$NON-NLS-1$
 		if (mockupPath != null && !mockupPath.isBlank()) {
