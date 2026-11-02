@@ -294,6 +294,8 @@ public final class AcceptanceJudge {
 		for (int i = 0; i < criteria.size(); i++) {
 			sb.append(i + 1).append(". ").append(criteria.get(i)).append('\n'); //$NON-NLS-1$
 		}
+		sb.append("\nReturn your verdict now: one entry for EACH of the ").append(criteria.size()) //$NON-NLS-1$
+				.append(" criteria above, in the single JSON block your instructions define.\n"); //$NON-NLS-1$
 		return sb.toString();
 	}
 
