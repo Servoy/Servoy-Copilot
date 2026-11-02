@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!--
+  Order tabs mockup — input artifact for the `create-form-order-tabs-from-mockup`
+  skill-test scenario (SVY-21659). Self-contained: inline CSS + JS, no external
+  dependencies. A tester attaches this file to the prompt so the AI can reproduce
+  its tab/panel structure as a responsive Servoy form.
+
+  Shape: a tab bar with three tabs — "Details", "Lines" and "History", in that
+  order — above a content area that switches with the selected tab.
+-->
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Order Tabs</title>
+	<style>
+		:root {
+			--border: #d0d5dd;
+			--accent: #2563eb;
+			--muted: #667085;
+			--bg: #ffffff;
+			--panel: #f9fafb;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+			color: #101828;
+			background: var(--bg);
+		}
+
+		.order-tabs {
+			max-width: 720px;
+			margin: 24px auto;
+			padding: 0 16px;
+		}
+
+		.tab-bar {
+			display: flex;
+			gap: 4px;
+			border-bottom: 2px solid var(--border);
+		}
+
+		.tab {
+			appearance: none;
+			border: none;
+			background: transparent;
+			padding: 12px 20px;
+			font: inherit;
+			color: var(--muted);
+			cursor: pointer;
+			border-bottom: 2px solid transparent;
+			margin-bottom: -2px;
+		}
+
+		.tab[aria-selected="true"] {
+			color: var(--accent);
+			border-bottom-color: var(--accent);
+			font-weight: 600;
+		}
+
+		.tab-content {
+			border: 1px solid var(--border);
+			border-top: none;
+			padding: 24px;
+			background: var(--panel);
+			min-height: 180px;
+		}
+
+		.panel {
+			display: none;
+		}
+
+		.panel.active {
+			display: block;
+		}
+
+		.panel h2 {
+			margin-top: 0;
+			font-size: 18px;
+		}
+
+		.panel p {
+			color: var(--muted);
+			line-height: 1.5;
+		}
+
+		@media (max-width: 480px) {
+			.tab {
+				flex: 1 1 auto;
+				padding: 12px 8px;
+				text-align: center;
+			}
+		}
+	</style>
+</head>
+<body>
+	<div class="order-tabs">
+		<div class="tab-bar" role="tablist" aria-label="Order sections">
+			<button class="tab" role="tab" aria-selected="true" data-panel="details">Details</button>
+			<button class="tab" role="tab" aria-selected="false" data-panel="lines">Lines</button>
+			<button class="tab" role="tab" aria-selected="false" data-panel="history">History</button>
+		</div>
+		<div class="tab-content">
+			<section class="panel active" id="details" role="tabpanel">
+				<h2>Details</h2>
+				<p>Order number, customer, status and order date for the selected order.</p>
+			</section>
+			<section class="panel" id="lines" role="tabpanel">
+				<h2>Lines</h2>
+				<p>The line items on this order: product, quantity, unit price and line total.</p>
+			</section>
+			<section class="panel" id="history" role="tabpanel">
+				<h2>History</h2>
+				<p>A log of status changes and edits made to this order over time.</p>
+			</section>
+		</div>
+	</div>
+
+	<script>
+		(function () {
+			var tabs = document.querySelectorAll(".tab");
+			var panels = document.querySelectorAll(".panel");
+			tabs.forEach(function (tab) {
+				tab.addEventListener("click", function () {
+					tabs.forEach(function (t) { t.setAttribute("aria-selected", "false"); });
+					panels.forEach(function (p) { p.classList.remove("active"); });
+					tab.setAttribute("aria-selected", "true");
+					var target = document.getElementById(tab.getAttribute("data-panel"));
+					if (target) { target.classList.add("active"); }
+				});
+			});
+		})();
+	</script>
+</body>
+</html>

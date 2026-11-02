@@ -231,6 +231,87 @@ anchored SQL-`LIKE` patterns; a component's `typeName` is always kept literal
 
 ---
 
+## The scenario matrix (prompt library)
+
+The goldens themselves (recorded sessions + human-reviewed assertions) live in
+the private `Servoy/servoy-ai-skilltest-baselines` repo, not here. What lives
+here is the **prompt library** that makes authoring those goldens fast,
+repeatable and consistent: a committed, human-readable set of prompts a tester
+pastes into Servoy AI to produce each golden.
+
+The library is [`scenarios/SCENARIO-MATRIX.md`](scenarios/SCENARIO-MATRIX.md). It is the single source of
+truth and holds everything as copy-ready fenced blocks — there is no JSON to
+copy from. It has three parts:
+
+1. **Solution setups** — a small set of reusable starting solutions, each with a
+   self-contained **setup prompt** that builds it from an empty solution. Two are
+   defined: `setup-crm-basic` (solution `aiCrmBasic` — a small CRM to enhance /
+   fix / form-test against) and `setup-auth-login` (solution `aiAuthLogin` — an
+   authenticator wired but broken on purpose). Their prose shape specs are under
+   [`scenarios/inputs/setups/`](scenarios/inputs/setups/).
+2. **The scenario matrix** — twenty scenarios spanning the full skill surface:
+   build, enhance, fix (described problem AND stacktrace), review, security-review
+   (both polarities), unit-test, form-test, E2E, modernise and optimise. Each
+   carries a starting state (`empty` or a setup id), a recommended tier and a
+   one-line rationale, with the full prompt below the table.
+3. **Input artifacts** the prompts reference, under
+   [`scenarios/inputs/`](scenarios/inputs/) — e.g. the tab-panel HTML mockup
+   [`scenarios/inputs/specs/03_order_tabs.html`](scenarios/inputs/specs/03_order_tabs.html)
+   for `create-form-order-tabs-from-mockup`, and the two setup specs.
+
+### Solution setups: the setup → save → reuse flow
+
+Most enhance / fix / form-test scenarios need pre-existing code to act on. Rather
+than rebuild that code in every prompt, those scenarios start from a **saved
+Solution Setup**:
+
+1. Run the setup's prompt (from the setups section of `SCENARIO-MATRIX.md`) once,
+   against a fresh `empty` solution in the Servoy AI view, and let the AI finish.
+2. Verify the result against the setup spec in `scenarios/inputs/setups/`.
+3. **Save** the solution — export it, or commit it to a folder/git location — and
+   note that location.
+
+One saved setup is reused by several scenarios, so the pre-built shape is authored
+and reviewed once. `setup-crm-basic` backs `svyfixstacktrace-order-totals`,
+`svycreateformtest-orders` and `enhance-order-total-field`; `setup-auth-login`
+backs `fix-authenticator-not-called`.
+
+### Re-record procedure (producing a golden from a matrix prompt)
+
+For each scenario, to produce or refresh its golden in the private baselines repo:
+
+1. **For a setup-backed scenario, first build its setup solution.** Run the setup
+   prompt against a fresh `empty` solution, verify it against the setup spec in
+   `scenarios/inputs/setups/`, then **save** the solution and note its location.
+   (`empty` scenarios skip this step.)
+2. In the Servoy AI view, run the scenario's prompt against a known-ready server —
+   an `empty` scenario against a fresh solution, a setup-backed scenario against
+   the saved setup solution — and let the AI finish.
+3. Export the session from the Servoy AI (opencode) view.
+4. **Import export…** in the Servoy AI Skill Tests view, choosing the scenario's
+   source: **Empty** for the create/refactor scenarios, or **Folder**/**Git**
+   pointing at the saved setup solution for the enhance/fix/form-test scenarios
+   (with `precondition.solution` = the setup's solution name).
+5. Review and edit the agent-drafted assertions to match the scenario's
+   recommended tier in the matrix table.
+6. Finish, run, and confirm the result is green.
+7. Commit the `<id>/` folder to the private
+   `Servoy/servoy-ai-skilltest-baselines` repo and flip `active: true`.
+
+The four reviewed baselines already in the private repo are worked examples for
+each tier: `form-with-button-and-label` (judge only), `create-customerdetail-form-with-data-bindings`
+(`persists` + `jsunit`), `customer-order-summary-with-i18n` (`persists` + `jsunit`)
+and `building-order_tabs-tab-panel-form-in-servoy` (minimal `persists` +
+judge-authoritative `acceptanceCriteria`).
+
+> A guard test (`ScenarioMatrixTest`, in the `.skilltest.tests` bundle) parses
+> `SCENARIO-MATRIX.md` and fails on drift: it checks every scenario has a
+> non-empty prompt block, that the scenario count matches the stated total, that
+> every setup a scenario names exists, and that every referenced input file is on
+> disk.
+
+---
+
 ## Running
 
 ### In Servoy Developer (interactive)

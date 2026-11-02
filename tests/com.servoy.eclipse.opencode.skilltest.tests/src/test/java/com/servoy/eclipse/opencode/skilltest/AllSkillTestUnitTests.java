@@ -22,6 +22,8 @@ import org.junit.platform.suite.api.Suite;
 
 import com.servoy.eclipse.opencode.skilltest.headless.JUnitXmlReporterTest;
 import com.servoy.eclipse.opencode.skilltest.headless.SkillTestArgumentChestTest;
+import com.servoy.eclipse.opencode.skilltest.outcome.AiExpectationSanitizeTest;
+import com.servoy.eclipse.opencode.skilltest.outcome.ExpectationLlmGeneratorPromptTest;
 import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertionsTest;
 import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeInferenceTest;
 
@@ -47,12 +49,15 @@ import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeInferenceTest;
 	BaselineLoaderTest.class,
 	JsUnitVerifierTest.class,
 	McpToolCallTest.class,
+	ScenarioMatrixTest.class,
 	ScopeForSolutionPathTest.class,
 	SessionTranscriptTest.class,
 	SkillTestResultTest.class,
 	TranscriptComparatorTest.class,
 	OutcomeAssertionsTest.class,
 	OutcomeInferenceTest.class,
+	AiExpectationSanitizeTest.class,
+	ExpectationLlmGeneratorPromptTest.class,
 	SkillTestArgumentChestTest.class,
 	JUnitXmlReporterTest.class
 })
