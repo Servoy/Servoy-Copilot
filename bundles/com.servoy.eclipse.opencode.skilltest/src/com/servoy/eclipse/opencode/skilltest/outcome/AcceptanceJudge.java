@@ -204,6 +204,9 @@ public final class AcceptanceJudge {
 	 *                     relation, valuelist, menu, media, ... (e.g.
 	 *                     {@code order_tabs}), or {@code null} when the baseline
 	 *                     names none
+	 * @param sourceHint   a concrete phrase naming the solution file(s) to read
+	 *                     for that artifact (from {@code PersistKind.sourceHint}),
+	 *                     or {@code null} when there is no single predictable file
 	 * @param mockupPath   the working-dir-relative path of a mockup to reproduce
 	 *                     (e.g. {@code specs/03_order_tabs.html}), or
 	 *                     {@code null} when the baseline declares none
@@ -214,8 +217,8 @@ public final class AcceptanceJudge {
 	 * @param cancel       polled cooperatively; aborts the run when {@code true}
 	 * @return the verdict; on any failure an {@link Verdict#error error} verdict
 	 */
-	public Verdict judge(String subjectName, String mockupPath, List<String> criteria, String judgeModel,
-			String builderModel, BooleanSupplier cancel) {
+	public Verdict judge(String subjectName, String sourceHint, String mockupPath, List<String> criteria,
+			String judgeModel, String builderModel, BooleanSupplier cancel) {
 		if (criteria == null || criteria.isEmpty()) {
 			return Verdict.error("no criteria to judge", null); //$NON-NLS-1$
 		}
@@ -226,7 +229,7 @@ public final class AcceptanceJudge {
 			if (!client.health()) {
 				return Verdict.error("opencode server not ready", null); //$NON-NLS-1$
 			}
-			String prompt = buildPrompt(subjectName, mockupPath, criteria);
+			String prompt = buildPrompt(subjectName, sourceHint, mockupPath, criteria);
 			sessionId = client.createSession("Skill-test acceptance judge"); //$NON-NLS-1$
 			logger.log("[skilltest] acceptance judge: grading " + criteria.size() + " criterion(s) for '" //$NON-NLS-1$ //$NON-NLS-2$
 					+ subjectName + "' as the " + JUDGE_AGENT + " agent, model " + model + " (session " + sessionId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -250,8 +253,31 @@ public final class AcceptanceJudge {
 						+ "; session shape: " + shape); //$NON-NLS-1$
 				return Verdict.error("judge returned no text (model " + model + "); " + shape, null); //$NON-NLS-1$ //$NON-NLS-2$
 			}
-			Verdict v = parseVerdict(answer);
+			Verdict v = parseVerdict(answer, criteria);
+			// The judge must grade EVERY criterion. A verdict that graded none (or
+			// fewer than asked) is not a real pass/fail - it is the judge not doing
+			// the job (empty `criteria[]`), which must never read as PASS. Treat a
+			// short count as an error so the run fails loudly instead of green-washing.
+			if (v.error() == null && (v.results() == null || v.results().size() != criteria.size())) {
+				int graded = v.results() == null ? 0 : v.results().size();
+				logger.log("[skilltest] acceptance judge: graded " + graded + " of " + criteria.size() //$NON-NLS-1$ //$NON-NLS-2$
+						+ " criterion(s) - incomplete verdict, failing"); //$NON-NLS-1$
+				// Log the judge's RAW answer so an incomplete verdict is diagnosable
+				// straight from the Servoy log - no need for the session to survive. Shows
+				// whether the judge returned an empty `criteria[]`, a refusal, a wrong
+				// shape, or said it could not find the artifact.
+				String raw = answer.length() > 4000 ? answer.substring(0, 4000) + "...[truncated]" : answer; //$NON-NLS-1$
+				logger.log("[skilltest] acceptance judge raw answer (incomplete verdict):\n" + raw); //$NON-NLS-1$
+				return Verdict.error("judge graded " + graded + " of " + criteria.size() //$NON-NLS-1$ //$NON-NLS-2$
+						+ " criteria (incomplete verdict)", answer); //$NON-NLS-1$
+			}
 			logger.log("[skilltest] acceptance judge verdict: " + v.summary()); //$NON-NLS-1$
+			if (!v.pass()) {
+				// A failing verdict is only actionable with the judge's own words:
+				// log the raw answer so it is visible in the Servoy AI log.
+				String raw = answer.length() > 4000 ? answer.substring(0, 4000) + "...[truncated]" : answer; //$NON-NLS-1$
+				logger.log("[skilltest] acceptance judge raw answer (failing verdict):\n" + raw); //$NON-NLS-1$
+			}
 			return v;
 		} catch (InterruptedException ie) {
 			Thread.currentThread().interrupt();
@@ -279,14 +305,33 @@ public final class AcceptanceJudge {
 	 * @param subjectName the primary artifact name the baseline targets, or
 	 *                    {@code null}/blank when the baseline names none (the judge
 	 *                    then discovers what the run produced)
+	 * @param sourceHint  a concrete phrase naming the solution file(s) to open for
+	 *                    the named artifact (from {@code PersistKind.sourceHint}),
+	 *                    or {@code null} when there is no single predictable file.
+	 *                    A path to read is what makes the judge reliable - the
+	 *                    original form-only prompt worked because it said "read
+	 *                    forms/<name>.frm", not "search by name" (SVY-21366)
 	 */
-	String buildPrompt(String subjectName, String mockupPath, List<String> criteria) {
+	String buildPrompt(String subjectName, String sourceHint, String mockupPath, List<String> criteria) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("A previous agent carried out a Servoy skill-test task in the active solution."); //$NON-NLS-1$
 		if (subjectName != null && !subjectName.isBlank()) {
-			sb.append(" The main artifact it targeted is named `").append(subjectName).append("`."); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append(" The main artifact it targeted is named `").append(subjectName).append("`"); //$NON-NLS-1$ //$NON-NLS-2$
+			if (sourceHint != null && !sourceHint.isBlank()) {
+				sb.append(" - read its source: ").append(sourceHint).append("."); //$NON-NLS-1$ //$NON-NLS-2$
+			} else {
+				sb.append(" - find and read its source in the active solution."); //$NON-NLS-1$
+			}
+			sb.append('\n');
+		} else {
+			sb.append(" The agent chose the artifact's name itself, so you must DISCOVER what it produced before ") //$NON-NLS-1$
+					.append("you judge - do not assume anything is missing because you were given no name. Call ") //$NON-NLS-1$
+					.append("`servoy-model_getTarget` for the active solution, then `servoy-workspace_getProjectLayout` ") //$NON-NLS-1$
+					.append("(or `servoy-workspace_findFiles`) on it to list what it now contains - its `forms/*.frm`, ") //$NON-NLS-1$
+					.append("`valuelists/*.val`, `relations/*.rel`, `menus/*.men` and scope `*.js` files - find the ") //$NON-NLS-1$
+					.append("one the task produced, and read it with `servoy-workspace_readProjectResource`.\n"); //$NON-NLS-1$
 		}
-		sb.append(" Decide, criterion by criterion, whether the result meets the acceptance criteria below.\n\n"); //$NON-NLS-1$
+		sb.append("Decide, criterion by criterion, whether the result meets the acceptance criteria below.\n\n"); //$NON-NLS-1$
 		if (mockupPath != null && !mockupPath.isBlank()) {
 			sb.append("Mockup to reproduce: `").append(mockupPath.trim()).append("`\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
@@ -294,8 +339,15 @@ public final class AcceptanceJudge {
 		for (int i = 0; i < criteria.size(); i++) {
 			sb.append(i + 1).append(". ").append(criteria.get(i)).append('\n'); //$NON-NLS-1$
 		}
-		sb.append("\nReturn your verdict now: one entry for EACH of the ").append(criteria.size()) //$NON-NLS-1$
-				.append(" criteria above, in the single JSON block your instructions define.\n"); //$NON-NLS-1$
+		// The verdict shape is restated here, next to the parser that reads it: a
+		// run without it answered with its own keys ("met"/"evidence") and said the
+		// prompt "didn't spell out the JSON block format" (SVY-21366).
+		sb.append("\nAnswer with EXACTLY ONE fenced ```json block and nothing after it, with one entry for EACH of the ") //$NON-NLS-1$
+				.append(criteria.size()).append(" criteria above, in this shape:\n\n") //$NON-NLS-1$
+				.append("```json\n") //$NON-NLS-1$
+				.append("{\n  \"overall\": \"pass\" | \"fail\",\n  \"criteria\": [\n") //$NON-NLS-1$
+				.append("    { \"criterion\": \"<the criterion text>\", \"pass\": true | false, \"reason\": \"<why>\" }\n") //$NON-NLS-1$
+				.append("  ]\n}\n```\n"); //$NON-NLS-1$
 		return sb.toString();
 	}
 
@@ -310,6 +362,22 @@ public final class AcceptanceJudge {
 	 *         parseable was found
 	 */
 	Verdict parseVerdict(String answer) {
+		return parseVerdict(answer, null);
+	}
+
+	/**
+	 * As {@link #parseVerdict(String)}, but with the criteria that were asked so a
+	 * verdict entry that omits its {@code criterion} text is backfilled
+	 * positionally (entry <em>i</em> -&gt; {@code criteria[i]}). The judge is told
+	 * to echo each criterion, but models often return a bare
+	 * {@code {pass, reason}}; the criterion text is authoritative from here, not
+	 * from the model, so the report never shows {@code [FAIL] null}.
+	 *
+	 * @param answer   the judge's text (may be {@code null})
+	 * @param criteria the criteria that were graded, for positional backfill (may
+	 *                 be {@code null} to skip backfill)
+	 */
+	Verdict parseVerdict(String answer, List<String> criteria) {
 		String json = extractJson(answer);
 		if (json == null) {
 			return Verdict.error("no JSON verdict found in the judge's answer", answer); //$NON-NLS-1$
@@ -319,11 +387,16 @@ public final class AcceptanceJudge {
 			List<CriterionResult> results = new ArrayList<>();
 			JsonNode arr = root.get("criteria"); //$NON-NLS-1$
 			if (arr != null && arr.isArray()) {
+				int i = 0;
 				for (JsonNode c : arr) {
 					String criterion = textAt(c, "criterion"); //$NON-NLS-1$
-					boolean pass = c.path("pass").asBoolean(false); //$NON-NLS-1$
-					String reason = textAt(c, "reason"); //$NON-NLS-1$
+					if ((criterion == null || criterion.isBlank()) && criteria != null && i < criteria.size()) {
+						criterion = criteria.get(i); // model omitted it - fill from what was asked
+					}
+					boolean pass = criterionPassed(c);
+					String reason = firstText(c, "reason", "evidence", "explanation", "reasoning", "why"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
 					results.add(new CriterionResult(criterion, pass, reason));
+					i++;
 				}
 			}
 			boolean overall;
@@ -503,5 +576,43 @@ public final class AcceptanceJudge {
 		}
 		JsonNode v = node.get(field);
 		return v != null && v.isValueNode() && !v.isNull() ? v.asText() : null;
+	}
+
+	/** The first non-blank text value among {@code fields}, or {@code null}. */
+	private static String firstText(JsonNode node, String... fields) {
+		for (String f : fields) {
+			String t = textAt(node, f);
+			if (t != null && !t.isBlank()) {
+				return t;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Whether a verdict entry passed. Judges do not reliably use the documented
+	 * {@code pass} key - a real run answered {@code "met": true} and the old
+	 * {@code pass}-only read silently turned three passing criteria into FAIL
+	 * (SVY-21366). Accepts {@code pass}/{@code passed}/{@code met}/{@code ok}/
+	 * {@code satisfied} as a boolean or a "pass"/"true"/"yes"/"met" string, and a
+	 * {@code result}/{@code status}/{@code verdict} string; absent means fail.
+	 */
+	static boolean criterionPassed(JsonNode c) {
+		if (c == null) {
+			return false;
+		}
+		for (String f : new String[] { "pass", "passed", "met", "ok", "satisfied", "result", "status", "verdict" }) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+			JsonNode v = c.get(f);
+			if (v == null || v.isNull()) {
+				continue;
+			}
+			if (v.isBoolean()) {
+				return v.booleanValue();
+			}
+			String s = v.asText().trim().toLowerCase(java.util.Locale.ROOT);
+			return s.equals("pass") || s.equals("passed") || s.equals("true") || s.equals("yes") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+					|| s.equals("met") || s.equals("ok"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		return false;
 	}
 }

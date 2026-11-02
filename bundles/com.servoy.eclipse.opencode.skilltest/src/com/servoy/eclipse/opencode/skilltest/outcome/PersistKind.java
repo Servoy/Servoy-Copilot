@@ -155,4 +155,46 @@ public enum PersistKind {
 	public String token() {
 		return name().toLowerCase(Locale.ROOT);
 	}
+
+	/**
+	 * A concrete, readable hint telling the acceptance judge exactly which
+	 * solution file(s) to open for an artifact of this kind named {@code name},
+	 * rather than a vague "find it by name" (which has no file-path recipe and
+	 * left the judge with nothing to read - SVY-21366). Servoy stores each root
+	 * persist at a predictable path under the solution project:
+	 * <ul>
+	 * <li>form -&gt; {@code forms/<name>.frm} (+ its {@code .js}/{@code .less});</li>
+	 * <li>value list -&gt; {@code valuelists/<name>.val};</li>
+	 * <li>relation -&gt; {@code relations/<name>.rel};</li>
+	 * <li>menu -&gt; {@code menus/<name>.men};</li>
+	 * <li>media -&gt; {@code medias/<name>} (and the {@code medias.obj} index);</li>
+	 * <li>scope/global method or variable -&gt; the scope file {@code <scope>.js}
+	 * at the solution root.</li>
+	 * </ul>
+	 *
+	 * @param name the artifact name
+	 * @return a short phrase naming the file(s) to read, or {@code null} when the
+	 *         kind has no single predictable file (e.g. a child component, whose
+	 *         file is its owning form's {@code .frm})
+	 */
+	public String sourceHint(String name) {
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+		switch (this) {
+		case FORM:
+			return "`forms/" + name + ".frm` (plus its `forms/" + name + ".js` and `forms/" + name //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					+ ".less` when present)"; //$NON-NLS-1$
+		case VALUELIST:
+			return "`valuelists/" + name + ".val`"; //$NON-NLS-1$ //$NON-NLS-2$
+		case RELATION:
+			return "`relations/" + name + ".rel`"; //$NON-NLS-1$ //$NON-NLS-2$
+		case MENU:
+			return "`menus/" + name + ".men`"; //$NON-NLS-1$ //$NON-NLS-2$
+		case MEDIA:
+			return "`medias/" + name + "` (and the `medias.obj` index)"; //$NON-NLS-1$ //$NON-NLS-2$
+		default:
+			return null;
+		}
+	}
 }

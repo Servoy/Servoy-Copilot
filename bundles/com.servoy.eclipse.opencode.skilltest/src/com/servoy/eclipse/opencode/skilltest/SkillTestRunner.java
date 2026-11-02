@@ -22,6 +22,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eclipse.core.resources.ResourcesPlugin;
+
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -190,7 +192,9 @@ public final class SkillTestRunner {
 		com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge judge = baseline.hasAcceptanceVerify()
 				? com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.ready(logger::log)
 				: null;
-		String judgeFormName = firstFormName(baseline);
+		com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion judgeSubject = firstSubject(baseline.expected());
+		String judgeSubjectName = judgeSubject != null ? judgeSubject.name() : null;
+		String judgeSourceHint = judgeSubject != null ? judgeSubject.kind().sourceHint(judgeSubject.name()) : null;
 		String judgeMockupPath = firstMockupPath(baseline);
 		logger.log("[skilltest] " + baseline.id() + " replay agent=" + effectiveAgent //$NON-NLS-1$ //$NON-NLS-2$
 				+ " model=" + effectiveModel); //$NON-NLS-1$
@@ -260,6 +264,18 @@ public final class SkillTestRunner {
 				}
 				lastActualCalls = actual.getToolCalls();
 
+				// The build is done. Re-read the active solution from disk BEFORE any
+				// verification tier runs. While the agent writes a persist it can leave
+				// a file transiently invalid (e.g. a two-step .frm edit that briefly has
+				// a duplicate `customProperties` key); the file watcher may deserialize
+				// it in that broken state and the model then holds a failed-load for a
+				// persist whose file is valid again by now. A forced refresh + build
+				// settle re-deserializes the now-valid files, so the outcome checker and
+				// the LLM judge see what the agent actually produced, not a stale failed
+				// load (SVY-21366 - the real cause behind a judge grading a built form
+				// as absent).
+				refreshActiveSolutionFromDisk();
+
 				// Outcome-authoritative: when the baseline declares expected persists,
 				// verify them against the real active-solution model and IGNORE the
 				// transcript comparison (SVY-21366 "focus on the outcome"). Only fall
@@ -306,7 +322,7 @@ public final class SkillTestRunner {
 				if (baseline.hasAcceptanceVerify()) {
 					Baseline.AcceptanceVerify av = baseline.acceptanceVerify();
 					com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict verdict = judge != null
-							? judge.judge(judgeFormName, judgeMockupPath, av.criteria(), av.judgeModel(),
+							? judge.judge(judgeSubjectName, judgeSourceHint, judgeMockupPath, av.criteria(), av.judgeModel(),
 									effectiveModel, cancel)
 							: com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict
 									.error("acceptance judge unavailable (opencode server not ready)", null); //$NON-NLS-1$
@@ -450,14 +466,56 @@ public final class SkillTestRunner {
 	 *         the acceptance judge should inspect ({@code forms/<name>.frm}) - or
 	 *         {@code null} when the baseline declares no form assertion
 	 */
-	private static String firstFormName(Baseline baseline) {
-		for (com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion a : baseline.expected()) {
-			if (a.kind() == com.servoy.eclipse.opencode.skilltest.outcome.PersistKind.FORM && a.name() != null
-					&& !a.name().isBlank()) {
-				return a.name();
+	/**
+	 * The first expected root-by-name persist (form, value list, relation, menu or
+	 * media) the baseline declares - its name AND kind, so the judge can be handed
+	 * both the name and a concrete file path to read. {@code null} when the
+	 * baseline declares no named root persist (the judge then discovers what the
+	 * run produced). Not form-specific. Package-private + list-based so it is
+	 * unit-testable without a whole {@link Baseline}.
+	 *
+	 * @param expected the baseline's expected outcomes (may be {@code null}/empty)
+	 * @return the first root-by-name persist, or {@code null} when none
+	 */
+	static com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion firstSubject(
+			List<com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion> expected) {
+		if (expected == null) {
+			return null;
+		}
+		for (com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion a : expected) {
+			if (a != null && a.kind() != null && a.kind().isRootByName() && a.name() != null && !a.name().isBlank()) {
+				return a;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Re-reads the active solution's files from disk and waits for the Servoy
+	 * build to settle, so verification sees the persists the agent actually
+	 * produced - not a stale state the file watcher captured while a file was
+	 * transiently invalid mid-edit (SVY-21366). Best-effort: logs and returns on
+	 * any failure rather than aborting the run.
+	 */
+	private void refreshActiveSolutionFromDisk() {
+		try {
+			IServoyModel model = ServoyModelFinder.getServoyModel();
+			ServoyProject active = model != null ? model.getActiveProject() : null;
+			if (active == null || active.getProject() == null) {
+				return;
+			}
+			active.getProject().refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE,
+					new org.eclipse.core.runtime.NullProgressMonitor());
+			org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
+			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new org.eclipse.core.runtime.NullProgressMonitor());
+			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new org.eclipse.core.runtime.NullProgressMonitor());
+			logger.log("[skilltest] refreshed active solution '" + active.getProject().getName() //$NON-NLS-1$
+					+ "' from disk and settled build jobs before verifying"); //$NON-NLS-1$
+		} catch (org.eclipse.core.runtime.OperationCanceledException | InterruptedException ie) {
+			Thread.currentThread().interrupt();
+		} catch (RuntimeException | org.eclipse.core.runtime.CoreException ex) {
+			logger.log("[skilltest] refresh before verify failed (continuing): " + ex.getMessage()); //$NON-NLS-1$
+		}
 	}
 
 	/**

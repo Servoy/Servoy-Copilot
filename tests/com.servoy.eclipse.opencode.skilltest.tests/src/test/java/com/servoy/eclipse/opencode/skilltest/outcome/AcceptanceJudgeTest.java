@@ -32,6 +32,12 @@ import org.junit.jupiter.api.Test;
  * Unit tests for {@link AcceptanceJudge} - the judge-model resolution, prompt
  * building and verdict parsing (SVY-21366). Pure logic: no server, no LLM. The
  * live judging path (HTTP to opencode) is only exercisable in the workbench.
+ * <p>
+ * The prompt tests pin the artifact-finding contract: the prompt names the
+ * targeted artifact and tells the judge to find+read it, and when no name is
+ * given it tells the judge to enumerate the solution rather than assume the
+ * artifact is missing.
+ * </p>
  */
 class AcceptanceJudgeTest {
 
@@ -76,51 +82,81 @@ class AcceptanceJudgeTest {
 	void judgeRunsAsDedicatedJudgeAgent() {
 		// The judge's independence is a separate AGENT in a separate session. The
 		// agent must be the dedicated 'Judge' primary agent (skills pack), not the
-		// hidden read-only 'Reviewer' subagent (which cannot be a session agent and
-		// would block servoy-form_getFormLayout), and never the builder's agent.
+		// hidden read-only 'Reviewer' subagent (which cannot be a session agent),
+		// and never the builder's agent.
 		assertEquals("Judge", AcceptanceJudge.JUDGE_AGENT);
 	}
 
 	// --- prompt building ---
 
 	@Test
-	@DisplayName("prompt names the form, lists the criteria, and points the judge at the sources to read")
-	void promptCarriesFormCriteriaAndSources() {
-		String p = JUDGE.buildPrompt("order_tabs", "specs/03_order_tabs.html", CRITERIA);
-		assertTrue(p.contains("order_tabs"), "names the form");
-		assertTrue(p.contains("forms/order_tabs.frm"), "points at the .frm");
-		assertTrue(p.contains("forms/order_tabs.js"), "points at the .js (onShow)");
-		assertTrue(p.contains(".less"), "points at the less/css");
+	@DisplayName("a named artifact with a source hint tells the judge the exact file(s) to read")
+	void promptNamesArtifactAndGivesSourceHint() {
+		String hint = "`forms/order_tabs.frm` (plus its `forms/order_tabs.js` and `forms/order_tabs.less` when present)"; // 4-arg buildPrompt
+		String p = JUDGE.buildPrompt("order_tabs", hint, "specs/03_order_tabs.html", CRITERIA);
+		assertTrue(p.contains("`order_tabs`"), "names the artifact");
+		assertTrue(p.contains("read its source:"), "tells the judge to read its source");
+		assertTrue(p.contains("forms/order_tabs.frm"), "gives the concrete file path to read");
 		assertTrue(p.contains("specs/03_order_tabs.html"), "points at the mockup");
 		assertTrue(p.contains("The History tab is disabled"), "lists every criterion");
-		assertTrue(p.contains("```json"), "asks for one fenced json verdict");
-		assertTrue(p.contains("\"overall\""), "specifies the verdict shape");
 	}
 
 	@Test
-	@DisplayName("prompt without a mockup path omits the mockup line but still asks for the verdict")
+	@DisplayName("a value-list source hint points at valuelists/<name>.val, not a form path")
+	void valueListSourceHintIsNotFormPath() {
+		String hint = "`valuelists/orderStatusVl.val`";
+		String p = JUDGE.buildPrompt("orderStatusVl", hint, null, CRITERIA);
+		assertTrue(p.contains("valuelists/orderStatusVl.val"), "gives the value-list file to read");
+		assertFalse(p.contains("forms/orderStatusVl"), "must not assume a forms/<name>.frm path");
+	}
+
+	@Test
+	@DisplayName("a named artifact with no source hint still tells the judge to find+read its source")
+	void namedWithoutHintStillFindsIt() {
+		String p = JUDGE.buildPrompt("someThing", null, null, CRITERIA);
+		assertTrue(p.contains("`someThing`"), "names the artifact");
+		assertTrue(p.toLowerCase().contains("find and read its source"), "tells the judge to find it");
+	}
+
+	@Test
+	@DisplayName("prompt without a mockup path omits the mockup line but still lists the criteria")
 	void promptWithoutMockup() {
-		String p = JUDGE.buildPrompt("order_tabs", null, CRITERIA);
-		assertFalse(p.contains("read the mockup it must reproduce"), "no mockup line when none given");
-		assertTrue(p.contains("```json"));
+		String p = JUDGE.buildPrompt("order_tabs", "`forms/order_tabs.frm`", null, CRITERIA);
+		assertFalse(p.contains("Mockup to reproduce"), "no mockup line when none given");
+		assertTrue(p.contains("The History tab is disabled"), "still lists the criteria");
 	}
 
 	@Test
-	@DisplayName("prompt offers the screenshot tool for visual fidelity")
-	void promptOffersScreenshotTool() {
-		String p = JUDGE.buildPrompt("order_tabs", "specs/03_order_tabs.html", CRITERIA);
-		assertTrue(p.contains("servoy-form_getFormLayout"), "names the render/screenshot tool");
-		assertTrue(p.contains("screenshot=true"), "tells the judge to request the screenshot");
-	}
-
-	@Test
-	@DisplayName("with no form name the judge is told to discover the form itself (no forms/null.frm)")
-	void promptWithoutFormName() {
-		String p = JUDGE.buildPrompt(null, null, CRITERIA);
+	@DisplayName("with no name the judge is told to DISCOVER via getTarget+getProjectLayout, not assume missing or named null")
+	void promptWithoutSubjectNameTellsJudgeToDiscover() {
+		String p = JUDGE.buildPrompt(null, null, null, CRITERIA);
+		assertFalse(p.contains("`null`"), "must never tell the judge the artifact is named null");
 		assertFalse(p.contains("forms/null"), "must not build a forms/null path");
-		assertTrue(p.toLowerCase().contains("discover it") || p.toLowerCase().contains("locate the created form"),
-				"tells the judge to find the agent-named form");
-		assertTrue(p.contains("```json"), "still asks for the verdict");
+		assertTrue(p.contains("servoy-model_getTarget"), "points the judge at the active-solution tool");
+		assertTrue(p.contains("servoy-workspace_getProjectLayout") || p.contains("servoy-workspace_findFiles"),
+				"points the judge at a tool that lists the solution's contents");
+		assertTrue(p.toLowerCase().contains("do not assume"),
+				"warns the judge not to fail just because no name was given");
+	}
+
+	@Test
+	@DisplayName("prompt binds the verdict to one entry per supplied criterion")
+	void promptBindsOneEntryPerCriterion() {
+		String p = JUDGE.buildPrompt("order_tabs", "`forms/order_tabs.frm`", null, CRITERIA);
+		assertTrue(p.contains("one entry for EACH of the " + CRITERIA.size()),
+				"requires exactly one verdict entry per criterion");
+	}
+
+	@Test
+	@DisplayName("prompt spells out the JSON verdict shape the parser reads (pass/reason keys)")
+	void promptSpellsOutVerdictShape() {
+		// Without this block a real judge invented its own keys (met/evidence) - SVY-21366.
+		String p = JUDGE.buildPrompt(null, null, null, CRITERIA);
+		assertTrue(p.contains("```json"), "asks for one fenced json block");
+		assertTrue(p.contains("\"overall\""), "names the overall key");
+		assertTrue(p.contains("\"criterion\""), "names the criterion key");
+		assertTrue(p.contains("\"pass\""), "names the pass key the parser reads");
+		assertTrue(p.contains("\"reason\""), "names the reason key the parser reads");
 	}
 
 	// --- verdict parsing ---
@@ -174,6 +210,47 @@ class AcceptanceJudgeTest {
 				""";
 		AcceptanceJudge.Verdict v = JUDGE.parseVerdict(answer);
 		assertTrue(v.pass(), "all criteria pass -> overall pass");
+	}
+
+	@Test
+	@DisplayName("a real judge answer using met/evidence (not pass/reason) parses as PASS with reasons")
+	void parsesMetEvidenceShapeFromRealRun() {
+		// Shape of a real local run (SVY-21366): the judge graded all three criteria as met,
+		// but used `met`/`evidence`. The old pass-only read turned this into FAIL (0/3).
+		String answer = """
+				Both components are in the form, so all three criteria pass.
+				```json
+				{ "solution": "aiTestSolution2", "form": "buttonLabelForm", "criteria": [
+				  { "id": 1, "criterion": "A new form was created", "met": true, "evidence": "forms/buttonLabelForm.frm exists" },
+				  { "id": 2, "criterion": "The form contains a button", "met": true, "evidence": "button_clickme is a bootstrapcomponents-button" },
+				  { "id": 3, "criterion": "The form contains a label", "met": true, "evidence": "label_hello is a bootstrapcomponents-label" }
+				], "overall": "PASS" }
+				```
+				""";
+		AcceptanceJudge.Verdict v = JUDGE.parseVerdict(answer, List.of("a", "b", "c"));
+		assertNull(v.error());
+		assertTrue(v.pass(), "all three criteria met -> overall pass");
+		assertEquals(3, v.results().size());
+		assertTrue(v.results().stream().allMatch(AcceptanceJudge.CriterionResult::pass), "met:true reads as pass");
+		assertEquals("forms/buttonLabelForm.frm exists", v.results().get(0).reason(), "evidence reads as the reason");
+	}
+
+	@Test
+	@DisplayName("met:false and a 'fail' status string both read as fail")
+	void metFalseAndStatusStringFail() {
+		String answer = """
+				```json
+				{ "criteria": [
+				  { "criterion": "a", "met": false, "evidence": "missing" },
+				  { "criterion": "b", "status": "fail", "explanation": "no label" }
+				] }
+				```
+				""";
+		AcceptanceJudge.Verdict v = JUDGE.parseVerdict(answer, List.of("a", "b"));
+		assertFalse(v.pass());
+		assertFalse(v.results().get(0).pass());
+		assertFalse(v.results().get(1).pass());
+		assertEquals("no label", v.results().get(1).reason());
 	}
 
 	@Test
