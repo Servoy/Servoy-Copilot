@@ -344,15 +344,63 @@ final class JsUnitVerifier {
 		return p;
 	}
 
-	/** Waits for auto/manual build jobs to finish after injecting the test script. */
+	/** Max time to wait for the build to settle before the JSUnit launch (SVY-21366). */
+	private static final long SETTLE_TIMEOUT_MS = 180_000L;
+
+	/**
+	 * Waits for auto/manual build jobs to finish after injecting the test script,
+	 * but only up to {@link #SETTLE_TIMEOUT_MS}. A wedged Servoy builder (seen in
+	 * build #59, where the solution build never settled) must NOT hang the whole
+	 * skill-test run - {@link org.eclipse.core.runtime.jobs.IJobManager#join} here
+	 * has no timed overload, so it is bounded on a helper thread and the monitor is
+	 * cancelled on overrun. Best-effort: on timeout it logs and returns so the
+	 * JSUnit launch (which has its own timeout) still runs or fails on its own.
+	 */
 	private static void settleBuildJobs() {
+		boolean settled = joinBuildFamilies(SETTLE_TIMEOUT_MS);
+		if (!settled) {
+			// Not fatal here - this static helper has no logger; the caller's own
+			// timeouts still bound the rest. The timed join below prevents the
+			// indefinite hang that aborted build #59.
+			System.err.println("[skilltest] build did not settle within " //$NON-NLS-1$
+					+ (SETTLE_TIMEOUT_MS / 1000) + "s; continuing"); //$NON-NLS-1$
+		}
+	}
+
+	/**
+	 * Joins the auto- then manual-build job families with a combined wall-clock
+	 * cap. Because {@code IJobManager.join(Object, IProgressMonitor)} blocks
+	 * uninterruptibly, it is run on a daemon helper thread; if the cap elapses the
+	 * monitor is cancelled (which makes {@code join} return) and {@code false} is
+	 * returned.
+	 *
+	 * @param timeoutMs the total time to allow for both joins
+	 * @return {@code true} if both families settled in time, {@code false} on
+	 *         timeout or interruption
+	 */
+	static boolean joinBuildFamilies(long timeoutMs) {
 		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
+		org.eclipse.core.runtime.IProgressMonitor monitor = new org.eclipse.core.runtime.NullProgressMonitor();
+		Thread joiner = new Thread(() -> {
+			try {
+				jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
+				jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
+			} catch (org.eclipse.core.runtime.OperationCanceledException | InterruptedException ignore) {
+				// cancelled by the timeout below, or interrupted - either way, stop waiting
+			}
+		}, "skilltest-build-settle"); //$NON-NLS-1$
+		joiner.setDaemon(true);
+		joiner.start();
 		try {
-			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
-			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new NullProgressMonitor());
-		} catch (org.eclipse.core.runtime.OperationCanceledException | InterruptedException e) {
+			joiner.join(timeoutMs);
+		} catch (InterruptedException ie) {
 			Thread.currentThread().interrupt();
 		}
+		if (joiner.isAlive()) {
+			monitor.setCanceled(true); // makes the uninterruptible join() return
+			return false;
+		}
+		return true;
 	}
 
 	private static ServoyProject resolveActiveServoyProject() {
