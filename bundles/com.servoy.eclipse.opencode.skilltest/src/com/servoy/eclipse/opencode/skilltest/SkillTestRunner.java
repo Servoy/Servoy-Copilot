@@ -506,13 +506,14 @@ public final class SkillTestRunner {
 			}
 			active.getProject().refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE,
 					new org.eclipse.core.runtime.NullProgressMonitor());
-			org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
-			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new org.eclipse.core.runtime.NullProgressMonitor());
-			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new org.eclipse.core.runtime.NullProgressMonitor());
+			// Bounded settle: a wedged builder must not hang the whole run (SVY-21366,
+			// build #59 hung on an unbounded build-settle join). Reuse JsUnitVerifier's
+			// timed helper so the wait is capped and a stuck build is reported, not awaited
+			// forever.
+			boolean settled = JsUnitVerifier.joinBuildFamilies(180_000L);
 			logger.log("[skilltest] refreshed active solution '" + active.getProject().getName() //$NON-NLS-1$
-					+ "' from disk and settled build jobs before verifying"); //$NON-NLS-1$
-		} catch (org.eclipse.core.runtime.OperationCanceledException | InterruptedException ie) {
-			Thread.currentThread().interrupt();
+					+ (settled ? "' from disk and settled build jobs before verifying" //$NON-NLS-1$
+							: "' from disk; build did not settle within 180s, verifying anyway")); //$NON-NLS-1$
 		} catch (RuntimeException | org.eclipse.core.runtime.CoreException ex) {
 			logger.log("[skilltest] refresh before verify failed (continuing): " + ex.getMessage()); //$NON-NLS-1$
 		}
