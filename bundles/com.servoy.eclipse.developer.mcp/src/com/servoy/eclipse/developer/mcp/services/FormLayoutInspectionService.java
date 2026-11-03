@@ -20,11 +20,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.browser.LocationAdapter;
+import org.eclipse.swt.browser.LocationEvent;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
@@ -72,12 +77,12 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * </p>
  *
  * <p>
- * <b>Stale-form safety.</b> On reuse the reused browser is first navigated to {@code about:blank}
- * and confirmed cleared (the previous {@code .svy-form} / {@code window.formtemplateName} marker
- * is gone) before the new form URL is loaded. Both the readiness predicate and the DOM read are
- * <em>form-specific</em>: they require {@code window.formtemplateName} to equal the requested
- * form name, so a still-live previous form cannot satisfy readiness or be read during the brief
- * window before the new page commits.
+ * <b>Stale-form safety.</b> Every call navigates to a URL carrying a unique query parameter, so a new
+ * document is always created, and the readiness predicate additionally requires the document's
+ * {@code performance.timeOrigin} to be later than the start of the navigation. Both the readiness predicate
+ * and the DOM read are <em>form-specific</em> (they require {@code window.formtemplateName} to equal the
+ * requested form name). Script evaluations are never issued while the new document is still committing, and
+ * each one runs with a hard time cap, because Equo's {@code evaluate} can otherwise block forever.
  * </p>
  *
  * <p>
@@ -95,15 +100,40 @@ public class FormLayoutInspectionService
 	 */
 	private static final int RESULT_CAP = 24_000;
 
-	/** Default offscreen viewport for the utility browser. */
+	/** Default offscreen viewport for the utility browser (used when no viewport is requested). */
 	private static final int VIEWPORT_WIDTH = 1280;
 	private static final int VIEWPORT_HEIGHT = 1024;
+
+	/** Accepted range (px) for a requested viewport width/height (SVY-21591). */
+	static final int MIN_VIEWPORT_SIZE = 200;
+	static final int MAX_VIEWPORT_SIZE = 4000;
+
+	/** Tolerance (px) when checking the rendered {@code window.innerWidth} against a requested width. */
+	private static final int VIEWPORT_WIDTH_TOLERANCE = 2;
 
 	/** Poll interval while awaiting render-complete. */
 	private static final long POLL_INTERVAL_MS = 150;
 
-	/** Max time spent confirming the previous document was cleared before navigating. */
-	private static final long CLEAR_BUDGET_MS = 2000;
+	/**
+	 * Hard cap on one script evaluation. Equo's {@code Chromium.evaluate} waits on a future with no timeout, so an
+	 * evaluation that races a navigation never returns; every evaluation therefore runs with its own cap.
+	 */
+	private static final long POLL_EVAL_TIMEOUT_MS = 5_000;
+	private static final long READ_EVAL_TIMEOUT_MS = 15_000;
+	private static final long DIAGNOSTIC_EVAL_TIMEOUT_MS = 2_000;
+
+	/** Without a location-changed event for the new navigation, start evaluating anyway after this long. */
+	private static final long COMMIT_WAIT_MS = 3_000;
+
+	/** How long to wait for the browser to report a new width after the shell was resized to correct it. */
+	private static final long ALIGN_WAIT_MS = 2_000;
+
+	/** Allowed clock difference between this JVM and the page when comparing {@code performance.timeOrigin}. */
+	private static final long NAV_CLOCK_SLACK_MS = 200;
+
+	/** Detail appended to a TIMEOUT when the browser stopped answering script evaluations. */
+	private static final String STUCK_DETAIL =
+		" {\"scriptEvaluation\":\"the browser did not answer a script evaluation (page navigating or Chromium busy)\"}";
 
 	/**
 	 * Injected DOM-read JavaScript template. Reads the requested subtree ({@code .svy-form} or
@@ -152,7 +182,8 @@ public class FormLayoutInspectionService
 		"      var key = cssPath(el);\n" +
 		"      appearance[key] = { box: box(el), styles: styles }; }\n" +
 		"    return JSON.stringify({ form: (window.formtemplateName || null), selector: (sel || '.svy-form'),\n" +
-		"      viewport: box(root), html: root.outerHTML, appearance: appearance });\n" +
+		"      viewport: box(root), window: { width: window.innerWidth, height: window.innerHeight },\n" +
+		"      html: root.outerHTML, appearance: appearance });\n" +
 		"  } catch (err) { return JSON.stringify({ error: String(err) }); }\n" +
 		"})();";
 
@@ -161,12 +192,17 @@ public class FormLayoutInspectionService
 	 * {@code window.formtemplateName} equals the requested form (so a stale previous form
 	 * cannot trip it) <em>and</em> the requested root exists with at least one laid-out node
 	 * (non-zero bounding box). Placeholders: {@code %1$s} = JSON-encoded form name,
-	 * {@code %2$s} = JSON-encoded selector or {@code null}.
+	 * {@code %2$s} = JSON-encoded selector or {@code null}, {@code %3$s} = earliest acceptable
+	 * {@code performance.timeOrigin} (epoch ms), so a document that started loading before this navigation
+	 * (a stale previous render) can never satisfy it. The viewport width is deliberately NOT
+	 * part of readiness: it is verified after the read (see {@code getFormLayout}), so a browser that
+	 * ignores the resize yields a fast error naming the actual width instead of a render timeout.
 	 */
 	private static final String READINESS_JS_TEMPLATE = "" +
 		"return (function(){\n" +
 		"  var expected = %1$s;\n" +
 		"  if (String(window.formtemplateName) !== String(expected)) return false;\n" +
+		"  if (performance.timeOrigin < %3$s) return false;\n" +
 		"  var sel = %2$s;\n" +
 		"  var root = sel ? document.querySelector(sel) : document.querySelector('.svy-form');\n" +
 		"  if (!root) return false;\n" +
@@ -177,15 +213,19 @@ public class FormLayoutInspectionService
 		"})();";
 
 	/**
-	 * Cleared probe. {@code return}s {@code true} when the previous document is gone: no
-	 * {@code .svy-form} in the DOM and no {@code window.formtemplateName} marker. Used after
-	 * navigating to {@code about:blank} on reuse so a stale form cannot satisfy the readiness
-	 * predicate during the brief window before the new page commits.
+	 * Diagnostic probe evaluated only after a render timeout: the page that is actually loaded, whether it
+	 * is the requested form, whether {@code .svy-form} exists and has a box, and the real viewport size.
 	 */
-	private static final String CLEARED_JS = "" +
+	private static final String DIAGNOSTIC_JS = "" +
 		"return (function(){\n" +
-		"  if (document.querySelector('.svy-form')) return false;\n" +
-		"  return (typeof window.formtemplateName === 'undefined') || !window.formtemplateName;\n" +
+		"  try {\n" +
+		"    var r = document.querySelector('.svy-form'); var b = r ? r.getBoundingClientRect() : null;\n" +
+		"    return JSON.stringify({ href: String(location.href), readyState: document.readyState,\n" +
+		"      formtemplateName: String(window.formtemplateName), svyForm: !!r,\n" +
+		"      svyFormBox: b ? { w: Math.round(b.width), h: Math.round(b.height) } : null,\n" +
+		"      innerWidth: window.innerWidth, innerHeight: window.innerHeight,\n" +
+		"      bodyChildren: document.body ? document.body.children.length : -1 });\n" +
+		"  } catch (err) { return JSON.stringify({ error: String(err) }); }\n" +
 		"})();";
 
 	/**
@@ -224,10 +264,32 @@ public class FormLayoutInspectionService
 	 */
 	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds, boolean sampleData)
 	{
+		return getFormLayout(formName, selector, screenshot, timeoutSeconds, sampleData, null, null);
+	}
+
+	/**
+	 * As {@link #getFormLayout(String, String, boolean, int, boolean)}, rendering at a requested viewport (SVY-21591)
+	 * so responsive (media-query) layouts can be verified at e.g. 1281 / 768 / 375 px.
+	 *
+	 * @param viewportWidth requested viewport width in px ({@value #MIN_VIEWPORT_SIZE}-{@value #MAX_VIEWPORT_SIZE}),
+	 *            or {@code null} for the default
+	 * @param viewportHeight requested viewport height in px (same range), or {@code null} for the default
+	 */
+	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds, boolean sampleData,
+		Integer viewportWidth, Integer viewportHeight)
+	{
 		if (formName == null || formName.isBlank())
 		{
 			return FormLayoutResult.error("Error: Form name must not be null or empty.");
 		}
+		String viewportError = validateViewport("viewportWidth", viewportWidth);
+		if (viewportError == null) viewportError = validateViewport("viewportHeight", viewportHeight);
+		if (viewportError != null)
+		{
+			return FormLayoutResult.error(viewportError);
+		}
+		int width = viewportWidth != null ? viewportWidth.intValue() : VIEWPORT_WIDTH;
+		int height = viewportHeight != null ? viewportHeight.intValue() : VIEWPORT_HEIGHT;
 
 		// active-solution + form resolution (named, actionable messages - never a hang).
 		// Resolve against the editing FLATTENED solution, not the active solution's own editing
@@ -260,18 +322,37 @@ public class FormLayoutInspectionService
 		long timeoutMs = Math.max(1, timeoutSeconds) * 1000L;
 		String cssSelector = (selector != null && !selector.isBlank()) ? selector.trim() : null;
 
-		renderLock.lock();
+		// A render that never returns (e.g. a Chromium evaluate that hangs) must not make every later call
+		// queue behind it and time out one by one: wait for the lock only as long as this call may take.
+		boolean locked;
+		try
+		{
+			locked = renderLock.tryLock(timeoutMs, TimeUnit.MILLISECONDS);
+		}
+		catch (InterruptedException ie)
+		{
+			Thread.currentThread().interrupt();
+			return FormLayoutResult.error("Error: interrupted while waiting for another getFormLayout render to finish.");
+		}
+		if (!locked)
+		{
+			return FormLayoutResult.error("Another getFormLayout render is still in progress (or stuck) after " + timeoutSeconds +
+				"s, so this call did not start. Wait for it to finish, or restart Servoy Developer if it never does.");
+		}
 		try
 		{
 			AtomicReference<String> failure = new AtomicReference<>();
-			String rawRead = renderAndRead(formName, cssSelector, url, timeoutMs, failure);
+			String rawRead = renderAndRead(formName, cssSelector, url, timeoutMs, width, height, failure);
 			if (failure.get() != null)
 			{
 				String reason = failure.get();
-				if ("TIMEOUT".equals(reason))
+				if (reason.startsWith("TIMEOUT"))
 				{
-					return FormLayoutResult
-						.error("Form '" + formName + "' did not finish rendering within " + timeoutSeconds + "s.");
+					String detail = reason.substring("TIMEOUT".length());
+					ServoyLog.logWarning("FormLayoutInspectionService: form '" + formName + "' did not finish rendering at " + width + "x" +
+						height + " within " + timeoutSeconds + "s" + detail, null);
+					return FormLayoutResult.error("Form '" + formName + "' did not finish rendering within " + timeoutSeconds + "s" +
+						(detail.isEmpty() ? "." : " (viewport " + width + "x" + height + "). Browser state at timeout:" + detail));
 				}
 				if ("NO_SVY_FORM".equals(reason))
 				{
@@ -293,6 +374,17 @@ public class FormLayoutInspectionService
 				return FormLayoutResult.error("Error rendering form '" + formName + "': " + reason);
 			}
 
+			// SVY-21591: an explicitly requested width must really have been applied; otherwise the layout
+			// the caller reads would silently be the default one.
+			if (viewportWidth != null)
+			{
+				int actualWidth = mapper.readTree(rawRead).path("window").path("width").asInt(-1);
+				if (Math.abs(actualWidth - width) > VIEWPORT_WIDTH_TOLERANCE)
+				{
+					return FormLayoutResult.error("Error: requested viewportWidth " + width + " but the browser rendered at " +
+						actualWidth + " px, so the layout would not reflect the requested width. The viewport could not be applied.");
+				}
+			}
 			// Capture a screenshot of the whole rendered form when requested. Only for the whole
 			// form (a screenshot of a single selected subtree adds little). This runs on the
 			// current background (servlet) thread - NOT inside syncExec - because
@@ -318,12 +410,12 @@ public class FormLayoutInspectionService
 
 	/**
 	 * Drives the hidden browser on the SWT display thread: acquire handle (creating the
-	 * browser + offscreen shell on first use), clear the previous document ({@code about:blank}
-	 * + confirm cleared), navigate to the form, poll until the <em>form-specific</em> readiness
-	 * predicate holds or the timeout elapses, then evaluate the <em>form-specific</em> DOM read.
+	 * browser + offscreen shell on first use), apply the viewport, navigate to the form (a fresh document
+	 * every time), poll - with every script evaluation time-capped - until the <em>form-specific</em>
+	 * readiness predicate holds or the timeout elapses, then evaluate the <em>form-specific</em> DOM read.
 	 * Returns the raw read JSON string, or leaves a reason in {@code failure}.
 	 */
-	private String renderAndRead(String formName, String cssSelector, String url, long timeoutMs,
+	private String renderAndRead(String formName, String cssSelector, String url, long timeoutMs, int width, int height,
 		AtomicReference<String> failure)
 	{
 		Display display = Display.getDefault();
@@ -331,7 +423,6 @@ public class FormLayoutInspectionService
 
 		String formNameLiteral = jsStringLiteral(formName);
 		String selectorLiteral = cssSelector == null ? "null" : jsStringLiteral(cssSelector);
-		String readinessJs = String.format(READINESS_JS_TEMPLATE, formNameLiteral, selectorLiteral);
 		String readJs = String.format(READ_JS_TEMPLATE, formNameLiteral, selectorLiteral);
 
 		// create (first call) + clear the previous document so no stale form/marker survives.
@@ -343,7 +434,9 @@ public class FormLayoutInspectionService
 			try
 			{
 				BrowserHandle h = ensureHandle(display);
-				h.browser.setUrl("about:blank");
+				// always (re)apply the requested viewport - the browser is reused, so a previous narrow
+				// render must not leak into this call (SVY-21591)
+				applyViewport(h, width, height);
 			}
 			catch (Throwable t)
 			{
@@ -357,34 +450,13 @@ public class FormLayoutInspectionService
 			return null;
 		}
 
-		// confirm the previous .svy-form / marker is gone (bounded, best-effort)
-		long clearDeadline = System.currentTimeMillis() + CLEAR_BUDGET_MS;
-		while (System.currentTimeMillis() < clearDeadline)
-		{
-			boolean[] clearedRef = new boolean[] { false };
-			display.syncExec(() -> {
-				try
-				{
-					BrowserHandle h = handle;
-					if (h != null && !h.browser.isDisposed())
-					{
-						Object r = h.browser.evaluate(CLEARED_JS);
-						clearedRef[0] = Boolean.TRUE.equals(r);
-					}
-				}
-				catch (Exception e)
-				{
-					// transient during navigation; keep polling
-				}
-			});
-			if (clearedRef[0])
-			{
-				break;
-			}
-			pumpOrWait(display, clearDeadline);
-		}
-
-		// navigate to the form
+		// Navigate to the form. A unique query parameter forces a real navigation to a NEW document even when the
+		// previous call rendered the same form, and the readiness probe rejects any document that started loading
+		// before this moment, so a stale previous render can never be read. This replaces the old about:blank round
+		// trip, whose script evaluation could hang forever inside Chromium.
+		long navStart = System.currentTimeMillis();
+		String navUrl = url + (url.indexOf('?') >= 0 ? "&" : "?") + "svyRender=" + navStart;
+		String readinessJs = String.format(READINESS_JS_TEMPLATE, formNameLiteral, selectorLiteral, Long.toString(navStart - NAV_CLOCK_SLACK_MS));
 		display.syncExec(() -> {
 			try
 			{
@@ -394,7 +466,7 @@ public class FormLayoutInspectionService
 					failure.set("browser disposed");
 					return;
 				}
-				h.browser.setUrl(url);
+				h.browser.setUrl(navUrl);
 			}
 			catch (Exception e)
 			{
@@ -406,63 +478,53 @@ public class FormLayoutInspectionService
 			return null;
 		}
 
-		// bounded await-ready: poll on the display thread; never Thread.sleep on it
+		// bounded await-ready: never evaluate before the new document has committed (or COMMIT_WAIT_MS passed),
+		// and give every evaluation a hard cap so one that never returns cannot wedge the render lock
+		AtomicBoolean evalStuck = new AtomicBoolean(false);
 		long deadline = System.currentTimeMillis() + timeoutMs;
 		boolean ready = false;
 		while (System.currentTimeMillis() < deadline)
 		{
-			boolean[] readyRef = new boolean[] { false };
-			display.syncExec(() -> {
-				try
-				{
-					BrowserHandle h = handle;
-					if (h != null && !h.browser.isDisposed())
-					{
-						Object r = h.browser.evaluate(readinessJs);
-						readyRef[0] = Boolean.TRUE.equals(r);
-					}
-				}
-				catch (Exception e)
-				{
-					// transient during navigation; keep polling
-				}
-			});
-			if (readyRef[0])
+			BrowserHandle current = handle;
+			boolean committed = current != null && (current.committedAtMs >= navStart || System.currentTimeMillis() - navStart > COMMIT_WAIT_MS);
+			if (committed)
 			{
-				ready = true;
-				break;
+				Object r = evaluateBounded(display, readinessJs, POLL_EVAL_TIMEOUT_MS, evalStuck);
+				if (evalStuck.get())
+				{
+					break;
+				}
+				if (Boolean.TRUE.equals(r))
+				{
+					ready = true;
+					break;
+				}
 			}
 			pumpOrWait(display, deadline);
 		}
 
 		if (!ready)
 		{
-			failure.set("TIMEOUT");
+			failure.set("TIMEOUT" + (evalStuck.get() ? STUCK_DETAIL : describeBrowserState(display)));
+			return null;
+		}
+
+		// make the browser's real width equal the requested one (it reports a little more than the shell size)
+		alignViewportWidth(display, width, height, evalStuck);
+		if (evalStuck.get())
+		{
+			failure.set("TIMEOUT" + STUCK_DETAIL);
 			return null;
 		}
 
 		// read the rendered subtree HTML + appearance map
-		display.syncExec(() -> {
-			try
-			{
-				BrowserHandle h = handle;
-				if (h == null || h.browser.isDisposed())
-				{
-					failure.set("browser disposed");
-					return;
-				}
-				Object r = h.browser.evaluate(readJs);
-				readResult.set(r == null ? null : r.toString());
-			}
-			catch (Exception e)
-			{
-				failure.set(e.getMessage() != null ? e.getMessage() : e.toString());
-			}
-		});
-		if (failure.get() != null)
+		Object readValue = evaluateBounded(display, readJs, READ_EVAL_TIMEOUT_MS, evalStuck);
+		if (evalStuck.get())
 		{
+			failure.set("TIMEOUT" + STUCK_DETAIL);
 			return null;
 		}
+		readResult.set(readValue == null ? null : readValue.toString());
 
 		String read = readResult.get();
 		if (read == null)
@@ -488,6 +550,123 @@ public class FormLayoutInspectionService
 			return null;
 		}
 		return read;
+	}
+
+	/**
+	 * Resizes the shell until the browser's {@code window.innerWidth} equals {@code width}. The embedded
+	 * browser reports a width that differs slightly from the size its shell was given (observed: +1 px), which
+	 * would make a request for 768 render at 769 - above the {@code md} breakpoint. The correction is remembered
+	 * on the handle so later calls start at the right size. Gives up quietly when the browser does not react to
+	 * a resize; {@code getFormLayout} then reports the real width instead of a wrong layout (it checks the
+	 * reported width after the read).
+	 */
+	private void alignViewportWidth(Display display, int width, int height, AtomicBoolean stuck)
+	{
+		int measured = measureInnerWidth(display, stuck);
+		for (int attempt = 0; attempt < 3 && measured >= 0 && measured != width; attempt++)
+		{
+			int before = measured;
+			int delta = width - before;
+			display.syncExec(() -> {
+				BrowserHandle h = handle;
+				if (h != null && !h.browser.isDisposed())
+				{
+					h.widthDelta += delta;
+					applyViewport(h, width, height);
+				}
+			});
+			// the resize reaches the page asynchronously: wait until it reports a different width
+			long until = System.currentTimeMillis() + ALIGN_WAIT_MS;
+			while (System.currentTimeMillis() < until)
+			{
+				pumpOrWait(display, until);
+				measured = measureInnerWidth(display, stuck);
+				if (measured < 0 || measured != before)
+				{
+					break;
+				}
+			}
+			if (measured == before)
+			{
+				return;
+			}
+		}
+	}
+
+	/** @return the browser's current {@code window.innerWidth}, or -1 when it cannot be read */
+	private int measureInnerWidth(Display display, AtomicBoolean stuck)
+	{
+		Object r = evaluateBounded(display, "return window.innerWidth;", POLL_EVAL_TIMEOUT_MS, stuck);
+		return !stuck.get() && r instanceof Number ? ((Number)r).intValue() : -1;
+	}
+
+	/**
+	 * Best-effort snapshot of what the hidden browser looks like, appended to a render timeout so the
+	 * caller (and the log) can tell a slow render from a page that never became the requested form.
+	 *
+	 * @return {@code " "} followed by a JSON object, or an empty string when the browser cannot be read
+	 */
+	private String describeBrowserState(Display display)
+	{
+		Object r = evaluateBounded(display, DIAGNOSTIC_JS, DIAGNOSTIC_EVAL_TIMEOUT_MS, new AtomicBoolean(false));
+		return r == null ? "" : " " + r;
+	}
+
+	/**
+	 * Evaluates {@code js} in the hidden browser on the display thread but never waits for it longer than
+	 * {@code maxWaitMs}. Equo's {@code Chromium.evaluate} blocks on a future that is never completed when the page
+	 * navigates mid-evaluation; the display thread then keeps pumping events inside that call, so later display work
+	 * still runs, but the calling thread must not wait for it. When the cap passes, {@code stuck} is set and
+	 * {@code null} returned; the abandoned evaluation stays parked on the display thread.
+	 */
+	private Object evaluateBounded(Display display, String js, long maxWaitMs, AtomicBoolean stuck)
+	{
+		AtomicReference<Object> result = new AtomicReference<>();
+		Runnable evaluation = () -> {
+			try
+			{
+				BrowserHandle h = handle;
+				if (h != null && !h.browser.isDisposed())
+				{
+					result.set(h.browser.evaluate(js));
+				}
+			}
+			catch (Exception e)
+			{
+				// transient during navigation; the caller polls again
+			}
+		};
+		if (display.getThread() == Thread.currentThread())
+		{
+			evaluation.run();
+			return result.get();
+		}
+		CountDownLatch done = new CountDownLatch(1);
+		display.asyncExec(() -> {
+			try
+			{
+				evaluation.run();
+			}
+			finally
+			{
+				done.countDown();
+			}
+		});
+		try
+		{
+			if (!done.await(maxWaitMs, TimeUnit.MILLISECONDS))
+			{
+				stuck.set(true);
+				return null;
+			}
+		}
+		catch (InterruptedException ie)
+		{
+			Thread.currentThread().interrupt();
+			stuck.set(true);
+			return null;
+		}
+		return result.get();
 	}
 
 	/**
@@ -522,6 +701,34 @@ public class FormLayoutInspectionService
 	}
 
 	/**
+	 * Validates an optional requested viewport dimension.
+	 *
+	 * @return a named error message, or {@code null} when the value is absent or within range
+	 */
+	static String validateViewport(String paramName, Integer value)
+	{
+		if (value != null && (value.intValue() < MIN_VIEWPORT_SIZE || value.intValue() > MAX_VIEWPORT_SIZE))
+		{
+			return "Error: " + paramName + " must be between " + MIN_VIEWPORT_SIZE + " and " + MAX_VIEWPORT_SIZE + " px, got " + value + ".";
+		}
+		return null;
+	}
+
+	/**
+	 * Resizes the offscreen shell and its browser to the requested viewport. Must run on the display thread.
+	 * The shell is resized (not just the browser) so the {@link FillLayout} propagates the new size.
+	 */
+	private static void applyViewport(BrowserHandle h, int width, int height)
+	{
+		// widthDelta is the correction learned by alignViewportWidth: the browser reports innerWidth
+		// slightly different from the size the shell was given (observed: +1 px)
+		int shellWidth = Math.max(1, width + h.widthDelta);
+		h.shell.setSize(shellWidth, height);
+		h.browser.setSize(shellWidth, height);
+		h.shell.layout(true, true);
+	}
+
+	/**
 	 * Creates the reused browser and its offscreen shell on first use. Must run on the display
 	 * thread. If {@link BrowserFactory#createBrowser(org.eclipse.swt.widgets.Composite)} throws
 	 * mid-creation the freshly-opened offscreen {@link Shell} is disposed before the exception
@@ -547,6 +754,18 @@ public class FormLayoutInspectionService
 			shell.open();
 			shell.setVisible(false);
 			h = new BrowserHandle(shell, browser);
+			final BrowserHandle created = h;
+			browser.addLocationListener(new LocationAdapter()
+			{
+				@Override
+				public void changed(LocationEvent event)
+				{
+					if (event.top)
+					{
+						created.committedAtMs = System.currentTimeMillis();
+					}
+				}
+			});
 			handle = h;
 		}
 		catch (RuntimeException | Error e)
@@ -605,6 +824,7 @@ public class FormLayoutInspectionService
 			if (read.has("form")) envelope.set("form", read.get("form"));
 			if (read.has("selector")) envelope.set("selector", read.get("selector"));
 			if (read.has("viewport")) envelope.set("viewport", read.get("viewport"));
+			if (read.has("window")) envelope.set("window", read.get("window"));
 			if (screenshotFile != null) envelope.put("screenshotFile", screenshotFile);
 			json = mapper.writeValueAsString(envelope);
 		}
@@ -744,6 +964,12 @@ public class FormLayoutInspectionService
 	{
 		final Shell shell;
 		final IBrowser browser;
+
+		/** When the top frame last committed a location change (epoch ms); lets the render wait for the new document. */
+		volatile long committedAtMs;
+
+		/** Pixels added to a requested width so the browser's innerWidth matches it; learned on first use. */
+		volatile int widthDelta;
 
 		BrowserHandle(Shell shell, IBrowser browser)
 		{

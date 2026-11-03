@@ -152,7 +152,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithButtonAndLabel(FORM_CSS);
 
 		JsonNode envelope = envelopeOf(
-				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
+				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
 
 		assertEquals(FORM_CSS, envelope.path("form").asText(), "the read is for the requested form");
 		assertEquals(".svy-form", envelope.path("selector").asText(), "no selector -> the whole .svy-form");
@@ -192,7 +192,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		// only - so the label that is a sibling in the full form must NOT appear.
 		String selector = "[data-cy='" + FORM_CSS + ".btnAction']";
 		JsonNode envelope = envelopeOf(
-				tool.getFormLayout(FORM_CSS, selector, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
+				tool.getFormLayout(FORM_CSS, selector, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
 
 		assertEquals(selector, envelope.path("selector").asText(), "the read echoes the requested selector");
 
@@ -220,9 +220,9 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithButtonAndLabel(FORM_CSS);
 		ensureCssFormWithSingleLabel(FORM_OTHER, "lblOnlyHere", "Only here");
 
-		JsonNode first = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
+		JsonNode first = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
 		JsonNode second = envelopeOf(
-				tool.getFormLayout(FORM_OTHER, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"));
+				tool.getFormLayout(FORM_OTHER, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
 
 		assertEquals(FORM_CSS, first.path("form").asText(), "first call returns the first form");
 		assertEquals(FORM_OTHER, second.path("form").asText(),
@@ -245,7 +245,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		assertNotNull(form, "the sample-data form must exist");
 
 		JsonNode envelope = envelopeOf(
-				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"));
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true", null, null));
 
 		String html = envelope.path("html").asText();
 		// the variable is declared with an initialiser, so its real initial value reaches the design-time render -
@@ -260,10 +260,10 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithVariableBoundLabel(FORM_SAMPLE, "vFilled", "lblFilled");
 
 		String first = envelopeOf(
-				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"))
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true", null, null))
 						.path("html").asText();
 		String second = envelopeOf(
-				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true"))
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "true", null, null))
 						.path("html").asText();
 
 		// THE contract of this feature: the agent loop is render -> change one thing -> render -> diff, so sample
@@ -278,12 +278,85 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		ensureCssFormWithVariableBoundLabel(FORM_SAMPLE, "vFilled", "lblFilled");
 
 		String html = envelopeOf(
-				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false"))
+				tool.getFormLayout(FORM_SAMPLE, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null))
 						.path("html").asText();
 
 		assertFalse(html.contains(SAMPLE_VARIABLE_VALUE),
 				"with sampleData off the render must carry no data values: " + html);
 	}
+	// -----------------------------------------------------------------------
+	// SVY-21591: render at a requested viewport width/height
+	// -----------------------------------------------------------------------
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21591: viewportWidth/Height are applied and echoed in 'window'")
+	public void viewport_isAppliedAndEchoed() throws Exception {
+		ensureCssFormWithButtonAndLabel(FORM_CSS);
+
+		JsonNode narrow = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false",
+				"375", "700"));
+
+		assertEquals(375, narrow.path("window").path("width").asInt(), "window.width echoes the requested viewport width");
+		assertEquals(700, narrow.path("window").path("height").asInt(), "window.height echoes the requested viewport height");
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21591: the rendered window width equals the requested width exactly, around the md/lg breakpoints")
+	public void viewport_isExactAroundBreakpoints() throws Exception {
+		ensureCssFormWithButtonAndLabel(FORM_CSS);
+
+		for (int requested : new int[] { 1281, 992, 768, 767, 375 }) {
+			JsonNode envelope = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false",
+					Long.toString(RENDER_TIMEOUT_SECONDS), "false", Integer.toString(requested), null));
+			assertEquals(requested, envelope.path("window").path("width").asInt(),
+					"window.width must equal the requested viewportWidth " + requested);
+		}
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21591: different viewport widths give different layouts; the default is restored afterwards")
+	public void viewport_changesLayoutAndDoesNotLeakIntoNextCall() throws Exception {
+		ensureCssFormWithButtonAndLabel(FORM_CSS);
+
+		JsonNode wide = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false",
+				"1281", null));
+		JsonNode narrow = envelopeOf(tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false",
+				"375", null));
+		JsonNode defaults = envelopeOf(
+				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
+
+		assertEquals(1281, wide.path("window").path("width").asInt(), "wide render uses the requested width");
+		assertEquals(375, narrow.path("window").path("width").asInt(), "narrow render uses the requested width");
+		assertTrue(narrow.path("viewport").path("w").asInt() < wide.path("viewport").path("w").asInt(),
+				"the form root is narrower at 375px than at 1281px");
+		assertEquals(1280, defaults.path("window").path("width").asInt(),
+				"a call without viewportWidth renders at the default width, not the previous narrow one");
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21591: an out-of-range viewport returns a named error")
+	public void viewport_outOfRange_returnsError() {
+		Object tooNarrow = tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", "50", null);
+		Object tooTall = tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, "99999");
+
+		assertInstanceOf(String.class, tooNarrow, "an error is returned as a plain String");
+		assertTrue(((String) tooNarrow).startsWith("Error") && ((String) tooNarrow).contains("viewportWidth"),
+				"out-of-range width names the parameter: " + tooNarrow);
+		assertInstanceOf(String.class, tooTall, "an error is returned as a plain String");
+		assertTrue(((String) tooTall).startsWith("Error") && ((String) tooTall).contains("viewportHeight"),
+				"out-of-range height names the parameter: " + tooTall);
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21591: a non-numeric viewport returns a named error instead of silently using the default")
+	public void viewport_nonNumeric_returnsError() {
+		Object result = tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", "wide", null);
+
+		assertInstanceOf(String.class, result, "an error is returned as a plain String");
+		assertTrue(((String) result).startsWith("Error") && ((String) result).contains("viewportWidth"),
+				"non-numeric width names the parameter: " + result);
+	}
+
 
 	// -----------------------------------------------------------------------
 	// Not-found / named-message paths (valid even without the render prerequisite)
@@ -292,7 +365,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	@Test
 	@org.junit.jupiter.api.DisplayName("form not found returns the named actionable message")
 	public void formNotFound_returnsNamedMessage() {
-		Object result = tool.getFormLayout(FORM_MISSING, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false");
+		Object result = tool.getFormLayout(FORM_MISSING, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null);
 
 		assertInstanceOf(String.class, result, "a named message is returned as a plain String");
 		String message = (String) result;
@@ -303,7 +376,7 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	@Test
 	@org.junit.jupiter.api.DisplayName("blank form name returns an error, never a hang")
 	public void blankFormName_returnsError() {
-		Object result = tool.getFormLayout("   ", null, null, null, null);
+		Object result = tool.getFormLayout("   ", null, null, null, null, null, null);
 
 		assertInstanceOf(String.class, result, "an error is returned as a plain String");
 		assertTrue(((String) result).startsWith("Error"), "a blank form name yields an Error message: " + result);

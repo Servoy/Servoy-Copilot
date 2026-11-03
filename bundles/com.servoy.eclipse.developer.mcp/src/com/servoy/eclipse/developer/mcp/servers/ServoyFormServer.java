@@ -64,6 +64,11 @@ public class ServoyFormServer
 		"OFF by default because a PNG is large and costs a lot of tokens - only ask for it when the html + appearance text is not " +
 		"enough and you genuinely need to VISUALLY compare pixels (e.g. subtle alignment, overlap, spacing or colour nuances " +
 		"you cannot judge from the computed values). The screenshot is only captured for the whole form, not for a 'selector'.\n" +
+		"RESPONSIVE CHECKS: by default the form renders at a fixed 1280x1024 viewport. Pass 'viewportWidth' (and optionally " +
+		"'viewportHeight') to render at another size, so the html, the computed appearance/boxes and the screenshot all reflect " +
+		"that width - use it to verify media-query / breakpoint behaviour, e.g. call it at 1281, 768 and 375 and compare. The " +
+		"result echoes the browser's actual viewport in 'window' ({width,height}); check it matches what you asked for. Accepted " +
+		"range is 200-4000 px.\n" +
 		"Typical loop: edit the form -> call getFormLayout -> read the html + appearance map -> adjust -> call again; add " +
 		"'screenshot=true' only when you want to eyeball the actual pixels. It is READ-ONLY (it never changes the form). Pass a " +
 		"CSS 'selector' to inspect just one component's subtree. Large output is written to a temp file whose ABSOLUTE path is " +
@@ -76,15 +81,28 @@ public class ServoyFormServer
 		@ToolParam(name = "selector", description = "Optional CSS selector of the subtree to return (e.g. a component's tag or '#<id>'). When omitted the whole .svy-form is returned. A screenshot is only captured for the whole form, not a selected subtree.", required = false) String selector,
 		@ToolParam(name = "screenshot", description = "Whether to ALSO capture a PNG screenshot of the whole rendered form (saved + attached to the response). Default FALSE: the html + appearance text is returned either way and is usually enough. Set true only when you need to VISUALLY compare pixels - a PNG is large and token-expensive. Ignored when 'selector' is set.", type = "boolean", required = false) String screenshot,
 		@ToolParam(name = "timeoutSeconds", description = "Max seconds to wait for the form to render before reading. Default 15.", type = "integer", required = false) String timeoutSeconds,
-		@ToolParam(name = "sampleData", description = "Whether to fill the render with synthetic, deterministic sample data - a value per dataprovider and 3 rows per foundset - so fields and grids show content instead of empty chrome. Default TRUE, which is almost always what you want. Pass false only when you specifically want to inspect the empty component chrome.", type = "boolean", required = false) String sampleData)
+		@ToolParam(name = "sampleData", description = "Whether to fill the render with synthetic, deterministic sample data - a value per dataprovider and 3 rows per foundset - so fields and grids show content instead of empty chrome. Default TRUE, which is almost always what you want. Pass false only when you specifically want to inspect the empty component chrome.", type = "boolean", required = false) String sampleData,
+		@ToolParam(name = "viewportWidth", description = "Optional viewport width in px (200-4000) to render the form at, for verifying responsive / media-query layouts (e.g. 1281, 768, 375). Default 1280. The result's 'window' field echoes the viewport actually used.", type = "integer", required = false) String viewportWidth,
+		@ToolParam(name = "viewportHeight", description = "Optional viewport height in px (200-4000). Default 1024.", type = "integer", required = false) String viewportHeight)
 	{
 		try
 		{
 			boolean captureScreenshot = parseBoolean(screenshot, false);
 			int timeout = parseTimeout(timeoutSeconds);
 			boolean withSampleData = parseBoolean(sampleData, true);
+			Integer width = parseViewport(viewportWidth);
+			Integer height = parseViewport(viewportHeight);
+			if (width != null && width.intValue() == Integer.MIN_VALUE)
+			{
+				return "Error: viewportWidth must be an integer number of pixels, got '" + viewportWidth + "'.";
+			}
+			if (height != null && height.intValue() == Integer.MIN_VALUE)
+			{
+				return "Error: viewportHeight must be an integer number of pixels, got '" + viewportHeight + "'.";
+			}
 
-			FormLayoutResult result = inspectionService.getFormLayout(formName, selector, captureScreenshot, timeout, withSampleData);
+			FormLayoutResult result = inspectionService.getFormLayout(formName, selector, captureScreenshot, timeout, withSampleData, width,
+				height);
 			if (result.error != null)
 			{
 				return result.error;
@@ -116,6 +134,27 @@ public class ServoyFormServer
 		catch (NumberFormatException e)
 		{
 			return DEFAULT_TIMEOUT_SECONDS;
+		}
+	}
+
+	/**
+	 * Parses an optional viewport dimension. Returns {@code null} when absent/blank (use the default) and
+	 * {@link Integer#MIN_VALUE} as a sentinel when the value is not an integer (so the caller can report it
+	 * instead of silently falling back to the default). Range checking is done by the service.
+	 */
+	private static Integer parseViewport(String value)
+	{
+		if (value == null || value.isBlank())
+		{
+			return null;
+		}
+		try
+		{
+			return Integer.valueOf(Integer.parseInt(value.trim()));
+		}
+		catch (NumberFormatException e)
+		{
+			return Integer.valueOf(Integer.MIN_VALUE);
 		}
 	}
 
