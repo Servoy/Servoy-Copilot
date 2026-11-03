@@ -147,8 +147,14 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                       // (and a11y/at-spi) messages to stderr for zero-size offscreen widgets.
                       // These are cosmetic, not test failures. NO_AT_BRIDGE=1 drops the
                       // accessibility-bus warnings; G_MESSAGES_DEBUG= (empty) enables no GLib
-                      // debug domains; GTK_MODULES= clears any auto-loaded a11y module. This is
-                      // the env-only approach (SVY-21366) - it does not touch the test output.
+                      // debug domains; GTK_MODULES= clears any auto-loaded a11y module.
+                      //
+                      // The scrollbar message above is a GTK *core* CRITICAL, not an a11y/at-spi
+                      // warning, so none of those env vars can drop it (there is no env switch to
+                      // silence an individual GLib CRITICAL). So on top of the env-only approach we
+                      // filter the mvn STDERR through a grep -v that strips only the known-benign
+                      // GTK/at-spi lines, while leaving STDOUT (the real build/test output)
+                      // completely untouched and preserving mvn's real exit code. (SVY-21366)
                       withEnv(['NO_AT_BRIDGE=1', 'G_MESSAGES_DEBUG=', 'GTK_MODULES=']) {
                         configFileProvider([
                             configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
@@ -167,7 +173,17 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                             // kiroApiKey -> -DGENAI_API_KEY (gate only); the real Kiro auth uses the
                             // KIRO_API_KEY env var bound above. skillsZip is the skill4servoy
                             // .opencode-shippable bundle zipped in the previous stage.
-                            sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
+                            // Run under bash so the stderr process-substitution filter below
+                            // works. mvn's stderr is routed through a grep -v that drops ONLY the
+                            // known-benign headless GTK/at-spi lines back to stderr; stdout (the
+                            // real build/test output) is left completely untouched. Because the
+                            // filter is a process substitution on fd 2 - not a `mvn | grep`
+                            // pipeline - the shell's exit status is mvn's own, so a real
+                            // build/test failure still fails the stage regardless of what grep
+                            // matched (set -o pipefail is kept for any future piping).
+                            sh '''#!/bin/bash
+                                set -o pipefail
+                                mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                                 clean verify \
                                 -Pintegration \
                                 -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest,tests/com.servoy.eclipse.opencode.skilltest.tests \
@@ -178,7 +194,8 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dservoy.skilltest.baselines="$WORKSPACE/baselines-repo/baselines" \
                                 -Dservoy.skilltest.outputDir="$WORKSPACE/skilltest-reports" \
                                 -Dservoy.skilltest.kiroApiKey="$KIRO_API_KEY" \
-                                -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip"'''
+                                -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip" \
+                                2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2)'''
                         }
                       }
                     }
