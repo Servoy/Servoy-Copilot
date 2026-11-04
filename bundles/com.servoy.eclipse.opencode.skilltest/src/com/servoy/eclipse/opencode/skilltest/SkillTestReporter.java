@@ -38,12 +38,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * (SVY-21366, §3.9), following the EclEmma/JaCoCo split of canonical data vs.
  * derived human report:
  * <ul>
- * <li>{@code reports/last-results.json} — the <b>canonical</b>, machine-readable
- * result keyed by baseline id (the {@code jacoco.exec} analogue). Overwritten on
- * every run and reloaded on view open so the last-result column survives an IDE
- * restart.</li>
+ * <li>{@code reports/last-results.json} — the <b>canonical</b>,
+ * machine-readable result keyed by baseline id (the {@code jacoco.exec}
+ * analogue). Overwritten on every run and reloaded on view open so the
+ * last-result column survives an IDE restart.</li>
  * <li>{@code reports/run-<timestamp>.md} — a <b>derived</b> human-readable
- * Markdown report (the HTML-report analogue), one per run, kept for history.</li>
+ * Markdown report (the HTML-report analogue), one per run, kept for
+ * history.</li>
  * </ul>
  * <p>
  * The {@code reports/} directory is derived/regenerable and is git-ignored.
@@ -62,9 +63,9 @@ public final class SkillTestReporter {
 	 * Writes both the canonical {@code last-results.json} and a timestamped
 	 * Markdown report for a completed run.
 	 *
-	 * @param results          the run's results (order preserved)
-	 * @param markdownReport   the pre-formatted Markdown (from
-	 *                         {@link SkillTestRunner#formatResults(List)})
+	 * @param results        the run's results (order preserved)
+	 * @param markdownReport the pre-formatted Markdown (from
+	 *                       {@link SkillTestRunner#formatResults(List)})
 	 * @return the Markdown report file that was written
 	 * @throws IOException if either file cannot be written
 	 */
@@ -98,6 +99,11 @@ public final class SkillTestReporter {
 				}
 				if (r.getErrorMessage() != null) {
 					node.put("errorMessage", r.getErrorMessage()); //$NON-NLS-1$
+				}
+				// Persist the builder agent so the coverage step (SVY-21711) can attribute
+				// the builder's effectiveAgent back to each baseline after the run.
+				if (r.getAgent() != null) {
+					node.put("agent", r.getAgent()); //$NON-NLS-1$
 				}
 				// Persist the full detail so the view's detail panel survives a restart:
 				// the sent prompt, the expected/actual tool calls, the structured outcome
@@ -142,7 +148,10 @@ public final class SkillTestReporter {
 				StandardCharsets.UTF_8);
 	}
 
-	/** Serialises a tool-call list to {@code field} as an array of {server,tool,arguments,output}. */
+	/**
+	 * Serialises a tool-call list to {@code field} as an array of
+	 * {server,tool,arguments,output}.
+	 */
 	private static void writeToolCalls(ObjectNode parent, String field, List<McpToolCall> calls) {
 		if (calls == null) {
 			return;
@@ -236,6 +245,7 @@ public final class SkillTestReporter {
 					result.withJsUnit(jsReport, jsPass);
 				}
 				result.withTrials(readTrials(node.get("trials"))); //$NON-NLS-1$
+				result.withAgent(text(node, "agent")); //$NON-NLS-1$
 				map.put(id, result);
 			}
 		} catch (IOException e) {
@@ -289,7 +299,9 @@ public final class SkillTestReporter {
 		return trials;
 	}
 
-	/** Rebuilds a tool-call list from a persisted array (or {@code null} if absent). */
+	/**
+	 * Rebuilds a tool-call list from a persisted array (or {@code null} if absent).
+	 */
 	private static List<McpToolCall> readToolCalls(JsonNode arr) {
 		if (arr == null || !arr.isArray()) {
 			return null;
@@ -309,7 +321,10 @@ public final class SkillTestReporter {
 		return calls;
 	}
 
-	/** Rebuilds the outcome-check node tree from a persisted array (or {@code null}). */
+	/**
+	 * Rebuilds the outcome-check node tree from a persisted array (or
+	 * {@code null}).
+	 */
 	private static List<com.servoy.eclipse.opencode.skilltest.outcome.PersistOutcomeChecker.Node> readOutcomeNodes(
 			JsonNode arr) {
 		if (arr == null || !arr.isArray()) {
@@ -340,8 +355,8 @@ public final class SkillTestReporter {
 				children.add(jsonToOutcomeNode(c));
 			}
 		}
-		return new com.servoy.eclipse.opencode.skilltest.outcome.PersistOutcomeChecker.Node(
-				text(n, "label"), n.path("found").asBoolean(), n.path("pass").asBoolean(), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		return new com.servoy.eclipse.opencode.skilltest.outcome.PersistOutcomeChecker.Node(text(n, "label"), //$NON-NLS-1$
+				n.path("found").asBoolean(), n.path("pass").asBoolean(), //$NON-NLS-1$ //$NON-NLS-2$
 				text(n, "message"), props, children); //$NON-NLS-1$
 	}
 }

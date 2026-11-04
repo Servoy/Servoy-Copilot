@@ -474,6 +474,11 @@ public class SkillTestView extends ViewPart {
 				} catch (IOException e) {
 					log("Could not persist skill-test results: " + e.getMessage()); //$NON-NLS-1$
 				}
+				// Coverage report (SVY-21711) - informational, best-effort, written next to
+				// last-results.json/run-<timestamp>.md under reportsRoot(). emitCoverage never
+				// throws, so it can never affect the run outcome.
+				com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportHtml.emitCoverage(results, null,
+						SkillTestPaths.reportsRoot().toPath(), SkillTestView.this::log);
 				long passed = results.stream().filter(SkillTestResult::isPass).count();
 				log("Servoy AI skill tests: " + passed + "/" + results.size() //$NON-NLS-1$ //$NON-NLS-2$
 						+ (monitor.isCanceled() ? " passed (run stopped)." : " passed.")); //$NON-NLS-1$ //$NON-NLS-2$
@@ -495,8 +500,9 @@ public class SkillTestView extends ViewPart {
 	}
 
 	/**
-	 * Resolves the embedded Servoy web-server port (used by the {@code empty}-source
-	 * MCP {@code createSolution} call), or -1 when the app server is not up.
+	 * Resolves the embedded Servoy web-server port (used by the
+	 * {@code empty}-source MCP {@code createSolution} call), or -1 when the app
+	 * server is not up.
 	 */
 	private static int resolveWebServerPort() {
 		try {
@@ -671,8 +677,8 @@ public class SkillTestView extends ViewPart {
 				: null;
 		java.io.File solutionSourceFolder = com.servoy.eclipse.opencode.skilltest.headless.SolutionSetup
 				.resolveSolutionSourceFolder(entry.baseline().source(), entry.baseline().solution());
-		JsUnitVerifyEditorDialog dialog = new JsUnitVerifyEditorDialog(getSite().getShell(),
-				entry.baseline().id(), current, currentScript, currentScriptName, solutionSourceFolder);
+		JsUnitVerifyEditorDialog dialog = new JsUnitVerifyEditorDialog(getSite().getShell(), entry.baseline().id(),
+				current, currentScript, currentScriptName, solutionSourceFolder);
 		if (dialog.open() != Window.OK) {
 			return;
 		}
@@ -689,9 +695,9 @@ public class SkillTestView extends ViewPart {
 	}
 
 	/**
-	 * Flips the selected baseline's {@code active} flag in its {@code baseline.json}
-	 * and refreshes the table. A deactivated baseline is skipped by "Run all active"
-	 * but can still be run via "Run selected".
+	 * Flips the selected baseline's {@code active} flag in its
+	 * {@code baseline.json} and refreshes the table. A deactivated baseline is
+	 * skipped by "Run all active" but can still be run via "Run selected".
 	 */
 	private void toggleActive() {
 		BaselineLoader.Entry entry = selectedEntry();
@@ -724,8 +730,8 @@ public class SkillTestView extends ViewPart {
 			return;
 		}
 		int current = entry.baseline().maxAttempts();
-		org.eclipse.jface.dialogs.InputDialog dialog = new org.eclipse.jface.dialogs.InputDialog(
-				getSite().getShell(), "Set max attempts", //$NON-NLS-1$
+		org.eclipse.jface.dialogs.InputDialog dialog = new org.eclipse.jface.dialogs.InputDialog(getSite().getShell(),
+				"Set max attempts", //$NON-NLS-1$
 				"Number of times to replay '" + entry.baseline().id() + "' before failing\n" //$NON-NLS-1$ //$NON-NLS-2$
 						+ "(it passes as soon as one attempt matches):", //$NON-NLS-1$
 				Integer.toString(current), input -> {
@@ -761,15 +767,15 @@ public class SkillTestView extends ViewPart {
 					"Select a baseline in the table first."); //$NON-NLS-1$
 			return;
 		}
-		PreconditionEditorDialog dialog = new PreconditionEditorDialog(getSite().getShell(),
-				entry.baseline().id(), entry.baseline().solution(), entry.baseline().source());
+		PreconditionEditorDialog dialog = new PreconditionEditorDialog(getSite().getShell(), entry.baseline().id(),
+				entry.baseline().solution(), entry.baseline().source());
 		if (dialog.open() != Window.OK) {
 			return;
 		}
 		try {
 			BaselineLoader.writePrecondition(entry.folder(), dialog.getSolution(), dialog.getSource());
 			log("Updated test solution source for baseline '" + entry.baseline().id() + "' to " //$NON-NLS-1$ //$NON-NLS-2$
-					+ dialog.getSource().type().name().toLowerCase()); //$NON-NLS-1$
+					+ dialog.getSource().type().name().toLowerCase()); // $NON-NLS-1$
 			refresh();
 		} catch (IOException e) {
 			MessageDialog.openError(getSite().getShell(), "Edit failed", e.getMessage()); //$NON-NLS-1$

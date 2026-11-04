@@ -220,8 +220,8 @@ public final class SkillTestHtml {
 			return sb.toString();
 		}
 		for (McpToolCall call : calls) {
-			boolean matched = other != null && other.stream()
-					.anyMatch(o -> o.matchesIdentity(call.server(), call.tool()));
+			boolean matched = other != null
+					&& other.stream().anyMatch(o -> o.matchesIdentity(call.server(), call.tool()));
 			sb.append("<div class=\"call ").append(matched ? "matched" : "unmatched").append("\">"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 			sb.append("<div class=\"tool\">").append(esc(identity(call))).append("</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 			if (!call.arguments().isEmpty()) {
@@ -257,15 +257,19 @@ public final class SkillTestHtml {
 				+ CSS + "</style></head><body>" + body + "</body></html>"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
-	private static final String CSS = ""
+	/**
+	 * The shared inline-CSS palette for the skill-test reports. Package-visible so
+	 * the coverage report ({@code CoverageReportHtml}) can reuse the exact same
+	 * look (SVY-21711 §3.4) - header status colours, collapsible {@code details},
+	 * tables and muted text - instead of duplicating it.
+	 */
+	public static final String CSS = ""
 			+ "body{font-family:Segoe UI,Arial,sans-serif;font-size:12px;margin:8px;color:#1e1e1e;background:#fff;}"
 			+ ".header{padding:6px 8px;border-radius:4px;margin-bottom:8px;font-weight:600;}"
 			+ ".header .status{font-weight:700;margin-right:6px;}"
 			+ ".header .attempts{float:right;font-weight:400;opacity:.7;}"
-			+ ".s-pass{background:#e6f4ea;color:#137333;}"
-			+ ".s-fail{background:#fce8e6;color:#c5221f;}"
-			+ ".s-error{background:#fef7e0;color:#b06000;}"
-			+ ".s-skipped{background:#f1f3f4;color:#5f6368;}"
+			+ ".s-pass{background:#e6f4ea;color:#137333;}" + ".s-fail{background:#fce8e6;color:#c5221f;}"
+			+ ".s-error{background:#fef7e0;color:#b06000;}" + ".s-skipped{background:#f1f3f4;color:#5f6368;}"
 			+ ".error{background:#fce8e6;color:#c5221f;padding:6px 8px;border-radius:4px;margin-bottom:8px;white-space:pre-wrap;}"
 			+ ".section-title{font-weight:600;margin:10px 0 4px;color:#5f6368;text-transform:uppercase;font-size:10px;letter-spacing:.5px;}"
 			+ ".bubble.prompt{background:#e8f0fe;border:1px solid #d2e3fc;border-radius:8px;padding:8px 10px;white-space:pre-wrap;}"
@@ -275,20 +279,16 @@ public final class SkillTestHtml {
 			+ "details.oc{border:1px solid #dadce0;border-radius:6px;margin:4px 0;padding:4px 8px;}"
 			+ "details.oc.oc-pass{border-left:4px solid #137333;}"
 			+ "details.oc.oc-fail{border-left:4px solid #c5221f;background:#fef7f7;}"
-			+ "details.oc>summary{cursor:pointer;}"
-			+ ".oc-mark{font-weight:700;margin-right:4px;}"
-			+ ".oc-pass>summary .oc-mark{color:#137333;}"
-			+ ".oc-fail>summary .oc-mark{color:#c5221f;}"
+			+ "details.oc>summary{cursor:pointer;}" + ".oc-mark{font-weight:700;margin-right:4px;}"
+			+ ".oc-pass>summary .oc-mark{color:#137333;}" + ".oc-fail>summary .oc-mark{color:#c5221f;}"
 			+ ".oc-label{font-family:Consolas,monospace;font-weight:600;}"
 			+ ".oc-msg{color:#5f6368;font-size:11px;margin-left:4px;}"
 			+ ".oc-props{width:100%;border-collapse:collapse;margin:4px 0 4px 18px;}"
 			+ ".oc-props th{text-align:left;color:#5f6368;font-size:10px;text-transform:uppercase;padding:1px 6px;border-bottom:1px solid #eee;}"
 			+ ".oc-props td{vertical-align:top;padding:1px 6px;font-family:Consolas,monospace;font-size:11px;}"
 			+ ".oc-props .k{color:#5f6368;white-space:nowrap;}"
-			+ ".oc-props tr.p-fail td{background:#fce8e6;color:#c5221f;}"
-			+ ".oc-props tr.p-pass td.v{color:#137333;}"
-			+ ".cols{display:flex;gap:8px;}"
-			+ ".col{flex:1;min-width:0;}"
+			+ ".oc-props tr.p-fail td{background:#fce8e6;color:#c5221f;}" + ".oc-props tr.p-pass td.v{color:#137333;}"
+			+ ".cols{display:flex;gap:8px;}" + ".col{flex:1;min-width:0;}"
 			+ ".col-head{font-weight:600;margin-bottom:4px;}"
 			+ ".call{border:1px solid #dadce0;border-radius:6px;padding:6px 8px;margin-bottom:6px;}"
 			+ ".call.matched{border-left:4px solid #137333;}"
@@ -296,8 +296,7 @@ public final class SkillTestHtml {
 			+ ".call .tool{font-family:Consolas,monospace;font-weight:600;}"
 			+ ".args{width:100%;border-collapse:collapse;margin-top:4px;}"
 			+ ".args td{vertical-align:top;padding:1px 4px;font-family:Consolas,monospace;font-size:11px;}"
-			+ ".args .k{color:#5f6368;white-space:nowrap;}"
-			+ ".args .v{word-break:break-word;}"
+			+ ".args .k{color:#5f6368;white-space:nowrap;}" + ".args .v{word-break:break-word;}"
 			+ ".muted{color:#80868b;font-style:italic;}";
 
 	/** Minimal HTML escaping for text nodes. */

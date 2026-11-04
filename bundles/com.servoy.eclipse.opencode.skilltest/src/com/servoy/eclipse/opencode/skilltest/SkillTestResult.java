@@ -54,7 +54,10 @@ public final class SkillTestResult {
 	private final String diff;
 	private final String errorMessage;
 
-	/** Per-trial results for a multi-trial run; empty for a single-trial run or reconstructed result. */
+	/**
+	 * Per-trial results for a multi-trial run; empty for a single-trial run or
+	 * reconstructed result.
+	 */
 	private java.util.List<Trial> trials = java.util.List.of();
 
 	/**
@@ -136,7 +139,9 @@ public final class SkillTestResult {
 		return expectedCalls;
 	}
 
-	/** @return the actual tool calls from the run, or {@code null} if not captured */
+	/**
+	 * @return the actual tool calls from the run, or {@code null} if not captured
+	 */
 	public java.util.List<McpToolCall> getActualCalls() {
 		return actualCalls;
 	}
@@ -173,7 +178,10 @@ public final class SkillTestResult {
 		return this;
 	}
 
-	/** @return the per-trial results (never {@code null}; empty for a single-trial/reconstructed result) */
+	/**
+	 * @return the per-trial results (never {@code null}; empty for a
+	 *         single-trial/reconstructed result)
+	 */
 	public java.util.List<Trial> getTrials() {
 		return trials;
 	}
@@ -211,7 +219,9 @@ public final class SkillTestResult {
 		return jsUnitReport;
 	}
 
-	/** @return the JSUnit pass flag, or {@code null} when no JSUnit verification ran */
+	/**
+	 * @return the JSUnit pass flag, or {@code null} when no JSUnit verification ran
+	 */
 	public Boolean getJsUnitPass() {
 		return jsUnitPass;
 	}
@@ -238,5 +248,30 @@ public final class SkillTestResult {
 
 	public boolean isPass() {
 		return status == Status.PASS;
+	}
+
+	/**
+	 * The builder agent this baseline was replayed with (the runner's resolved
+	 * {@code effectiveAgent}). Persisted additively so the coverage report
+	 * (SVY-21711) can attribute the builder agent back to each baseline. May be
+	 * {@code null} when the server default was used or the result was reconstructed
+	 * from an older {@code last-results.json}.
+	 */
+	private String agent;
+
+	/**
+	 * Attaches the builder agent the baseline was replayed with.
+	 *
+	 * @param agent the resolved effective agent (may be {@code null})
+	 * @return this result
+	 */
+	public SkillTestResult withAgent(String agent) {
+		this.agent = agent;
+		return this;
+	}
+
+	/** @return the builder agent, or {@code null} when unknown */
+	public String getAgent() {
+		return agent;
 	}
 }

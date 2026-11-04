@@ -45,8 +45,8 @@ import com.servoy.j2db.server.starter.IWebServerStarter;
 import com.servoy.j2db.util.Settings;
 
 /**
- * Headless Eclipse application that replays Servoy AI skill-test baselines in CI
- * without the Developer IDE UI.
+ * Headless Eclipse application that replays Servoy AI skill-test baselines in
+ * CI without the Developer IDE UI.
  * <p>
  * This is a plain {@link IApplication} (it deliberately does <b>not</b> extend
  * {@code AbstractWorkspaceExporter}). It performs the minimal Servoy headless
@@ -54,8 +54,8 @@ import com.servoy.j2db.util.Settings;
  * embedded application server + Servoy model - and then, <b>per baseline</b>,
  * cleans that baseline's solution project and imports its {@code setup.servoy}
  * initial state before replaying it. Each baseline is therefore self-contained:
- * the starting workspace state is part of the baseline, not something the CI job
- * must pre-populate.
+ * the starting workspace state is part of the baseline, not something the CI
+ * job must pre-populate.
  * </p>
  * <p>
  * Per run it: logs in to Servoy Cloud (for the opencode/kiro credentials),
@@ -70,8 +70,9 @@ import com.servoy.j2db.util.Settings;
  *     -cloudUser ci@servoy -cloudPass ****   (or -DGENAI_API_KEY=...)
  * </pre>
  *
- * Exit codes: {@code 0} = all baselines passed (or none active), {@code 1} = one
- * or more diverged, {@code 2} = infrastructure error, {@code 3} = invalid args.
+ * Exit codes: {@code 0} = all baselines passed (or none active), {@code 1} =
+ * one or more diverged, {@code 2} = infrastructure error, {@code 3} = invalid
+ * args.
  */
 public class SkillTestHeadlessRunner implements IApplication {
 
@@ -86,17 +87,18 @@ public class SkillTestHeadlessRunner implements IApplication {
 	/** Poll interval while waiting for the embedded web server. */
 	private static final long WEB_SERVER_POLL_INTERVAL_MS = 1_000L;
 
-	/** How long to wait for the workbench to start the Servoy application server. */
+	/**
+	 * How long to wait for the workbench to start the Servoy application server.
+	 */
 	private static final long APP_SERVER_WAIT_MS = 180_000L;
 
 	/**
 	 * How long to wait for the opencode server to come up. The first CI run has to
 	 * download node + {@code npm install} the pinned opencode cli, which can exceed
-	 * the old 180s. Overridable with {@code -Dservoy.skilltest.opencodeWaitMs} so CI
-	 * can tune it without a rebuild; defaults to 420s.
+	 * the old 180s. Overridable with {@code -Dservoy.skilltest.opencodeWaitMs} so
+	 * CI can tune it without a rebuild; defaults to 420s.
 	 */
 	private static final long OPENCODE_SERVER_WAIT_MS = Long.getLong("servoy.skilltest.opencodeWaitMs", 420_000L); //$NON-NLS-1$
-
 
 	private Integer exitCode = EXIT_OK;
 
@@ -234,13 +236,13 @@ public class SkillTestHeadlessRunner implements IApplication {
 
 	private static String bundleStateName(int state) {
 		return switch (state) {
-			case org.osgi.framework.Bundle.ACTIVE -> "ACTIVE";
-			case org.osgi.framework.Bundle.STARTING -> "STARTING";
-			case org.osgi.framework.Bundle.RESOLVED -> "RESOLVED";
-			case org.osgi.framework.Bundle.INSTALLED -> "INSTALLED";
-			case org.osgi.framework.Bundle.STOPPING -> "STOPPING";
-			case org.osgi.framework.Bundle.UNINSTALLED -> "UNINSTALLED";
-			default -> "0x" + Integer.toHexString(state);
+		case org.osgi.framework.Bundle.ACTIVE -> "ACTIVE";
+		case org.osgi.framework.Bundle.STARTING -> "STARTING";
+		case org.osgi.framework.Bundle.RESOLVED -> "RESOLVED";
+		case org.osgi.framework.Bundle.INSTALLED -> "INSTALLED";
+		case org.osgi.framework.Bundle.STOPPING -> "STOPPING";
+		case org.osgi.framework.Bundle.UNINSTALLED -> "UNINSTALLED";
+		default -> "0x" + Integer.toHexString(state);
 		};
 	}
 
@@ -281,7 +283,8 @@ public class SkillTestHeadlessRunner implements IApplication {
 		com.servoy.eclipse.ngclient.ui.Activator ngActivator = com.servoy.eclipse.ngclient.ui.Activator.getInstance();
 		if (ngActivator != null) {
 			// CRITICAL: under tycho-surefire ModelUtils.isTestRunning() is true, so
-			// ngclient.ui.Activator starts with nodeExtractionAndTitaniumBuildDisabled=true.
+			// ngclient.ui.Activator starts with
+			// nodeExtractionAndTitaniumBuildDisabled=true.
 			// In that state extractNode() returns IMMEDIATELY WITHOUT counting down its
 			// nodeReady latch - so OpencodeFolderCreatorJob's createNPMCommand() ->
 			// waitForNodeExtraction() blocks forever and opencode never starts ("opencode
@@ -342,6 +345,13 @@ public class SkillTestHeadlessRunner implements IApplication {
 		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results); //$NON-NLS-1$
 		output("JUnit XML report written to: " + reportFile.toAbsolutePath());
 		output(runner.formatResults(results));
+
+		// 6b. Coverage report (SVY-21711) - informational, best-effort. Written into
+		// the SAME outputDir as the JUnit XML so Jenkins archives it via the existing
+		// skilltest-reports/** glob (no Jenkinsfile change). emitCoverage never throws:
+		// a failure here must not fail the run or change the exit code.
+		com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportHtml.emitCoverage(results, null, outputDir,
+				this::output);
 
 		if (results.isEmpty()) {
 			output("No active skill-test baselines - nothing to run (vacuous pass).");

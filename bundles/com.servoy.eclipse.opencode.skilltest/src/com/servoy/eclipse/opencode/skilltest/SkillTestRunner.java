@@ -120,7 +120,7 @@ public final class SkillTestRunner {
 	/**
 	 * Runs a single baseline: replay prompt, export, verify. Passes if any attempt
 	 * matches.
-	 public *
+	 * 
 	 * @param baseline the baseline to run
 	 * @return the outcome
 	 */
@@ -131,11 +131,12 @@ public final class SkillTestRunner {
 	/**
 	 * Runs a single baseline using an EXPLICIT on-disk folder for the baseline's
 	 * assets (verify scripts, etc.). Prefer this when the caller already knows the
-	 * folder the baseline was loaded from (e.g. a CI {@code -Dservoy.skilltest.baselines}
-	 * dir), because {@link #resolveBaselineFolder} otherwise recomputes the folder
-	 * from {@link SkillTestPaths#baselinesRoot()} (the workspace path), which does
-	 * NOT match when baselines live elsewhere - the cause of
-	 * "verify script not found: verify/scopes/skilltest_verify.js" in CI.
+	 * folder the baseline was loaded from (e.g. a CI
+	 * {@code -Dservoy.skilltest.baselines} dir), because
+	 * {@link #resolveBaselineFolder} otherwise recomputes the folder from
+	 * {@link SkillTestPaths#baselinesRoot()} (the workspace path), which does NOT
+	 * match when baselines live elsewhere - the cause of "verify script not found:
+	 * verify/scopes/skilltest_verify.js" in CI.
 	 *
 	 * @param baseline       the baseline to run
 	 * @param baselineFolder the baseline's folder on disk (verify-script source)
@@ -322,8 +323,8 @@ public final class SkillTestRunner {
 				if (baseline.hasAcceptanceVerify()) {
 					Baseline.AcceptanceVerify av = baseline.acceptanceVerify();
 					com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict verdict = judge != null
-							? judge.judge(judgeSubjectName, judgeSourceHint, judgeMockupPath, av.criteria(), av.judgeModel(),
-									effectiveModel, cancel)
+							? judge.judge(judgeSubjectName, judgeSourceHint, judgeMockupPath, av.criteria(),
+									av.judgeModel(), effectiveModel, cancel)
 							: com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict
 									.error("acceptance judge unavailable (opencode server not ready)", null); //$NON-NLS-1$
 					if (av.required() && !verdict.pass()) {
@@ -379,7 +380,7 @@ public final class SkillTestRunner {
 					Thread.currentThread().interrupt();
 				}
 				return SkillTestResult.error(baseline.id(), attempt, reason)
-						.withTranscript(prompt, expectedCalls, lastActualCalls);
+						.withTranscript(prompt, expectedCalls, lastActualCalls).withAgent(effectiveAgent);
 			} finally {
 				if (sessionId != null) {
 					client.deleteSession(sessionId);
@@ -399,18 +400,15 @@ public final class SkillTestRunner {
 		Boolean jsUnitPass = jsUnitForReport != null ? Boolean.valueOf(jsUnitForReport.pass()) : null;
 
 		if (passCount == maxAttempts) {
-			return SkillTestResult.pass(baseline.id(), attempts)
-					.withTranscript(prompt, expectedCalls, lastActualCalls)
-					.withOutcomeNodes(keptOutcomeNodes)
-					.withJsUnit(jsUnitReport, jsUnitPass)
-					.withTrials(trials);
+			return SkillTestResult.pass(baseline.id(), attempts).withTranscript(prompt, expectedCalls, lastActualCalls)
+					.withOutcomeNodes(keptOutcomeNodes).withJsUnit(jsUnitReport, jsUnitPass).withTrials(trials)
+					.withAgent(effectiveAgent);
 		}
 		String failDiff = distribution + (keptDiff != null && !keptDiff.isBlank() ? "\n" + keptDiff : ""); //$NON-NLS-1$ //$NON-NLS-2$
 		return SkillTestResult.fail(baseline.id(), attempts, failDiff)
 				.withTranscript(prompt, expectedCalls, lastActualCalls)
 				.withOutcomeNodes(keptOutcomeNodes != null ? keptOutcomeNodes : lastOutcomeNodes)
-				.withJsUnit(jsUnitReport, jsUnitPass)
-				.withTrials(trials);
+				.withJsUnit(jsUnitReport, jsUnitPass).withTrials(trials).withAgent(effectiveAgent);
 	}
 
 	/**
@@ -491,11 +489,11 @@ public final class SkillTestRunner {
 	}
 
 	/**
-	 * Re-reads the active solution's files from disk and waits for the Servoy
-	 * build to settle, so verification sees the persists the agent actually
-	 * produced - not a stale state the file watcher captured while a file was
-	 * transiently invalid mid-edit (SVY-21366). Best-effort: logs and returns on
-	 * any failure rather than aborting the run.
+	 * Re-reads the active solution's files from disk and waits for the Servoy build
+	 * to settle, so verification sees the persists the agent actually produced -
+	 * not a stale state the file watcher captured while a file was transiently
+	 * invalid mid-edit (SVY-21366). Best-effort: logs and returns on any failure
+	 * rather than aborting the run.
 	 */
 	private void refreshActiveSolutionFromDisk() {
 		try {
@@ -557,9 +555,11 @@ public final class SkillTestRunner {
 		return sb.toString();
 	}
 
-	/** The outcome of a persist-model outcome check (match + diff + structured nodes). */
-	private record OutcomeCheckResult(boolean match, String diff,
-			List<PersistOutcomeChecker.Node> nodes) {
+	/**
+	 * The outcome of a persist-model outcome check (match + diff + structured
+	 * nodes).
+	 */
+	private record OutcomeCheckResult(boolean match, String diff, List<PersistOutcomeChecker.Node> nodes) {
 	}
 
 	/**
@@ -575,9 +575,8 @@ public final class SkillTestRunner {
 		try {
 			model = ServoyModelFinder.getServoyModel();
 		} catch (RuntimeException | LinkageError ex) {
-			return new OutcomeCheckResult(false,
-					"- could not obtain the Servoy model: " + ex.getClass().getSimpleName() //$NON-NLS-1$
-							+ ": " + ex.getMessage() + "\n", List.of()); //$NON-NLS-1$ //$NON-NLS-2$
+			return new OutcomeCheckResult(false, "- could not obtain the Servoy model: " + ex.getClass().getSimpleName() //$NON-NLS-1$
+					+ ": " + ex.getMessage() + "\n", List.of()); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 		if (model == null) {
 			return new OutcomeCheckResult(false, "- Servoy model not available (ServoyModelFinder returned null)\n", //$NON-NLS-1$

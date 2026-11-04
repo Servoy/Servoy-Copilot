@@ -20,6 +20,10 @@ package com.servoy.eclipse.opencode.skilltest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
+import com.servoy.eclipse.opencode.skilltest.coverage.CoverageExtractorTest;
+import com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportHtmlTest;
+import com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportTest;
+import com.servoy.eclipse.opencode.skilltest.coverage.PackCatalogReaderTest;
 import com.servoy.eclipse.opencode.skilltest.headless.JUnitXmlReporterTest;
 import com.servoy.eclipse.opencode.skilltest.headless.SkillTestArgumentChestTest;
 import com.servoy.eclipse.opencode.skilltest.outcome.AiExpectationSanitizeTest;
@@ -59,7 +63,11 @@ import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeInferenceTest;
 	AiExpectationSanitizeTest.class,
 	ExpectationLlmGeneratorPromptTest.class,
 	SkillTestArgumentChestTest.class,
-	JUnitXmlReporterTest.class
+	JUnitXmlReporterTest.class,
+	CoverageExtractorTest.class,
+	PackCatalogReaderTest.class,
+	CoverageReportTest.class,
+	CoverageReportHtmlTest.class
 })
 public class AllSkillTestUnitTests {
 }
