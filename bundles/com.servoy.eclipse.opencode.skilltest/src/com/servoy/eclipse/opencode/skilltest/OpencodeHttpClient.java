@@ -56,6 +56,31 @@ public final class OpencodeHttpClient {
 	static final Duration DEFAULT_STALL_TIMEOUT = Duration
 			.ofSeconds(Long.getLong("servoy.skilltest.stallTimeoutSeconds", 3600L)); //$NON-NLS-1$
 
+	/**
+	 * Hard per-attempt wall-clock cap for {@link #waitForCompletion}: the total
+	 * time one agent attempt may take, measured from the moment the wait starts
+	 * and <b>never reset</b>.
+	 * <p>
+	 * This exists because {@link #DEFAULT_STALL_TIMEOUT} alone cannot bound a run
+	 * (SVY-21366, build #64): the stall guard only measures <i>silence</i> and is
+	 * reset on every {@code 503 still busy} sample, so a session that is wedged
+	 * server-side while still reporting itself in progress resets the deadline
+	 * forever and is never aborted. Build #64's last scenario sat in
+	 * {@code waitForCompletion} for 53 minutes that way until the Jenkins pipeline
+	 * timeout killed the whole run - the stall guard (60 min) could not fire
+	 * because only ~55 min of pipeline budget remained.
+	 * </p>
+	 * <p>
+	 * Sized so a legitimately slow Orchestrator baseline still finishes (the
+	 * slowest known scenario, {@code order_tabs}, has taken ~30 min) while one
+	 * wedged attempt can no longer consume the whole suite's budget. Overridable
+	 * via the {@code servoy.skilltest.attemptTimeoutSeconds} system property;
+	 * {@code <= 0} disables the cap.
+	 * </p>
+	 */
+	static final Duration DEFAULT_ATTEMPT_TIMEOUT = Duration
+			.ofSeconds(Long.getLong("servoy.skilltest.attemptTimeoutSeconds", 2400L)); //$NON-NLS-1$
+
 	private final String baseUrl;
 	private final HttpClient httpClient;
 
@@ -348,14 +373,59 @@ public final class OpencodeHttpClient {
 	 */
 	public void waitForCompletion(String sessionId, Duration pollInterval, java.util.function.BooleanSupplier cancelled,
 			Duration stallTimeout) throws IOException, InterruptedException {
+		waitForCompletion(sessionId, pollInterval, cancelled, stallTimeout, DEFAULT_ATTEMPT_TIMEOUT);
+	}
+
+	/**
+	 * Like
+	 * {@link #waitForCompletion(String, Duration, java.util.function.BooleanSupplier, Duration)}
+	 * but with an additional hard wall-clock cap on the whole attempt.
+	 * <p>
+	 * Two independent bounds apply (SVY-21366):
+	 * </p>
+	 * <ul>
+	 * <li>{@code stallTimeout} - the no-progress guard, <b>reset</b> on every
+	 * {@code 503 still busy} sample, so it only catches a session that goes
+	 * silent.</li>
+	 * <li>{@code attemptTimeout} - total elapsed time, <b>never reset</b>, so it
+	 * also catches a session that keeps reporting itself busy while making no real
+	 * progress. This is the bound build #64 lacked: its last scenario stayed
+	 * "busy" for 53 minutes and the Jenkins pipeline timeout, not the harness,
+	 * ended the run.</li>
+	 * </ul>
+	 *
+	 * @param sessionId      the session id
+	 * @param pollInterval   ignored (kept for API compat; the wait call itself
+	 *                       blocks)
+	 * @param cancelled      supplies {@code true} when the run should be stopped
+	 * @param stallTimeout   maximum time to tolerate with no progress;
+	 *                       {@code <= 0} disables the guard
+	 * @param attemptTimeout maximum total time for the attempt regardless of
+	 *                       reported progress; {@code <= 0} disables the cap
+	 * @throws InterruptedException if interrupted or cancelled
+	 * @throws IOException          on transport failure, stall timeout, or when the
+	 *                              per-attempt cap is exceeded
+	 */
+	public void waitForCompletion(String sessionId, Duration pollInterval, java.util.function.BooleanSupplier cancelled,
+			Duration stallTimeout, Duration attemptTimeout) throws IOException, InterruptedException {
 		boolean guard = stallTimeout != null && !stallTimeout.isZero() && !stallTimeout.isNegative();
 		long stallNanos = guard ? stallTimeout.toNanos() : 0L;
 		long stallDeadlineNanos = System.nanoTime() + stallNanos;
+		// Hard wall-clock cap for the whole attempt, independent of the stall guard:
+		// it is NOT reset by a 503, so a "busy but wedged" session is bounded too
+		// (SVY-21366, build #64).
+		boolean capped = attemptTimeout != null && !attemptTimeout.isZero() && !attemptTimeout.isNegative();
+		long attemptDeadlineNanos = System.nanoTime() + (capped ? attemptTimeout.toNanos() : 0L);
 		Duration callTimeout = Duration.ofSeconds(15);
 		while (true) {
 			if (cancelled != null && cancelled.getAsBoolean()) {
 				abort(sessionId);
 				throw new InterruptedException("cancelled"); //$NON-NLS-1$
+			}
+			if (capped && System.nanoTime() > attemptDeadlineNanos) {
+				abort(sessionId);
+				throw new IOException("opencode session '" + sessionId + "' exceeded the per-attempt cap of " //$NON-NLS-1$ //$NON-NLS-2$
+						+ attemptTimeout.toSeconds() + "s (still reporting busy); aborted"); //$NON-NLS-1$
 			}
 			try {
 				HttpRequest request = request(
