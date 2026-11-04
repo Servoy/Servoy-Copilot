@@ -205,7 +205,15 @@
 							     ${...} so SkillTestCiRunnerTest's assumeTrue(servoy.skilltest.run) passes
 							     and SkillTestHeadlessRunner sees the baselines dir, output dir and cloud
 							     credentials. Without this the test is skipped. -->
-							<argLine>-Xms256m -Xmx3072m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs}</argLine>
+							<!-- Assertions are DISABLED (-da) on purpose: the DLTK JavaScript
+							     TypeInferencerVisitor.initializeVariables has a var-only
+							     `assert result.exists()` that a block-scoped let/const trips
+							     (SVY-21727). It is a no-op without -ea, so a normal Developer
+							     is unaffected, but under -ea an agent-generated scope using
+							     `let` throws AssertionError, the solution fails to load and
+							     JSUnit runs 0 tests (build #68). Re-enable -ea once SVY-21727
+							     is fixed in DLTK. -->
+							<argLine>-Xms256m -Xmx3072m -da --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs}</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<bundleStartLevel>
 								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>
