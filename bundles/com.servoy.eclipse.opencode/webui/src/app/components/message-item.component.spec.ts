@@ -234,4 +234,146 @@ describe('MessageItemComponent', () => {
     fixture.componentRef.setInput('completed', null);
     expect(component.isThinking()).toBe(false);
   });
+
+  describe('reasoning collapse (SVY-21707)', () => {
+    const reasoningPart = (over: Partial<Part> = {}): Part =>
+      ({ type: 'reasoning', id: 'r1', text: 'because the model thought hard', ...over } as Part);
+
+    it('renders a non-blank reasoning part collapsed by default: header present, body absent', () => {
+      fixture.componentRef.setInput('parts', [reasoningPart()]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      // The one-line "Reasoning" header row is present...
+      const row = el.querySelector('.reasoning-row');
+      expect(row).toBeTruthy();
+      expect(row?.textContent).toContain('Reasoning');
+      // ...but the reasoning markdown body is NOT in the DOM while collapsed.
+      expect(el.querySelector('.reasoning')).toBeNull();
+      expect(el.querySelector('.reasoning svy-markdown')).toBeNull();
+      // Caret shows the collapsed glyph.
+      expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('›');
+    });
+
+    it('isReasoningExpanded defaults to false for a reasoning part', () => {
+      const part = reasoningPart();
+      expect(component.isReasoningExpanded(part, 0)).toBe(false);
+    });
+
+    it('expands the reasoning body when the header is clicked (caret flips › -> ▾)', () => {
+      fixture.componentRef.setInput('parts', [reasoningPart()]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      const row = el.querySelector('.reasoning-row') as HTMLElement;
+      expect(row).toBeTruthy();
+      row.click();
+      fixture.detectChanges();
+
+      // The reasoning markdown body is now rendered.
+      const body = el.querySelector('.reasoning');
+      expect(body).toBeTruthy();
+      expect(body?.querySelector('svy-markdown')).toBeTruthy();
+      // Caret flipped to the open glyph.
+      expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('▾');
+    });
+
+    it('collapses the reasoning body again on a second header click (body removed)', () => {
+      fixture.componentRef.setInput('parts', [reasoningPart()]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const row = el.querySelector('.reasoning-row') as HTMLElement;
+
+      row.click();
+      fixture.detectChanges();
+      expect(el.querySelector('.reasoning')).toBeTruthy();
+
+      row.click();
+      fixture.detectChanges();
+      expect(el.querySelector('.reasoning')).toBeNull();
+      expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('›');
+    });
+
+    it('toggleReasoning flips isReasoningExpanded and is not gated by canExpand', () => {
+      const part = reasoningPart();
+      expect(component.isReasoningExpanded(part, 0)).toBe(false);
+      component.toggleReasoning(part, 0);
+      expect(component.isReasoningExpanded(part, 0)).toBe(true);
+      component.toggleReasoning(part, 0);
+      expect(component.isReasoningExpanded(part, 0)).toBe(false);
+    });
+
+    it('drops blank/placeholder reasoning ("...") entirely: no row, not renderable', () => {
+      fixture.componentRef.setInput('parts', [
+        reasoningPart({ id: 'r-blank', text: '...' }),
+        reasoningPart({ id: 'r-ellipsis', text: '…' }),
+        reasoningPart({ id: 'r-ws', text: '   ' })
+      ]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(component.renderable()).toHaveLength(0);
+      expect(el.querySelector('.reasoning-row')).toBeNull();
+      expect(el.querySelector('.reasoning')).toBeNull();
+    });
+
+    it('keeps the reasoning part collapsed independently of turn completion', () => {
+      // A completed turn still shows the reasoning collapsed (no auto-expand).
+      fixture.componentRef.setInput('parts', [reasoningPart()]);
+      fixture.componentRef.setInput('completed', 123);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.reasoning-row')).toBeTruthy();
+      expect(el.querySelector('.reasoning')).toBeNull();
+      expect(el.querySelector('.reasoning svy-markdown')).toBeNull();
+    });
+
+    it('renders a still-streaming reasoning part (completed=null) collapsed by default', () => {
+      // A reasoning part that has arrived but whose turn is still running
+      // (message-level completed is null). The spec's §3.2 decision is that
+      // reasoning is collapsed by default throughout streaming, with no
+      // auto-expand while it streams.
+      fixture.componentRef.setInput('role', 'assistant');
+      fixture.componentRef.setInput('parts', [reasoningPart({ text: 'starting to think' })]);
+      fixture.componentRef.setInput('completed', null);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      // The "Reasoning" header row is present while it streams...
+      const row = el.querySelector('.reasoning-row');
+      expect(row).toBeTruthy();
+      expect(row?.textContent).toContain('Reasoning');
+      // ...but the markdown body is NOT auto-expanded while streaming.
+      expect(el.querySelector('.reasoning')).toBeNull();
+      expect(el.querySelector('.reasoning svy-markdown')).toBeNull();
+      expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('›');
+    });
+
+    it('keeps a user-expanded reasoning part expanded as a streaming delta appends (completed=null)', () => {
+      // User expands reasoning mid-stream, then more reasoning text streams in.
+      // Because expand state is keyed by the stable part id, the body stays
+      // expanded across the delta - no auto-collapse on new text.
+      fixture.componentRef.setInput('role', 'assistant');
+      fixture.componentRef.setInput('parts', [reasoningPart({ text: 'step one' })]);
+      fixture.componentRef.setInput('completed', null);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      // User expands it mid-stream.
+      const row = el.querySelector('.reasoning-row') as HTMLElement;
+      row.click();
+      fixture.detectChanges();
+      expect(el.querySelector('.reasoning')).toBeTruthy();
+      expect(el.querySelector('.reasoning svy-markdown')).toBeTruthy();
+
+      // A delta arrives: the SAME part id, longer text, still streaming.
+      fixture.componentRef.setInput('parts', [reasoningPart({ text: 'step one, then step two' })]);
+      fixture.detectChanges();
+
+      // The body is STILL expanded after the delta (expand survives deltas).
+      expect(el.querySelector('.reasoning')).toBeTruthy();
+      expect(el.querySelector('.reasoning svy-markdown')).toBeTruthy();
+      expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('▾');
+    });
+  });
 });

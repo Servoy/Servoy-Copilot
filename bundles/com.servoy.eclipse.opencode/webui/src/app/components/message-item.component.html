@@ -19,8 +19,16 @@
     } @else if (isText(part)) {
       <svy-markdown [content]="part.text ?? ''"></svy-markdown>
     } @else if (isReasoning(part)) {
-      <div class="reasoning">
-        <svy-markdown [content]="part.text ?? ''"></svy-markdown>
+      <div class="reasoning-block" [class.open]="isReasoningExpanded(part, $index)">
+        <div class="reasoning-row" (click)="toggleReasoning(part, $index)">
+          <span class="reasoning-caret" aria-hidden="true">{{ isReasoningExpanded(part, $index) ? '▾' : '›' }}</span>
+          <span class="reasoning-label">Reasoning</span>
+        </div>
+        @if (isReasoningExpanded(part, $index)) {
+          <div class="reasoning">
+            <svy-markdown [content]="part.text ?? ''"></svy-markdown>
+          </div>
+        }
       </div>
     } @else if (isTool(part)) {
       <div class="tool" [class.expandable]="canExpand(part)" [class.open]="isExpanded(part, $index)">

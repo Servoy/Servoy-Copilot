@@ -20,8 +20,9 @@ import { MarkdownRendererComponent } from './markdown-renderer.component';
 
 /**
  * Renders a single message's {@code Part[]}: text parts as markdown, reasoning
- * as a muted block, tool parts as a compact collapsed row. Synthetic /
- * system-reminder parts are filtered out.
+ * as a muted, collapsed-by-default row (a "Reasoning" header that expands to
+ * reveal the full markdown on click), tool parts as a compact collapsed row.
+ * Synthetic / system-reminder parts are filtered out.
  */
 @Component({
   selector: 'svy-message-item',
@@ -191,6 +192,31 @@ export class MessageItemComponent {
     if (!this.canExpand(part)) {
       return;
     }
+    const key = this.partKey(part, index);
+    const next = new Set(this.expanded());
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    this.expanded.set(next);
+  }
+
+  /**
+   * Whether a reasoning part is expanded. Reuses the shared {@code expanded}
+   * signal and {@code partKey}, so reasoning rows collapse/expand with the same
+   * state machinery as tool rows. Collapsed by default (the set starts empty).
+   */
+  isReasoningExpanded(part: Part, index: number): boolean {
+    return this.expanded().has(this.partKey(part, index));
+  }
+
+  /**
+   * Toggle a reasoning part's expanded state. Unlike {@link toggle}, this is
+   * not gated by {@code canExpand}: reasoning parts always have text (blanks
+   * are dropped upstream), so they are always expandable.
+   */
+  toggleReasoning(part: Part, index: number): void {
     const key = this.partKey(part, index);
     const next = new Set(this.expanded());
     if (next.has(key)) {

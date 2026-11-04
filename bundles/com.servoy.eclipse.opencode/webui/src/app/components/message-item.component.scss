@@ -113,12 +113,58 @@
   }
 }
 
+// Reasoning: a collapsed-by-default row (caret + "Reasoning" label), styled
+// like a tool row, that expands to reveal the full reasoning markdown in an
+// indented, left-guide body.
+.reasoning-block {
+  margin: 0.15rem 0;
+}
+
+.reasoning-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.12rem 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:hover .reasoning-label {
+    color: var(--svy-accent, #f5a623);
+  }
+}
+
+.reasoning-caret {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  font-size: 0.75rem;
+  color: var(--svy-muted, #9aa0a6);
+  // Hidden until the row is hovered or open, matching the tool caret.
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.reasoning-row:hover .reasoning-caret,
+.reasoning-block.open .reasoning-caret {
+  opacity: 1;
+}
+
+.reasoning-label {
+  flex: 0 0 auto;
+  color: var(--svy-muted, #9aa0a6);
+  font-size: 0.85rem;
+}
+
+// The expanded reasoning body: muted markdown, indented under the caret column
+// with a vertical guide so it reads as nested under the header row (consistent
+// with the tool output's indented body).
 .reasoning {
   color: var(--svy-muted, #9aa0a6);
   font-size: 0.9em;
+  margin: 0.25rem 0 0.35rem;
+  padding-left: 0.85rem;
   border-left: 2px solid var(--svy-border, rgba(127, 127, 127, 0.3));
-  padding-left: 0.7rem;
-  margin: 0.3rem 0;
+  margin-left: 0.35rem;
 }
 
 // Tool calls: a flowing row (icon-caret + name + muted argument), no box, no
