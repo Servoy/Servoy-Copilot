@@ -50,7 +50,7 @@ public class CoverageReportHtmlTest {
 			String html = CoverageReportHtml.render(report);
 			assertAll(() -> assertTrue(html.startsWith("<!DOCTYPE html"), "must start with the doctype"),
 					() -> assertTrue(html.contains("<html"), "has an html element"),
-					() -> assertTrue(html.contains("<body>"), "has a body"),
+					() -> assertTrue(html.contains("<body"), "has a body"),
 					() -> assertTrue(html.trim().endsWith("</html>"), "closes the html element"));
 		}
 
@@ -139,22 +139,43 @@ public class CoverageReportHtmlTest {
 		}
 
 		@Test
-		@DisplayName("a dimension with a gap renders an amber (partial) badge")
+		@DisplayName("a dimension with a gap renders an amber (partial) badge via inline style")
 		void partialBadgeWhenGap() {
 			CoverageReport report = CoverageReport.aggregate("ts", List.of(obs("b1", Set.of("s1"), Set.of(), Set.of())),
 					new PackCatalog(Set.of("s1", "s2"), Set.of(), Set.of()));
 			String html = CoverageReportHtml.render(report);
-			assertTrue(html.contains("badge partial"), "a dimension below 100% must carry the amber badge class");
+			// The amber (partial) badge uses the #b06000 foreground on #fef7e0.
+			assertTrue(html.contains("#b06000"), "a dimension below 100% must carry the amber badge colour inline");
 		}
 
 		@Test
-		@DisplayName("a fully covered dimension renders a green (full) badge")
+		@DisplayName("a fully covered dimension renders a green (full) badge via inline style")
 		void fullBadgeWhenComplete() {
 			CoverageReport report = CoverageReport.aggregate("ts",
 					List.of(obs("b1", Set.of("s1"), Set.of("build"), Set.of("eclipse-ide.read"))),
-					new PackCatalog(Set.of("s1"), Set.of("build"), Set.of("eclipse-ide.read")));
+					new PackCatalog(Set.of("s1"), Set.of("build"), Set.of()));
 			String html = CoverageReportHtml.render(report);
-			assertTrue(html.contains("badge full"), "a 100%-covered dimension must carry the green badge class");
+			// The green (full) badge uses the #137333 foreground on #e6f4ea.
+			assertTrue(html.contains("#137333"), "a 100%-covered dimension must carry the green badge colour inline");
+		}
+	}
+
+	@Nested
+	class InlineStyling {
+
+		@Test
+		@DisplayName("styled elements carry inline style= attributes (Jenkins CSP strips <style> blocks)")
+		void carriesInlineStyleAttributes() {
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of("s1"), Set.of("build"), Set.of("servoy-workspace_listProjects"))),
+					new PackCatalog(Set.of("s1"), Set.of("build"), Set.of()));
+			String html = CoverageReportHtml.render(report);
+			assertAll(
+					// the header must carry its colours inline so it renders under a strict CSP
+					() -> assertTrue(html.contains("style=\""), "elements must carry inline style attributes"),
+					() -> assertTrue(html.contains("#137333"), "the green header colour must be present inline"),
+					// no inline <style> sheet relied upon
+					() -> assertFalse(html.contains("<style"), "the report must not depend on a <style> block"));
 		}
 	}
 }

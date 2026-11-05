@@ -18,8 +18,6 @@
 package com.servoy.eclipse.opencode.skilltest.coverage;
 
 import java.io.File;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -43,23 +41,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <li>agents from {@code agents/<name>.md} basenames, unioned with the
  * top-level {@code agent} block keys of {@code opencode.json} (which add the
  * built-in {@code build}/{@code plan} and any config-only agents),</li>
- * <li><b>MCP tools</b> as per-tool {@code server_tool} identities, obtained by
- * reflecting the {@code com.servoy.eclipse.developer.mcp} bundle's
- * {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES}: each class's
- * {@code @McpServer.name()} is the server and each of its
- * {@code @Tool}-annotated methods contributes a tool (the {@code name()}
- * element, or the method name when blank/absent). The {@code mcp} block of
- * {@code opencode.json} is folded in as a fallback: a configured server with no
- * reflected tools still contributes its bare server name so it stays
- * visible.</li>
+ * <li><b>MCP tools</b>: this reader does <b>not</b> produce a per-tool MCP
+ * denominator. The remote MCP servers the pack's agents call
+ * ({@code servoy-workspace}, {@code servoy-model}, ...) are not reflectable
+ * from the extracted pack offline, so the real MCP denominator is the set of
+ * tool identities <b>observed</b> across the suite (see
+ * {@code CoverageReport.aggregate}). {@link PackCatalog#mcpTools()} from this
+ * reader therefore holds only the {@code opencode.json} {@code mcp}
+ * <b>server</b> names as a hint - never a reflected per-tool list.</li>
  * </ul>
  * <p>
  * Each read is independently guarded; a missing or malformed source yields an
  * empty set for its dimension, mirroring {@code SkillTestPaths}' tolerant
- * fallbacks. The reflection is wrapped in {@code try/catch(Throwable)} so that
- * if developer.mcp (or its annotations) are not resolvable - e.g. headless,
- * outside OSGi - the MCP denominator degrades to the {@code opencode.json}
- * server names. The reader never throws.
+ * fallbacks. The reader never throws.
  * </p>
  */
 public final class PackCatalogReader {
@@ -87,14 +81,6 @@ public final class PackCatalogReader {
 	private static final String AGENT_SUFFIX = ".md"; //$NON-NLS-1$
 	private static final String MCP_KEY = "mcp"; //$NON-NLS-1$
 	private static final String AGENT_KEY = "agent"; //$NON-NLS-1$
-
-	/**
-	 * Fully-qualified name of the developer.mcp server registry, reflected lazily.
-	 */
-	private static final String BUILTINS_CLASS = "com.servoy.eclipse.developer.mcp.McpServerBuiltins"; //$NON-NLS-1$
-	private static final String BUILTINS_FIELD = "BUILT_IN_SERVER_CLASSES"; //$NON-NLS-1$
-	private static final String MCP_SERVER_ANNOTATION = "com.servoy.eclipse.developer.mcp.annotations.McpServer"; //$NON-NLS-1$
-	private static final String TOOL_ANNOTATION = "com.servoy.eclipse.developer.mcp.annotations.Tool"; //$NON-NLS-1$
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -144,8 +130,12 @@ public final class PackCatalogReader {
 		Set<String> agents = readAgents(new File(root, AGENT_DIR));
 		agents.addAll(readAgentsFromJson(opencodeJson));
 
-		Set<String> mcpTools = readMcpTools(opencodeJson);
-		return new PackCatalog(skills, agents, mcpTools);
+		// The MCP denominator is observed-based (the remote servers the pack calls are
+		// not reflectable offline), so the reader contributes only the opencode.json
+		// mcp SERVER names as a hint; CoverageReport uses the union of observed MCP
+		// identities as the real catalog.
+		Set<String> mcpServers = readMcpServers(opencodeJson);
+		return new PackCatalog(skills, agents, mcpServers);
 	}
 
 	/**
@@ -243,99 +233,11 @@ public final class PackCatalogReader {
 	}
 
 	/**
-	 * MCP identities = per-tool {@code server_tool} names obtained by reflecting
-	 * {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES} in the developer.mcp
-	 * bundle, folded together with the {@code mcp} server names in
-	 * {@code opencode.json}. Reflection failure (developer.mcp unresolvable
-	 * headless) degrades to the {@code opencode.json} server names alone.
-	 */
-	private static Set<String> readMcpTools(File opencodeJson) {
-		Set<String> configuredServers = readMcpServers(opencodeJson);
-		Set<String> tools = new LinkedHashSet<>();
-		Set<String> reflectedServers = new LinkedHashSet<>();
-		try {
-			reflectBuiltinTools(tools, reflectedServers);
-		} catch (Throwable ignored) {
-			// developer.mcp (or its annotations) not resolvable: fall back below.
-		}
-		// Fold the configured mcp servers in: a server with reflected tools is already
-		// represented by those tools, so only add the bare server name for a configured
-		// server that produced no reflected tools (or when reflection failed entirely).
-		for (String server : configuredServers) {
-			if (!reflectedServers.contains(server)) {
-				tools.add(server);
-			}
-		}
-		return tools;
-	}
-
-	/**
-	 * Reflects the developer.mcp server registry into {@code server_tool}
-	 * identities. Populates {@code tools} with each identity and
-	 * {@code reflectedServers} with the server names that yielded at least one
-	 * tool.
-	 *
-	 * @throws Throwable if the registry, annotations or field cannot be resolved
-	 */
-	private static void reflectBuiltinTools(Set<String> tools, Set<String> reflectedServers) throws Throwable {
-		ClassLoader cl = PackCatalogReader.class.getClassLoader();
-		Class<?> builtins = Class.forName(BUILTINS_CLASS, false, cl);
-		Object serverClassesObj = builtins.getField(BUILTINS_FIELD).get(null);
-		if (!(serverClassesObj instanceof Class<?>[])) {
-			return;
-		}
-		Class<?>[] serverClasses = (Class<?>[]) serverClassesObj;
-
-		@SuppressWarnings("unchecked")
-		Class<? extends Annotation> mcpServerAnn = (Class<? extends Annotation>) Class.forName(MCP_SERVER_ANNOTATION,
-				false, cl);
-		@SuppressWarnings("unchecked")
-		Class<? extends Annotation> toolAnn = (Class<? extends Annotation>) Class.forName(TOOL_ANNOTATION, false, cl);
-
-		Method serverName = mcpServerAnn.getMethod("name"); //$NON-NLS-1$
-		Method toolName = toolAnn.getMethod("name"); //$NON-NLS-1$
-
-		for (Class<?> serverClass : serverClasses) {
-			if (serverClass == null) {
-				continue;
-			}
-			Annotation serverMarker = serverClass.getAnnotation(mcpServerAnn);
-			if (serverMarker == null) {
-				continue;
-			}
-			String server = asString(serverName.invoke(serverMarker));
-			if (server == null || server.isBlank()) {
-				continue;
-			}
-			server = server.trim();
-			boolean producedTool = false;
-			for (Method method : serverClass.getDeclaredMethods()) {
-				Annotation toolMarker = method.getAnnotation(toolAnn);
-				if (toolMarker == null) {
-					continue;
-				}
-				String tool = asString(toolName.invoke(toolMarker));
-				if (tool == null || tool.isBlank()) {
-					// @Tool.name() defaults to blank -> fall back to the method name.
-					tool = method.getName();
-				}
-				tools.add(server + "_" + tool.trim()); //$NON-NLS-1$
-				producedTool = true;
-			}
-			if (producedTool) {
-				reflectedServers.add(server);
-			}
-		}
-	}
-
-	private static String asString(Object value) {
-		return value instanceof String s ? s : null;
-	}
-
-	/**
 	 * MCP server names = the keys under the {@code mcp} block of
-	 * {@code opencode.json}. Tolerant: a missing/malformed file or absent block
-	 * yields an empty set.
+	 * {@code opencode.json}. These are only a server-level <b>hint</b>: the real
+	 * per-tool MCP denominator is observed-based (see the class Javadoc and
+	 * {@code CoverageReport.aggregate}). Tolerant: a missing/malformed file or
+	 * absent block yields an empty set.
 	 */
 	private static Set<String> readMcpServers(File opencodeJson) {
 		Set<String> servers = new LinkedHashSet<>();

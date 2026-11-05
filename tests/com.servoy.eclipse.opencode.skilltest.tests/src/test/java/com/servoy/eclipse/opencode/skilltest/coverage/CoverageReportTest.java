@@ -104,6 +104,46 @@ public class CoverageReportTest {
 		}
 
 		@Test
+		@DisplayName("MCP dimension is observed-based: an EMPTY catalog still covers every observed tool, none not-covered")
+		void mcpDimensionIsObservedBased() {
+			// The PackCatalog carries NO mcp tools (the reader no longer reflects); the
+			// real MCP denominator is the union of the identities the suite observed.
+			PackCatalog catalog = new PackCatalog(Set.of(), Set.of(), Set.of());
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace_listProjects")),
+							obs("b2", Set.of(), Set.of(), Set.of("servoy-model_getTarget"))),
+					catalog);
+			Dimension tools = report.getMcpTools();
+			assertAll(
+					// both observed tools become the catalog and are covered
+					() -> assertEquals(Set.of("servoy-workspace_listProjects", "servoy-model_getTarget"),
+							new java.util.HashSet<>(tools.coveredToBaselines().keySet())),
+					() -> assertEquals(Set.of("b1"), tools.coveredToBaselines().get("servoy-workspace_listProjects")),
+					() -> assertEquals(Set.of("b2"), tools.coveredToBaselines().get("servoy-model_getTarget")),
+					() -> assertEquals(2, tools.catalogCount()), () -> assertEquals(2, tools.coveredCount()),
+					// nothing left uncovered and nothing off-catalog (observed == catalog)
+					() -> assertTrue(tools.notCovered().isEmpty()), () -> assertTrue(tools.offCatalog().isEmpty()),
+					() -> assertEquals(100, tools.percentage()));
+		}
+
+		@Test
+		@DisplayName("MCP observed-based: a 'server.tool' and a 'server_tool' form canonicalize to one covered entry")
+		void mcpObservedFormsCanonicalizeToOne() {
+			PackCatalog catalog = new PackCatalog(Set.of(), Set.of(), Set.of());
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace.listProjects")),
+							obs("b2", Set.of(), Set.of(), Set.of("servoy-workspace_listProjects"))),
+					catalog);
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(1, tools.catalogCount()), () -> assertEquals(1, tools.coveredCount()),
+					() -> assertTrue(tools.coveredToBaselines().containsKey("servoy-workspace_listProjects")),
+					// both baselines attributed to the single canonical entry
+					() -> assertEquals(Set.of("b1", "b2"),
+							tools.coveredToBaselines().get("servoy-workspace_listProjects")),
+					() -> assertTrue(tools.notCovered().isEmpty()), () -> assertTrue(tools.offCatalog().isEmpty()));
+		}
+
+		@Test
 		@DisplayName("the separator canonicalization only applies to MCP tools, not skills/agents")
 		void canonicalizationDoesNotTouchSkills() {
 			// A skill id that happens to contain a dot must NOT be treated as server.tool.

@@ -36,11 +36,19 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Unit tests for {@link PackCatalogReader} — reading skills from
- * {@code skill/<id>/}, agents from {@code agent/<name>.md}, and MCP server
- * names from the {@code mcp} block of {@code opencode.json}, under a config dir
- * overridable via the {@code servoy.skilltest.configDir} system property, with
- * every source independently guarded so a missing/malformed source degrades to
- * an empty set rather than throwing (SVY-21711 §3.2).
+ * {@code skills/<id>/}, agents from {@code agents/<name>.md}, and the
+ * {@code mcp} block <b>server</b> names from {@code opencode.json} (a hint
+ * only), under a config dir overridable via the
+ * {@code servoy.skilltest.configDir} system property, with every source
+ * independently guarded so a missing/malformed source degrades to an empty set
+ * rather than throwing (SVY-21711 §3.2).
+ * <p>
+ * The reader no longer reflects the developer.mcp
+ * {@code @McpServer}/{@code @Tool} registry: the real MCP denominator is
+ * observed-based (computed in {@code CoverageReport.aggregate} from what the
+ * suite called), so {@code mcpTools()} here holds only the
+ * {@code opencode.json} mcp server-name hints.
+ * </p>
  */
 public class PackCatalogReaderTest {
 
@@ -88,10 +96,10 @@ public class PackCatalogReaderTest {
 			writeSkill(configDir, "servoy-jira");
 			writeAgent(configDir, "build");
 			writeAgent(configDir, "test-writer");
-			// eclipse-ide / eclipse-git are not developer.mcp servers, so they are not
-			// reflected and contribute only their bare server names as a fallback.
+			// mcpTools() holds only the opencode.json mcp SERVER names (a hint) - no
+			// per-tool reflection any more.
 			writeOpencodeJson(configDir,
-					"{\"mcp\":{\"eclipse-ide\":{\"type\":\"local\"},\"eclipse-git\":{\"type\":\"local\"}}}");
+					"{\"mcp\":{\"servoy-workspace\":{\"type\":\"remote\"},\"servoy-model\":{\"type\":\"remote\"}}}");
 
 			overrideConfigDir(configDir);
 			PackCatalog catalog = PackCatalogReader.read();
@@ -101,9 +109,9 @@ public class PackCatalogReaderTest {
 							new java.util.HashSet<>(catalog.skills())),
 					() -> assertEquals(java.util.Set.of("build", "test-writer"),
 							new java.util.HashSet<>(catalog.agents())),
-					// The bare fallback servers are present alongside the reflected tools.
-					() -> assertTrue(catalog.mcpTools().contains("eclipse-ide")),
-					() -> assertTrue(catalog.mcpTools().contains("eclipse-git")));
+					// The mcp block's server names are the hint set; no reflected per-tool list.
+					() -> assertEquals(java.util.Set.of("servoy-workspace", "servoy-model"),
+							new java.util.HashSet<>(catalog.mcpTools())));
 		}
 
 		@Test
@@ -139,26 +147,18 @@ public class PackCatalogReaderTest {
 		}
 
 		@Test
-		@DisplayName("a developer.mcp server with reflected tools is represented by server_tool, not its bare name")
-		void reflectedServerYieldsPerToolIdentities(@TempDir Path configDir) throws IOException {
-			// servoy-form IS a developer.mcp @McpServer, so it reflects to getFormLayout;
-			// the bare "servoy-form" name must NOT also be added (the tool identity covers
-			// it).
-			writeOpencodeJson(configDir, "{\"mcp\":{\"servoy-form\":{\"type\":\"local\"}}}");
-			PackCatalog catalog = PackCatalogReader.read(configDir);
-			assertAll(() -> assertTrue(catalog.mcpTools().contains("servoy-form_getFormLayout")),
-					() -> assertFalse(catalog.mcpTools().contains("servoy-form")));
-		}
-
-		@Test
-		@DisplayName("a configured server that is not a developer.mcp server keeps its bare fallback name")
-		void nonReflectedServerKeepsBareName(@TempDir Path configDir) throws IOException {
-			// eclipse-ide/eclipse-git are external MCP servers, not reflectable here.
+		@DisplayName("mcpTools holds the opencode.json mcp SERVER names, not a reflected per-tool list")
+		void mcpToolsAreServerNameHints(@TempDir Path configDir) throws IOException {
+			// The reader no longer reflects developer.mcp; it returns the bare mcp server
+			// names as a hint. No per-tool "server_tool" identities are produced here.
 			writeOpencodeJson(configDir,
-					"{\"mcp\":{\"eclipse-ide\":{\"type\":\"local\"},\"eclipse-git\":{\"type\":\"local\"}}}");
+					"{\"mcp\":{\"servoy-form\":{\"type\":\"remote\"},\"servoy-workspace\":{\"type\":\"remote\"}}}");
 			PackCatalog catalog = PackCatalogReader.read(configDir);
-			assertAll(() -> assertTrue(catalog.mcpTools().contains("eclipse-ide")),
-					() -> assertTrue(catalog.mcpTools().contains("eclipse-git")));
+			assertAll(() -> assertTrue(catalog.mcpTools().contains("servoy-form")),
+					() -> assertTrue(catalog.mcpTools().contains("servoy-workspace")),
+					// no reflected per-tool identity
+					() -> assertFalse(catalog.mcpTools().contains("servoy-form_getFormLayout")),
+					() -> assertEquals(2, catalog.mcpTools().size()));
 		}
 
 		@Test
@@ -201,21 +201,17 @@ public class PackCatalogReaderTest {
 	@Nested
 	class MissingOrMalformedSources {
 
-		// Note on the MCP dimension in these tests: the skilltest.tests classpath
-		// Require-Bundles com.servoy.eclipse.developer.mcp, so the reflected per-tool
-		// denominator IS available here and mcpTools always contains the reflected
-		// servoy-* tools regardless of opencode.json. The opencode.json mcp block only
-		// contributes BARE fallback names for servers that are NOT developer.mcp
-		// servers. (The reflection-unavailable fallback path is covered by inspection;
-		// it cannot be forced on a classpath that can resolve the registry.)
+		// The MCP dimension here is just the opencode.json mcp SERVER-name hint set;
+		// there is no reflection, so a missing/malformed opencode.json simply yields an
+		// empty mcpTools() set (never throws).
 
 		@Test
-		@DisplayName("an absent config dir yields empty skills/agents (MCP still reflects the built-ins)")
+		@DisplayName("an absent config dir yields empty skills/agents/mcp")
 		void absentConfigDir(@TempDir Path configDir) {
 			Path missing = configDir.resolve("does-not-exist");
 			PackCatalog catalog = PackCatalogReader.read(missing);
 			assertAll(() -> assertNotNull(catalog), () -> assertTrue(catalog.skills().isEmpty()),
-					() -> assertTrue(catalog.agents().isEmpty()));
+					() -> assertTrue(catalog.agents().isEmpty()), () -> assertTrue(catalog.mcpTools().isEmpty()));
 		}
 
 		@Test
@@ -227,43 +223,41 @@ public class PackCatalogReaderTest {
 		}
 
 		@Test
-		@DisplayName("missing skills/ and agents/ subtrees degrade to empty sets")
+		@DisplayName("missing skills/ and agents/ subtrees degrade to empty sets; mcp server hints still read")
 		void missingSkillAndAgentDirs(@TempDir Path configDir) throws IOException {
 			// Only opencode.json present — no skills/ or agents/ directories.
 			writeOpencodeJson(configDir, "{\"mcp\":{\"servoy-form\":{}}}");
 			PackCatalog catalog = PackCatalogReader.read(configDir);
 			assertAll(() -> assertTrue(catalog.skills().isEmpty()), () -> assertTrue(catalog.agents().isEmpty()),
-					// servoy-form reflects to its per-tool identity rather than its bare name.
-					() -> assertTrue(catalog.mcpTools().contains("servoy-form_getFormLayout")));
+					// the mcp block's server name is kept verbatim as a hint
+					() -> assertTrue(catalog.mcpTools().contains("servoy-form")),
+					() -> assertFalse(catalog.mcpTools().contains("servoy-form_getFormLayout")));
 		}
 
 		@Test
-		@DisplayName("a missing opencode.json still yields the reflected MCP tools and the file skills")
+		@DisplayName("a missing opencode.json yields empty mcp hints and the file skills")
 		void missingOpencodeJson(@TempDir Path configDir) throws IOException {
 			writeSkill(configDir, "s1");
 			PackCatalog catalog = PackCatalogReader.read(configDir);
-			// No opencode.json fallback servers, but reflection still supplies the tools.
+			// No opencode.json, so no mcp server hints; skills still read from the tree.
 			assertAll(() -> assertTrue(catalog.skills().contains("s1")),
-					() -> assertTrue(catalog.mcpTools().contains("servoy-form_getFormLayout")));
+					() -> assertTrue(catalog.mcpTools().isEmpty()));
 		}
 
 		@Test
-		@DisplayName("a malformed opencode.json does not throw; the reflected MCP tools remain")
+		@DisplayName("a malformed opencode.json does not throw; mcp hints degrade to empty")
 		void malformedOpencodeJson(@TempDir Path configDir) throws IOException {
 			writeOpencodeJson(configDir, "{ this is : not valid json ");
 			PackCatalog catalog = PackCatalogReader.read(configDir);
-			assertAll(() -> assertNotNull(catalog),
-					() -> assertTrue(catalog.mcpTools().contains("servoy-form_getFormLayout")));
+			assertAll(() -> assertNotNull(catalog), () -> assertTrue(catalog.mcpTools().isEmpty()));
 		}
 
 		@Test
-		@DisplayName("opencode.json without an mcp block adds no fallback servers (reflected tools remain)")
+		@DisplayName("opencode.json without an mcp block yields no mcp server hints")
 		void opencodeJsonWithoutMcp(@TempDir Path configDir) throws IOException {
 			writeOpencodeJson(configDir, "{\"$schema\":\"https://opencode.ai/config.json\"}");
 			PackCatalog catalog = PackCatalogReader.read(configDir);
-			assertAll(() -> assertTrue(catalog.mcpTools().contains("servoy-form_getFormLayout")),
-					// no external fallback servers were configured
-					() -> assertFalse(catalog.mcpTools().contains("eclipse-ide")));
+			assertTrue(catalog.mcpTools().isEmpty());
 		}
 	}
 

@@ -126,13 +126,34 @@ public final class CoverageReport {
 		PackCatalog cat = catalog != null ? catalog : PackCatalog.empty();
 		List<CoverageObservation> obs = observations != null ? observations : Collections.emptyList();
 
-		// Skills and agents compare as plain ids (identity canonicalizer); MCP tool
-		// identities canonicalize the server/tool separator so an observed
-		// "servoy-workspace.listProjects" matches a catalog
-		// "servoy-workspace_listProjects".
+		// Skills and agents are catalog-based: they have a real offline denominator
+		// (the extracted pack), so NOT-COVERED-YET is meaningful. They compare as
+		// plain ids (identity canonicalizer).
 		Dimension skills = foldDimension("Skills", cat.skills(), obs, CoverageObservation::skills, s -> s); //$NON-NLS-1$
 		Dimension agents = foldDimension("Agents", cat.agents(), obs, CoverageObservation::agents, s -> s); //$NON-NLS-1$
-		Dimension mcpTools = foldDimension("MCP tools", cat.mcpTools(), obs, CoverageObservation::mcpTools, //$NON-NLS-1$
+
+		// The MCP dimension is OBSERVED-based: the remote MCP servers the pack's agents
+		// call (servoy-workspace, servoy-model, ...) are not reflectable from the
+		// extracted pack offline, so there is no offline per-tool denominator. The
+		// catalog for the MCP fold is therefore the union of the MCP identities
+		// observed across all baselines (each already a "server_tool" string from
+		// CoverageExtractor.identity), canonicalized so a "server.tool" and a
+		// "server_tool" form collapse to one entry. Consequence: every observed MCP
+		// tool is covered (100%), NOT-COVERED-YET for MCP is empty, and nothing is
+		// off-catalog. The tool-name format in the report is the verbatim export
+		// "server_tool" form.
+		Set<String> observedMcp = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+		for (CoverageObservation o : obs) {
+			if (o.mcpTools() != null) {
+				for (String id : o.mcpTools()) {
+					String canonical = canonicalMcpId(id);
+					if (canonical != null) {
+						observedMcp.add(canonical);
+					}
+				}
+			}
+		}
+		Dimension mcpTools = foldDimension("MCP tools", observedMcp, obs, CoverageObservation::mcpTools, //$NON-NLS-1$
 				CoverageReport::canonicalMcpId);
 
 		List<BaselineBreakdown> breakdowns = new ArrayList<>();

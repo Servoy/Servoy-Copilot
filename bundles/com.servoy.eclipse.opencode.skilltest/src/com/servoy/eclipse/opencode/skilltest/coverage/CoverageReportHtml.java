@@ -27,36 +27,78 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Set;
 
-import com.servoy.eclipse.opencode.skilltest.SkillTestHtml;
 import com.servoy.eclipse.opencode.skilltest.coverage.CoverageReport.BaselineBreakdown;
 import com.servoy.eclipse.opencode.skilltest.coverage.CoverageReport.Dimension;
 
 /**
- * Renders a {@link CoverageReport} as a self-contained HTML page in the same
- * visual style as the per-run report (SVY-21711 §3.4). It reuses the exact
- * {@link SkillTestHtml#CSS} palette - header status colours, collapsible
- * {@code details}, tables, muted text - and adds only a few coverage-specific
- * rules so the two reports look like one family.
+ * Renders a {@link CoverageReport} as a self-contained HTML page (SVY-21711
+ * §3.4).
+ * <p>
+ * <b>Jenkins CSP note:</b> Jenkins serves archived build artifacts under a
+ * strict Content-Security-Policy that strips any inline {@code <style>} block,
+ * so a report that relied on a {@code <style>} sheet rendered completely
+ * unstyled there. To survive the CSP with no server change, every element that
+ * needs styling to be readable carries its visual rules as an inline
+ * {@code style="..."} attribute instead; the page is fully readable with no
+ * {@code <style>} block at all. The inline style strings are kept as
+ * {@code STYLE_*} constants so the builders stay readable and literals are not
+ * repeated.
+ * </p>
  */
 public final class CoverageReportHtml {
 
 	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss"); //$NON-NLS-1$
 
-	/** Coverage-specific additions layered on top of the shared palette. */
-	private static final String EXTRA_CSS = "" + ".badges{margin:8px 0;}"
-			+ ".badge{display:inline-block;padding:3px 8px;border-radius:10px;margin-right:6px;font-weight:600;font-size:11px;}"
-			+ ".badge.full{background:#e6f4ea;color:#137333;}" + ".badge.partial{background:#fef7e0;color:#b06000;}"
-			+ ".cov-table{width:100%;border-collapse:collapse;margin:4px 0;}"
-			+ ".cov-table th{text-align:left;color:#5f6368;font-size:10px;text-transform:uppercase;padding:2px 6px;border-bottom:1px solid #eee;}"
-			+ ".cov-table td{vertical-align:top;padding:2px 6px;font-size:11px;border-bottom:1px solid #f1f3f4;}"
-			+ ".cov-table td.item{font-family:Consolas,monospace;}"
-			+ ".cov-table td.count{text-align:right;color:#5f6368;white-space:nowrap;}"
-			+ ".notcovered{background:#fce8e6;border:1px solid #f3c0bc;border-radius:6px;padding:6px 8px;margin:4px 0;}"
-			+ ".notcovered .nc-title{font-weight:700;color:#c5221f;margin-bottom:4px;}"
-			+ ".notcovered ul{margin:0;padding-left:18px;}"
-			+ ".notcovered li{font-family:Consolas,monospace;font-size:11px;color:#c5221f;}"
-			+ ".offcatalog{margin:4px 0;}"
-			+ ".offcatalog .oc-title{font-weight:600;color:#5f6368;font-size:10px;text-transform:uppercase;margin-bottom:2px;}";
+	// Inline style strings (see the Jenkins CSP note above). Visually equivalent
+	// to the previous classed version: green header on a light-green band, a red
+	// accent on the NOT-COVERED block, muted grey secondary text.
+
+	private static final String STYLE_BODY = "font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#202124;" //$NON-NLS-1$
+			+ "margin:16px;background:#fff;"; //$NON-NLS-1$
+
+	private static final String STYLE_HEADER = "background:#e6f4ea;color:#137333;padding:8px 12px;border-radius:6px;" //$NON-NLS-1$
+			+ "font-weight:600;margin-bottom:12px;"; //$NON-NLS-1$
+
+	private static final String STYLE_HEADER_ID = "color:#5f6368;font-weight:400;margin-left:8px;"; //$NON-NLS-1$
+
+	private static final String STYLE_BADGES = "margin:8px 0;"; //$NON-NLS-1$
+
+	private static final String STYLE_BADGE_BASE = "display:inline-block;padding:3px 8px;border-radius:10px;" //$NON-NLS-1$
+			+ "margin-right:6px;font-weight:600;font-size:11px;"; //$NON-NLS-1$
+
+	private static final String STYLE_BADGE_FULL = STYLE_BADGE_BASE + "background:#e6f4ea;color:#137333;"; //$NON-NLS-1$
+
+	private static final String STYLE_BADGE_PARTIAL = STYLE_BADGE_BASE + "background:#fef7e0;color:#b06000;"; //$NON-NLS-1$
+
+	private static final String STYLE_SECTION_SUMMARY = "font-weight:600;font-size:14px;margin:12px 0 4px;"; //$NON-NLS-1$
+
+	private static final String STYLE_TABLE = "border-collapse:collapse;margin:4px 0;width:100%;"; //$NON-NLS-1$
+
+	private static final String STYLE_TH = "text-align:left;color:#5f6368;font-size:10px;text-transform:uppercase;" //$NON-NLS-1$
+			+ "padding:2px 6px;border-bottom:1px solid #eee;"; //$NON-NLS-1$
+
+	private static final String STYLE_TD = "vertical-align:top;padding:2px 6px;font-size:11px;" //$NON-NLS-1$
+			+ "border-bottom:1px solid #f1f3f4;"; //$NON-NLS-1$
+
+	private static final String STYLE_TD_ITEM = STYLE_TD + "font-family:Consolas,monospace;"; //$NON-NLS-1$
+
+	private static final String STYLE_TD_COUNT = STYLE_TD + "text-align:right;color:#5f6368;white-space:nowrap;"; //$NON-NLS-1$
+
+	private static final String STYLE_NOTCOVERED = "background:#fce8e6;border:1px solid #f3c0bc;border-radius:6px;" //$NON-NLS-1$
+			+ "padding:6px 8px;margin:4px 0;"; //$NON-NLS-1$
+
+	private static final String STYLE_NC_TITLE = "font-weight:700;color:#c5221f;margin-bottom:4px;"; //$NON-NLS-1$
+
+	private static final String STYLE_NC_LIST = "margin:0;padding-left:18px;"; //$NON-NLS-1$
+
+	private static final String STYLE_NC_ITEM = "font-family:Consolas,monospace;font-size:11px;color:#c5221f;"; //$NON-NLS-1$
+
+	private static final String STYLE_OFFCATALOG = "margin:4px 0;"; //$NON-NLS-1$
+
+	private static final String STYLE_OC_TITLE = "font-weight:600;color:#5f6368;font-size:10px;" //$NON-NLS-1$
+			+ "text-transform:uppercase;margin-bottom:2px;"; //$NON-NLS-1$
+
+	private static final String STYLE_MUTED = "color:#5f6368;"; //$NON-NLS-1$
 
 	private CoverageReportHtml() {
 	}
@@ -117,18 +159,18 @@ public final class CoverageReportHtml {
 		StringBuilder sb = new StringBuilder();
 		String ts = report != null && report.getTimestamp() != null ? report.getTimestamp() : ""; //$NON-NLS-1$
 
-		sb.append("<div class=\"header s-pass\">"); //$NON-NLS-1$
-		sb.append("<span class=\"status\">Skill-test coverage</span> "); //$NON-NLS-1$
-		sb.append("<span class=\"id\">").append(esc(ts)).append("</span>"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<div style=\"").append(STYLE_HEADER).append("\">"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<span>Skill-test coverage</span> "); //$NON-NLS-1$
+		sb.append("<span style=\"").append(STYLE_HEADER_ID).append("\">").append(esc(ts)).append("</span>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		sb.append("</div>"); //$NON-NLS-1$
 
 		if (report == null) {
-			sb.append("<p class=\"muted\">No coverage data.</p>"); //$NON-NLS-1$
+			sb.append("<p style=\"").append(STYLE_MUTED).append("\">No coverage data.</p>"); //$NON-NLS-1$ //$NON-NLS-2$
 			return page(sb.toString());
 		}
 
 		// Summary badges per dimension.
-		sb.append("<div class=\"badges\">"); //$NON-NLS-1$
+		sb.append("<div style=\"").append(STYLE_BADGES).append("\">"); //$NON-NLS-1$ //$NON-NLS-2$
 		for (Dimension d : report.getDimensions()) {
 			sb.append(badge(d));
 		}
@@ -166,28 +208,33 @@ public final class CoverageReportHtml {
 
 	private static String badge(Dimension d) {
 		boolean full = d.percentage() >= 100;
-		String cls = full ? "badge full" : "badge partial"; //$NON-NLS-1$ //$NON-NLS-2$
-		return "<span class=\"" + cls + "\">" + esc(d.name()) + " " + d.coveredCount() + "/" + d.catalogCount() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		String style = full ? STYLE_BADGE_FULL : STYLE_BADGE_PARTIAL;
+		return "<span style=\"" + style + "\">" + esc(d.name()) + " " + d.coveredCount() + "/" + d.catalogCount() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				+ "</span>"; //$NON-NLS-1$
 	}
 
 	private static String dimensionSection(Dimension d) {
 		StringBuilder sb = new StringBuilder();
-		sb.append("<details open><summary class=\"section-summary\">").append(esc(d.name())).append(" \u2014 ") //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<div style=\"").append(STYLE_SECTION_SUMMARY).append("\">").append(esc(d.name())).append(" \u2014 ") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				.append(d.coveredCount()).append('/').append(d.catalogCount()).append(" (").append(d.percentage()) //$NON-NLS-1$
-				.append("%)</summary>"); //$NON-NLS-1$
+				.append("%)</div>"); //$NON-NLS-1$
 
 		// Covered table: item -> count -> baseline ids.
 		Map<String, Set<String>> covered = d.coveredToBaselines();
 		if (covered.isEmpty()) {
-			sb.append("<div class=\"muted\">(nothing covered yet)</div>"); //$NON-NLS-1$
+			sb.append("<div style=\"").append(STYLE_MUTED).append("\">(nothing covered yet)</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 		} else {
-			sb.append("<table class=\"cov-table\"><tr><th>Item</th><th>Count</th><th>Baselines</th></tr>"); //$NON-NLS-1$
+			sb.append("<table style=\"").append(STYLE_TABLE).append("\"><tr>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<th style=\"").append(STYLE_TH).append("\">Item</th>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<th style=\"").append(STYLE_TH).append("\">Count</th>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<th style=\"").append(STYLE_TH).append("\">Baselines</th></tr>"); //$NON-NLS-1$ //$NON-NLS-2$
 			for (Map.Entry<String, Set<String>> entry : covered.entrySet()) {
 				Set<String> baselines = entry.getValue();
-				sb.append("<tr><td class=\"item\">").append(esc(entry.getKey())).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-				sb.append("<td class=\"count\">").append(baselines.size()).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-				sb.append("<td>").append(esc(String.join(", ", baselines))).append("</td></tr>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				sb.append("<tr><td style=\"").append(STYLE_TD_ITEM).append("\">").append(esc(entry.getKey())) //$NON-NLS-1$ //$NON-NLS-2$
+						.append("</td>"); //$NON-NLS-1$
+				sb.append("<td style=\"").append(STYLE_TD_COUNT).append("\">").append(baselines.size()).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				sb.append("<td style=\"").append(STYLE_TD).append("\">").append(esc(String.join(", ", baselines))) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+						.append("</td></tr>"); //$NON-NLS-1$
 			}
 			sb.append("</table>"); //$NON-NLS-1$
 		}
@@ -195,10 +242,11 @@ public final class CoverageReportHtml {
 		// NOT COVERED YET list (expanded/visible by default when non-empty).
 		Set<String> notCovered = d.notCovered();
 		if (!notCovered.isEmpty()) {
-			sb.append("<div class=\"notcovered\"><div class=\"nc-title\">NOT COVERED YET (") //$NON-NLS-1$
-					.append(notCovered.size()).append(")</div><ul>"); //$NON-NLS-1$
+			sb.append("<div style=\"").append(STYLE_NOTCOVERED).append("\"><div style=\"").append(STYLE_NC_TITLE) //$NON-NLS-1$ //$NON-NLS-2$
+					.append("\">NOT COVERED YET (").append(notCovered.size()).append(")</div><ul style=\"") //$NON-NLS-1$ //$NON-NLS-2$
+					.append(STYLE_NC_LIST).append("\">"); //$NON-NLS-1$
 			for (String item : notCovered) {
-				sb.append("<li>").append(esc(item)).append("</li>"); //$NON-NLS-1$ //$NON-NLS-2$
+				sb.append("<li style=\"").append(STYLE_NC_ITEM).append("\">").append(esc(item)).append("</li>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			}
 			sb.append("</ul></div>"); //$NON-NLS-1$
 		}
@@ -206,30 +254,36 @@ public final class CoverageReportHtml {
 		// Off-catalog (observed but not in the catalog) - informational.
 		Set<String> offCatalog = d.offCatalog();
 		if (!offCatalog.isEmpty()) {
-			sb.append("<div class=\"offcatalog\"><div class=\"oc-title\">Off-catalog (observed, not in catalog)</div>"); //$NON-NLS-1$
-			sb.append("<div class=\"muted\">").append(esc(String.join(", ", offCatalog))).append("</div></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			sb.append("<div style=\"").append(STYLE_OFFCATALOG).append("\"><div style=\"").append(STYLE_OC_TITLE) //$NON-NLS-1$ //$NON-NLS-2$
+					.append("\">Off-catalog (observed, not in catalog)</div>"); //$NON-NLS-1$
+			sb.append("<div style=\"").append(STYLE_MUTED).append("\">").append(esc(String.join(", ", offCatalog))) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					.append("</div></div>"); //$NON-NLS-1$
 		}
 
-		sb.append("</details>"); //$NON-NLS-1$
 		return sb.toString();
 	}
 
 	private static String breakdownSection(CoverageReport report) {
 		StringBuilder sb = new StringBuilder();
-		sb.append("<details><summary class=\"section-summary\">Per-baseline breakdown</summary>"); //$NON-NLS-1$
+		sb.append("<div style=\"").append(STYLE_SECTION_SUMMARY).append("\">Per-baseline breakdown</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 		if (report.getBreakdowns().isEmpty()) {
-			sb.append("<div class=\"muted\">(no baselines in this run)</div></details>"); //$NON-NLS-1$
+			sb.append("<div style=\"").append(STYLE_MUTED).append("\">(no baselines in this run)</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 			return sb.toString();
 		}
-		sb.append("<table class=\"cov-table\"><tr><th>Baseline</th><th>Skills</th><th>Agents</th>" //$NON-NLS-1$
-				+ "<th>MCP tools</th></tr>"); //$NON-NLS-1$
+		sb.append("<table style=\"").append(STYLE_TABLE).append("\"><tr>"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<th style=\"").append(STYLE_TH).append("\">Baseline</th>"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<th style=\"").append(STYLE_TH).append("\">Skills</th>"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<th style=\"").append(STYLE_TH).append("\">Agents</th>"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("<th style=\"").append(STYLE_TH).append("\">MCP tools</th></tr>"); //$NON-NLS-1$ //$NON-NLS-2$
 		for (BaselineBreakdown b : report.getBreakdowns()) {
-			sb.append("<tr><td class=\"item\">").append(esc(b.baselineId())).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("<td>").append(esc(join(b.skills()))).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("<td>").append(esc(join(b.agents()))).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("<td>").append(esc(join(b.mcpTools()))).append("</td></tr>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<tr><td style=\"").append(STYLE_TD_ITEM).append("\">").append(esc(b.baselineId())) //$NON-NLS-1$ //$NON-NLS-2$
+					.append("</td>"); //$NON-NLS-1$
+			sb.append("<td style=\"").append(STYLE_TD).append("\">").append(esc(join(b.skills()))).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			sb.append("<td style=\"").append(STYLE_TD).append("\">").append(esc(join(b.agents()))).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			sb.append("<td style=\"").append(STYLE_TD).append("\">").append(esc(join(b.mcpTools()))) //$NON-NLS-1$ //$NON-NLS-2$
+					.append("</td></tr>"); //$NON-NLS-1$
 		}
-		sb.append("</table></details>"); //$NON-NLS-1$
+		sb.append("</table>"); //$NON-NLS-1$
 		return sb.toString();
 	}
 
@@ -240,10 +294,16 @@ public final class CoverageReportHtml {
 		return String.join(", ", values); //$NON-NLS-1$
 	}
 
-	/** Wraps body content in a styled HTML document reusing the shared palette. */
+	/**
+	 * Wraps body content in a minimal HTML document. All visual styling is carried
+	 * by inline {@code style="..."} attributes on the generated elements (see the
+	 * Jenkins CSP note on the class) so the page renders correctly even when the
+	 * server strips inline {@code <style>} blocks; a single {@code style} attribute
+	 * on {@code <body>} sets the base font/colour.
+	 */
 	private static String page(String body) {
-		return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>" //$NON-NLS-1$
-				+ SkillTestHtml.CSS + EXTRA_CSS + "</style></head><body>" + body + "</body></html>"; //$NON-NLS-1$ //$NON-NLS-2$
+		return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body style=\"" //$NON-NLS-1$
+				+ STYLE_BODY + "\">" + body + "</body></html>"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/**

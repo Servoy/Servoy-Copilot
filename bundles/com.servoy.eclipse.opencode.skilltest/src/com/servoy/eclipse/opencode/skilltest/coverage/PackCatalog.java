@@ -29,10 +29,12 @@ import java.util.Set;
  * <li>{@code skills} - one per {@code skills/<id>/} directory (plural),</li>
  * <li>{@code agents} - one per {@code agents/<name>.md} file (plural), unioned
  * with the {@code opencode.json} top-level {@code agent} block keys,</li>
- * <li>{@code mcpTools} - per-tool {@code server_tool} identities reflected from
- * the developer.mcp {@code McpServerBuiltins} registry, with the
- * {@code opencode.json} {@code mcp} server names folded in as a fallback (see
- * §2.2).</li>
+ * <li>{@code mcpTools} - the {@code opencode.json} {@code mcp} <b>server</b>
+ * names only, as a hint. There is <b>no</b> offline per-tool MCP denominator:
+ * the remote MCP servers the pack's agents call are not reflectable from the
+ * extracted pack, so the real MCP denominator is the set of tool identities
+ * <b>observed</b> across the suite - {@code CoverageReport.aggregate} uses that
+ * union as the MCP catalog and ignores this hint set for the fold.</li>
  * </ul>
  * <p>
  * A missing catalog source degrades to an empty set for its dimension rather
@@ -42,7 +44,8 @@ import java.util.Set;
  *
  * @param skills   the catalog skill ids
  * @param agents   the catalog agent names
- * @param mcpTools the catalog MCP identities (server names in v1)
+ * @param mcpTools the {@code opencode.json} MCP server names (a hint only; the
+ *                 MCP dimension is observed-based)
  */
 public record PackCatalog(Set<String> skills, Set<String> agents, Set<String> mcpTools) {
 
