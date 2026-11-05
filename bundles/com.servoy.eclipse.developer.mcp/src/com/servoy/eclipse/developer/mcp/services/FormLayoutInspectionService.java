@@ -260,6 +260,14 @@ public class FormLayoutInspectionService
 	/** The single reused hidden browser + its offscreen shell (pool-ready handle). */
 	private volatile BrowserHandle handle;
 
+	/**
+	 * Set once creating the browser has failed (no Chromium / WebKit backend, e.g. a headless build agent).
+	 * Static because each tool-server instance owns its own service, while the missing backend is a property
+	 * of the whole JVM. Every failed creation also makes the platform pop a modal "Internal Error - SWT error"
+	 * dialog, so retrying on every call would only spawn more of them for a result that cannot change.
+	 */
+	private static volatile boolean browserUnavailable;
+
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	/**
@@ -464,16 +472,25 @@ public class FormLayoutInspectionService
 		// environment with no Equo Chromium and no WebKit-GTK), BrowserFactory/SWT throws an
 		// SWTError (an Error, not an Exception). Translate any creation failure into the NO_BROWSER
 		// reason so the caller emits a clean named message instead of leaking a raw SWT stack.
+		if (browserUnavailable)
+		{
+			failure.set("NO_BROWSER");
+			return null;
+		}
 		display.syncExec(() -> {
+			boolean creating = true;
 			try
 			{
 				BrowserHandle h = ensureHandle(display);
+				creating = false;
 				// always (re)apply the requested viewport - the browser is reused, so a previous narrow
 				// render must not leak into this call (SVY-21591)
 				applyViewport(h, width, height);
 			}
 			catch (Throwable t)
 			{
+				// only a failed creation means "no backend"; a later viewport problem must not disable rendering for good
+				browserUnavailable = creating;
 				failure.set("NO_BROWSER");
 				ServoyLog.logWarning("FormLayoutInspectionService: could not create a browser to render forms " +
 					"(no Chromium/WebKit backend available in this environment)", t);
