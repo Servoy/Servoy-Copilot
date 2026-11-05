@@ -16,11 +16,17 @@
 */
 package com.servoy.eclipse.developer.mcp.services;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.CountDownLatch;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -348,6 +354,16 @@ public class FormLayoutInspectionService
 				String reason = failure.get();
 				if (reason.startsWith("TIMEOUT"))
 				{
+					// SVY-21670: a form that raised an exception while the server built it is answered with an HTTP
+					// error and never renders, which looks exactly like a slow render. Ask the server once, so the
+					// caller gets the failure (and its cause) instead of a timeout.
+					String serverError = probeServerError(url);
+					if (serverError != null)
+					{
+						ServoyLog.logWarning("FormLayoutInspectionService: form '" + formName + "' failed to load: " + serverError, null);
+						return FormLayoutResult.error("Form '" + formName + "' failed to load - the server could not generate it (this is not a timeout): " +
+							serverError + ". The full stack trace is in the Servoy Developer log.");
+					}
 					String detail = reason.substring("TIMEOUT".length());
 					ServoyLog.logWarning("FormLayoutInspectionService: form '" + formName + "' did not finish rendering at " + width + "x" +
 						height + " within " + timeoutSeconds + "s" + detail, null);
@@ -598,6 +614,92 @@ public class FormLayoutInspectionService
 	{
 		Object r = evaluateBounded(display, "return window.innerWidth;", POLL_EVAL_TIMEOUT_MS, stuck);
 		return !stuck.get() && r instanceof Number ? ((Number)r).intValue() : -1;
+	}
+
+	/** Reads at most 16 KB of the error response body (the error page is small); empty when there is none. */
+	private static String readBody(HttpURLConnection connection)
+	{
+		try (InputStream in = connection.getErrorStream())
+		{
+			if (in == null)
+			{
+				return "";
+			}
+			return new String(in.readNBytes(16 * 1024), StandardCharsets.UTF_8);
+		}
+		catch (IOException e)
+		{
+			return "";
+		}
+	}
+
+	/**
+	 * Pulls the message out of a servlet-container error page. Tomcat renders {@code sendError(status, message)} as
+	 * {@code <p><b>Message</b> text</p>}; the text is HTML-escaped, so common entities are decoded again. Returns an empty
+	 * string when the body is not such a page.
+	 */
+	public static String extractErrorMessage(String body)
+	{
+		if (body == null)
+		{
+			return "";
+		}
+		Matcher m = ERROR_PAGE_MESSAGE.matcher(body);
+		if (!m.find())
+		{
+			return "";
+		}
+		String text = m.group(1).replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+		return text.replaceAll("\\s+", " ").trim();
+	}
+
+	/** {@code <b>Message</b> ...</p>} as written by Tomcat's default error report. */
+	private static final Pattern ERROR_PAGE_MESSAGE = Pattern.compile("<b>\\s*Message\\s*</b>\\s*(.*?)</p>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+
+	/**
+	 * Asks the {@code /formtemplate} route directly why a form did not render. The route answers a form it could not
+	 * generate with an HTTP error status, and the status message carries the cause (SVY-21670). Runs after a timeout
+	 * only, on the calling (non-UI) thread, with short timeouts so it can never delay the answer much.
+	 *
+	 * @return {@code "HTTP <status> <message>"} when the route reports a failure, or {@code null} when it answers
+	 *         normally or cannot be reached (then the caller keeps the plain timeout message)
+	 */
+	public static String probeServerError(String url)
+	{
+		HttpURLConnection connection = null;
+		try
+		{
+			connection = (HttpURLConnection)URI.create(url).toURL().openConnection();
+			connection.setConnectTimeout(2_000);
+			connection.setReadTimeout(5_000);
+			connection.setRequestMethod("GET");
+			int status = connection.getResponseCode();
+			if (status < 400)
+			{
+				return null;
+			}
+			// Tomcat keeps the sendError message out of the status line (it is the standard reason phrase) and
+			// writes it into the error page body, so read the body and keep its "Message" text
+			String statusText = "HTTP " + status;
+			String reason = connection.getResponseMessage();
+			if (reason != null && !reason.isBlank())
+			{
+				statusText += " " + reason.trim();
+			}
+			String detail = extractErrorMessage(readBody(connection));
+			return detail.isEmpty() ? statusText : statusText + ": " + detail;
+		}
+		catch (IOException | RuntimeException e)
+		{
+			return null;
+		}
+		finally
+		{
+			if (connection != null)
+			{
+				connection.disconnect();
+			}
+		}
 	}
 
 	/**
