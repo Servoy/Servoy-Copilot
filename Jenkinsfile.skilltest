@@ -183,6 +183,12 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                             // matched (set -o pipefail is kept for any future piping).
                             sh '''#!/bin/bash
                                 set -o pipefail
+                                mkdir -p "$WORKSPACE/skilltest-reports"
+                                # Tee the whole run to opencode-server.log so the opencode child
+                                # process output (model-call results, auth/quota errors, the reason
+                                # an agent run produced nothing) is captured on disk and archived -
+                                # the Jenkins console scrolls and is not kept per-build, and this
+                                # output is the only place the provider/model failure is visible.
                                 mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                                 clean verify \
                                 -Pintegration \
@@ -195,7 +201,8 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dservoy.skilltest.outputDir="$WORKSPACE/skilltest-reports" \
                                 -Dservoy.skilltest.kiroApiKey="$KIRO_API_KEY" \
                                 -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip" \
-                                2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2)'''
+                                2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2) \
+                                | tee "$WORKSPACE/skilltest-reports/opencode-server.log"'''
                         }
                       }
                     }
@@ -220,13 +227,17 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                     sh '''
                         set +e
                         mkdir -p "$WORKSPACE/skilltest-logs"
+                        # Only the Eclipse workbench log (.metadata/.log) is useful; the per-plugin
+                        # *.log files under target/work (npm/turbo/karma/browser) are build noise and
+                        # are deliberately NOT collected. Copy the dot-named .log to a plain name so
+                        # Jenkins' Ant default-excludes (which skip .* paths) still archive it.
                         find "$WORKSPACE" -path '*/target/work/data/.metadata/.log' -exec cp {} "$WORKSPACE/skilltest-logs/workbench.log" \\; 2>/dev/null
-                        find "$WORKSPACE" -path '*/target/work/**' -name '*.log' 2>/dev/null | while read f; do
-                            cp "$f" "$WORKSPACE/skilltest-logs/$(echo "$f" | tr '/.' '__')" 2>/dev/null
-                        done
+                        # The opencode server's stdout/stderr streams through the Maven run, which
+                        # is tee'd to skilltest-reports/opencode-server.log by the run step above;
+                        # that file carries the model-call result and is archived below.
                         echo "collected logs:"; ls -la "$WORKSPACE/skilltest-logs" 2>/dev/null
                     '''
-                    archiveArtifacts artifacts: 'skilltest-logs/**, skilltest-reports/**',
+                    archiveArtifacts artifacts: 'skilltest-logs/workbench.log, skilltest-reports/TEST-skilltest.xml, skilltest-reports/coverage-*.html, skilltest-reports/opencode-server.log',
                                      allowEmptyArchive: true, fingerprint: false
                     junit allowEmptyResults: false,
                           testResults: 'skilltest-reports/TEST-*.xml, **/target/surefire-reports/TEST-*.xml'
