@@ -56,9 +56,11 @@ public class ServoyFormServer
 		"'selector'): the real component tags (e.g. bootstrapcomponents-textbox), their id / data-svy-name identity attributes, " +
 		"applied classes and exact nested structure;\n" +
 		"  2. 'appearance' - a map keyed by element (id or CSS path) of the RESOLVED visual styles (color, background, border, " +
-		"font, display, position, visibility) and on-screen bounding box (x/y/w/h). These are the browser's COMPUTED values " +
-		"after applying the solution stylesheet + theme, which raw HTML alone cannot tell you - use them to know the actual " +
-		"colour/position of something and to confirm a change landed.\n" +
+		"font, display, position, visibility, outline) and on-screen bounding box (x/y/w/h), plus a 'disabled' and 'readonly' " +
+		"boolean per element. These are the browser's COMPUTED values after the solution stylesheet + theme have been applied " +
+		"(the render waits for the solution stylesheets to load first, so the values are the solution's, not framework " +
+		"defaults), which raw HTML alone cannot tell you - use them to know the actual colour/position of something and to " +
+		"confirm a change landed.\n" +
 		"OPTIONALLY, set 'screenshot=true' to ALSO get a PNG screenshot of the rendered form attached to the response (a " +
 		"vision-capable model sees the actual pixels directly; also saved to disk, path in 'screenshotFile'). The screenshot is " +
 		"OFF by default because a PNG is large and costs a lot of tokens - only ask for it when the html + appearance text is not " +

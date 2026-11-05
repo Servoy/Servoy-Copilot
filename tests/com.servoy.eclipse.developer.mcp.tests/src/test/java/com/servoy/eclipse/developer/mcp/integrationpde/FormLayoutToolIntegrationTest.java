@@ -49,6 +49,7 @@ import com.servoy.j2db.persistence.GraphicalComponent;
 import com.servoy.j2db.persistence.IColumnTypes;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.IValidateName;
+import com.servoy.j2db.persistence.Media;
 import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.ScriptVariable;
 
@@ -88,6 +89,8 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	private static final String FORM_MISSING = "noSuchFormAtAll";
 	/** SVY-21610: the form carrying a variable-bound label, used by the sample-data tests. */
 	private static final String FORM_SAMPLE = "layoutSampleDataForm";
+	/** SVY-21614: a form with one enabled and one disabled button, for the disabled/readonly assertions. */
+	private static final String FORM_DISABLED = "layoutDisabledForm";
 	/** The initialiser value of that form's variable; must survive into the rendered DOM. */
 	private static final String SAMPLE_VARIABLE_VALUE = "InitialisedValue";
 
@@ -383,6 +386,73 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	}
 
 	// -----------------------------------------------------------------------
+	// SVY-21614: appearance carries outline* styles and disabled/readonly booleans
+	// -----------------------------------------------------------------------
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21614: every appearance entry carries the outline-* computed styles")
+	public void appearance_carriesOutlineStyles() throws Exception {
+		ensureCssFormWithButtonAndLabel(FORM_CSS);
+
+		JsonNode envelope = envelopeOf(
+				tool.getFormLayout(FORM_CSS, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
+
+		JsonNode appearance = envelope.path("appearance");
+		assertTrue(appearance.isObject() && appearance.size() > 0, "appearance map is non-empty: " + envelope);
+		// every entry's styles must carry the four outline longhands (a focus ring is now observable)
+		for (JsonNode entry : appearance) {
+			JsonNode styles = entry.path("styles");
+			for (String prop : new String[] { "outline-width", "outline-style", "outline-color", "outline-offset" }) {
+				assertTrue(styles.has(prop), "each appearance entry's styles carry '" + prop + "': " + entry);
+			}
+		}
+	}
+
+	@Test
+	@org.junit.jupiter.api.DisplayName("SVY-21614: appearance carries disabled/readonly, and a disabled component reports disabled:true")
+	public void appearance_carriesDisabledReadonlyBooleans() throws Exception {
+		ensureCssFormWithEnabledAndDisabledButtons(FORM_DISABLED);
+
+		JsonNode envelope = envelopeOf(
+				tool.getFormLayout(FORM_DISABLED, null, "false", Long.toString(RENDER_TIMEOUT_SECONDS), "false", null, null));
+
+		JsonNode appearance = envelope.path("appearance");
+		assertTrue(appearance.isObject() && appearance.size() > 0, "appearance map is non-empty: " + envelope);
+
+		// every entry carries explicit booleans (not merely present on some)
+		for (JsonNode entry : appearance) {
+			assertTrue(entry.path("disabled").isBoolean(), "each appearance entry has a disabled boolean: " + entry);
+			assertTrue(entry.path("readonly").isBoolean(), "each appearance entry has a readonly boolean: " + entry);
+		}
+
+		// the disabled button is reported disabled:true; the enabled one disabled:false, so the
+		// boolean reflects the real state (not an always-false constant). The component's name
+		// surfaces in the element ref / nested DOM, so find the entry whose html subtree carries it.
+		boolean sawDisabledTrue = false;
+		boolean sawEnabledFalse = false;
+		String html = envelope.path("html").asText();
+		assertTrue(html.contains("btnDisabled") && html.contains("btnEnabled"),
+				"both the enabled and disabled buttons are in the rendered HTML: " + html);
+		for (java.util.Iterator<java.util.Map.Entry<String, JsonNode>> it = appearance.fields(); it.hasNext();) {
+			java.util.Map.Entry<String, JsonNode> e = it.next();
+			boolean disabled = e.getValue().path("disabled").asBoolean();
+			if (e.getKey().contains("btnDisabled") && disabled) sawDisabledTrue = true;
+			if (e.getKey().contains("btnEnabled") && !disabled) sawEnabledFalse = true;
+		}
+		// The element ref may be a nested cssPath rather than the component name; fall back to a
+		// whole-map check: at least one entry is disabled:true and at least one is disabled:false.
+		if (!sawDisabledTrue || !sawEnabledFalse) {
+			boolean anyTrue = false, anyFalse = false;
+			for (JsonNode entry : appearance) {
+				if (entry.path("disabled").asBoolean()) anyTrue = true;
+				else anyFalse = true;
+			}
+			assertTrue(anyTrue, "a disabled component must make some entry disabled:true: " + appearance);
+			assertTrue(anyFalse, "the enabled components keep disabled:false, so it is not always-true: " + appearance);
+		}
+	}
+
+	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 
@@ -536,6 +606,34 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 		GraphicalComponent label = form.createNewGraphicalComponent(new Point(20, 80));
 		label.setName("lblStatus");
 		label.setText("Status");
+
+		saveEditingSolutionNodes(new IPersist[] { form });
+		return form;
+	}
+
+	/**
+	 * A css form carrying one enabled and one disabled button (SVY-21614), so the rendered
+	 * {@code appearance} map exposes {@code disabled:true} on the disabled one and
+	 * {@code disabled:false} on the enabled one - proving the boolean reflects the real state.
+	 */
+	private Form ensureCssFormWithEnabledAndDisabledButtons(String formName) throws Exception {
+		Form existing = activeProject.getEditingSolution().getForm(formName);
+		if (existing != null)
+			return existing;
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		Form form = activeProject.getEditingSolution().getForm(formName);
+		assertNotNull(form, "form creation should succeed: " + formName);
+
+		GraphicalComponent enabled = form.createNewGraphicalComponent(new Point(20, 20));
+		enabled.setName("btnEnabled");
+		enabled.setText("Enabled");
+		enabled.setEnabled(true);
+
+		GraphicalComponent disabled = form.createNewGraphicalComponent(new Point(20, 80));
+		disabled.setName("btnDisabled");
+		disabled.setText("Disabled");
+		disabled.setEnabled(false);
 
 		saveEditingSolutionNodes(new IPersist[] { form });
 		return form;

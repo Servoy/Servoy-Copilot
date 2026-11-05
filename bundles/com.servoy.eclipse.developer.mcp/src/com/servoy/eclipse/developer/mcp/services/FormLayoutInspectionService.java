@@ -168,7 +168,8 @@ public class FormLayoutInspectionService
 		"    var VISUAL = ['color','background-color','border-top-width','border-top-style','border-top-color',\n" +
 		"      'border-bottom-width','border-left-width','border-right-width','border-radius',\n" +
 		"      'font-family','font-size','font-weight','font-style','text-align','line-height',\n" +
-		"      'display','position','visibility','opacity','z-index','margin','padding'];\n" +
+		"      'display','position','visibility','opacity','z-index','margin','padding',\n" +
+		"      'outline-width','outline-style','outline-color','outline-offset'];\n" +
 		"    function cssPath(el){ if (el.id) return '#' + el.id; var parts = [];\n" +
 		"      while (el && el.nodeType === 1 && el !== root.parentNode){\n" +
 		"        var p = el.nodeName.toLowerCase();\n" +
@@ -185,8 +186,11 @@ public class FormLayoutInspectionService
 		"      if (!hasId && !hasClass) continue;\n" +
 		"      var cs = getComputedStyle(el); var styles = {};\n" +
 		"      for (var k=0;k<VISUAL.length;k++){ var prop = VISUAL[k]; var v = cs.getPropertyValue(prop); if (v) styles[prop] = v; }\n" +
+		"      var disabled = !!(el.disabled || el.getAttribute('disabled') !== null ||\n" +
+		"        (el.classList && el.classList.contains('disabled')) || el.getAttribute('aria-disabled') === 'true');\n" +
+		"      var readonly = !!(el.readOnly || el.getAttribute('readonly') !== null || el.getAttribute('aria-readonly') === 'true');\n" +
 		"      var key = cssPath(el);\n" +
-		"      appearance[key] = { box: box(el), styles: styles }; }\n" +
+		"      appearance[key] = { box: box(el), styles: styles, disabled: disabled, readonly: readonly }; }\n" +
 		"    return JSON.stringify({ form: (window.formtemplateName || null), selector: (sel || '.svy-form'),\n" +
 		"      viewport: box(root), window: { width: window.innerWidth, height: window.innerHeight },\n" +
 		"      html: root.outerHTML, appearance: appearance });\n" +
@@ -203,6 +207,16 @@ public class FormLayoutInspectionService
 	 * (a stale previous render) can never satisfy it. The viewport width is deliberately NOT
 	 * part of readiness: it is verified after the read (see {@code getFormLayout}), so a browser that
 	 * ignores the resize yields a fast error naming the actual width instead of a render timeout.
+	 * <p>
+	 * SVY-21614: readiness additionally requires every solution stylesheet {@code <link>} to have
+	 * applied. {@code FormTemplateHttpEndpoint} injects one
+	 * {@code <link rel="stylesheet" svy-stylesheet="...">} per solution/module sheet, loaded
+	 * <em>asynchronously</em>; a laid-out box can appear before those sheets parse, so reading
+	 * {@code getComputedStyle} too early returns the Bootstrap defaults instead of the solution
+	 * cascade (the Run 005 bug). A {@code <link>}'s {@code .sheet} is {@code null} until the sheet
+	 * has loaded and parsed, and non-null once it is live in the cascade; the sheets are same-origin
+	 * so {@code .sheet} is populated for them. With no solution sheet the set is empty and the check
+	 * is a no-op. The check runs only after the form-name, fresh-nav and laid-out-node checks pass.
 	 */
 	private static final String READINESS_JS_TEMPLATE = "" +
 		"return (function(){\n" +
@@ -212,10 +226,14 @@ public class FormLayoutInspectionService
 		"  var sel = %2$s;\n" +
 		"  var root = sel ? document.querySelector(sel) : document.querySelector('.svy-form');\n" +
 		"  if (!root) return false;\n" +
-		"  var rb = root.getBoundingClientRect(); if (rb.width > 0 && rb.height > 0) return true;\n" +
-		"  var kids = root.querySelectorAll('*');\n" +
-		"  for (var i=0;i<kids.length;i++){ var r = kids[i].getBoundingClientRect(); if (r.width > 0 && r.height > 0) return true; }\n" +
-		"  return false;\n" +
+		"  var laidOut = false;\n" +
+		"  var rb = root.getBoundingClientRect(); if (rb.width > 0 && rb.height > 0) { laidOut = true; }\n" +
+		"  else { var kids = root.querySelectorAll('*');\n" +
+		"    for (var i=0;i<kids.length;i++){ var r = kids[i].getBoundingClientRect(); if (r.width > 0 && r.height > 0) { laidOut = true; break; } } }\n" +
+		"  if (!laidOut) return false;\n" +
+		"  var sheets = document.querySelectorAll('link[rel=\"stylesheet\"][svy-stylesheet]');\n" +
+		"  for (var s=0;s<sheets.length;s++){ if (!sheets[s].sheet) return false; }\n" +
+		"  return true;\n" +
 		"})();";
 
 	/**
