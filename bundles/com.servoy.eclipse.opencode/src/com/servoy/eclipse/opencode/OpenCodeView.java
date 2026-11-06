@@ -127,7 +127,7 @@ public class OpenCodeView extends ViewPart {
 	// -----------------------------------------------------------------------
 
 	private static boolean isServoyAiConfigured() {
-		String apiKey = System.getProperty(ProviderConfigWriter.ENV_API_KEY);
+		String apiKey = ProviderConfigWriter.getApiKey();
 		return apiKey != null && !apiKey.isBlank() && SkillsZipExtractor.getSkillsZipSource() != null;
 	}
 

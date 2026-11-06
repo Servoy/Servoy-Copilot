@@ -25,8 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilter;
+import com.servoy.eclipse.opencode.ProviderConfigWriter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -65,9 +68,22 @@ import jakarta.servlet.http.HttpServletResponse;
  * package-visible
  * {@link BearerTokenAuthenticationFilter#isServoyInternalUser()} seam
  * (overridden in a test subclass) rather than touching
- * {@code ISecurePreferences}, and {@code GENAI_API_KEY} is a JVM system
- * property set/cleared with save-and-restore around each test so no state
- * leaks.
+ * {@code ISecurePreferences}.
+ * </p>
+ *
+ * <p>
+ * SVY-21750 moved the svyAI key out of the {@code GENAI_API_KEY} system
+ * property and into the Servoy login secure-store node; the gate's entitlement
+ * check (R4) now sources the value through
+ * {@link ProviderConfigWriter#getApiKey()}, which reads the secure-store seam
+ * first and only falls back to the {@code -D GENAI_API_KEY} system property.
+ * Entitlement is therefore driven here through the same accessor:
+ * {@link #setEntitled()} substitutes the package-private
+ * {@code ProviderConfigWriter.secureStoreReader} supplier seam (reached
+ * reflectively - this test is in a different package from the seam) so the
+ * whole secure-store-first path is exercised without a live keyring. Both the
+ * seam and the {@code -D GENAI_API_KEY} property are saved and restored around
+ * every test so no static state leaks.
  * </p>
  */
 class BearerTokenAuthenticationFilterTest {
@@ -81,6 +97,7 @@ class BearerTokenAuthenticationFilterTest {
 
 	private boolean delegateCalled;
 	private String savedApiKey;
+	private Supplier<String> savedSecureStoreReader;
 
 	private final HttpServlet delegate = new HttpServlet() {
 		private static final long serialVersionUID = 1L;
@@ -92,21 +109,43 @@ class BearerTokenAuthenticationFilterTest {
 	};
 
 	@BeforeEach
-	void saveApiKeyState() {
+	void saveApiKeyState() throws Exception {
 		delegateCalled = false;
 		savedApiKey = System.getProperty(GENAI_KEY);
-		// Start every test from a known "not entitled" baseline; individual tests set
-		// it as needed.
+		savedSecureStoreReader = getSecureStoreReader();
+		// Start every test from a known "not entitled" baseline: both entitlement
+		// sources (secure-store seam and -D property) report no value. Individual tests
+		// set them as needed via setEntitled().
+		setSecureStoreReader(() -> null);
 		System.clearProperty(GENAI_KEY);
 	}
 
 	@AfterEach
-	void restoreApiKeyState() {
+	void restoreApiKeyState() throws Exception {
+		setSecureStoreReader(savedSecureStoreReader);
 		if (savedApiKey == null) {
 			System.clearProperty(GENAI_KEY);
 		} else {
 			System.setProperty(GENAI_KEY, savedApiKey);
 		}
+	}
+
+	// --- secure-store seam (SVY-21750) -------------------------------------
+	// The entitlement value flows through ProviderConfigWriter.getApiKey(), which
+	// reads the package-private secureStoreReader supplier first. This test lives
+	// in a different package, so the seam is reached reflectively.
+
+	@SuppressWarnings("unchecked")
+	private static Supplier<String> getSecureStoreReader() throws Exception {
+		Field field = ProviderConfigWriter.class.getDeclaredField("secureStoreReader");
+		field.setAccessible(true);
+		return (Supplier<String>) field.get(null);
+	}
+
+	private static void setSecureStoreReader(Supplier<String> reader) throws Exception {
+		Field field = ProviderConfigWriter.class.getDeclaredField("secureStoreReader");
+		field.setAccessible(true);
+		field.set(null, reader);
 	}
 
 	// --- Helpers -----------------------------------------------------------
@@ -125,8 +164,14 @@ class BearerTokenAuthenticationFilterTest {
 		};
 	}
 
-	private void setEntitled() {
-		System.setProperty(GENAI_KEY, VALID_API_KEY);
+	/**
+	 * Marks the login as entitled by supplying the svyAI key through the
+	 * secure-store seam - the production source after SVY-21750. The gate reads it
+	 * via {@link ProviderConfigWriter#getApiKey()}. The {@code -D GENAI_API_KEY}
+	 * fallback path is covered separately in {@link EntitlementSourceFallback}.
+	 */
+	private void setEntitled() throws Exception {
+		setSecureStoreReader(() -> VALID_API_KEY);
 	}
 
 	/**
@@ -547,6 +592,65 @@ class BearerTokenAuthenticationFilterTest {
 			assertAll(() -> assertEquals(404, response.getStatus(), "unentitled must be 404"),
 					() -> assertFalse(chain.wasCalled(), "unentitled deny must not call the chain"),
 					() -> assertFalse(response.bodyWasWritten(), "deny must not write a body"));
+		}
+	}
+
+	// --- 9b. Entitlement source: -D GENAI_API_KEY fallback (SVY-21750) ----
+	// The default setEntitled()/@BeforeEach drive entitlement through the
+	// secure-store seam (the post-SVY-21750 production source). These tests pin the
+	// other arm of ProviderConfigWriter.getApiKey(): with the seam reporting no
+	// value, the -D GENAI_API_KEY system property still entitles the gate (the
+	// headless/CI fallback), and a blank/absent property with an empty seam denies.
+
+	@Nested
+	class EntitlementSourceFallback {
+		@Test
+		@DisplayName("Seam empty but -D GENAI_API_KEY set ⇒ entitled via the accessor's -D fallback ⇒ allowed")
+		void propertyFallbackEntitles_allowed() throws Exception {
+			// @BeforeEach already set the seam to report no value.
+			System.setProperty(GENAI_KEY, VALID_API_KEY);
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "the -D GENAI_API_KEY fallback must entitle the gate"),
+					() -> assertFalse(response.wasSendErrorCalled(), "entitled via -D fallback must not be denied"));
+		}
+
+		@Test
+		@DisplayName("Seam empty and no -D GENAI_API_KEY ⇒ not entitled ⇒ 404")
+		void noSeamNoProperty_denied() throws Exception {
+			// @BeforeEach cleared both the seam and the -D property.
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Seam throws and no -D GENAI_API_KEY ⇒ accessor yields null ⇒ 404 (no propagation)")
+		void seamThrowsNoProperty_denied() throws Exception {
+			setSecureStoreReader(() -> {
+				throw new RuntimeException("simulated locked keyring");
+			});
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
 		}
 	}
 

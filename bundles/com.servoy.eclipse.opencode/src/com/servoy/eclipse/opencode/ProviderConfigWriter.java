@@ -23,6 +23,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
+import java.util.function.Supplier;
+
+import org.eclipse.equinox.security.storage.ISecurePreferences;
+import org.eclipse.equinox.security.storage.SecurePreferencesFactory;
+
+import com.servoy.eclipse.ui.dialogs.ServoyLoginDialog;
 
 /**
  * Handles the GenAI API key environment variable and the {@code $schema} field
@@ -50,19 +56,76 @@ public class ProviderConfigWriter {
 	public static final String ENV_API_KEY = "GENAI_API_KEY"; //$NON-NLS-1$
 
 	/**
+	 * Seam for the secure-store read, so plain-JUnit tests (which have no live
+	 * {@code SecurePreferences} keyring) can substitute the lookup. Production
+	 * wires it to {@link #readSecureStoreValue()}.
+	 */
+	static Supplier<String> secureStoreReader = ProviderConfigWriter::readSecureStoreValue;
+
+	/**
+	 * Returns the svyAI provider key: the encrypted value from the Servoy login
+	 * secure-store node first, else a fallback to the {@code -D GENAI_API_KEY}
+	 * system property (headless/CI where there may be no keyring). Returns
+	 * {@code null} when neither is present/usable. Never throws for a
+	 * missing/locked keyring - it falls through to the {@code -D} fallback.
+	 *
+	 * @return the provider key, or {@code null} when neither source yields a
+	 *         non-blank value
+	 */
+	public static String getApiKey() {
+		String fromSecure = null;
+		try {
+			fromSecure = secureStoreReader.get();
+		} catch (Exception ex) {
+			// Any secure-store failure (locked/absent keyring, StorageException, no
+			// SecurePreferencesFactory in a headless container, etc.) must be treated as
+			// "no value" so the accessor falls through to the -D fallback and never throws.
+			fromSecure = null;
+		}
+		if (fromSecure != null && !fromSecure.isBlank()) {
+			return fromSecure;
+		}
+		String fromProp = System.getProperty(ENV_API_KEY);
+		return (fromProp != null && !fromProp.isBlank()) ? fromProp : null;
+	}
+
+	/**
+	 * Reads the svyAI provider key from the Servoy login secure-store node. Any
+	 * secure-store failure (locked/absent keyring, {@code StorageException}, no
+	 * {@code SecurePreferencesFactory} in a headless container, etc.) is swallowed
+	 * and reported as "no value" so {@link #getApiKey()} can fall through to the
+	 * {@code -D} fallback.
+	 *
+	 * @return the stored key, or {@code null} when it is absent or unreadable
+	 */
+	static String readSecureStoreValue() {
+		try {
+			ISecurePreferences root = SecurePreferencesFactory.getDefault();
+			if (root == null) {
+				return null;
+			}
+			ISecurePreferences node = root.node(ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
+			return node.get(ServoyLoginDialog.SVY_AI_KEY, null);
+		} catch (Exception ex) {
+			return null;
+		}
+	}
+
+	/**
 	 * Returns the environment variables that must be passed to the opencode child
 	 * process so that the {@code {env:GENAI_API_KEY}} reference in
 	 * {@code opencode.json} resolves correctly.
 	 * <p>
-	 * Reads {@code System.getProperty(ENV_API_KEY)} on every call (no caching).
-	 * Returns an empty map when the property is absent or blank.
+	 * Reads {@link #getApiKey()} on every call (no caching) - secure-store first,
+	 * {@code -D GENAI_API_KEY} fallback. Returns an empty map when no value is
+	 * available.
 	 * </p>
 	 *
 	 * @return unmodifiable map - either empty or a single-entry map with
 	 *         {@code GENAI_API_KEY}
 	 */
 	public static Map<String, String> buildProviderEnvVars() {
-		String apiKey = System.getProperty(ENV_API_KEY);
+		String apiKey = getApiKey();
 		if (apiKey == null || apiKey.isBlank()) {
 			return Collections.emptyMap();
 		}

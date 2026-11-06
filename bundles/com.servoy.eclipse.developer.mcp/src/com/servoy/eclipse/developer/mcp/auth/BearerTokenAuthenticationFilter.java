@@ -115,9 +115,10 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 		if (isServoyInternalUser())
 			return true;
 
-		// svyAI entitlement signal: GENAI_API_KEY is set only for entitled logins. Absent or
-		// blank => not entitled => the endpoint must look absent.
-		String apiKey = System.getProperty("GENAI_API_KEY");
+		// svyAI entitlement signal: the svyAI key is set only for entitled logins. Absent or
+		// blank => not entitled => the endpoint must look absent. Sourced via the shared
+		// accessor (secure-store first, -D GENAI_API_KEY fallback), never a system property.
+		String apiKey = com.servoy.eclipse.opencode.ProviderConfigWriter.getApiKey();
 		if (apiKey == null || apiKey.isBlank())
 		{
 			ServoyLog.logWarning(

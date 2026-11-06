@@ -73,9 +73,8 @@ public class OpencodeFolderCreatorJob extends Job {
 		// Servoy AI requires both GENAI_API_KEY and SERVOY_SKILLS_ZIP to be configured.
 		// If either is absent the view will show a "not enabled" page; skip setup
 		// entirely.
-		if (System.getProperty(ProviderConfigWriter.ENV_API_KEY) == null
-				|| System.getProperty(ProviderConfigWriter.ENV_API_KEY).isBlank()
-				|| SkillsZipExtractor.getSkillsZipSource() == null) {
+		String apiKey = ProviderConfigWriter.getApiKey();
+		if (apiKey == null || apiKey.isBlank() || SkillsZipExtractor.getSkillsZipSource() == null) {
 			ServoyLog
 					.logInfo("Servoy AI: not configured (GENAI_API_KEY or SERVOY_SKILLS_ZIP missing), skipping setup."); //$NON-NLS-1$
 			return Status.OK_STATUS;
