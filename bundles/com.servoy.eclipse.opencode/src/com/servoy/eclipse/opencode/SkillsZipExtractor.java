@@ -78,6 +78,14 @@ public class SkillsZipExtractor {
 	private static final String OPENCODE_JSON = "opencode.json"; //$NON-NLS-1$
 
 	/**
+	 * Name of the internal manifest file written into the config dir. It records
+	 * the zip-owned top-level skill directory names so they can be cleaned up later
+	 * (lifecycle tidiness). Dot-prefixed so it is clearly internal and not mistaken
+	 * for shipped content.
+	 */
+	public static final String SKILLS_MANIFEST = ".servoy-skills-manifest"; //$NON-NLS-1$
+
+	/**
 	 * Returns {@code true} if skills extraction should be skipped based on the
 	 * {@value #SKILL_OVERWRITE_PROPERTY} system property. Extraction is skipped
 	 * only when the property is explicitly set to {@code "false"}
@@ -124,9 +132,9 @@ public class SkillsZipExtractor {
 
 	/**
 	 * Extracts the zip into the opencode config directory. All top-level
-	 * directories found in the zip are recursively deleted before their entries
-	 * are extracted, ensuring the zip is authoritative. Directories not present
-	 * in the zip (e.g. {@code sessions/}) are left untouched.
+	 * directories found in the zip are recursively deleted before their entries are
+	 * extracted, ensuring the zip is authoritative. Directories not present in the
+	 * zip (e.g. {@code sessions/}) are left untouched.
 	 * <ul>
 	 * <li>{@code opencode.json} -- written into {@code configDir} as-is</li>
 	 * <li>{@code AGENTS.MD} -- skipped (handled by
@@ -168,18 +176,7 @@ public class SkillsZipExtractor {
 					if (relative.getNameCount() > 1) {
 						String topDir = relative.getName(0).toString();
 						if (cleanedDirs.add(topDir)) {
-							Path dirToClean = configDir.resolve(topDir);
-							if (Files.exists(dirToClean)) {
-								try (var stream = Files.walk(dirToClean)) {
-									stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-										try {
-											Files.delete(p);
-										} catch (IOException e) {
-											// non-fatal
-										}
-									});
-								}
-							}
+							deleteRecursivelyQuietly(configDir.resolve(topDir));
 						}
 					}
 					Path target = configDir.resolve(relative);
@@ -189,7 +186,95 @@ public class SkillsZipExtractor {
 			}
 		}
 
+		// Record the zip-owned top-level skill directory names so they can be cleaned
+		// up on IDE exit / next start (lifecycle tidiness). opencode.json is not
+		// recorded: it is kept on cleanup regardless of origin.
+		writeManifest(configDir, cleanedDirs);
+
 		return wroteOpencodeJson;
+	}
+
+	/**
+	 * Records the zip-owned top-level directory names into
+	 * {@code configDir/}{@value #SKILLS_MANIFEST}, one name per line (UTF-8),
+	 * overwriting any previous manifest. An empty set still writes an (empty)
+	 * manifest so a later cleanup no-ops cleanly. Non-fatal: a write failure is
+	 * swallowed (lifecycle tidiness, never a reason to fail extraction).
+	 *
+	 * @param configDir the config directory (e.g. {@code ~/.servoy/opencode/})
+	 * @param skillDirs the zip's top-level skill directory names
+	 */
+	public static void writeManifest(Path configDir, Set<String> skillDirs) {
+		try {
+			Files.createDirectories(configDir);
+			StringBuilder sb = new StringBuilder();
+			for (String name : skillDirs) {
+				sb.append(name).append('\n');
+			}
+			Files.writeString(configDir.resolve(SKILLS_MANIFEST), sb.toString(), StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			// non-fatal: lifecycle tidiness only
+		}
+	}
+
+	/**
+	 * Reads {@code configDir/}{@value #SKILLS_MANIFEST} and recursively deletes
+	 * each listed top-level entry (a directory is removed with the same
+	 * reverse-ordered {@code Files.walk} + {@code Files.delete} style as
+	 * {@link #extractToConfigDir}). Everything in {@code configDir} not listed in
+	 * the manifest is left untouched. No manifest -&gt; no-op (quiet return).
+	 * Per-entry and overall non-fatal: an already-missing entry or a delete failure
+	 * is swallowed and cleanup continues. After cleaning the listed entries, the
+	 * manifest file itself is deleted so a stale manifest does not linger.
+	 *
+	 * @param configDir the config directory (e.g. {@code ~/.servoy/opencode/})
+	 */
+	public static void cleanupZipOwnedEntries(Path configDir) {
+		try {
+			Path manifest = configDir.resolve(SKILLS_MANIFEST);
+			if (!Files.exists(manifest)) {
+				return;
+			}
+			List<String> lines = Files.readAllLines(manifest, StandardCharsets.UTF_8);
+			for (String line : lines) {
+				String name = line.trim();
+				if (name.isEmpty()) {
+					continue;
+				}
+				deleteRecursivelyQuietly(configDir.resolve(name));
+			}
+			try {
+				Files.delete(manifest);
+			} catch (IOException e) {
+				// non-fatal
+			}
+		} catch (Exception e) {
+			// non-fatal: lifecycle tidiness only, never throw out of cleanup
+		}
+	}
+
+	/**
+	 * Recursively deletes {@code path} (a file or directory tree) using a
+	 * reverse-ordered {@link Files#walk} so children are removed before their
+	 * parents. A missing path is a no-op; per-path delete failures are swallowed
+	 * (non-fatal). Shared by {@link #extractToConfigDir} and
+	 * {@link #cleanupZipOwnedEntries} so directory removal behaves identically.
+	 */
+	private static void deleteRecursivelyQuietly(Path path) {
+		if (!Files.exists(path)) {
+			return;
+		}
+		try (var stream = Files.walk(path)) {
+			stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.delete(p);
+				} catch (IOException e) {
+					// non-fatal
+				}
+			});
+		} catch (IOException e) {
+			// non-fatal
+		}
 	}
 
 	/**

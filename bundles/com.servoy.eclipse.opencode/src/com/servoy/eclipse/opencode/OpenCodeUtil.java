@@ -67,6 +67,17 @@ public class OpenCodeUtil {
 	}
 
 	/**
+	 * Returns the Servoy opencode config directory
+	 * ({@code ~/.servoy/opencode/}). This is the single source of truth for the
+	 * literal; all sites that need the config dir resolve it through this helper.
+	 *
+	 * @return the config directory path
+	 */
+	public static Path getServoyOpencodeConfigDir() {
+		return Path.of(System.getProperty("user.home"), ".servoy", "opencode"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+	}
+
+	/**
 	 * Walks up from {@code dir} looking for a {@code .git} directory.
 	 *
 	 * @return the git root, or {@code null} if none found

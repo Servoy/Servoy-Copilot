@@ -77,6 +77,12 @@ public class OpencodeFolderCreatorJob extends Job {
 		if (apiKey == null || apiKey.isBlank() || SkillsZipExtractor.getSkillsZipSource() == null) {
 			ServoyLog
 					.logInfo("Servoy AI: not configured (GENAI_API_KEY or SERVOY_SKILLS_ZIP missing), skipping setup."); //$NON-NLS-1$
+			// Lifecycle tidiness (SVY-21691): a crash / kill -9 may have skipped the exit
+			// hook, leaving the extracted skill pack behind. With no key/zip it will never
+			// be
+			// overwritten, so remove the recorded zip-owned skill dirs now. No-op without a
+			// manifest.
+			SkillsZipExtractor.cleanupZipOwnedEntries(OpenCodeUtil.getServoyOpencodeConfigDir());
 			return Status.OK_STATUS;
 		}
 
@@ -207,7 +213,7 @@ public class OpencodeFolderCreatorJob extends Job {
 		// testable, never automatic.
 
 		// Write / merge the opencode.json MCP config
-		Path servoyOpencodeCfgDir = Path.of(System.getProperty("user.home"), ".servoy", "opencode"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		Path servoyOpencodeCfgDir = OpenCodeUtil.getServoyOpencodeConfigDir();
 
 		// 1. Extract skills zip (if available)
 		boolean providerFromZip = false;

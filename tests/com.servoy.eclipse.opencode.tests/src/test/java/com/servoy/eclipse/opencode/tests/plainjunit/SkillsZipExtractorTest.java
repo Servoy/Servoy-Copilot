@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,8 +43,8 @@ import com.servoy.eclipse.opencode.OpenCodeUtil;
 import com.servoy.eclipse.opencode.SkillsZipExtractor;
 
 /**
- * Unit tests for the {@link SkillsZipExtractor} and
- * {@link OpenCodeUtil} utility classes.
+ * Unit tests for the {@link SkillsZipExtractor} and {@link OpenCodeUtil}
+ * utility classes.
  * <p>
  * No OSGi runtime required -- all methods under test are pure Java operating on
  * in-memory values or temporary file-system resources. Methods that call
@@ -265,8 +267,8 @@ public class SkillsZipExtractorTest {
 
 		SkillsZipExtractor.writeOrUpdateAgentsMd(zipStream(zip), projectRoot);
 
-		assertTrue(
-				Files.exists(projectRoot.resolve("AGENTS.MD")), "AGENTS.MD must be created even when zip entry is AGENTS.md");
+		assertTrue(Files.exists(projectRoot.resolve("AGENTS.MD")),
+				"AGENTS.MD must be created even when zip entry is AGENTS.md");
 	}
 
 	// -----------------------------------------------------------------------
@@ -456,8 +458,8 @@ public class SkillsZipExtractorTest {
 	public void getPostgresVersion_registryUnavailable_returnsFallbackConstant() {
 		// ApplicationServerRegistry.exists() returns false outside OSGi
 		String version = SkillsZipExtractor.getPostgresVersion();
-		assertEquals(SkillsZipExtractor.POSTGRES_VERSION,
-				version, "must fall back to POSTGRES_VERSION when registry is absent");
+		assertEquals(SkillsZipExtractor.POSTGRES_VERSION, version,
+				"must fall back to POSTGRES_VERSION when registry is absent");
 	}
 
 	/**
@@ -476,8 +478,8 @@ public class SkillsZipExtractorTest {
 	 */
 	@Test
 	public void getPostgresVersion_fallbackConstantMatchesMajorMinorFormat() {
-		assertTrue(
-				SkillsZipExtractor.POSTGRES_VERSION.matches("\\d+\\.\\d+"), "POSTGRES_VERSION must match major.minor format");
+		assertTrue(SkillsZipExtractor.POSTGRES_VERSION.matches("\\d+\\.\\d+"),
+				"POSTGRES_VERSION must match major.minor format");
 	}
 
 	// -----------------------------------------------------------------------
@@ -709,6 +711,210 @@ public class SkillsZipExtractorTest {
 
 		assertFalse(Files.exists(configDir.resolve("AGENTS.MD")), "AGENTS.MD must NOT be extracted to configDir");
 		assertTrue(Files.exists(configDir.resolve("agents/foo.md")), "agents/foo.md must still be extracted");
+	}
+
+	// -----------------------------------------------------------------------
+	// SVY-21691 -- skills manifest + zip-owned cleanup
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Pure-logic coverage for the SVY-21691 manifest + delete-on-exit behavior of
+	 * {@link SkillsZipExtractor#extractToConfigDir},
+	 * {@link SkillsZipExtractor#writeManifest} and
+	 * {@link SkillsZipExtractor#cleanupZipOwnedEntries}. The manifest records
+	 * EXACTLY the zip's top-level skill directory names and never
+	 * {@code opencode.json}; cleanup deletes strictly the recorded set and keeps
+	 * all other runtime state ({@code opencode.db}, {@code sessions/}, auth, an
+	 * unlisted dir and {@code opencode.json}).
+	 */
+	@Nested
+	class SkillsManifestAndCleanup {
+		/**
+		 * Builds a zip into a {@code byte[]} from alternating (name, content) varargs
+		 * and wraps it in a fresh {@link ByteArrayInputStream}. Unlike the outer
+		 * {@code createZip}/{@code zipStream} pair this writes no temp file, so a test
+		 * may extract and then inspect the same config dir without a path collision.
+		 */
+		private ByteArrayInputStream zip(String... nameContentPairs) throws IOException {
+			java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+			try (ZipOutputStream zos = new ZipOutputStream(bos)) {
+				for (int i = 0; i < nameContentPairs.length; i += 2) {
+					String name = nameContentPairs[i];
+					String content = nameContentPairs[i + 1];
+					zos.putNextEntry(new ZipEntry(name));
+					if (!name.endsWith("/")) {
+						zos.write(content.getBytes(StandardCharsets.UTF_8));
+					}
+					zos.closeEntry();
+				}
+			}
+			return new ByteArrayInputStream(bos.toByteArray());
+		}
+
+		/** Reads the manifest file as the set of non-blank, trimmed lines. */
+		private java.util.Set<String> readManifest(Path configDir) throws IOException {
+			Path manifest = configDir.resolve(SkillsZipExtractor.SKILLS_MANIFEST);
+			java.util.Set<String> names = new java.util.HashSet<>();
+			for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
+				String trimmed = line.trim();
+				if (!trimmed.isEmpty())
+					names.add(trimmed);
+			}
+			return names;
+		}
+
+		/**
+		 * AC1: extract writes a manifest listing EXACTLY the zip's top-level skill
+		 * directory names, one per line, and never lists opencode.json even when the
+		 * zip shipped it.
+		 */
+		@Test
+		@DisplayName("AC1: manifest lists exactly the zip top-level skill dirs (not opencode.json)")
+		void manifestRoundTrip_listsExactlyTopLevelSkillDirs() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+
+			SkillsZipExtractor.extractToConfigDir(zip("skills/foo.md", "foo", "skills/sub/bar.md", "bar",
+					"commands/x.md", "x", "opencode.json", "{}"), configDir);
+
+			Path manifest = configDir.resolve(SkillsZipExtractor.SKILLS_MANIFEST);
+			assertTrue(Files.exists(manifest), "manifest must be written after extraction");
+			assertEquals(java.util.Set.of("skills", "commands"), readManifest(configDir),
+					"manifest must list exactly the top-level skill dir names");
+			assertFalse(readManifest(configDir).contains("opencode.json"),
+					"manifest must never list opencode.json even when the zip shipped it");
+		}
+
+		/**
+		 * AC2 / §8: opencode.json is never listed -- whether or not the zip ships it.
+		 */
+		@Test
+		@DisplayName("AC2: opencode.json is never listed in the manifest (shipped or not)")
+		void manifest_neverListsOpencodeJson() throws IOException {
+			Path withJson = Files.createDirectory(tmp.resolve("with-json"));
+			SkillsZipExtractor.extractToConfigDir(zip("skills/foo.md", "foo", "opencode.json", "{}"), withJson);
+			assertEquals(java.util.Set.of("skills"), readManifest(withJson),
+					"zip shipping opencode.json: manifest lists only skill dirs");
+
+			Path noJson = Files.createDirectory(tmp.resolve("no-json"));
+			SkillsZipExtractor.extractToConfigDir(zip("skills/foo.md", "foo", "commands/x.md", "x"), noJson);
+			assertEquals(java.util.Set.of("skills", "commands"), readManifest(noJson),
+					"zip without opencode.json: manifest lists only skill dirs");
+			assertFalse(readManifest(noJson).contains("opencode.json"), "opencode.json must not be listed");
+		}
+
+		/**
+		 * AC3 / AC4: cleanup deletes EXACTLY the listed top-level skill dirs and keeps
+		 * every unlisted entry: opencode.db, sessions/ (and its file), an unlisted
+		 * other/ dir and the extracted opencode.json.
+		 */
+		@Test
+		@DisplayName("AC3/AC4: cleanup removes only the zip skill dirs; opencode.db/sessions/other/opencode.json survive")
+		void cleanup_deletesExactlySkillDirs_keepsEverythingElse() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+			SkillsZipExtractor.extractToConfigDir(
+					zip("skills/foo.md", "foo", "commands/x.md", "x", "opencode.json", "{}"), configDir);
+
+			// Plant state the zip did NOT ship.
+			Files.writeString(configDir.resolve("opencode.db"), "db", StandardCharsets.UTF_8);
+			Path sessionsFile = configDir.resolve("sessions/s1.json");
+			Files.createDirectories(sessionsFile.getParent());
+			Files.writeString(sessionsFile, "{}", StandardCharsets.UTF_8);
+			Path otherFile = configDir.resolve("other/note.txt");
+			Files.createDirectories(otherFile.getParent());
+			Files.writeString(otherFile, "keep", StandardCharsets.UTF_8);
+
+			assertTrue(Files.exists(configDir.resolve("skills")), "precondition: skills extracted");
+			assertTrue(Files.exists(configDir.resolve("commands")), "precondition: commands extracted");
+			assertTrue(Files.exists(configDir.resolve("opencode.json")), "precondition: opencode.json extracted");
+
+			SkillsZipExtractor.cleanupZipOwnedEntries(configDir);
+
+			// Deleted: exactly the listed skill dirs.
+			assertFalse(Files.exists(configDir.resolve("skills")), "skills/ must be deleted");
+			assertFalse(Files.exists(configDir.resolve("commands")), "commands/ must be deleted");
+			// Survivors: everything else.
+			assertTrue(Files.exists(configDir.resolve("opencode.db")), "opencode.db must survive");
+			assertTrue(Files.exists(configDir.resolve("sessions")), "sessions/ must survive");
+			assertTrue(Files.exists(sessionsFile), "sessions/s1.json must survive");
+			assertTrue(Files.exists(configDir.resolve("other")), "unlisted other/ must survive");
+			assertTrue(Files.exists(otherFile), "other/note.txt must survive");
+			assertTrue(Files.exists(configDir.resolve("opencode.json")), "opencode.json must survive");
+		}
+
+		/** AC5: with no manifest present, cleanup is a no-op and deletes nothing. */
+		@Test
+		@DisplayName("AC5: no manifest -> cleanup is a no-op, deletes nothing, does not throw")
+		void cleanup_noManifest_isNoOp() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+			Files.writeString(configDir.resolve("opencode.db"), "db", StandardCharsets.UTF_8);
+
+			SkillsZipExtractor.cleanupZipOwnedEntries(configDir);
+
+			assertFalse(Files.exists(configDir.resolve(SkillsZipExtractor.SKILLS_MANIFEST)),
+					"no manifest must have been created");
+			assertTrue(Files.exists(configDir.resolve("opencode.db")), "opencode.db must survive a no-op cleanup");
+		}
+
+		/**
+		 * AC6: cleanup is non-fatal when a listed entry is already gone -- it removes
+		 * the existing one, ignores the missing one and returns normally.
+		 */
+		@Test
+		@DisplayName("AC6: a manifest-listed entry that is already gone is ignored; existing ones still deleted")
+		void cleanup_missingListedEntry_isNonFatal() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+			Path present = configDir.resolve("skills/foo.md");
+			Files.createDirectories(present.getParent());
+			Files.writeString(present, "foo", StandardCharsets.UTF_8);
+
+			SkillsZipExtractor.writeManifest(configDir, java.util.Set.of("skills", "does-not-exist"));
+
+			SkillsZipExtractor.cleanupZipOwnedEntries(configDir);
+
+			assertFalse(Files.exists(configDir.resolve("skills")), "the existing listed dir must be deleted");
+			assertFalse(Files.exists(configDir.resolve("does-not-exist")), "the missing listed dir stays absent");
+		}
+
+		/** AC7: the manifest file itself is deleted after cleanup completes. */
+		@Test
+		@DisplayName("AC7: cleanup deletes the manifest file itself")
+		void cleanup_deletesManifestItself() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+			SkillsZipExtractor.extractToConfigDir(zip("skills/foo.md", "foo"), configDir);
+			assertTrue(Files.exists(configDir.resolve(SkillsZipExtractor.SKILLS_MANIFEST)),
+					"precondition: manifest written");
+
+			SkillsZipExtractor.cleanupZipOwnedEntries(configDir);
+
+			assertFalse(Files.exists(configDir.resolve(SkillsZipExtractor.SKILLS_MANIFEST)),
+					"manifest file must be removed after cleanup");
+		}
+
+		/**
+		 * writeManifest round-trips a Set: a non-empty set writes exactly those lines;
+		 * an empty set writes an (empty) manifest that a subsequent cleanup treats as a
+		 * clean no-op which then removes the empty manifest file.
+		 */
+		@Test
+		@DisplayName("writeManifest round-trips a set; empty set -> empty manifest -> clean no-op cleanup")
+		void writeManifest_roundTripsSet_andEmptySet() throws IOException {
+			Path configDir = Files.createDirectory(tmp.resolve("config"));
+
+			SkillsZipExtractor.writeManifest(configDir, java.util.Set.of("a", "b"));
+			assertEquals(java.util.Set.of("a", "b"), readManifest(configDir), "manifest must round-trip the set");
+
+			Path empty = Files.createDirectory(tmp.resolve("empty"));
+			Files.writeString(empty.resolve("opencode.db"), "db", StandardCharsets.UTF_8);
+			SkillsZipExtractor.writeManifest(empty, java.util.Collections.emptySet());
+			assertTrue(Files.exists(empty.resolve(SkillsZipExtractor.SKILLS_MANIFEST)),
+					"empty set still writes a manifest file");
+
+			SkillsZipExtractor.cleanupZipOwnedEntries(empty);
+
+			assertFalse(Files.exists(empty.resolve(SkillsZipExtractor.SKILLS_MANIFEST)),
+					"empty manifest must be removed by cleanup");
+			assertTrue(Files.exists(empty.resolve("opencode.db")), "a clean no-op must keep unrelated state");
+		}
 	}
 
 }

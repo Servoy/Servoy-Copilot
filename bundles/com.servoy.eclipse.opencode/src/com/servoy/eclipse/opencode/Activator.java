@@ -356,6 +356,16 @@ public class Activator extends Plugin {
 		// the install dir - which is what causes the "Folder In Use" error when the
 		// install dir is later cleaned up. This sweep is cheap and covers that case.
 		killOrphansUnderOpencodeDir(isWindows);
+
+		// Lifecycle tidiness (SVY-21691): once the opencode child is gone, remove the
+		// extracted skill pack so a user who later loses the Servoy AI licence does not
+		// have the skill folders lingering on disk. Deletes only the recorded zip-owned
+		// skill directories; opencode.db / sessions / auth / opencode.json are kept.
+		try {
+			SkillsZipExtractor.cleanupZipOwnedEntries(OpenCodeUtil.getServoyOpencodeConfigDir());
+		} catch (Exception e) {
+			ServoyLog.logInfo("OpenCode: skill-pack cleanup on shutdown failed: " + e.getMessage());
+		}
 	}
 
 	/**
