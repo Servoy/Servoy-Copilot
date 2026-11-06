@@ -145,6 +145,11 @@ both wrappers (`SwtBrowserWrapper` / `ChromiumWrapper`) in `com.servoy.eclipse.u
 - `com.servoy.eclipse.developer.mcp.tests` — OSGi fragment of the developer.mcp bundle,
   source in `src/test/java/`. **Pure JUnit 5/6 (Jupiter).** Both plain unit tests and
   integration tests that need a running Eclipse workbench + Servoy App Server.
+  `...plainjunit.auth.BearerTokenAuthenticationFilterTest` covers the SVY-21688 per-request
+  `/dev_mcp` gate (loopback → `@servoy.com` internal bypass → `GENAI_API_KEY` entitlement →
+  bearer token, all denies a bare 404 with no `WWW-Authenticate`/`Allow` header and no body),
+  faking the internal-user decision via the `isServoyInternalUser()` seam and driving
+  `GENAI_API_KEY` as a save/restored system property, over both `service()` and `doFilter()`.
 
 ### Jupiter conventions (developer.mcp.tests)
 

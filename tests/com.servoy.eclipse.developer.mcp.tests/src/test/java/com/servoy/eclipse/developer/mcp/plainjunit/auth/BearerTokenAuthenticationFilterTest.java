@@ -16,7 +16,9 @@
 */
 package com.servoy.eclipse.developer.mcp.plainjunit.auth;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,365 +28,775 @@ import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+
 import com.servoy.eclipse.developer.mcp.auth.BearerTokenAuthenticationFilter;
 
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * JUnit 4 tests for {@link BearerTokenAuthenticationFilter}.
+ * JUnit 5/6 (Jupiter) plain unit tests for
+ * {@link BearerTokenAuthenticationFilter} — SVY-21688.
+ *
+ * <p>
+ * Covers the per-request gate added in SVY-21688: the ordered <em>loopback
+ * &rarr; {@code @servoy.com} internal bypass &rarr; {@code GENAI_API_KEY}
+ * entitlement &rarr; bearer token</em> evaluation, where every deny emits a
+ * bare {@code 404} ("look absent": no {@code WWW-Authenticate}/{@code Allow}
+ * header, no JSON body) and both {@code service(...)} and {@code doFilter(...)}
+ * enforce it identically.
+ * </p>
+ *
+ * <p>
+ * No OSGi / workbench: the {@code @servoy.com} identity is faked through the
+ * package-visible
+ * {@link BearerTokenAuthenticationFilter#isServoyInternalUser()} seam
+ * (overridden in a test subclass) rather than touching
+ * {@code ISecurePreferences}, and {@code GENAI_API_KEY} is a JVM system
+ * property set/cleared with save-and-restore around each test so no state
+ * leaks.
+ * </p>
  */
-public class BearerTokenAuthenticationFilterTest {
+class BearerTokenAuthenticationFilterTest {
 	private static final String VALID_TOKEN = "test-token-12345";
+	private static final String WRONG_TOKEN = "wrong-token";
+	private static final String GENAI_KEY = "GENAI_API_KEY";
+	private static final String VALID_API_KEY = "svy-ai-key-abcdef";
+
+	private static final String LOOPBACK_V4 = "127.0.0.1";
+	private static final String OFF_BOX = "10.0.0.5";
 
 	private boolean delegateCalled;
+	private String savedApiKey;
 
 	private final HttpServlet delegate = new HttpServlet() {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res) {
+		public void service(ServletRequest req, ServletResponse res) {
 			delegateCalled = true;
 		}
 	};
 
-	private final BearerTokenAuthenticationFilter filter = new BearerTokenAuthenticationFilter(VALID_TOKEN, delegate);
-
-	@Test
-	public void testValidToken_delegateIsCalled() throws Exception {
+	@BeforeEach
+	void saveApiKeyState() {
 		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		filter.service(request, response);
-
-		assertTrue(delegateCalled, "Delegate should be called for valid token");
+		savedApiKey = System.getProperty(GENAI_KEY);
+		// Start every test from a known "not entitled" baseline; individual tests set
+		// it as needed.
+		System.clearProperty(GENAI_KEY);
 	}
 
-	@Test
-	public void testMissingAuthHeader_returns401() throws Exception {
-		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		filter.service(request, response);
-
-		assertEquals(401, response.getStatus());
-		assertTrue(response.getBody().contains("Missing or invalid Authorization header"));
+	@AfterEach
+	void restoreApiKeyState() {
+		if (savedApiKey == null) {
+			System.clearProperty(GENAI_KEY);
+		} else {
+			System.setProperty(GENAI_KEY, savedApiKey);
+		}
 	}
 
-	@Test
-	public void testInvalidToken_returns401() throws Exception {
-		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer wrong-token");
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+	// --- Helpers -----------------------------------------------------------
 
-		filter.service(request, response);
-
-		assertEquals(401, response.getStatus());
-		assertTrue(response.getBody().contains("Invalid token"));
-	}
-
-	@Test
-	public void testNonBearerScheme_returns401() throws Exception {
-		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Basic dXNlcjpwYXNz");
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		filter.service(request, response);
-
-		assertEquals(401, response.getStatus());
-		assertTrue(response.getBody().contains("Missing or invalid Authorization header"));
-	}
-
-	@Test
-	public void testBlankExpectedToken_rejectsAll() throws Exception {
-		BearerTokenAuthenticationFilter blankFilter = new BearerTokenAuthenticationFilter("", delegate);
-		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer anything");
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		blankFilter.service(request, response);
-
-		assertEquals(401, response.getStatus());
-	}
-
-	@Test
-	public void testNullExpectedToken_rejectsAll() throws Exception {
-		BearerTokenAuthenticationFilter nullFilter = new BearerTokenAuthenticationFilter(null, delegate);
-		delegateCalled = false;
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer anything");
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		nullFilter.service(request, response);
-
-		assertEquals(401, response.getStatus());
-	}
-
-	@Test
-	public void testDelegateThrowsServletException_returnsJsonRpc32700() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
-
+	/**
+	 * Builds a filter whose
+	 * {@link BearerTokenAuthenticationFilter#isServoyInternalUser()} seam is faked,
+	 * so the gate's internal-user branch can be exercised without secure storage.
+	 */
+	private BearerTokenAuthenticationFilter newFilter(String expectedToken, boolean internalUser) {
+		return new BearerTokenAuthenticationFilter(expectedToken, delegate) {
 			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException("Unexpected char 0x0A at line 3\ncol 15: was expecting comma");
+			protected boolean isServoyInternalUser() {
+				return internalUser;
 			}
 		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
-
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
-
-		errorFilter.service(request, response);
-
-		assertEquals(200, response.getStatus());
-		assertEquals("application/json", response.getContentType());
-		String body = response.getBody();
-		assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
-		assertTrue(body.contains("Please ensure the request body is valid JSON."),
-				"Response must contain human-readable message");
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		mapper.readTree(body);
 	}
 
-	// --- SVY-21124: Additional exception handling tests ---
+	private void setEntitled() {
+		System.setProperty(GENAI_KEY, VALID_API_KEY);
+	}
 
-	@Test
-	public void testDelegateThrowsRuntimeException_returnsJsonRpc32700() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	/**
+	 * Asserts a deny: 404, no body written, no auth/allow headers, delegate
+	 * untouched.
+	 */
+	private void assertLooksAbsent(FakeHttpServletResponse response) {
+		assertAll("deny must be indistinguishable from an unmapped path",
+				() -> assertEquals(404, response.getStatus(), "deny must be HTTP 404"),
+				() -> assertTrue(response.wasSendErrorCalled(), "deny must go through sendError"),
+				() -> assertFalse(delegateCalled, "delegate must not be invoked on deny"),
+				() -> assertFalse(response.bodyWasWritten(), "deny must not write a response body"),
+				() -> assertFalse(response.hasHeader("WWW-Authenticate"), "deny must carry no WWW-Authenticate header"),
+				() -> assertFalse(response.hasHeader("Allow"), "deny must carry no Allow header"),
+				() -> assertFalse(response.getBody().contains("\"error\""), "deny must carry no JSON error body"));
+	}
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res) {
-				throw new RuntimeException("Unexpected end of JSON input");
+	// --- 1. Off-box ⇒ 404 --------------------------------------------------
+
+	@Nested
+	class OffBox {
+		@Test
+		@DisplayName("Non-loopback remote ⇒ 404, delegate not invoked, even with valid token + entitlement")
+		void offBoxEntitledValidToken_denied() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(OFF_BOX);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Non-loopback remote ⇒ 404 even for an internal user (loopback check is first)")
+		void offBoxInternalUser_denied() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, true);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(OFF_BOX);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+	}
+
+	// --- 2. Internal user, no key, no token ⇒ allowed ----------------------
+
+	@Nested
+	class InternalUser {
+		@Test
+		@DisplayName("@servoy.com internal user from loopback, no GENAI_API_KEY, no token ⇒ allowed")
+		void internalUserNoKeyNoToken_allowed() throws Exception {
+			// Baseline @BeforeEach already cleared GENAI_API_KEY.
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, true);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "internal user must reach the delegate"),
+					() -> assertFalse(response.wasSendErrorCalled(), "internal user must not be denied"));
+		}
+	}
+
+	// --- 3. Entitled + valid token ⇒ allowed -------------------------------
+
+	@Nested
+	class EntitledValidToken {
+		@Test
+		@DisplayName("Loopback + GENAI_API_KEY set + correct bearer token, non-internal ⇒ allowed")
+		void entitledValidToken_allowed() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "entitled + valid token must reach the delegate"),
+					() -> assertFalse(response.wasSendErrorCalled(), "must not be denied"));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "127.0.0.1", "::1", "0:0:0:0:0:0:0:1" })
+		@DisplayName("Every loopback form is accepted (entitled + valid token ⇒ allowed)")
+		void loopbackFormsAccepted(String loopbackAddr) throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(loopbackAddr);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "loopback '" + loopbackAddr + "' must be accepted"),
+					() -> assertFalse(response.wasSendErrorCalled(),
+							"loopback '" + loopbackAddr + "' must not be denied"));
+		}
+	}
+
+	// --- 4. Unentitled non-internal ⇒ 404 ---------------------------------
+
+	@Nested
+	class Unentitled {
+		@Test
+		@DisplayName("Loopback non-internal with no GENAI_API_KEY ⇒ 404")
+		void noKey_denied() throws Exception {
+			// GENAI_API_KEY cleared by @BeforeEach.
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@ParameterizedTest
+		@NullAndEmptySource
+		@ValueSource(strings = { "   ", "\t" })
+		@DisplayName("Loopback non-internal with blank GENAI_API_KEY ⇒ 404")
+		void blankKey_denied(String blankKey) throws Exception {
+			if (blankKey == null) {
+				System.clearProperty(GENAI_KEY);
+			} else {
+				System.setProperty(GENAI_KEY, blankKey);
 			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			filter.service(request, response);
 
-		errorFilter.service(request, response);
-
-		assertEquals(200, response.getStatus());
-		assertEquals("application/json", response.getContentType());
-		String body = response.getBody();
-		assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
-		assertTrue(body.contains("Please ensure the request body is valid JSON."),
-				"Response must contain human-readable message");
+			assertLooksAbsent(response);
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsIOException_returnsJsonRpc32700() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- 5. Wrong/missing token ⇒ 404 (not 401) ---------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws IOException {
-				throw new IOException("Stream closed unexpectedly while parsing JSON");
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class WrongOrMissingToken {
+		@Test
+		@DisplayName("Entitled non-internal from loopback, missing Authorization header ⇒ 404 (not 401)")
+		void missingHeader_denied404() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			filter.service(request, response);
 
-		errorFilter.service(request, response);
+			assertEquals(404, response.getStatus(), "missing token must be 404, never 401");
+			assertLooksAbsent(response);
+		}
 
-		assertEquals(200, response.getStatus());
-		assertEquals("application/json", response.getContentType());
-		String body = response.getBody();
-		assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
+		@Test
+		@DisplayName("Entitled non-internal from loopback, wrong bearer token ⇒ 404 (not 401)")
+		void wrongToken_denied404() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + WRONG_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertEquals(404, response.getStatus(), "wrong token must be 404, never 401");
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Entitled non-internal from loopback, non-Bearer scheme ⇒ 404")
+		void nonBearerScheme_denied404() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Basic dXNlcjpwYXNz");
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Blank expected token ⇒ 404 even when entitled and a token is presented")
+		void blankExpectedToken_denied404() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter("", false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer anything");
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Null expected token ⇒ 404 even when entitled and a token is presented")
+		void nullExpectedToken_denied404() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(null, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer anything");
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsNullMessage_usesClassName() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- 6. Deny carries nothing ------------------------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res) {
-				throw new NullPointerException();
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class DenyResponseShape {
+		@Test
+		@DisplayName("Off-box deny carries no WWW-Authenticate / Allow header and no JSON body")
+		void offBoxDeny_hasNoHeadersNoBody() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(OFF_BOX);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			filter.service(request, response);
 
-		errorFilter.service(request, response);
+			assertLooksAbsent(response);
+		}
 
-		assertEquals(200, response.getStatus());
-		assertEquals("application/json", response.getContentType());
-		String body = response.getBody();
-		assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
-		assertTrue(body.contains("NullPointerException"), "Response should contain class name as fallback");
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		mapper.readTree(body);
+		@Test
+		@DisplayName("Unentitled deny carries no WWW-Authenticate / Allow header and no JSON body")
+		void unentitledDeny_hasNoHeadersNoBody() throws Exception {
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Wrong-token deny carries no WWW-Authenticate / Allow header and no JSON body")
+		void wrongTokenDeny_hasNoHeadersNoBody() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + WRONG_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsMessageWithQuotes_escapedInJson() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- 7. Forwarded headers ignored -------------------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException("Expected '\"' but got 'x' at position 42");
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class ForwardedHeadersIgnored {
+		@Test
+		@DisplayName("X-Forwarded-For/Host spoofed to loopback but non-loopback peer ⇒ still 404")
+		void spoofedForwardedHeaders_stillDenied() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(OFF_BOX);
+			request.setHeader("X-Forwarded-For", LOOPBACK_V4);
+			request.setHeader("Host", LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			filter.service(request, response);
 
-		errorFilter.service(request, response);
-
-		assertEquals(200, response.getStatus());
-		String body = response.getBody();
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(body);
-		assertNotNull(node, "Response must be valid JSON even with quotes in message");
-		assertTrue(node.has("error"));
-		assertEquals(-32700, node.get("error").get("code").asInt());
+			assertLooksAbsent(response);
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsMessageWithNewlines_escapedInJson() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- 8. Fail closed ----------------------------------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException("Line 1\nLine 2\r\nLine 3\ttab");
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class FailClosed {
+		@ParameterizedTest
+		@NullAndEmptySource
+		@ValueSource(strings = { "   ", "not-an-address", "999.999.999.999", "gibberish::x" })
+		@DisplayName("Unresolvable / null / blank remote address ⇒ treated as non-loopback ⇒ 404")
+		void unresolvableRemoteAddr_denied(String remoteAddr) throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(remoteAddr);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			filter.service(request, response);
 
-		errorFilter.service(request, response);
-
-		assertEquals(200, response.getStatus());
-		String body = response.getBody();
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(body);
-		assertNotNull(node, "Response must be valid JSON even with newlines in message");
-		assertEquals(-32700, node.get("error").get("code").asInt());
+			assertLooksAbsent(response);
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsMessageWithUnicode_escapedInJson() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- 9. Both entry points enforce the same gate ------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException("Unexpected character '\u00e9' (Ã©) at offset 0x1F \u2014 invalid");
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class BothEntryPoints {
+		@Test
+		@DisplayName("Loopback + entitled + valid token ⇒ allowed via service() AND doFilter()")
+		void allowedViaBothEntryPoints() throws Exception {
+			setEntitled();
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+			// service()
+			BearerTokenAuthenticationFilter serviceFilter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest serviceReq = new FakeHttpServletRequest();
+			serviceReq.setRemoteAddr(LOOPBACK_V4);
+			serviceReq.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse serviceResp = new FakeHttpServletResponse();
+			delegateCalled = false;
+			serviceFilter.service(serviceReq, serviceResp);
+			boolean serviceAllowed = delegateCalled && !serviceResp.wasSendErrorCalled();
 
-		errorFilter.service(request, response);
+			// doFilter()
+			BearerTokenAuthenticationFilter filterFilter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest filterReq = new FakeHttpServletRequest();
+			filterReq.setRemoteAddr(LOOPBACK_V4);
+			filterReq.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse filterResp = new FakeHttpServletResponse();
+			RecordingFilterChain chain = new RecordingFilterChain();
+			filterFilter.doFilter(filterReq, filterResp, chain);
+			boolean filterAllowed = chain.wasCalled() && !filterResp.wasSendErrorCalled();
 
-		assertEquals(200, response.getStatus());
-		String body = response.getBody();
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(body);
-		assertNotNull(node, "Response must be valid JSON even with unicode in message");
-		assertEquals(-32700, node.get("error").get("code").asInt());
+			assertAll(() -> assertTrue(serviceAllowed, "service() must allow"),
+					() -> assertTrue(filterAllowed, "doFilter() must allow"),
+					() -> assertEquals(serviceAllowed, filterAllowed, "both entry points must agree"));
+		}
+
+		@Test
+		@DisplayName("Off-box ⇒ denied via service() AND doFilter(), chain/delegate untouched")
+		void deniedViaBothEntryPoints() throws Exception {
+			setEntitled();
+
+			// service()
+			BearerTokenAuthenticationFilter serviceFilter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest serviceReq = new FakeHttpServletRequest();
+			serviceReq.setRemoteAddr(OFF_BOX);
+			serviceReq.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse serviceResp = new FakeHttpServletResponse();
+			delegateCalled = false;
+			serviceFilter.service(serviceReq, serviceResp);
+			boolean serviceDenied = !delegateCalled && serviceResp.getStatus() == 404;
+
+			// doFilter()
+			BearerTokenAuthenticationFilter filterFilter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest filterReq = new FakeHttpServletRequest();
+			filterReq.setRemoteAddr(OFF_BOX);
+			filterReq.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse filterResp = new FakeHttpServletResponse();
+			RecordingFilterChain chain = new RecordingFilterChain();
+			filterFilter.doFilter(filterReq, filterResp, chain);
+			boolean filterDenied = !chain.wasCalled() && filterResp.getStatus() == 404;
+
+			assertAll(() -> assertTrue(serviceDenied, "service() must deny off-box with 404"),
+					() -> assertTrue(filterDenied, "doFilter() must deny off-box with 404"),
+					() -> assertFalse(chain.wasCalled(), "doFilter deny must not call the chain"),
+					() -> assertEquals(serviceDenied, filterDenied, "both entry points must agree"));
+		}
+
+		@Test
+		@DisplayName("doFilter(): internal user from loopback with no key/token ⇒ chain invoked")
+		void doFilterInternalUser_allowed() throws Exception {
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, true);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+			RecordingFilterChain chain = new RecordingFilterChain();
+
+			filter.doFilter(request, response, chain);
+
+			assertAll(() -> assertTrue(chain.wasCalled(), "internal user must pass the chain"),
+					() -> assertFalse(response.wasSendErrorCalled(), "internal user must not be denied"));
+		}
+
+		@Test
+		@DisplayName("doFilter(): unentitled non-internal from loopback ⇒ 404, chain not invoked")
+		void doFilterUnentitled_denied() throws Exception {
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+			RecordingFilterChain chain = new RecordingFilterChain();
+
+			filter.doFilter(request, response, chain);
+
+			assertAll(() -> assertEquals(404, response.getStatus(), "unentitled must be 404"),
+					() -> assertFalse(chain.wasCalled(), "unentitled deny must not call the chain"),
+					() -> assertFalse(response.bodyWasWritten(), "deny must not write a body"));
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsVeryLongMessage_producesValidJson() throws Exception {
-		String longMsg = "A".repeat(10000) + " at position 99999";
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- Delegate exception wrapping (SVY-21124) — allow path reaches delegate ---
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException(longMsg);
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	@Nested
+	class DelegateExceptionWrapping {
+		private BearerTokenAuthenticationFilter errorFilter(HttpServlet throwingDelegate) {
+			return new BearerTokenAuthenticationFilter(VALID_TOKEN, throwingDelegate) {
+				@Override
+				protected boolean isServoyInternalUser() {
+					return false;
+				}
+			};
+		}
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+		private FakeHttpServletRequest allowedRequest() {
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			return request;
+		}
 
-		errorFilter.service(request, response);
+		@Test
+		@DisplayName("Delegate ServletException ⇒ JSON-RPC -32700 parse error")
+		void delegateThrowsServletException_returnsJsonRpc32700() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
 
-		assertEquals(200, response.getStatus());
-		String body = response.getBody();
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(body);
-		assertNotNull(node, "Response must be valid JSON even with very long message");
-		assertEquals(-32700, node.get("error").get("code").asInt());
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException("Unexpected char 0x0A at line 3\ncol 15: was expecting comma");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			assertEquals("application/json", response.getContentType());
+			String body = response.getBody();
+			assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
+			assertTrue(body.contains("Please ensure the request body is valid JSON."),
+					"Response must contain human-readable message");
+			new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+		}
+
+		@Test
+		@DisplayName("Delegate RuntimeException ⇒ JSON-RPC -32700 parse error")
+		void delegateThrowsRuntimeException_returnsJsonRpc32700() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) {
+					throw new RuntimeException("Unexpected end of JSON input");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			assertEquals("application/json", response.getContentType());
+			String body = response.getBody();
+			assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
+			assertTrue(body.contains("Please ensure the request body is valid JSON."),
+					"Response must contain human-readable message");
+		}
+
+		@Test
+		@DisplayName("Delegate IOException ⇒ JSON-RPC -32700 parse error")
+		void delegateThrowsIOException_returnsJsonRpc32700() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws IOException {
+					throw new IOException("Stream closed unexpectedly while parsing JSON");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			assertEquals("application/json", response.getContentType());
+			assertTrue(response.getBody().contains("\"code\":-32700"), "Response must contain error code -32700");
+		}
+
+		@Test
+		@DisplayName("Delegate exception with null message ⇒ falls back to class name")
+		void delegateThrowsNullMessage_usesClassName() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) {
+					throw new NullPointerException();
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			assertEquals("application/json", response.getContentType());
+			String body = response.getBody();
+			assertTrue(body.contains("\"code\":-32700"), "Response must contain error code -32700");
+			assertTrue(body.contains("NullPointerException"), "Response should contain class name as fallback");
+			new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+		}
+
+		@Test
+		@DisplayName("Delegate message with quotes ⇒ valid JSON")
+		void delegateThrowsMessageWithQuotes_escapedInJson() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException("Expected '\"' but got 'x' at position 42");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(response.getBody());
+			assertNotNull(node, "Response must be valid JSON even with quotes in message");
+			assertTrue(node.has("error"));
+			assertEquals(-32700, node.get("error").get("code").asInt());
+		}
+
+		@Test
+		@DisplayName("Delegate message with newlines ⇒ valid JSON")
+		void delegateThrowsMessageWithNewlines_escapedInJson() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException("Line 1\nLine 2\r\nLine 3\ttab");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(response.getBody());
+			assertNotNull(node, "Response must be valid JSON even with newlines in message");
+			assertEquals(-32700, node.get("error").get("code").asInt());
+		}
+
+		@Test
+		@DisplayName("Delegate message with unicode ⇒ valid JSON")
+		void delegateThrowsMessageWithUnicode_escapedInJson() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException(
+							"Unexpected character '\u00e9' (\u00c3\u00a9) at offset 0x1F \u2014 invalid");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(response.getBody());
+			assertNotNull(node, "Response must be valid JSON even with unicode in message");
+			assertEquals(-32700, node.get("error").get("code").asInt());
+		}
+
+		@Test
+		@DisplayName("Delegate very long message ⇒ valid JSON")
+		void delegateThrowsVeryLongMessage_producesValidJson() throws Exception {
+			setEntitled();
+			String longMsg = "A".repeat(10000) + " at position 99999";
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException(longMsg);
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(response.getBody());
+			assertNotNull(node, "Response must be valid JSON even with very long message");
+			assertEquals(-32700, node.get("error").get("code").asInt());
+		}
+
+		@Test
+		@DisplayName("Delegate message with backslashes ⇒ valid JSON")
+		void delegateThrowsMessageWithBackslashes_escapedInJson() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = errorFilter(new HttpServlet() {
+				private static final long serialVersionUID = 1L;
+
+				@Override
+				public void service(ServletRequest req, ServletResponse res) throws ServletException {
+					throw new ServletException("Path: C:\\Users\\test\\file.json parse error");
+				}
+			});
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(allowedRequest(), response);
+
+			assertEquals(200, response.getStatus());
+			com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(response.getBody());
+			assertNotNull(node, "Response must be valid JSON even with backslashes in message");
+			assertEquals(-32700, node.get("error").get("code").asInt());
+		}
 	}
 
-	@Test
-	public void testDelegateThrowsMessageWithBackslashes_escapedInJson() throws Exception {
-		HttpServlet throwingDelegate = new HttpServlet() {
-			private static final long serialVersionUID = 1L;
+	// --- Minimal fake implementations -------------------------------------
 
-			@Override
-			public void service(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res)
-					throws ServletException {
-				throw new ServletException("Path: C:\\Users\\test\\file.json parse error");
-			}
-		};
-		BearerTokenAuthenticationFilter errorFilter = new BearerTokenAuthenticationFilter(VALID_TOKEN,
-				throwingDelegate);
+	private static class RecordingFilterChain implements FilterChain {
+		private boolean called;
 
-		FakeHttpServletRequest request = new FakeHttpServletRequest();
-		request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
-		FakeHttpServletResponse response = new FakeHttpServletResponse();
+		@Override
+		public void doFilter(ServletRequest request, ServletResponse response) {
+			this.called = true;
+		}
 
-		errorFilter.service(request, response);
-
-		assertEquals(200, response.getStatus());
-		String body = response.getBody();
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(body);
-		assertNotNull(node, "Response must be valid JSON even with backslashes in message");
-		assertEquals(-32700, node.get("error").get("code").asInt());
+		boolean wasCalled() {
+			return called;
+		}
 	}
-
-	// --- Minimal fake implementations ---
 
 	private static class FakeHttpServletRequest extends FakeServletRequest implements HttpServletRequest {
 		private final Map<String, String> headers = new HashMap<>();
@@ -475,17 +887,17 @@ public class BearerTokenAuthenticationFilterTest {
 
 		@Override
 		public String getRequestURI() {
-			return "/mcp/test";
+			return "/dev_mcp/test";
 		}
 
 		@Override
 		public StringBuffer getRequestURL() {
-			return new StringBuffer("http://localhost:8183/mcp/test");
+			return new StringBuffer("http://localhost:8183/dev_mcp/test");
 		}
 
 		@Override
 		public String getServletPath() {
-			return "/mcp/test";
+			return "/dev_mcp/test";
 		}
 
 		@Override
@@ -547,7 +959,21 @@ public class BearerTokenAuthenticationFilterTest {
 		}
 	}
 
-	private static class FakeServletRequest implements jakarta.servlet.ServletRequest {
+	private static class FakeServletRequest implements ServletRequest {
+		// Default to loopback so a test that does not care about the address still
+		// passes the gate;
+		// tests that exercise loopback/off-box/fail-closed set this explicitly.
+		private String remoteAddr = "127.0.0.1";
+
+		void setRemoteAddr(String remoteAddr) {
+			this.remoteAddr = remoteAddr;
+		}
+
+		@Override
+		public String getRemoteAddr() {
+			return remoteAddr;
+		}
+
 		@Override
 		public Object getAttribute(String name) {
 			return null;
@@ -633,11 +1059,6 @@ public class BearerTokenAuthenticationFilterTest {
 		}
 
 		@Override
-		public String getRemoteAddr() {
-			return "127.0.0.1";
-		}
-
-		@Override
 		public String getRemoteHost() {
 			return "localhost";
 		}
@@ -701,8 +1122,7 @@ public class BearerTokenAuthenticationFilterTest {
 		}
 
 		@Override
-		public jakarta.servlet.AsyncContext startAsync(jakarta.servlet.ServletRequest req,
-				jakarta.servlet.ServletResponse res) {
+		public jakarta.servlet.AsyncContext startAsync(ServletRequest req, ServletResponse res) {
 			return null;
 		}
 
@@ -745,6 +1165,8 @@ public class BearerTokenAuthenticationFilterTest {
 	private static class FakeHttpServletResponse implements HttpServletResponse {
 		private int status = 200;
 		private String contentType;
+		private boolean sendErrorCalled;
+		private final Map<String, String> headers = new HashMap<>();
 		private final StringWriter bodyWriter = new StringWriter();
 		private final PrintWriter writer = new PrintWriter(bodyWriter);
 
@@ -756,6 +1178,19 @@ public class BearerTokenAuthenticationFilterTest {
 		String getBody() {
 			writer.flush();
 			return bodyWriter.toString();
+		}
+
+		boolean bodyWasWritten() {
+			writer.flush();
+			return !bodyWriter.toString().isEmpty();
+		}
+
+		boolean wasSendErrorCalled() {
+			return sendErrorCalled;
+		}
+
+		boolean hasHeader(String name) {
+			return headers.containsKey(name);
 		}
 
 		@Override
@@ -784,7 +1219,7 @@ public class BearerTokenAuthenticationFilterTest {
 
 		@Override
 		public boolean containsHeader(String name) {
-			return false;
+			return headers.containsKey(name);
 		}
 
 		@Override
@@ -799,10 +1234,14 @@ public class BearerTokenAuthenticationFilterTest {
 
 		@Override
 		public void sendError(int sc, String msg) {
+			this.status = sc;
+			this.sendErrorCalled = true;
 		}
 
 		@Override
 		public void sendError(int sc) {
+			this.status = sc;
+			this.sendErrorCalled = true;
 		}
 
 		@Override
@@ -823,18 +1262,22 @@ public class BearerTokenAuthenticationFilterTest {
 
 		@Override
 		public void setHeader(String name, String value) {
+			headers.put(name, value);
 		}
 
 		@Override
 		public void addHeader(String name, String value) {
+			headers.put(name, value);
 		}
 
 		@Override
 		public void setIntHeader(String name, int value) {
+			headers.put(name, String.valueOf(value));
 		}
 
 		@Override
 		public void addIntHeader(String name, int value) {
+			headers.put(name, String.valueOf(value));
 		}
 
 		@Override
@@ -844,12 +1287,12 @@ public class BearerTokenAuthenticationFilterTest {
 
 		@Override
 		public java.util.Collection<String> getHeaderNames() {
-			return java.util.List.of();
+			return headers.keySet();
 		}
 
 		@Override
 		public String getHeader(String name) {
-			return null;
+			return headers.get(name);
 		}
 
 		@Override

@@ -17,6 +17,7 @@
 package com.servoy.eclipse.developer.mcp.auth;
 
 import java.io.IOException;
+import java.net.InetAddress;
 
 import com.servoy.eclipse.model.util.ServoyLog;
 
@@ -42,7 +43,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * mapping and does NOT intercept unrelated Servoy Tomcat requests.
  * </p>
  */
-public class BearerTokenAuthenticationFilter extends HttpServlet implements Filter {
+public class BearerTokenAuthenticationFilter extends HttpServlet implements Filter
+{
 	private static final long serialVersionUID = 1L;
 
 	private final String expectedToken;
@@ -53,93 +55,167 @@ public class BearerTokenAuthenticationFilter extends HttpServlet implements Filt
 	 *                      all requests are rejected
 	 * @param delegate      the servlet to forward authenticated requests to
 	 */
-	public BearerTokenAuthenticationFilter(String expectedToken, HttpServlet delegate) {
+	public BearerTokenAuthenticationFilter(String expectedToken, HttpServlet delegate)
+	{
 		this.expectedToken = expectedToken;
 		this.delegate = delegate;
 	}
 
 	@Override
 	protected void service(HttpServletRequest request, HttpServletResponse response)
-			throws ServletException, IOException {
+		throws ServletException, IOException
+	{
 		if (!authenticate(request, response))
 			return;
-		try {
+		try
+		{
 			delegate.service(request, response);
-		} catch (Exception e) {
-			if (!response.isCommitted()) {
+		}
+		catch (Exception e)
+		{
+			if (!response.isCommitted())
+			{
 				String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
 				ServoyLog.logError("MCP request processing error: " + msg, e);
 				String escaped = new String(
-						com.fasterxml.jackson.core.io.JsonStringEncoder.getInstance().quoteAsString(msg));
+					com.fasterxml.jackson.core.io.JsonStringEncoder.getInstance().quoteAsString(msg));
 				response.setStatus(HttpServletResponse.SC_OK);
 				response.setContentType("application/json");
 				response.getWriter()
-						.write("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,"
-								+ "\"message\":\"JSON parsing failed: " + escaped + ". "
-								+ "Please ensure the request body is valid JSON.\"},\"id\":null}");
+					.write("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700," + "\"message\":\"JSON parsing failed: " + escaped + ". " +
+						"Please ensure the request body is valid JSON.\"},\"id\":null}");
 			}
 		}
 	}
 
 	@Override
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-			throws IOException, ServletException {
-		if (!authenticate((HttpServletRequest) request, (HttpServletResponse) response))
+		throws IOException, ServletException
+	{
+		if (!authenticate((HttpServletRequest)request, (HttpServletResponse)response))
 			return;
 		chain.doFilter(request, response);
 	}
 
-	private boolean authenticate(HttpServletRequest request, HttpServletResponse response) throws IOException {
-		// Servoy internal developers (@servoy.com) bypass token auth entirely
+	@SuppressWarnings("boxing")
+	private boolean authenticate(HttpServletRequest request, HttpServletResponse response) throws IOException
+	{
+		// Off-box requests must look absent: deny before anything else, using only the
+		// transport-level peer address (never a forwarded/host header, which a remote
+		// attacker controls freely).
+		if (!isLoopbackRequest(request))
+		{
+			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: non-loopback remote address '" + request.getRemoteAddr() + "'", null);
+			sendNotFound(response);
+			return false;
+		}
+
+		// Servoy internal developers (@servoy.com) bypass token auth entirely, independent
+		// of whether an svyAI key is present (seat-less internal users / headless skilltest).
 		if (isServoyInternalUser())
 			return true;
 
+		// svyAI entitlement signal: GENAI_API_KEY is set only for entitled logins. Absent or
+		// blank => not entitled => the endpoint must look absent.
+		String apiKey = System.getProperty("GENAI_API_KEY");
+		if (apiKey == null || apiKey.isBlank())
+		{
+			ServoyLog.logWarning(
+				"MCP auth rejected [" + request.getRequestURI() + "]: no svyAI entitlement (GENAI_API_KEY absent)",
+				null);
+			sendNotFound(response);
+			return false;
+		}
+
 		String authHeader = request.getHeader("Authorization");
 
-		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: expected 'Bearer <token>', got: "
-					+ (authHeader == null ? "<no Authorization header>" : "'" + authHeader.split(" ")[0] + " ...'"),
-					null);
-			sendUnauthorized(response, "Missing or invalid Authorization header");
+		if (authHeader == null || !authHeader.startsWith("Bearer "))
+		{
+			ServoyLog.logWarning(
+				"MCP auth rejected [" + request.getRequestURI() + "]: expected 'Bearer <token>', got: " +
+					(authHeader == null ? "<no Authorization header>" : "'" + authHeader.split(" ")[0] + " ...'"),
+				null);
+			sendNotFound(response);
 			return false;
 		}
 
 		String token = authHeader.substring(7);
-		if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token)) {
-			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: token mismatch"
-					+ " (received length=" + token.length() + ", expected length="
-					+ (expectedToken == null ? "null" : expectedToken.length()) + ")", null);
-			sendUnauthorized(response, "Invalid token");
+		if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token))
+		{
+			ServoyLog.logWarning("MCP auth rejected [" + request.getRequestURI() + "]: token mismatch" + " (received length=" + token.length() +
+				", expected length=" + (expectedToken == null ? "null" : expectedToken.length()) + ")", null);
+			sendNotFound(response);
 			return false;
 		}
 
 		return true;
 	}
 
-	private static boolean isServoyInternalUser() {
-		try {
-			org.eclipse.equinox.security.storage.ISecurePreferences node = org.eclipse.equinox.security.storage.SecurePreferencesFactory
-					.getDefault().node(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
-			String username = node.get(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_USERNAME, null);
-			return username != null && username.toLowerCase().endsWith("@servoy.com"); //$NON-NLS-1$
-		} catch (Exception e) {
+	/**
+	 * Returns whether the request's transport-level remote address is a loopback
+	 * address ({@code 127.0.0.1}, {@code ::1}, {@code 0:0:0:0:0:0:0:1}). Uses ONLY
+	 * {@link HttpServletRequest#getRemoteAddr()} (the actual TCP peer) and never any
+	 * request header. Fails closed: any exception, parse failure, or null/blank
+	 * address is treated as non-loopback.
+	 */
+	private boolean isLoopbackRequest(HttpServletRequest request)
+	{
+		try
+		{
+			String remoteAddr = request.getRemoteAddr();
+			// Fail closed: a null/blank address must NOT be treated as loopback.
+			// InetAddress.getByName(null)/("") would otherwise resolve to the loopback
+			// address and wrongly pass the gate.
+			if (remoteAddr == null || remoteAddr.isBlank())
+				return false;
+			return InetAddress.getByName(remoteAddr).isLoopbackAddress();
+		}
+		catch (Exception e)
+		{
 			return false;
 		}
 	}
 
-	private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
-		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-		response.setContentType("application/json");
-		response.getWriter().write("{\"error\": \"" + message + "\"}");
+	/**
+	 * Package-visible identity seam: whether the logged-in Developer user is a
+	 * Servoy-internal ({@code @servoy.com}) developer. The default reads the login
+	 * username from secure storage; a test may override it to fake the decision
+	 * without touching {@code ISecurePreferences}.
+	 */
+	protected boolean isServoyInternalUser()
+	{
+		try
+		{
+			org.eclipse.equinox.security.storage.ISecurePreferences node = org.eclipse.equinox.security.storage.SecurePreferencesFactory
+				.getDefault().node(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY);
+			String username = node.get(com.servoy.eclipse.ui.dialogs.ServoyLoginDialog.SERVOY_LOGIN_USERNAME, null);
+			return username != null && username.toLowerCase().endsWith("@servoy.com"); //$NON-NLS-1$
+		}
+		catch (Exception e)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Deny by emitting a bare container 404 so the endpoint is indistinguishable
+	 * from a path that was never mapped: no {@code WWW-Authenticate}/{@code Allow}
+	 * header, no JSON body.
+	 */
+	private void sendNotFound(HttpServletResponse response) throws IOException
+	{
+		response.sendError(HttpServletResponse.SC_NOT_FOUND);
 	}
 
 	@Override
-	public void init(FilterConfig filterConfig) throws ServletException {
+	public void init(FilterConfig filterConfig) throws ServletException
+	{
 		// nothing to initialise
 	}
 
 	@Override
-	public void destroy() {
+	public void destroy()
+	{
 		// nothing to clean up
 	}
 }
