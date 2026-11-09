@@ -51,16 +51,23 @@ public class ServoyFormServer
 		"diff the two with confidence. Do NOT treat the values as the solution's real data, and do not 'fix' a form because a " +
 		"sample value looks arbitrary; use the running-client tools when you need to see real records. Set sampleData=false to " +
 		"get the bare component chrome with no values at all.\n" +
-		"By DEFAULT it returns the rendered form as TEXT, which is cheap and usually enough to verify a layout change:\n" +
-		"  1. 'html' - the full rendered outerHTML of the requested subtree (the whole form, or the element matched by " +
-		"'selector'): the real component tags (e.g. bootstrapcomponents-textbox), their id / data-svy-name identity attributes, " +
-		"applied classes and exact nested structure;\n" +
-		"  2. 'appearance' - a map keyed by element (id or CSS path) of the RESOLVED visual styles (color, background, border, " +
-		"font, display, position, visibility, outline) and on-screen bounding box (x/y/w/h), plus a 'disabled' and 'readonly' " +
-		"boolean per element. These are the browser's COMPUTED values after the solution stylesheet + theme have been applied " +
-		"(the render waits for the solution stylesheets to load first, so the values are the solution's, not framework " +
-		"defaults), which raw HTML alone cannot tell you - use them to know the actual colour/position of something and to " +
-		"confirm a change landed.\n" +
+		"The two heavy outputs are ALWAYS written to TEMP FILES and never returned inline, so the call itself is cheap no " +
+		"matter how large the form is - the response is just a small envelope of metadata plus two ABSOLUTE file paths you " +
+		"read as needed:\n" +
+		"  1. 'htmlFile' - a pretty-printed HTML file (one element per indented line) with the full rendered outerHTML of the " +
+		"requested subtree (the whole form, or the element matched by 'selector'): the real component tags (e.g. " +
+		"bootstrapcomponents-textbox), their id / data-svy-name identity attributes, applied classes and exact nested " +
+		"structure. Read this for the rendered structure and identity;\n" +
+		"  2. 'appearanceFile' - a pretty-printed JSON file (one node per line) holding a map keyed by element (id or CSS " +
+		"path) of the RESOLVED visual styles (color, background, border, font, display, position, visibility, outline) and " +
+		"on-screen bounding box (x/y/w/h), plus a 'disabled' and 'readonly' boolean per element. These are the browser's " +
+		"COMPUTED values after the solution stylesheet + theme have been applied (the render waits for the solution " +
+		"stylesheets to load first, so the values are the solution's, not framework defaults), which raw HTML alone cannot " +
+		"tell you - use them to know the actual colour/position of something and to confirm a change landed.\n" +
+		"Both files are greppable and line-addressable: grep for an element ref, id, class or style and read a small line " +
+		"range around the match instead of the whole file. The envelope also carries 'form', 'selector', the root 'viewport' " +
+		"box, the real 'window' size and an 'elementCount'. Pass each file path UNCHANGED to a file-reading tool - do not make " +
+		"it project-relative (no ../).\n" +
 		"OPTIONALLY, set 'screenshot=true' to ALSO get a PNG screenshot of the rendered form attached to the response (a " +
 		"vision-capable model sees the actual pixels directly; also saved to disk, path in 'screenshotFile'). The screenshot is " +
 		"OFF by default because a PNG is large and costs a lot of tokens - only ask for it when the html + appearance text is not " +
@@ -79,13 +86,10 @@ public class ServoyFormServer
 		"'approximate' (false for focus, true for hover/active), 'matched', and for hover/active a 'note' and 'matchedRules'. " +
 		"A JS-built effect that needs an event handler to run (e.g. a tooltip created on mouseover) is NOT captured - this is " +
 		"design-time CSS only.\n" +
-		"Typical loop: edit the form -> call getFormLayout -> read the html + appearance map -> adjust -> call again; add " +
-		"'screenshot=true' only when you want to eyeball the actual pixels. It is READ-ONLY (it never changes the form). Pass a " +
-		"CSS 'selector' to inspect just one component's subtree. Large output is written to a temp file whose ABSOLUTE path is " +
-		"returned in 'resultFile': pass that path UNCHANGED to a file-reading tool (do not make it project-relative with ../). " +
-		"The spilled file is pretty-printed (one JSON node per line), so you can grep it for an element ref or style and read a " +
-		"small line range around the match to reach a specific 'appearance' entry. If the form cannot be rendered it returns a " +
-		"message naming the action to take, never a timeout.", type = "object")
+		"Typical loop: edit the form -> call getFormLayout -> read 'htmlFile' (and 'appearanceFile' when you need the computed " +
+		"colours/box) -> adjust -> call again; add 'screenshot=true' only when you want to eyeball the actual pixels. It is " +
+		"READ-ONLY (it never changes the form). Pass a CSS 'selector' to inspect just one component's subtree. If the form " +
+		"cannot be rendered it returns a message naming the action to take, never a timeout.", type = "object")
 	public Object getFormLayout(
 		@ToolParam(name = "formName", description = "The form to inspect, e.g. 'orderDetails'", required = true) String formName,
 		@ToolParam(name = "selector", description = "Optional CSS selector of the subtree to return (e.g. a component's tag or '#<id>'). When omitted the whole .svy-form is returned. A screenshot is only captured for the whole form, not a selected subtree.", required = false) String selector,

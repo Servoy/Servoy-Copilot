@@ -457,9 +457,18 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Parses the tool result, fails on a named message, and returns the JSON
-	 * envelope. When the result was spilled to a temp file (large forms), the full
-	 * envelope is read back from {@code resultFile}.
+	 * Parses the tool result, fails on a named message, and returns a reconstructed JSON envelope
+	 * carrying {@code html} and {@code appearance} so the assertions below keep reading them the
+	 * same way.
+	 * <p>
+	 * The tool no longer inlines the two heavy parts: the rendered HTML is always written to
+	 * {@code htmlFile} (pretty-printed, one element per line) and the computed-appearance map to
+	 * {@code appearanceFile} (pretty JSON, one node per line), so one call stays cheap in the
+	 * model's context no matter how large the form is. This helper reads both files back and
+	 * folds them into the small inline envelope ({@code form}/{@code selector}/{@code viewport}/
+	 * {@code window}/{@code elementCount}) under the {@code html} and {@code appearance} keys the
+	 * existing assertions use. It also verifies the two files exist and are pretty-printed, and
+	 * that the inline {@code guidance} steers the agent correctly.
 	 */
 	private JsonNode envelopeOf(Object rawResult) throws Exception {
 		assertNotNull(rawResult, "tool result must not be null");
@@ -482,27 +491,38 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 			Assumptions.abort("getFormLayout render prerequisite not met, skipping: " + skipReason
 					+ " | tool returned: " + toolResult);
 		}
-		JsonNode envelope = mapper.readTree(toolResult);
-		JsonNode resultFile = envelope.path("resultFile");
-		if (!resultFile.isMissingNode() && !resultFile.isNull()) {
-			// large form: the full html + appearance was spilled - read it back
-			Path file = Paths.get(resultFile.asText());
-			assertTrue(Files.exists(file), "the spilled resultFile must exist on disk: " + file);
+		com.fasterxml.jackson.databind.node.ObjectNode envelope = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+				.readTree(toolResult);
 
-			String raw = Files.readString(file, StandardCharsets.UTF_8);
-			// SVY-21577: the spilled file must be pretty-printed (one JSON node per
-			// line) so line-based file readers can grep + ranged-read it, not a single
-			// ~170 KB line. A compact serialization would collapse to a single physical
-			// line with no indentation; a revert of the pretty-printer would fail here.
-			assertSpillIsPrettyPrinted(raw, file);
-			// SVY-21577: the inline warning must steer the agent to the absolute path,
-			// to pass it unchanged (no project-relative ../), and must advertise that the
-			// file is pretty-printed / greppable.
-			assertSpillWarning(envelope.path("warning").asText(), resultFile.asText());
+		// SVY-21577 follow-up: the html and appearance are ALWAYS externalised, never inline.
+		JsonNode htmlFile = envelope.path("htmlFile");
+		JsonNode appearanceFile = envelope.path("appearanceFile");
+		assertTrue(!htmlFile.isMissingNode() && !htmlFile.isNull(), "the envelope must carry an htmlFile path: " + envelope);
+		assertTrue(!appearanceFile.isMissingNode() && !appearanceFile.isNull(),
+				"the envelope must carry an appearanceFile path: " + envelope);
+		assertFalse(envelope.has("html"), "the html must NOT be inlined in the envelope: " + envelope);
+		assertFalse(envelope.has("appearance"), "the appearance must NOT be inlined in the envelope: " + envelope);
 
-			// still parses to the same envelope shape (pretty JSON parses identically).
-			return mapper.readTree(raw);
-		}
+		Path htmlPath = Paths.get(htmlFile.asText());
+		Path appearancePath = Paths.get(appearanceFile.asText());
+		assertTrue(Files.exists(htmlPath), "the htmlFile must exist on disk: " + htmlPath);
+		assertTrue(Files.exists(appearancePath), "the appearanceFile must exist on disk: " + appearancePath);
+
+		String html = Files.readString(htmlPath, StandardCharsets.UTF_8);
+		String appearanceRaw = Files.readString(appearancePath, StandardCharsets.UTF_8);
+
+		// the html file is pretty-printed (one element per indented line), not one giant line, so
+		// a line-based reader can grep + ranged-read it; a revert to the raw outerHTML would fail.
+		assertHtmlIsPrettyPrinted(html, htmlPath);
+		// the appearance file is pretty-printed JSON (one node per line) for the same reason.
+		assertJsonIsPrettyPrinted(appearanceRaw, appearancePath);
+		// the inline guidance must steer the agent to both absolute paths, to pass them unchanged
+		// (no project-relative ../), and must advertise that the files are pretty / greppable.
+		assertGuidance(envelope.path("guidance").asText(), htmlFile.asText(), appearanceFile.asText());
+
+		// fold the two files back under the html/appearance keys the assertions below read
+		envelope.put("html", html);
+		envelope.set("appearance", mapper.readTree(appearanceRaw));
 		return envelope;
 	}
 
@@ -549,40 +569,54 @@ public class FormLayoutToolIntegrationTest extends AbstractTitaniumIntegrationTe
 	}
 
 	/**
-	 * Asserts the spilled file content is pretty-printed JSON: more than one
-	 * physical line and carrying newline-anchored indentation (Jackson's default
-	 * pretty printer indents nested nodes). A compact single-line serialization -
-	 * the pre-SVY-21577 behaviour - would fail both checks.
+	 * Asserts the spilled HTML file is pretty-printed: more than one physical line and carrying
+	 * newline-anchored indentation (one element per indented line). The raw browser
+	 * {@code outerHTML} is a single very long line - a revert to writing it verbatim would fail
+	 * both checks.
 	 */
-	private void assertSpillIsPrettyPrinted(String raw, Path file) {
+	private void assertHtmlIsPrettyPrinted(String html, Path file) {
+		long lineCount = html.lines().count();
+		assertTrue(lineCount > 1,
+				"the spilled HTML must be pretty-printed across multiple physical lines, not one giant line (file "
+						+ file + ", lines=" + lineCount + ")");
+		assertTrue(html.indexOf('\n') >= 0, "the spilled HTML must contain line breaks: " + file);
+		assertTrue(html.contains("\n ") || html.contains("\n\t"),
+				"the spilled HTML must carry newline-anchored indentation (pretty-printed), file " + file);
+	}
+
+	/**
+	 * Asserts the spilled appearance file is pretty-printed JSON: more than one physical line and
+	 * carrying newline-anchored indentation (Jackson's default pretty printer indents nested
+	 * nodes). A compact single-line serialization would fail both checks.
+	 */
+	private void assertJsonIsPrettyPrinted(String raw, Path file) {
 		long lineCount = raw.lines().count();
 		assertTrue(lineCount > 1,
 				"the spilled JSON must be pretty-printed across multiple physical lines, not one giant line (file "
 						+ file + ", lines=" + lineCount + ")");
 		assertTrue(raw.indexOf('\n') >= 0, "the spilled JSON must contain line breaks: " + file);
-		// default pretty printing puts nested nodes on their own indented lines, so
-		// grep + a ranged read can reach a specific appearance entry; compact JSON has
-		// no newline-anchored indentation.
 		assertTrue(raw.contains("\n ") || raw.contains("\n\t"),
 				"the spilled JSON must carry newline-anchored indentation (pretty-printed), file " + file);
 	}
 
 	/**
-	 * Asserts the inline spill warning carries the three required points: the path
-	 * is absolute, must be passed unchanged (no project-relative ../), and the file
-	 * is pretty-printed / greppable.
+	 * Asserts the inline guidance carries the required points: both file paths appear and are
+	 * stated to be absolute, must be passed unchanged (no project-relative ../), and the files are
+	 * pretty-printed / greppable.
 	 */
-	private void assertSpillWarning(String warning, String spilledPath) {
-		assertNotNull(warning, "a spill envelope must carry a warning");
-		String lower = warning.toLowerCase();
-		assertTrue(lower.contains("absolute"), "the warning must state the path is absolute: " + warning);
-		assertTrue(warning.contains(spilledPath), "the warning must embed the actual spilled path: " + warning);
+	private void assertGuidance(String guidance, String htmlPath, String appearancePath) {
+		assertNotNull(guidance, "the envelope must carry a guidance string");
+		String lower = guidance.toLowerCase();
+		assertTrue(lower.contains("absolute"), "the guidance must state the paths are absolute: " + guidance);
 		assertTrue(lower.contains("unchanged"),
-				"the warning must tell the agent to pass the path unchanged: " + warning);
+				"the guidance must tell the agent to pass the paths unchanged: " + guidance);
 		assertTrue(lower.contains("../") || lower.contains("project-relative"),
-				"the warning must warn against rebuilding a project-relative (../) path: " + warning);
-		assertTrue(lower.contains("pretty"), "the warning must say the file is pretty-printed: " + warning);
-		assertTrue(lower.contains("grep"), "the warning must say the file is greppable: " + warning);
+				"the guidance must warn against rebuilding a project-relative (../) path: " + guidance);
+		assertTrue(lower.contains("pretty"), "the guidance must say the files are pretty-printed: " + guidance);
+		assertTrue(lower.contains("grep"), "the guidance must say the files are greppable: " + guidance);
+		// the guidance references the two files by name so the agent knows which is which
+		assertTrue(guidance.contains("htmlFile"), "the guidance must name the htmlFile: " + guidance);
+		assertTrue(guidance.contains("appearanceFile"), "the guidance must name the appearanceFile: " + guidance);
 	}
 
 	private void saveEditingSolutionNodes(IPersist[] iPersists) throws RepositoryException {

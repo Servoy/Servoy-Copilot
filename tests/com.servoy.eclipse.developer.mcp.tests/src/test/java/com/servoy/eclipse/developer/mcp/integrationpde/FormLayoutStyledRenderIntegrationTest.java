@@ -361,10 +361,14 @@ public class FormLayoutStyledRenderIntegrationTest extends AbstractTitaniumInteg
 			Assumptions.abort("getFormLayout render prerequisite not met, skipping: " + skipReason
 					+ " | tool returned: " + toolResult);
 		}
-		JsonNode envelope = mapper.readTree(toolResult);
-		JsonNode resultFile = envelope.path("resultFile");
-		if (!resultFile.isMissingNode() && !resultFile.isNull()) {
-			return mapper.readTree(Files.readString(Paths.get(resultFile.asText()), StandardCharsets.UTF_8));
+		com.fasterxml.jackson.databind.node.ObjectNode envelope = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+				.readTree(toolResult);
+		// SVY-21577 follow-up: html and appearance are always externalised. This test only needs
+		// the appearance map, so read it back from appearanceFile and fold it under "appearance".
+		JsonNode appearanceFile = envelope.path("appearanceFile");
+		if (!appearanceFile.isMissingNode() && !appearanceFile.isNull()) {
+			envelope.set("appearance",
+					mapper.readTree(Files.readString(Paths.get(appearanceFile.asText()), StandardCharsets.UTF_8)));
 		}
 		return envelope;
 	}

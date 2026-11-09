@@ -33,6 +33,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Entities;
+import org.jsoup.parser.Parser;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.LocationAdapter;
 import org.eclipse.swt.browser.LocationEvent;
@@ -40,7 +44,10 @@ import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.developer.mcp.Activator;
@@ -100,11 +107,12 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 public class FormLayoutInspectionService
 {
 	/**
-	 * Hard cap (chars) on the inline result JSON (rendered HTML + appearance map). Over-cap
-	 * output spills to a temp file whose path is returned. Rendered HTML for a real form
-	 * usually exceeds this, so a spill is the common case.
+	 * Indentation width (spaces) used when pretty-printing the rendered HTML written to the
+	 * {@code htmlFile}. One space per nesting level keeps a deeply nested form readable without
+	 * the file growing much, while still putting one element per physical line so the file can be
+	 * grepped and ranged-read.
 	 */
-	private static final int RESULT_CAP = 24_000;
+	private static final int HTML_INDENT_SPACES = 1;
 
 	/** Default offscreen viewport for the utility browser (used when no viewport is requested). */
 	private static final int VIEWPORT_WIDTH = 1280;
@@ -343,6 +351,19 @@ public class FormLayoutInspectionService
 	private static volatile boolean browserUnavailable;
 
 	private final ObjectMapper mapper = new ObjectMapper();
+
+	/**
+	 * Writer for the spilled {@code appearanceFile}: pretty-printed with a single space per
+	 * nesting level and a bare {@code \n} line separator, so it matches the HTML file's
+	 * {@value #HTML_INDENT_SPACES}-space indentation and line endings (Jackson's default pretty
+	 * printer otherwise uses two spaces and the platform line separator, which is {@code \r\n} on
+	 * Windows). Width and line-ending are cosmetic for the grep/ranged-read the agent does, but
+	 * keeping both spilled files identical in style avoids a needless diff between them.
+	 */
+	private final ObjectWriter appearanceWriter = new ObjectMapper().writer(
+		new DefaultPrettyPrinter()
+			.withObjectIndenter(new DefaultIndenter(" ".repeat(HTML_INDENT_SPACES), "\n"))
+			.withArrayIndenter(new DefaultIndenter(" ".repeat(HTML_INDENT_SPACES), "\n")));
 
 	/**
 	 * Renders {@code /formtemplate/<formName>.html} in the hidden browser and returns the
@@ -1034,14 +1055,20 @@ public class FormLayoutInspectionService
 	}
 
 	/**
-	 * Builds the final result envelope from the raw DOM-read JSON, applying the cap-inline /
-	 * spill-to-temp-file convention. The raw read is already the JSON envelope (form, selector,
-	 * viewport, html, appearance); this only decides inline-vs-spill based on total size.
+	 * Builds the final result envelope from the raw DOM-read JSON. The two heavy parts of the
+	 * read - the rendered {@code html} and the computed-appearance {@code map} - are
+	 * <em>always</em> written to their own temp files and are <em>never</em> inlined, so one
+	 * {@code getFormLayout} call costs only the small metadata envelope in the model's context no
+	 * matter how large the form is (the previous inline-under-a-cap path could still spend ~10K
+	 * characters on a modest form; SVY-21577 follow-up). The caller reads only the file(s) it
+	 * needs and can grep each for a specific element.
 	 * <p>
-	 * The inline-vs-spill decision measures the <em>compact</em> serialized length (inline token
-	 * cost). Inline output stays compact single-line JSON, but the spilled file is written
-	 * pretty-printed (one JSON node per line) so line-based file readers can grep for an element
-	 * ref or style and read a small line range around it to reach a specific appearance entry.
+	 * The envelope inlines just the cheap, always-useful metadata (form, selector, the root box,
+	 * the real viewport, the element count) plus the two absolute file paths and a guidance
+	 * string. The {@code htmlFile} is written pretty-printed (one element per indented line, see
+	 * {@link #prettyPrintHtml(String)}) and the {@code appearanceFile} is pretty-printed JSON
+	 * (one node per line), so a line-based file reader can grep either for an element ref, id,
+	 * class or style and read a small range around the match.
 	 */
 	private FormLayoutResult assembleResult(String formName, String rawRead, CapturedScreenshot shot) throws Exception
 	{
@@ -1094,45 +1121,74 @@ public class FormLayoutInspectionService
 		String screenshotFile = shot != null ? shot.file : null;
 		String imageBase64 = shot != null ? shot.base64 : null;
 
-		String json;
-		String resultFile;
-		if (mapper.writeValueAsString(read).length() > RESULT_CAP)
-		{
-			String file = spill(formName, "json", mapper.writerWithDefaultPrettyPrinter().writeValueAsString(read));
-			resultFile = file;
-			ObjectNode envelope = mapper.createObjectNode();
-			envelope.put("resultFile", file);
-			envelope.put("truncated", true);
-			envelope.put("warning",
-				"The rendered form (HTML + appearance) exceeded the inline cap; the full result was written to the ABSOLUTE path '" +
-					file +
-					"'. Pass this path UNCHANGED to a file-reading tool - do not make it project-relative (no ../). The file is pretty-printed (one JSON node per line), so you can grep it for an element ref or style and read a small line range around the match to reach a specific 'appearance' entry.");
-			// include a light summary inline so the caller has immediate context
-			if (read.has("form")) envelope.set("form", read.get("form"));
-			if (read.has("selector")) envelope.set("selector", read.get("selector"));
-			if (read.has("viewport")) envelope.set("viewport", read.get("viewport"));
-			if (read.has("window")) envelope.set("window", read.get("window"));
-			// SVY-21614: the interaction summary is small and high-signal, so keep it inline even on a spill
-			if (read.has("interaction")) envelope.set("interaction", read.get("interaction"));
-			if (screenshotFile != null) envelope.put("screenshotFile", screenshotFile);
-			json = mapper.writeValueAsString(envelope);
-		}
-		else if (screenshotFile != null)
-		{
-			// inline the read but add the screenshot path alongside it
-			ObjectNode envelope = read.deepCopy();
-			envelope.put("screenshotFile", screenshotFile);
-			resultFile = null;
-			json = mapper.writeValueAsString(envelope);
-		}
-		else
-		{
-			// small enough to inline verbatim, no screenshot
-			resultFile = null;
-			json = mapper.writeValueAsString(read);
-		}
+		// Always externalise the two heavy parts. The html is pretty-printed so the file is
+		// greppable and line-addressable (not one giant line); the appearance map is written as
+		// pretty JSON (one node per line) for the same reason.
+		String rawHtml = read.path("html").asText("");
+		String htmlFile = spill(formName, "html", prettyPrintHtml(rawHtml));
 
-		return new FormLayoutResult(json, resultFile, screenshotFile, imageBase64, null);
+		com.fasterxml.jackson.databind.JsonNode appearance = read.has("appearance") ? read.get("appearance")
+			: mapper.createObjectNode();
+		String appearanceFile = spill(formName, "json", appearanceWriter.writeValueAsString(appearance));
+		int elementCount = appearance.isObject() ? appearance.size() : 0;
+
+		ObjectNode envelope = mapper.createObjectNode();
+		if (read.has("form")) envelope.set("form", read.get("form"));
+		if (read.has("selector")) envelope.set("selector", read.get("selector"));
+		if (read.has("viewport")) envelope.set("viewport", read.get("viewport"));
+		if (read.has("window")) envelope.set("window", read.get("window"));
+		envelope.put("elementCount", elementCount);
+		// SVY-21614: the interaction summary is small and high-signal, so keep it inline in the envelope
+		if (read.has("interaction")) envelope.set("interaction", read.get("interaction"));
+		envelope.put("htmlFile", htmlFile);
+		envelope.put("appearanceFile", appearanceFile);
+		if (screenshotFile != null) envelope.put("screenshotFile", screenshotFile);
+		envelope.put("guidance",
+			"The rendered HTML and the computed-appearance map were each written to a file (never inlined, to keep this " +
+				"call cheap). Both paths are ABSOLUTE - pass each one UNCHANGED to a file-reading tool; do not make it " +
+				"project-relative (no ../). 'htmlFile' is pretty-printed (one element per indented line) - read it for the " +
+				"rendered structure, the real component tags and their id / data-svy-name / class identity. 'appearanceFile' " +
+				"is pretty-printed JSON (one node per line) keyed by element ref - read it for the resolved colours, border, " +
+				"font, the on-screen box and the disabled / readonly booleans. Both files are greppable: search for an " +
+				"element ref, id, class or style and read a small line range around the match instead of the whole file.");
+
+		String json = mapper.writeValueAsString(envelope);
+		return new FormLayoutResult(json, htmlFile, screenshotFile, imageBase64, null);
+	}
+
+	/**
+	 * Pretty-prints the rendered subtree HTML so the spilled {@code htmlFile} is one element per
+	 * indented physical line (greppable and line-addressable) rather than the single very long
+	 * line the browser's {@code outerHTML} produces. Parsed with jsoup's lenient HTML parser and
+	 * re-serialised with pretty-printing on and {@link #HTML_INDENT_SPACES}-space indentation.
+	 * Entity escaping is left as-is ({@link Entities.EscapeMode#xhtml}, the minimal set) so the
+	 * identity attributes and text the caller greps for are not re-encoded. On any parse failure
+	 * the raw HTML is returned unchanged - a readable-but-unformatted file beats no file.
+	 */
+	static String prettyPrintHtml(String html)
+	{
+		if (html == null || html.isBlank())
+		{
+			return html == null ? "" : html;
+		}
+		try
+		{
+			// Parse as a body fragment: the read returns a single root element's outerHTML (the
+			// whole .svy-form or the selector match), so the fragment's body holds exactly that
+			// subtree. body().html() serialises its children, i.e. that one root, indented.
+			Document doc = Jsoup.parse(html, "", Parser.htmlParser());
+			doc.outputSettings()
+				.prettyPrint(true)
+				.indentAmount(HTML_INDENT_SPACES)
+				.outline(true)
+				.escapeMode(Entities.EscapeMode.xhtml);
+			return doc.body().html();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logWarning("FormLayoutInspectionService: HTML pretty-print failed; writing the raw HTML instead", e);
+			return html;
+		}
 	}
 
 	/**
@@ -1281,11 +1337,14 @@ public class FormLayoutInspectionService
 	}
 
 	/**
-	 * Small result holder returned to the tool method. {@code json} is the result envelope
-	 * (rendered HTML + appearance map, or a light summary + {@code resultFile} when spilled),
-	 * or {@code null} on failure. {@code screenshotFile} is the PNG path when a screenshot was
-	 * captured; {@code imageBase64} is the base64-encoded PNG for attaching as MCP image
-	 * content. {@code error} carries a named actionable message on failure.
+	 * Small result holder returned to the tool method. {@code json} is the metadata envelope
+	 * (form / selector / viewport / window / elementCount plus the {@code htmlFile} and
+	 * {@code appearanceFile} paths and a guidance string), or {@code null} on failure. The heavy
+	 * {@code html} and {@code appearance} are always in those files, never in the envelope.
+	 * {@code resultFile} is the {@code htmlFile} path (the primary spilled file).
+	 * {@code screenshotFile} is the PNG path when a screenshot was captured; {@code imageBase64}
+	 * is the base64-encoded PNG for attaching as MCP image content. {@code error} carries a named
+	 * actionable message on failure.
 	 */
 	public static final class FormLayoutResult
 	{
