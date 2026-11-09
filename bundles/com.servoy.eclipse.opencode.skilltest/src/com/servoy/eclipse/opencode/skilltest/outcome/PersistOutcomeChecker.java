@@ -149,6 +149,21 @@ public final class PersistOutcomeChecker {
 
 		if (match == null) {
 			diff.append(indent).append("- missing expected ").append(assertion.label()).append('\n'); //$NON-NLS-1$
+			// SVY-21366: a component/field/label assertion that "goes missing" while JSUnit
+			// (which reads the same solution via solutionModel after a 300s warmup) sees the
+			// binding is almost always a verify-time readiness race, not a genuine absence.
+			// Classify what the candidate pool actually contained and probe the web-component
+			// JSON read so a failing run names the cause - no matching-kind persist (model not
+			// rebuilt yet), getFlattenedJson null (JSON not loaded yet) or a real matcher
+			// mismatch - in BOTH the structured node (so it shows in the results UI, which
+			// renders the node, not this diff) and the flat diff (text/CI report).
+			if (isLeafElementKind(assertion.kind())) {
+				MissingLeafDiag d = diagnoseMissingLeaf(assertion, pool);
+				for (String line : d.diffLines()) {
+					diff.append(indent).append("  ").append(line).append('\n'); //$NON-NLS-1$
+				}
+				return new Node(assertion.label(), false, false, d.message(), d.props(), List.of());
+			}
 			return new Node(assertion.label(), false, false, "missing", List.of(), List.of()); //$NON-NLS-1$
 		}
 
@@ -211,6 +226,114 @@ public final class PersistOutcomeChecker {
 		}
 
 		return new Node(assertion.label(), true, ok, "found", propChecks, childNodes); //$NON-NLS-1$
+	}
+
+	/**
+	 * The diagnosis of a leaf-element assertion that matched nothing: a short
+	 * classifying {@code message} (shown in the results UI, which renders the
+	 * {@link Node}'s message), the per-candidate probe rows as {@link PropCheck}s
+	 * (also UI-rendered), and the same information as plain {@code diffLines} for
+	 * the text / CI report.
+	 */
+	private record MissingLeafDiag(String message, List<PropCheck> props, List<String> diffLines) {
+	}
+
+	/**
+	 * Diagnoses a leaf-element assertion ({@code component}/{@code field}/
+	 * {@code label}) that matched nothing (SVY-21366), so a <em>failing</em> run
+	 * names the cause rather than leaving "missing expected ..." unexplained. It
+	 * classifies the three mechanisms that make the persist-tree check disagree
+	 * with the JSUnit check (which reads the same solution via {@code solutionModel}
+	 * after a 300s warmup):
+	 * <ul>
+	 * <li><b>stale / not-yet-rebuilt model</b> - the pool has <b>no</b> persist of
+	 * the asserted kind (e.g. a form with zero web components), so the refreshed
+	 * .frm has not been rebuilt into the editing solution yet;</li>
+	 * <li><b>JSON not populated yet</b> - a matching-kind web component is present
+	 * but its {@code getFlattenedJson()} is {@code null} (the component JSON has not
+	 * loaded at verify time);</li>
+	 * <li><b>matcher mismatch</b> - the value is present (e.g. {@code dataProviderID}
+	 * reads back fine) but differs from what the assertion expected.</li>
+	 * </ul>
+	 * Purely informational: it only reads, swallows every error, and its result is
+	 * carried by a failing {@link Node} that is already failing - so it can never
+	 * change the pass/fail outcome.
+	 */
+	private static MissingLeafDiag diagnoseMissingLeaf(OutcomeAssertion assertion, List<IPersist> pool) {
+		List<PropCheck> props = new ArrayList<>();
+		List<String> diffLines = new ArrayList<>();
+		String message;
+		try {
+			List<IPersist> sameKind = new ArrayList<>();
+			for (IPersist p : pool) {
+				if (kindMatches(assertion.kind(), p)) {
+					sameKind.add(p);
+				}
+			}
+			diffLines.add("(diag) scanned " + pool.size() + " candidate(s), " + sameKind.size() + " of kind " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					+ assertion.displayKind());
+			if (sameKind.isEmpty()) {
+				// No persist of the expected kind at all -> the refreshed form is not
+				// rebuilt into the editing model yet (the stale-model readiness race).
+				message = "missing: no " + assertion.displayKind() //$NON-NLS-1$
+						+ " persist in the pool (editing model not rebuilt from disk yet?)"; //$NON-NLS-1$
+				diffLines.add("(diag) -> " + message); //$NON-NLS-1$
+				return new MissingLeafDiag(message, props, diffLines);
+			}
+			// At least one same-kind candidate exists but none matched all props.
+			// Probe the first same-kind candidate the same way propsMatch reads it, so
+			// a present-but-different value (matcher mismatch) is told apart from a
+			// null read (JSON-not-populated race). Show the probe as UI prop rows.
+			IPersist probe = sameKind.get(0);
+			String jsonState = flattenedJsonState(probe);
+			boolean anyNull = false;
+			for (Map.Entry<String, ArgMatcher> e : assertion.props().entrySet()) {
+				Object actual = readProperty(probe, e.getKey());
+				anyNull |= actual == null;
+				props.add(new PropCheck(e.getKey(), describeExpected(e.getValue()),
+						actual == null ? "(null)" : asString(actual), e.getValue().matches(actual))); //$NON-NLS-1$
+				diffLines.add("(diag) closest " + asString(readProperty(probe, "typeName")) + " " + e.getKey() + "=" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+						+ (actual == null ? "(null)" : asString(actual)) //$NON-NLS-1$
+						+ (e.getValue().matches(actual) ? " (matches)" : " (no match)")); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			diffLines.add("(diag) closest candidate flattenedJson=" + jsonState); //$NON-NLS-1$
+			if (anyNull && "null".equals(jsonState)) { //$NON-NLS-1$
+				message = "missing: " + assertion.displayKind() //$NON-NLS-1$
+						+ " present but its component JSON is null (not loaded at verify time?)"; //$NON-NLS-1$
+			} else if (anyNull) {
+				message = "missing: " + assertion.displayKind() //$NON-NLS-1$
+						+ " present, flattenedJson " + jsonState + ", but a required property read back null"; //$NON-NLS-1$ //$NON-NLS-2$
+			} else {
+				message = "missing: " + assertion.displayKind() //$NON-NLS-1$
+						+ " present with the properties, but a value differs (matcher mismatch)"; //$NON-NLS-1$
+			}
+			diffLines.add("(diag) -> " + message); //$NON-NLS-1$
+		} catch (RuntimeException ex) {
+			message = "missing (diagnostic failed: " + ex + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+			diffLines.add("(diag) dump failed: " + ex); //$NON-NLS-1$
+		}
+		return new MissingLeafDiag(message, props, diffLines);
+	}
+
+	/**
+	 * Reports whether a persist's {@code getFlattenedJson()} is {@code null},
+	 * {@code absent} (not a web object) or the comma-separated set of keys it holds
+	 * - so a null/empty component JSON (the "not populated yet" race) is visible in
+	 * the diagnostic. Best-effort via reflection; never throws.
+	 */
+	private static String flattenedJsonState(IPersist persist) {
+		try {
+			java.lang.reflect.Method m = persist.getClass().getMethod("getFlattenedJson"); //$NON-NLS-1$
+			Object json = m.invoke(persist);
+			if (json == null) {
+				return "null"; //$NON-NLS-1$
+			}
+			java.lang.reflect.Method names = json.getClass().getMethod("keySet"); //$NON-NLS-1$
+			Object keys = names.invoke(json);
+			return "keys=" + keys; //$NON-NLS-1$
+		} catch (ReflectiveOperationException | RuntimeException ignore) {
+			return "absent"; //$NON-NLS-1$
+		}
 	}
 
 	/**
