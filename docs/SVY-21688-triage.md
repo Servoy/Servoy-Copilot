@@ -65,7 +65,7 @@ verified every load-bearing claim in those comments against the code:
 | Servlets registered independently / ungated via `McpStartup` + `McpServiceProvider` | ✅ | `McpStartup.earlyStartup()` → `Activator.make(McpServerRegistry.class)`; `McpServiceProvider.getServletInstances()` has no gate (`McpServiceProvider.java:42-59`) |
 | `getServletInstances()` is **pull-once at startup**, before login | ✅ | `servoy_release/servoy-eclipse-tomcat/org.apache.tomcat/.../TomcatStartStop.java:86-124` — called once inside the `AFTER_START_EVENT` lifecycle listener; wrappers mounted via `sc.addChild(wrapper)`. It is never re-invoked on a later login event. |
 | A static "register only if entitled" check in `initialize()` would see "not entitled" for everyone and permanently break the endpoints | ✅ | Consistent with the single `AFTER_START_EVENT` call above; `initialize()` sets `initialized=true` once and is not re-run per request/login. |
-| `isServoyInternalUser()` is an **independent** @servoy.com signal, not "has a key" | ✅ | `BearerTokenAuthenticationFilter.java:122-131` reads `SERVOY_LOGIN_USERNAME` from `ISecurePreferences` (`ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY`) and checks `endsWith("@servoy.com")` — the key is never read here. |
+| `isServoyInternalUser()` is an **independent** @servoy.com signal, not "has a key" | ✅ | `BearerTokenAuthenticationFilter` reads `SERVOY_LOGIN_USERNAME` from `ISecurePreferences` (`ServoyLoginDialog.SERVOY_LOGIN_STORE_KEY`) and checks `endsWith("@servoy.com")` — the svyAI key is never read here. **(Reviewer follow-up — see note below — now ALSO requires a non-blank `SERVOY_LOGIN_TOKEN`, so a faked offline login does not qualify; still independent of the svyAI key.)** |
 | `GENAI_API_KEY` is set purely from the Cloud response, no @servoy.com branch client-side | ✅ | `servoy_release/.../ServoyLoginDialog.java:269-273` — `System.setProperty("GENAI_API_KEY", svyAiKey)` only when `svy_ai_key` non-blank; no email branch. |
 | Current deny is **401**, not 404 (announces "exists but locked") | ✅ | `BearerTokenAuthenticationFilter.sendUnauthorized()` sets `SC_UNAUTHORIZED` (401) with a JSON `{"error":...}` body. To "look absent" this must become `sendError(404)` with no body/headers. |
 
@@ -161,6 +161,36 @@ break legitimate cross-machine NG-client testing on the shared port.
 
 The `@servoy.com` bypass **must stay an independent `isServoyInternalUser()` check**, not a
 "has a key" check: a seat-less internal user (and the headless skilltest) may have no key.
+
+---
+
+## Reviewer follow-up (comment 234276) — two holes in the @servoy.com path, now closed
+
+A security review after the initial implementation found two issues, both fixed in
+`BearerTokenAuthenticationFilter` **without removing the intentional token-free `@servoy.com`
+bypass** (commit `1c4b7bc` — internal devs connect from external MCP tools that cannot obtain
+the rotating bearer token):
+
+1. **Faked offline login.** `ServoyLoginDialog` saves the username on a first login even when
+   Cloud is unreachable (the relaxed offline-login path), with no server verification. The old
+   `isServoyInternalUser()` only matched `@servoy.com` on the username, so blocking the Cloud
+   host and typing any `@servoy.com` address opened the MCP with no key and no token. **Fix:**
+   `isServoyInternalUser()` now also requires a non-blank `SERVOY_LOGIN_TOKEN`, which is written
+   only after a Cloud HTTP 200 — so an unverified offline login no longer qualifies. (True
+   token validation — signature/expiry — would need svyCloud to issue a signed JWT; out of
+   scope, tracked separately. The local check asserts presence only.)
+
+2. **No Origin check (DNS rebinding).** A malicious page can use DNS rebinding so the browser
+   connects to `127.0.0.1` (passing the loopback peer check) while the page is served from the
+   attacker's domain. **Fix:** a new `isOriginLocalOrAbsent(request)` guard rejects a present,
+   non-loopback `Origin` with 404 (absent or loopback `Origin` passes; fails closed on an
+   unparsable value).
+
+The reviewer's literal suggestion ("everyone goes through the bearer check") was **not** taken,
+because it would break the intended use case of internal devs driving the MCP from external
+tools that have no bearer token. Closing hole 1 via the login-token requirement achieves the
+same security goal (a faked login cannot open the MCP) while preserving that use case. See
+`docs/SVY-21688-gate-dev-mcp-entitlement.spec.md` §8 for the as-built gate order.
 
 ---
 

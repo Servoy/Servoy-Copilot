@@ -55,12 +55,27 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link BearerTokenAuthenticationFilter} — SVY-21688.
  *
  * <p>
- * Covers the per-request gate added in SVY-21688: the ordered <em>loopback
- * &rarr; {@code @servoy.com} internal bypass &rarr; {@code GENAI_API_KEY}
- * entitlement &rarr; bearer token</em> evaluation, where every deny emits a
- * bare {@code 404} ("look absent": no {@code WWW-Authenticate}/{@code Allow}
- * header, no JSON body) and both {@code service(...)} and {@code doFilter(...)}
- * enforce it identically.
+ * Covers the per-request gate as hardened in SVY-21688 (reviewer follow-up):
+ * the ordered <em>loopback &rarr; {@code Origin} (DNS-rebinding guard) &rarr;
+ * verified {@code @servoy.com} internal bypass (skips both entitlement and the
+ * bearer token) &rarr; {@code GENAI_API_KEY} entitlement &rarr; bearer token</em>
+ * evaluation, where every deny emits a bare {@code 404} ("look absent": no
+ * {@code WWW-Authenticate}/{@code Allow} header, no JSON body) and both
+ * {@code service(...)} and {@code doFilter(...)} enforce it identically.
+ * </p>
+ *
+ * <p>
+ * The {@code @servoy.com} token-free bypass is intentional (commit 1c4b7bc):
+ * internal devs connect from external MCP tools that cannot obtain the rotating
+ * bearer token. The reviewer follow-up closed two holes without removing that
+ * bypass: (1) a faked offline login as {@code x@servoy.com} (username saved with
+ * the Cloud host blocked, no server verification) previously qualified — now
+ * {@code isServoyInternalUser()} also requires a server-issued login token, so an
+ * unverified offline login does not; (2) there was no {@code Origin} check, so a
+ * DNS-rebinding request from {@code 127.0.0.1} passed the loopback peer check —
+ * now a present, non-loopback {@code Origin} is refused with 404. The login-token
+ * requirement reads the real secure store, so it is exercised by the
+ * integrationpde test rather than here (the seam is faked in these plain tests).
  * </p>
  *
  * <p>
@@ -224,7 +239,13 @@ class BearerTokenAuthenticationFilterTest {
 		}
 	}
 
-	// --- 2. Internal user, no key, no token ⇒ allowed ----------------------
+	// --- 2. Internal user: bypasses BOTH entitlement AND the bearer token --
+	// A VERIFIED @servoy.com user (isServoyInternalUser() true) connects token-free
+	// from external MCP tools that cannot obtain the rotating bearer token — the
+	// on-purpose bypass from commit 1c4b7bc. The fake-offline-login hole is closed
+	// inside isServoyInternalUser() (it also requires a server-issued login token),
+	// not by forcing the bearer token here. That requirement is covered by the
+	// integrationpde test that exercises the real secure-store path.
 
 	@Nested
 	class InternalUser {
@@ -240,6 +261,21 @@ class BearerTokenAuthenticationFilterTest {
 			filter.service(request, response);
 
 			assertAll(() -> assertTrue(delegateCalled, "internal user must reach the delegate"),
+					() -> assertFalse(response.wasSendErrorCalled(), "internal user must not be denied"));
+		}
+
+		@Test
+		@DisplayName("@servoy.com internal user from loopback, no key, wrong/absent token ⇒ still allowed (token not required for internal users)")
+		void internalUserIgnoresToken_allowed() throws Exception {
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, true);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + WRONG_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "internal user must reach the delegate regardless of token"),
 					() -> assertFalse(response.wasSendErrorCalled(), "internal user must not be denied"));
 		}
 	}
@@ -466,6 +502,92 @@ class BearerTokenAuthenticationFilterTest {
 			request.setRemoteAddr(OFF_BOX);
 			request.setHeader("X-Forwarded-For", LOOPBACK_V4);
 			request.setHeader("Host", LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+	}
+
+	// --- 7b. Origin / DNS-rebinding guard ---------------------------------
+
+	@Nested
+	class OriginGuard {
+		@Test
+		@DisplayName("Loopback peer but attacker Origin (DNS rebinding) ⇒ 404 even with valid token + entitlement")
+		void nonLocalOrigin_denied() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Origin", "https://evil.example.com");
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@Test
+		@DisplayName("Non-local Origin ⇒ 404 even for an internal user with a valid token")
+		void nonLocalOriginInternalUser_denied() throws Exception {
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, true);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Origin", "http://attacker.test");
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertLooksAbsent(response);
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "http://127.0.0.1:8183", "http://localhost:8183", "http://[::1]:8183" })
+		@DisplayName("Loopback Origin ⇒ allowed (entitled + valid token)")
+		void loopbackOrigin_allowed(String origin) throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Origin", origin);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "loopback Origin '" + origin + "' must be allowed"),
+					() -> assertFalse(response.wasSendErrorCalled(), "loopback Origin '" + origin + "' must not be denied"));
+		}
+
+		@Test
+		@DisplayName("Absent Origin (non-browser client) ⇒ allowed (entitled + valid token)")
+		void absentOrigin_allowed() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
+			FakeHttpServletResponse response = new FakeHttpServletResponse();
+
+			filter.service(request, response);
+
+			assertAll(() -> assertTrue(delegateCalled, "absent Origin must be allowed"),
+					() -> assertFalse(response.wasSendErrorCalled(), "absent Origin must not be denied"));
+		}
+
+		@Test
+		@DisplayName("Malformed Origin ⇒ fail closed ⇒ 404")
+		void malformedOrigin_denied() throws Exception {
+			setEntitled();
+			BearerTokenAuthenticationFilter filter = newFilter(VALID_TOKEN, false);
+			FakeHttpServletRequest request = new FakeHttpServletRequest();
+			request.setRemoteAddr(LOOPBACK_V4);
+			request.setHeader("Origin", "not a uri ::::");
 			request.setHeader("Authorization", "Bearer " + VALID_TOKEN);
 			FakeHttpServletResponse response = new FakeHttpServletResponse();
 

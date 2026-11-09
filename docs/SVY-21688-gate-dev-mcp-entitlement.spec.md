@@ -1,5 +1,16 @@
 # Spec: SVY-21688 — Gate dev_mcp endpoints on svyAI entitlement (per-request, loopback-only, 404-on-deny)
 
+> **Reviewer follow-up (implemented — see §8).** After the initial implementation a
+> security review (comment 234276) found two holes in the `@servoy.com` path: (1) a faked
+> **offline** login as `x@servoy.com` (username saved while the Cloud host is blocked, no
+> server verification) passed `isServoyInternalUser()` and opened the MCP with no key and no
+> token; (2) there was no `Origin` check, so a **DNS-rebinding** request from `127.0.0.1`
+> passed the loopback peer check. Both are now closed **without removing the intentional
+> token-free `@servoy.com` bypass** (commit `1c4b7bc`): `isServoyInternalUser()` additionally
+> requires a server-issued login token, and an `Origin` guard rejects a present, non-loopback
+> `Origin` with 404. The full, as-built gate order is in **§8**; §3 below records the original
+> design for history.
+
 ## 1. Goal
 
 Close the "E0 hole": a logged-in Servoy Developer user **without** svyAI entitlement (Cloud
@@ -316,6 +327,77 @@ Concrete and testable (loopback = `127.0.0.1` / `::1` / `0:0:0:0:0:0:0:1` via
 10. **Logout closes the endpoint (Part 2).** After a previously-entitled non-`@servoy.com` user logs
     out (`ServoyLoginDialog.clearSavedInfo()` runs), `GENAI_API_KEY` is cleared, so the next loopback
     request from that user returns **404** without requiring a Developer restart.
+
+## 8. Reviewer follow-up — as-built gate (supersedes §3.1 ordering)
+
+Security review comment 234276 raised two issues in the `@servoy.com` path and they are now
+fixed in `BearerTokenAuthenticationFilter`. The intentional token-free bypass for verified
+internal users (commit `1c4b7bc`, so internal devs can drive the MCP from external tools that
+have no way to obtain the rotating bearer token) is **kept** — the holes are closed around it,
+not by forcing the bearer token on internal users.
+
+### 8.1 Hole 1 — faked offline login as `x@servoy.com`
+
+`ServoyLoginDialog` saves the username on a **first** login even when Servoy Cloud is
+unreachable (the relaxed offline-login path): `handleLoginTokenResponse(...)` stores
+`SERVOY_LOGIN_USERNAME`/`SERVOY_LOGIN_PASSWORD` in the Cloud-unreachable branch without any
+server verification. The old `isServoyInternalUser()` only checked
+`username.endsWith("@servoy.com")`, so blocking the Cloud host and typing any `@servoy.com`
+address granted the bypass with no key and no token.
+
+**Fix:** `isServoyInternalUser()` now also requires a non-blank `SERVOY_LOGIN_TOKEN`. That
+token is written **only** after a Cloud HTTP 200 (`handleLoginTokenResponse` OK branch and the
+background cloud-retry), so a never-verified offline login does not qualify. The login token is
+an opaque Cloud string; the gate can only assert its **presence** locally (a real signature /
+expiry check would require svyCloud to issue a signed JWT — out of scope, tracked separately).
+
+### 8.2 Hole 2 — DNS rebinding
+
+The loopback **peer** check is not enough on its own: a malicious page can use DNS rebinding so
+the browser connects to `127.0.0.1` (passing the peer check) while the page is served from the
+attacker's domain. The browser still reports that domain as `Origin`.
+
+**Fix:** a new `isOriginLocalOrAbsent(request)` guard — if an `Origin` header is **present** and
+its host is **not** a loopback address, deny with 404. Absent `Origin` (normal for non-browser
+MCP clients and same-origin embedded-browser calls) or a loopback `Origin` passes. Parsed via
+`URI.create(origin).getHost()` + `InetAddress.isLoopbackAddress()`; **fails closed** (an
+unparsable `Origin` is treated as non-local).
+
+### 8.3 As-built evaluation order
+
+```
+authenticate(req, resp):
+  if !isLoopbackRequest(req)          -> sendNotFound(resp); return false   // off-box -> absent
+  if !isOriginLocalOrAbsent(req)      -> sendNotFound(resp); return false   // DNS-rebind -> absent
+  if isServoyInternalUser()           -> return true                        // verified @servoy.com: token-free bypass
+  if GENAI_API_KEY blank/absent       -> sendNotFound(resp); return false   // not entitled -> absent
+  if authHeader missing/not "Bearer " -> sendNotFound(resp); return false
+  if expectedToken blank || mismatch  -> sendNotFound(resp); return false
+  return true
+
+isServoyInternalUser():
+  username  = secureStore[SERVOY_LOGIN_USERNAME]
+  if username == null || !username.endsWithIgnoreCase("@servoy.com") -> false
+  token = secureStore[SERVOY_LOGIN_TOKEN]       // only stored after a Cloud HTTP 200
+  return token != null && !token.isBlank()      // fail closed on any exception
+```
+
+Key points vs. §3.1:
+- The `@servoy.com` bypass stays **token-free and key-independent** (unchanged intent), but is
+  now gated on a **server-verified** login token, not the username alone.
+- A new `Origin` guard runs right after the loopback peer check, before identity/entitlement.
+- The `GENAI_API_KEY` entitlement check and the bearer-token check apply only to the
+  **non-internal** path, exactly as before — internal users are not forced to carry the token.
+
+### 8.4 Tests
+
+`BearerTokenAuthenticationFilterTest` (plainjunit) covers the as-built gate: `InternalUser`
+asserts a verified internal user is allowed **token-free** (even with a wrong/absent token), and
+a new `OriginGuard` nested class covers non-local-Origin deny (non-internal and internal),
+loopback-Origin allow, absent-Origin allow, and malformed-Origin fail-closed. The new
+login-token requirement reads the real secure store, so the username-set-but-token-absent case
+belongs in an integrationpde test (the plain tests fake the `isServoyInternalUser()` seam);
+51/51 plain tests pass.
 
 ## 6. Out of scope
 
