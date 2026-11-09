@@ -114,6 +114,14 @@ public class FormLayoutInspectionService
 	static final int MIN_VIEWPORT_SIZE = 200;
 	static final int MAX_VIEWPORT_SIZE = 4000;
 
+	/** The pseudo-state actions {@code getFormLayout} can apply to a target before reading (SVY-21614). */
+	public static final String ACTION_FOCUS = "focus";
+	public static final String ACTION_HOVER = "hover";
+	public static final String ACTION_ACTIVE = "active";
+
+	/** Cap on the number of matched {@code :hover}/{@code :active} rules collected for the CSS-rewrite. */
+	static final int MAX_PSEUDO_RULES = 50;
+
 	/** Tolerance (px) when checking the rendered {@code window.innerWidth} against a requested width. */
 	private static final int VIEWPORT_WIDTH_TOLERANCE = 2;
 
@@ -195,6 +203,72 @@ public class FormLayoutInspectionService
 		"      viewport: box(root), window: { width: window.innerWidth, height: window.innerHeight },\n" +
 		"      html: root.outerHTML, appearance: appearance });\n" +
 		"  } catch (err) { return JSON.stringify({ error: String(err) }); }\n" +
+		"})();";
+
+	/**
+	 * Pseudo-state template (SVY-21614). Puts one target element into a CSS interaction state before
+	 * the appearance read, so the computed styles and the screenshot reflect it. Placeholders:
+	 * {@code %1$s} = JSON-encoded target selector, {@code %2$s} = JSON-encoded action
+	 * ({@code focus}/{@code hover}/{@code active}), {@code %3$s} = {@link #MAX_PSEUDO_RULES}.
+	 * <p>
+	 * {@code focus} is REAL: {@code element.focus()} is a DOM API, so {@code :focus}/{@code :focus-visible}
+	 * genuinely apply. {@code hover}/{@code active} are APPROXIMATE: the browser exposes no way to force
+	 * {@code :hover} from page JS (that needs CDP {@code CSS.forcePseudoState}, which the embedded Equo
+	 * Chromium does not expose), so instead every style rule whose selector carries {@code :hover}
+	 * (resp. {@code :active}) and whose non-pseudo part matches the target has its declarations applied to
+	 * the target as <em>inline {@code !important}</em> declarations ({@code el.style.setProperty(p, v,
+	 * 'important')}). An inline {@code !important} declaration beats any stylesheet rule regardless of
+	 * specificity, so the pseudo-state styling reliably wins the cascade - even over an {@code !important}
+	 * rest rule or a more specific pseudo-rule. It is still APPROXIMATE (descendant-{@code :hover} and
+	 * combined states are not modelled, and the inline value may itself exceed what the real cascade would
+	 * apply), so the result is labelled {@code approximate:true}.
+	 * </p>
+	 * Returns a JSON object describing the outcome ({@code matched}, {@code approximate}, and for
+	 * hover/active {@code matchedRules}/{@code appliedProps}/{@code skippedSheets}/{@code truncated});
+	 * never throws.
+	 */
+	private static final String PSEUDO_JS_TEMPLATE = "" +
+		"return (function(){\n" +
+		"  try {\n" +
+		"    var sel = %1$s; var action = %2$s; var CAP = %3$s;\n" +
+		"    var el = document.querySelector(sel);\n" +
+		"    if (!el) { return JSON.stringify({ matched: false, action: action }); }\n" +
+		"    if (action === 'focus') { try { el.focus(); } catch (e) {} \n" +
+		"      return JSON.stringify({ matched: true, action: action, approximate: false }); }\n" +
+		"    // hover / active: copy the matching pseudo-rule declarations onto the target (approximate)\n" +
+		"    var pseudo = (action === 'active') ? ':active' : ':hover';\n" +
+		"    var matchedRules = 0; var appliedProps = 0; var skippedSheets = 0; var truncated = false;\n" +
+		"    var sheets = document.styleSheets;\n" +
+		"    for (var s=0; s<sheets.length; s++){\n" +
+		"      var rules; try { rules = sheets[s].cssRules; } catch (e) { skippedSheets++; continue; }\n" +
+		"      if (!rules) continue;\n" +
+		"      for (var r=0; r<rules.length; r++){ var rule = rules[r];\n" +
+		"        if (rule.type !== 1 || !rule.selectorText) continue;\n" +
+		"        var parts = rule.selectorText.split(',');\n" +
+		"        for (var p=0; p<parts.length; p++){ var selText = parts[p];\n" +
+		"          if (selText.indexOf(pseudo) === -1) continue;\n" +
+		"          var base = selText.split(pseudo).join('').trim();\n" +
+		"          if (!base) continue;\n" +
+		"          var isMatch = false; try { isMatch = el.matches(base); } catch (e) { continue; }\n" +
+		"          if (!isMatch) continue;\n" +
+		"          if (matchedRules >= CAP) { truncated = true; break; }\n" +
+		"          // apply each property of the matched pseudo-rule as an INLINE !important declaration on\n" +
+		"          // the target. An inline !important declaration beats ANY stylesheet rule regardless of\n" +
+		"          // its specificity (including an !important rest rule or a more specific pseudo-rule), so\n" +
+		"          // the pseudo-state styling reliably wins the cascade - no marker/specificity heuristic.\n" +
+		"          var rs = rule.style;\n" +
+		"          for (var d=0; d<rs.length; d++){ var prop = rs[d];\n" +
+		"            var val = rs.getPropertyValue(prop); if (!val) continue;\n" +
+		"            try { el.style.setProperty(prop, val, 'important'); appliedProps++; } catch (e) {} }\n" +
+		"          matchedRules++;\n" +
+		"        }\n" +
+		"        if (truncated) break;\n" +
+		"      }\n" +
+		"      if (truncated) break;\n" +
+		"    }\n" +
+		"    return JSON.stringify({ matched: true, action: action, approximate: true,\n" +
+		"      matchedRules: matchedRules, appliedProps: appliedProps, skippedSheets: skippedSheets, truncated: truncated });\n" +
+		"  } catch (err) { return JSON.stringify({ matched: false, error: String(err) }); }\n" +
 		"})();";
 
 	/**
@@ -310,6 +384,22 @@ public class FormLayoutInspectionService
 	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds, boolean sampleData,
 		Integer viewportWidth, Integer viewportHeight)
 	{
+		return getFormLayout(formName, selector, screenshot, timeoutSeconds, sampleData, viewportWidth, viewportHeight, null, null);
+	}
+
+	/**
+	 * As {@link #getFormLayout(String, String, boolean, int, boolean, Integer, Integer)}, additionally putting one
+	 * target element into a CSS pseudo-state before the read (SVY-21614), so the computed styles and the screenshot
+	 * reflect {@code :focus} / {@code :hover} / {@code :active}.
+	 *
+	 * @param targetSelector the single element to put into the state (first {@code querySelector} match), or
+	 *            {@code null} for none
+	 * @param action {@link #ACTION_FOCUS} (real), {@link #ACTION_HOVER} or {@link #ACTION_ACTIVE} (approximated), or
+	 *            {@code null} for the resting render. The caller validates the pair.
+	 */
+	public FormLayoutResult getFormLayout(String formName, String selector, boolean screenshot, int timeoutSeconds, boolean sampleData,
+		Integer viewportWidth, Integer viewportHeight, String targetSelector, String action)
+	{
 		if (formName == null || formName.isBlank())
 		{
 			return FormLayoutResult.error("Error: Form name must not be null or empty.");
@@ -374,7 +464,8 @@ public class FormLayoutInspectionService
 		try
 		{
 			AtomicReference<String> failure = new AtomicReference<>();
-			String rawRead = renderAndRead(formName, cssSelector, url, timeoutMs, width, height, failure);
+			AtomicReference<String> interaction = new AtomicReference<>();
+			String rawRead = renderAndRead(formName, cssSelector, url, timeoutMs, width, height, targetSelector, action, interaction, failure);
 			if (failure.get() != null)
 			{
 				String reason = failure.get();
@@ -437,7 +528,7 @@ public class FormLayoutInspectionService
 			{
 				shot = captureScreenshot(formName);
 			}
-			return assembleResult(formName, rawRead, shot);
+			return assembleResult(formName, rawRead, shot, action, targetSelector, interaction.get());
 		}
 		catch (Exception e)
 		{
@@ -458,7 +549,7 @@ public class FormLayoutInspectionService
 	 * Returns the raw read JSON string, or leaves a reason in {@code failure}.
 	 */
 	private String renderAndRead(String formName, String cssSelector, String url, long timeoutMs, int width, int height,
-		AtomicReference<String> failure)
+		String targetSelector, String action, AtomicReference<String> interactionResult, AtomicReference<String> failure)
 	{
 		Display display = Display.getDefault();
 		AtomicReference<String> readResult = new AtomicReference<>();
@@ -566,6 +657,22 @@ public class FormLayoutInspectionService
 		{
 			failure.set("TIMEOUT" + STUCK_DETAIL);
 			return null;
+		}
+
+		// SVY-21614: put the target element into the requested pseudo-state AFTER the form is ready but
+		// BEFORE the read, so the appearance map and the screenshot both reflect it. focus() is real;
+		// hover/active are approximated by copying the matching pseudo-rule declarations onto the target.
+		if (action != null)
+		{
+			String pseudoJs = String.format(PSEUDO_JS_TEMPLATE, jsStringLiteral(targetSelector), jsStringLiteral(action),
+				Integer.toString(MAX_PSEUDO_RULES));
+			Object pseudoValue = evaluateBounded(display, pseudoJs, READ_EVAL_TIMEOUT_MS, evalStuck);
+			if (evalStuck.get())
+			{
+				failure.set("TIMEOUT" + STUCK_DETAIL);
+				return null;
+			}
+			interactionResult.set(pseudoValue == null ? null : pseudoValue.toString());
 		}
 
 		// read the rendered subtree HTML + appearance map
@@ -938,8 +1045,51 @@ public class FormLayoutInspectionService
 	 */
 	private FormLayoutResult assembleResult(String formName, String rawRead, CapturedScreenshot shot) throws Exception
 	{
+		return assembleResult(formName, rawRead, shot, null, null, null);
+	}
+
+	/**
+	 * As {@link #assembleResult(String, String, CapturedScreenshot)}, additionally attaching the SVY-21614
+	 * {@code interaction} summary when a pseudo-state action was requested. {@code interactionRaw} is the JSON the
+	 * injected {@link #PSEUDO_JS_TEMPLATE} returned (or {@code null} if it did not run); it is enriched with the
+	 * requested {@code action} / {@code targetSelector} and, for {@code hover}/{@code active}, an honesty
+	 * {@code note}. The key is placed on the read envelope so it survives the inline-vs-spill decision.
+	 */
+	private FormLayoutResult assembleResult(String formName, String rawRead, CapturedScreenshot shot, String action,
+		String targetSelector, String interactionRaw) throws Exception
+	{
 		// rawRead is a JSON object string produced by the injected read; validate + normalize.
-		com.fasterxml.jackson.databind.JsonNode read = mapper.readTree(rawRead);
+		com.fasterxml.jackson.databind.JsonNode readNode = mapper.readTree(rawRead);
+		ObjectNode read = readNode.isObject() ? (ObjectNode)readNode : mapper.createObjectNode();
+
+		if (action != null)
+		{
+			ObjectNode interaction = mapper.createObjectNode();
+			interaction.put("action", action);
+			if (targetSelector != null) interaction.put("targetSelector", targetSelector);
+			com.fasterxml.jackson.databind.JsonNode raw = interactionRaw != null ? mapper.readTree(interactionRaw) : null;
+			boolean matched = raw != null && raw.path("matched").asBoolean(false);
+			interaction.put("matched", matched);
+			if (!matched)
+			{
+				interaction.put("note", "no element matched targetSelector '" + targetSelector +
+					"', so no pseudo-state was applied; the appearance below is the resting render.");
+			}
+			else if (ACTION_FOCUS.equals(action))
+			{
+				interaction.put("approximate", false);
+			}
+			else
+			{
+				interaction.put("approximate", true);
+				if (raw.has("matchedRules")) interaction.set("matchedRules", raw.get("matchedRules"));
+				if (raw.has("skippedSheets")) interaction.set("skippedSheets", raw.get("skippedSheets"));
+				if (raw.path("truncated").asBoolean(false)) interaction.put("truncated", true);
+				interaction.put("note", "'" + action + "' is APPROXIMATED: the matching " + (ACTION_ACTIVE.equals(action) ? ":active" : ":hover") +
+					" rule declarations were applied to the target; this is not a true pseudo-state match (descendant/combined states and full cascade specificity are not modelled). 'focus' is the only exact state.");
+			}
+			read.set("interaction", interaction);
+		}
 
 		String screenshotFile = shot != null ? shot.file : null;
 		String imageBase64 = shot != null ? shot.base64 : null;
@@ -962,6 +1112,8 @@ public class FormLayoutInspectionService
 			if (read.has("selector")) envelope.set("selector", read.get("selector"));
 			if (read.has("viewport")) envelope.set("viewport", read.get("viewport"));
 			if (read.has("window")) envelope.set("window", read.get("window"));
+			// SVY-21614: the interaction summary is small and high-signal, so keep it inline even on a spill
+			if (read.has("interaction")) envelope.set("interaction", read.get("interaction"));
 			if (screenshotFile != null) envelope.put("screenshotFile", screenshotFile);
 			json = mapper.writeValueAsString(envelope);
 		}

@@ -11,6 +11,7 @@ package com.servoy.eclipse.developer.mcp.plainjunit.servers;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
@@ -42,9 +43,9 @@ import com.servoy.eclipse.developer.mcp.servers.ServoyFormServer;
  */
 class ServoyFormServerToolContractTest {
 
-	/** The 7 getFormLayout @ToolParam names, in declaration order. */
+	/** The getFormLayout @ToolParam names, in declaration order (SVY-21614 appended targetSelector + action). */
 	private static final List<String> GET_FORM_LAYOUT_PARAMS = List.of("formName", "selector", "screenshot",
-			"timeoutSeconds", "sampleData", "viewportWidth", "viewportHeight");
+			"timeoutSeconds", "sampleData", "viewportWidth", "viewportHeight", "targetSelector", "action");
 
 	private static List<Method> toolMethods() {
 		List<Method> out = new ArrayList<>();
@@ -98,7 +99,7 @@ class ServoyFormServerToolContractTest {
 		Method m = toolNamed("getFormLayout");
 		assertNotNull(m, "getFormLayout @Tool must be present");
 		Parameter[] ps = m.getParameters();
-		assertEquals(7, ps.length, "getFormLayout must have exactly 7 parameters");
+		assertEquals(9, ps.length, "getFormLayout must have exactly 9 parameters (7 + SVY-21614 targetSelector, action)");
 
 		// only formName is required; the rest are optional
 		assertTrue(ps[0].getAnnotation(ToolParam.class).required(), "formName is required");
@@ -112,6 +113,65 @@ class ServoyFormServerToolContractTest {
 		assertEquals("integer", paramType(m, "viewportHeight"));
 		assertEquals("boolean", paramType(m, "screenshot"));
 		assertEquals("boolean", paramType(m, "sampleData"));
+		// the SVY-21614 pseudo-state params are plain strings (default type)
+		assertEquals("string", paramType(m, "targetSelector"));
+		assertEquals("string", paramType(m, "action"));
+	}
+
+	@Test
+	@DisplayName("getFormLayout's description documents the SVY-21614 pseudo-state params (focus real, hover/active approximate)")
+	void descriptionMentionsPseudoState() {
+		Method m = toolNamed("getFormLayout");
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue(desc.contains("focus") && desc.contains("hover") && desc.contains("active"),
+				"the description must name the focus/hover/active actions: " + desc);
+		assertTrue(desc.toLowerCase().contains("approximate"),
+				"the description must say hover/active are approximate: " + desc);
+		assertTrue(desc.contains("targetSelector"), "the description must name the targetSelector param: " + desc);
+	}
+
+	@Test
+	@DisplayName("validatePseudoState: both absent is valid (the normal resting render)")
+	void validatePseudoState_bothAbsent() {
+		assertNull(ServoyFormServer.validatePseudoState(null, null), "no target and no action is the normal render, not an error");
+	}
+
+	@Test
+	@DisplayName("validatePseudoState: focus/hover/active with a target are valid")
+	void validatePseudoState_validPairs() {
+		assertNull(ServoyFormServer.validatePseudoState("#x", "focus"));
+		assertNull(ServoyFormServer.validatePseudoState("#x", "hover"));
+		assertNull(ServoyFormServer.validatePseudoState("#x", "active"));
+	}
+
+	@Test
+	@DisplayName("validatePseudoState: an unknown action is a named error listing the valid ones")
+	void validatePseudoState_unknownAction() {
+		String err = ServoyFormServer.validatePseudoState("#x", "wiggle");
+		assertNotNull(err, "an unknown action must be rejected");
+		assertTrue(err.startsWith("Error") && err.contains("focus") && err.contains("hover") && err.contains("active"),
+				"the error must list the valid actions: " + err);
+	}
+
+	@Test
+	@DisplayName("validatePseudoState: a target without an action, and an action without a target, are both errors")
+	void validatePseudoState_mismatchedPair() {
+		String noAction = ServoyFormServer.validatePseudoState("#x", null);
+		assertNotNull(noAction, "a targetSelector without an action is a malformed request");
+		assertTrue(noAction.startsWith("Error") && noAction.contains("action"), noAction);
+
+		String noTarget = ServoyFormServer.validatePseudoState(null, "focus");
+		assertNotNull(noTarget, "an action without a targetSelector is a malformed request");
+		assertTrue(noTarget.startsWith("Error") && noTarget.contains("targetSelector"), noTarget);
+	}
+
+	@Test
+	@DisplayName("validatePseudoState: the unknown-action check wins over a missing target")
+	void validatePseudoState_unknownActionBeatsMissingTarget() {
+		String err = ServoyFormServer.validatePseudoState(null, "wiggle");
+		assertNotNull(err, "an unknown action with no target is still an error");
+		assertTrue(err.contains("wiggle") || err.contains("focus, hover, active"),
+				"the unknown-action message is preferred (it names the bad value / the valid set): " + err);
 	}
 
 	@Test
