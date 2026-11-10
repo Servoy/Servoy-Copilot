@@ -25,7 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.core.resources.IContainer;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceFilterDescription;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -264,8 +266,34 @@ public class OpencodeIndexIgnorer {
 				continue;
 
 			// The .opencode folder sits directly under the project root here.
-			IContainer opencodeContainer = project.getFolder(".opencode"); //$NON-NLS-1$
+			IFolder opencodeContainer = project.getFolder(".opencode"); //$NON-NLS-1$
+
+			// The folder exists on disk but may not be in the workspace tree yet
+			// (nothing refreshed it in). createFilter() on a container that does not
+			// exist as a resource silently does nothing, which is why the index
+			// folder kept showing (SVY-21507). Refresh it in first so the container
+			// is a real resource before we add the filter.
+			if (!opencodeContainer.exists()) {
+				try {
+					opencodeContainer.refreshLocal(IResource.DEPTH_ZERO, new NullProgressMonitor());
+				} catch (CoreException e) {
+					ServoyLog.logError("OpencodeIndexIgnorer: cannot refresh " + opencodeContainer.getFullPath(), e); //$NON-NLS-1$
+				}
+			}
+
 			addExcludeFilterIfAbsent(opencodeContainer, "index"); //$NON-NLS-1$
+
+			// A filter only hides children the next time the folder is scanned. If
+			// index/ was already discovered (and its lease/heartbeat files are the
+			// very thing we are trying to stop seeing), refresh the folder now so the
+			// newly added filter actually removes it from the tree.
+			if (opencodeContainer.exists()) {
+				try {
+					opencodeContainer.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+				} catch (CoreException e) {
+					ServoyLog.logError("OpencodeIndexIgnorer: cannot refresh " + opencodeContainer.getFullPath(), e); //$NON-NLS-1$
+				}
+			}
 		}
 	}
 
