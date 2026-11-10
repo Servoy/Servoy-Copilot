@@ -191,6 +191,15 @@
 							     main build runs nothing), and that base config merges into this profile. -->
 							<skipTests>false</skipTests>
 							<providerHint>junit6</providerHint>
+							<!-- Backstop (SVY-21366): cap the whole forked workbench run so a wedged
+							     fork fails this build fast instead of lingering until the 90-min Jenkins
+							     timeout. Build #76 hung ~5h when the opencode child survived shutdown and
+							     its non-daemon reader kept the forked JVM alive (fixed under SVY-21643),
+							     but a forked-process timeout guarantees a hang can never again cost hours.
+							     Generous enough for a real run: workbench boot + first-run node/opencode
+							     install + three real-LLM scenarios each verified by a SmartClient JSUnit
+							     launch. -->
+							<forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
 							<!-- The real-scenario ignition: invokes SkillTestHeadlessRunner.runInWorkbench()
 							     over the cloned baselines, guarded by -Dservoy.skilltest.run=true (so it is
 							     skipped unless the CI job sets it). -->
