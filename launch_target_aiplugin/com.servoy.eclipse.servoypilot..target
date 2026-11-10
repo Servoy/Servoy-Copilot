@@ -2,7 +2,7 @@
 <?pde version="3.8"?>
 <target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="60">
     <locations>
-        <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
+        <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="slicer" includeSource="true" type="InstallableUnit">
             <repository location="https://build.servoy.com/latest/servoy_lts_2026/update_site/"/>
             <unit id="com.servoy.eclipse.feature.feature.group" version="0.0.0"/>
 	        <unit id="org.eclipse.platform.feature.group" version="0.0.0"/>
