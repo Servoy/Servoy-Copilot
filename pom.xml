@@ -75,6 +75,25 @@
                             <version>${project.parent.version}</version>
                         </artifact>
                     </target>
+                    <!-- The lts_2026 Servoy update-site (the target) ALSO publishes our own
+                         servoypilot.feature, which drags in previously-released binaries of
+                         com.servoy.eclipse.developer.mcp and com.servoy.eclipse.opencode. In the
+                         integration-test run those stale p2 bundles would otherwise win over the
+                         freshly built reactor modules at the PDE test runtime (NoSuchMethodError on
+                         just-added methods). Remove them from the resolved target so ONLY the reactor
+                         provides these two bundles; everything else still comes from lts_2026. -->
+                    <filters>
+                        <filter>
+                            <type>eclipse-plugin</type>
+                            <id>com.servoy.eclipse.developer.mcp</id>
+                            <removeAll/>
+                        </filter>
+                        <filter>
+                            <type>eclipse-plugin</type>
+                            <id>com.servoy.eclipse.opencode</id>
+                            <removeAll/>
+                        </filter>
+                    </filters>
                     <pomDependencies>consider</pomDependencies>
                     <dependency-resolution>
                         <optionalDependencies>ignore</optionalDependencies>
