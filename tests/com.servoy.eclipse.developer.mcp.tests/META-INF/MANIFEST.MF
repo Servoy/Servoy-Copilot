@@ -66,6 +66,7 @@ Import-Package: org.bouncycastle.pqc.jcajce.provider.uov;version="[1.85.0,2.0.0)
  com.fasterxml.jackson.databind.json;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind.node;version="[2.20.0,3.0.0)",
  com.fasterxml.jackson.databind.type;version="[2.20.0,3.0.0)",
+ com.inet.lib.less,
  com.networknt.schema;version="[2.0.0,3.0.0)",
  com.networknt.schema.dialect;version="[2.0.0,3.0.0)",
  io.modelcontextprotocol.json;version="[2.0.0,3.0.0)",
