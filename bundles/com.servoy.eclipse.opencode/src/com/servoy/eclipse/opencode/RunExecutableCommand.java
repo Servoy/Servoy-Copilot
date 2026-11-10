@@ -73,6 +73,15 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	private int exitCode = -1;
 
 	/**
+	 * Upper bound (SVY-21643) on how long {@link #runCommand} waits for the child to
+	 * exit after its output stream has closed, before force-killing the whole tree.
+	 * The output stream closing already signals the child is on its way out, so this
+	 * only guards the pathological case where a grandchild keeps the process (and
+	 * thus this non-daemon Job thread, and the forked JVM) alive.
+	 */
+	private static final long PROCESS_EXIT_WAIT_MS = 5000L;
+
+	/**
 	 * On POSIX, set when the launch wrapped the executable in {@code setsid} so the
 	 * launched process is the leader of a new process group whose pgid equals its
 	 * pid. When {@code true}, {@link #terminateGroupGracefully()} can signal the
@@ -158,8 +167,21 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			}
 		}
 
-		process.waitFor();
-		exitCode = cancelled ? RunNPMCommandExit.CANCELLED : process.exitValue();
+		// Bounded wait (SVY-21643): never block the (non-daemon) server Job thread on
+		// an unbounded waitFor(). If the child survived the shutdown signals (a bun/node
+		// grandchild kept the group alive on CI), an unbounded wait here holds this
+		// thread - and therefore the forked workbench JVM - open forever, which hung the
+		// headless skilltest build for hours (build #76). Once cancelled, force-kill the
+		// whole tree and stop waiting so the thread returns and the JVM can exit.
+		if (!process.waitFor(PROCESS_EXIT_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+			ServoyLog.logInfo("OpenCode: process did not exit within " + PROCESS_EXIT_WAIT_MS
+					+ " ms of its output stream closing - force-killing the tree");
+			forceKillTree();
+			// Give the force-kill a brief moment; do not wait unbounded again.
+			process.waitFor(2000, java.util.concurrent.TimeUnit.MILLISECONDS);
+		}
+		exitCode = cancelled ? RunNPMCommandExit.CANCELLED
+				: (process.isAlive() ? RunNPMCommandExit.CANCELLED : process.exitValue());
 		writeConsole(console, "opencode exited with code " + exitCode);
 	}
 
@@ -187,11 +209,45 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	@Override
 	public boolean cancel() {
 		cancelled = true;
-		Process p = process;
-		if (p != null) {
-			p.destroy();
-		}
+		// Force-kill the whole tree and break the pipe the reader loop is blocked on,
+		// so the (non-daemon) server Job thread in runCommand() unwinds promptly
+		// instead of sitting in readLine()/waitFor() on a surviving child (SVY-21643).
+		forceKillTree();
 		return true;
+	}
+
+	/**
+	 * Force-terminates the launched process and its descendant tree, and closes its
+	 * output stream so the {@code readLine()} loop in {@link #runCommand} returns
+	 * (SVY-21643). Best-effort and idempotent; never throws out of shutdown. On
+	 * POSIX the process is a group leader (setsid), so {@link Process#descendants()}
+	 * plus a group-targeted kill reach bun/node/MCP grandchildren; the extra
+	 * {@code destroyForcibly()} on each handle is the cross-platform safety net.
+	 */
+	private void forceKillTree() {
+		Process p = process;
+		if (p == null) {
+			return;
+		}
+		try {
+			p.descendants().forEach(ProcessHandle::destroyForcibly);
+		} catch (RuntimeException ignored) {
+			// descendants() can race with exit; ignore.
+		}
+		p.destroyForcibly();
+		// Closing the child's stdout unblocks the readLine() loop even if a detached
+		// grandchild still holds the write end; this must not block the caller, so a
+		// close that hangs (Windows, pending read on the same handle) is isolated on a
+		// daemon thread - exactly as Activator.killProcessTree does.
+		Thread closer = new Thread(() -> {
+			try {
+				p.getInputStream().close();
+			} catch (Exception ignored) {
+				// stream already gone - nothing to do
+			}
+		}, "OpenCode-ExecStreamCloser");
+		closer.setDaemon(true);
+		closer.start();
 	}
 
 	/**
