@@ -350,8 +350,12 @@ public class SkillTestHeadlessRunner implements IApplication {
 		// the SAME outputDir as the JUnit XML so Jenkins archives it via the existing
 		// skilltest-reports/** glob (no Jenkinsfile change). emitCoverage never throws:
 		// a failure here must not fail the run or change the exit code.
+		// Fixed CI file name ("coverage.html") so each build overwrites it: the
+		// archived skilltest-reports dir keeps a single, latest coverage report
+		// instead of accumulating one timestamped file per build (the CI workspace
+		// is not cleaned between runs).
 		com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportHtml.emitCoverage(results, null, outputDir,
-				this::output);
+				"coverage.html", this::output); //$NON-NLS-1$
 
 		if (results.isEmpty()) {
 			output("No active skill-test baselines - nothing to run (vacuous pass).");

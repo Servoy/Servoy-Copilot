@@ -126,6 +126,28 @@ public final class CoverageReportHtml {
 	 */
 	public static File emitCoverage(java.util.List<com.servoy.eclipse.opencode.skilltest.SkillTestResult> results,
 			String timestamp, Path targetDir, java.util.function.Consumer<String> logger) {
+		return emitCoverage(results, timestamp, targetDir, null, logger);
+	}
+
+	/**
+	 * As
+	 * {@link #emitCoverage(java.util.List, String, Path, java.util.function.Consumer)},
+	 * but writes to a fixed {@code fileName} when given so repeated runs overwrite
+	 * the same file instead of accumulating one timestamped report per run. CI
+	 * passes {@code coverage.html} (so the archived artifacts hold a single, latest
+	 * coverage report); the in-IDE path passes {@code null} to keep the timestamped
+	 * history under {@code reports/}.
+	 *
+	 * @param results   the completed suite results
+	 * @param timestamp the suite timestamp label (may be {@code null})
+	 * @param targetDir the directory to write into
+	 * @param fileName  the exact file name, or {@code null} for the timestamped
+	 *                  default
+	 * @param logger    a diagnostic sink (may be {@code null})
+	 * @return the written file, or {@code null} when nothing was written
+	 */
+	public static File emitCoverage(java.util.List<com.servoy.eclipse.opencode.skilltest.SkillTestResult> results,
+			String timestamp, Path targetDir, String fileName, java.util.function.Consumer<String> logger) {
 		try {
 			java.util.List<CoverageObservation> observations = new java.util.ArrayList<>();
 			if (results != null) {
@@ -135,7 +157,7 @@ public final class CoverageReportHtml {
 			}
 			PackCatalog catalog = PackCatalogReader.read();
 			CoverageReport report = CoverageReport.aggregate(timestamp, observations, catalog);
-			File written = write(report, targetDir);
+			File written = write(report, targetDir, fileName);
 			if (logger != null) {
 				logger.accept("Wrote skill-test coverage report: " + written); //$NON-NLS-1$
 			}
@@ -198,10 +220,39 @@ public final class CoverageReportHtml {
 	 * @throws IOException if the file cannot be written
 	 */
 	public static File write(CoverageReport report, Path targetDir) throws IOException {
+		return write(report, targetDir, null);
+	}
+
+	/**
+	 * Writes the coverage report HTML into {@code targetDir}.
+	 * <p>
+	 * When {@code fileName} is {@code null} the report is written to a timestamped
+	 * {@code coverage-<timestamp>.html} - suitable for the in-IDE {@code reports/}
+	 * directory where a history of runs is wanted. When a {@code fileName} is given
+	 * it is used verbatim (e.g. {@code coverage.html}), so repeated runs OVERWRITE
+	 * the same file - suitable for CI, where each build should leave exactly one
+	 * archived coverage report rather than accumulating a new timestamped file per
+	 * build.
+	 * </p>
+	 *
+	 * @param report    the aggregated report (may be {@code null})
+	 * @param targetDir the directory to write into (created if absent)
+	 * @param fileName  the exact file name to use, or {@code null} for the
+	 *                  timestamped default
+	 * @return the written file
+	 * @throws IOException if the file cannot be written
+	 */
+	public static File write(CoverageReport report, Path targetDir, String fileName) throws IOException {
 		Files.createDirectories(targetDir);
-		String stamp = report != null && report.getTimestamp() != null ? report.getTimestamp()
-				: LocalDateTime.now().format(TIMESTAMP);
-		File out = targetDir.resolve("coverage-" + stamp + ".html").toFile(); //$NON-NLS-1$ //$NON-NLS-2$
+		String name;
+		if (fileName != null && !fileName.isBlank()) {
+			name = fileName.trim();
+		} else {
+			String stamp = report != null && report.getTimestamp() != null ? report.getTimestamp()
+					: LocalDateTime.now().format(TIMESTAMP);
+			name = "coverage-" + stamp + ".html"; //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		File out = targetDir.resolve(name).toFile();
 		Files.writeString(out.toPath(), render(report), StandardCharsets.UTF_8);
 		return out;
 	}

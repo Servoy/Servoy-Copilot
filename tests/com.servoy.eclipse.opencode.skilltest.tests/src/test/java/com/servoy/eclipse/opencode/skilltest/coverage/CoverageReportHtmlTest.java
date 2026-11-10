@@ -18,15 +18,20 @@
 package com.servoy.eclipse.opencode.skilltest.coverage;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Unit tests for {@link CoverageReportHtml#render(CoverageReport)} — a
@@ -157,6 +162,35 @@ public class CoverageReportHtmlTest {
 			String html = CoverageReportHtml.render(report);
 			// The green (full) badge uses the #137333 foreground on #e6f4ea.
 			assertTrue(html.contains("#137333"), "a 100%-covered dimension must carry the green badge colour inline");
+		}
+	}
+
+	@Nested
+	class FileName {
+
+		private static CoverageReport emptyReport() {
+			return CoverageReport.aggregate("ts", List.of(), PackCatalog.empty());
+		}
+
+		@Test
+		@DisplayName("a null fileName writes the timestamped coverage-<ts>.html (IDE history)")
+		void timestampedByDefault(@TempDir Path dir) throws IOException {
+			java.io.File out = CoverageReportHtml.write(emptyReport(), dir);
+			assertAll(() -> assertEquals("coverage-ts.html", out.getName(), "uses the report timestamp"),
+					() -> assertTrue(out.isFile(), "the file was written"));
+		}
+
+		@Test
+		@DisplayName("a fixed fileName is used verbatim and a second write overwrites it (CI: one report per build)")
+		void fixedNameOverwrites(@TempDir Path dir) throws IOException {
+			java.io.File first = CoverageReportHtml.write(emptyReport(), dir, "coverage.html");
+			java.io.File second = CoverageReportHtml.write(emptyReport(), dir, "coverage.html");
+			assertAll(() -> assertEquals("coverage.html", first.getName(), "verbatim fixed name"),
+					() -> assertEquals(first.getAbsolutePath(), second.getAbsolutePath(),
+							"the second write targets the same file (overwrite, not a new file)"),
+					() -> assertEquals(1,
+							dir.toFile().listFiles((d, n) -> n.startsWith("coverage") && n.endsWith(".html")).length,
+							"exactly one coverage html exists after two runs"));
 		}
 	}
 
