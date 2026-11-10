@@ -196,6 +196,27 @@ public class PackCatalogReaderTest {
 							"internal expectations skill is excluded"),
 					() -> assertEquals(1, catalog.skills().size(), "only the one real skill remains"));
 		}
+
+		@Test
+		@DisplayName("internal harness agents (Baseline-Author/Judge) are excluded from the catalog")
+		void excludesInternalHarnessAgents(@TempDir Path configDir) throws IOException {
+			// from agents/ markdown files
+			writeAgent(configDir, "Orchestrator");
+			writeAgent(configDir, "Baseline-Author");
+			writeAgent(configDir, "Judge");
+			// and from the opencode.json agent block (same names, different casing)
+			writeOpencodeJson(configDir, "{\"agent\":{\"Developer\":{},\"baseline-author\":{},\"judge\":{}}}");
+			PackCatalog catalog = PackCatalogReader.read(configDir);
+			assertAll(() -> assertTrue(catalog.agents().contains("Orchestrator"), "a real file agent stays"),
+					() -> assertTrue(catalog.agents().contains("Developer"), "a real config agent stays"),
+					() -> assertFalse(catalog.agents().contains("Baseline-Author"),
+							"internal Baseline-Author (file) is excluded"),
+					() -> assertFalse(catalog.agents().contains("Judge"), "internal Judge (file) is excluded"),
+					() -> assertFalse(catalog.agents().contains("baseline-author"),
+							"internal baseline-author (config) is excluded"),
+					() -> assertFalse(catalog.agents().contains("judge"), "internal judge (config) is excluded"),
+					() -> assertEquals(2, catalog.agents().size(), "only the two real agents remain"));
+		}
 	}
 
 	@Nested

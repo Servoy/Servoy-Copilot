@@ -77,6 +77,15 @@ public final class PackCatalogReader {
 	private static final Set<String> INTERNAL_SKILLS = Set.of("skilltest-authoring", //$NON-NLS-1$
 			"skilltest-expectations"); //$NON-NLS-1$
 
+	/**
+	 * Internal harness agents that drive the skill-test machinery itself (authoring
+	 * baselines, judging outcomes). Like {@link #INTERNAL_SKILLS}, they are not
+	 * part of the coverable pack catalog and must not appear in the agents
+	 * denominator or its NOT-COVERED-YET set. Matched case-insensitively.
+	 */
+	private static final Set<String> INTERNAL_AGENTS = Set.of("baseline-author", //$NON-NLS-1$
+			"judge"); //$NON-NLS-1$
+
 	private static final String OPENCODE_JSON = "opencode.json"; //$NON-NLS-1$
 	private static final String AGENT_SUFFIX = ".md"; //$NON-NLS-1$
 	private static final String MCP_KEY = "mcp"; //$NON-NLS-1$
@@ -180,6 +189,17 @@ public final class PackCatalogReader {
 	}
 
 	/**
+	 * @return {@code true} if the agent name is an internal harness agent that is
+	 *         excluded from the coverable catalog (matched case-insensitively)
+	 */
+	private static boolean isInternalAgent(String name) {
+		if (name == null) {
+			return false;
+		}
+		return INTERNAL_AGENTS.contains(name.toLowerCase());
+	}
+
+	/**
 	 * Agents = the {@code agents/<name>.md} file basenames (without the
 	 * {@code .md}).
 	 */
@@ -194,7 +214,12 @@ public final class PackCatalogReader {
 				if (child.isFile()) {
 					String name = child.getName();
 					if (name.length() > AGENT_SUFFIX.length() && name.toLowerCase().endsWith(AGENT_SUFFIX)) {
-						agents.add(name.substring(0, name.length() - AGENT_SUFFIX.length()));
+						String agent = name.substring(0, name.length() - AGENT_SUFFIX.length());
+						// Internal harness agents (Baseline-Author/Judge) are not part of the
+						// coverable catalog - skip them so they never show as NOT-COVERED-YET.
+						if (!isInternalAgent(agent)) {
+							agents.add(agent);
+						}
 					}
 				}
 			}
@@ -221,7 +246,7 @@ public final class PackCatalogReader {
 			if (agentNode != null && agentNode.isObject()) {
 				for (java.util.Iterator<String> it = agentNode.fieldNames(); it.hasNext();) {
 					String name = it.next();
-					if (name != null && !name.isBlank()) {
+					if (name != null && !name.isBlank() && !isInternalAgent(name)) {
 						agents.add(name);
 					}
 				}
