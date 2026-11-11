@@ -508,4 +508,126 @@ describe('MessageItemComponent', () => {
       expect(component.lightboxImage()).toBeNull();
     });
   });
+
+  describe('always-visible "Open subagent" link (SVY-21764)', () => {
+    // NOTE on JSDOM/SCSS: Angular component SCSS is NOT applied in the Vitest
+    // (JSDOM) unit setup, so the always-on accent/opacity declarations from
+    // message-item.component.scss (opacity: 1; color: var(--svy-accent, ...))
+    // cannot be read back via getComputedStyle here. The SVY-21764 guarantee is
+    // therefore asserted on what IS observable in the DOM: the link element is
+    // rendered on first paint (no hover event dispatched) whenever
+    // isSubagentLink(part) is true, is not behind an [hidden] / aria-hidden gate,
+    // carries the .subagent-open class, and its click wiring opens the child
+    // session. The visual accent/opacity is covered by the SCSS itself + the
+    // spec's manual visual check; these tests lock the structural guarantee that
+    // the link is always present (not hover-revealed) and is the (only) open
+    // target.
+
+    /** A completed subagent tool part whose child id resolves from the output envelope. */
+    function openableSubagentPart(): Part {
+      return {
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa1',
+        state: {
+          status: 'completed',
+          input: { description: 'Build it', agent: 'Developer' },
+          output: '<subagent sessionID="ses_child_1" state="completed">\n## Summary'
+        }
+      } as Part;
+    }
+
+    /** Render a single part and run a first change-detection pass. */
+    function mount(parts: Part[]): HTMLElement {
+      fixture.componentRef.setInput('parts', parts);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    // AC: the link is present and announces itself from first paint, no hover.
+    it('renders the .subagent-open link on first paint without any hover, un-gated', () => {
+      const el = mount([openableSubagentPart()]);
+
+      const link = el.querySelector('.subagent-open') as HTMLButtonElement | null;
+      // Present on the very first render - no hover/mouseover was dispatched.
+      expect(link).toBeTruthy();
+      // It is a real button and not hidden behind a visibility gate.
+      expect(link!.tagName.toLowerCase()).toBe('button');
+      expect(link!.hasAttribute('hidden')).toBe(false);
+      expect(link!.getAttribute('aria-hidden')).toBeNull();
+      // Carries the expected class and the "↗ Open ... subagent" affordance text.
+      expect(link!.classList.contains('subagent-open')).toBe(true);
+      expect(link!.textContent).toContain('Open');
+      expect(link!.textContent).toContain('Build it subagent');
+    });
+
+    // AC: clicking the link opens the child session (emits openSession with the id).
+    it('emits openSession with the resolved child id when the link is clicked', () => {
+      const el = mount([openableSubagentPart()]);
+      const link = el.querySelector('.subagent-open') as HTMLButtonElement | null;
+      expect(link).toBeTruthy();
+
+      let opened: string | null = null;
+      component.openSession.subscribe((id) => (opened = id));
+
+      link!.click();
+      fixture.detectChanges();
+
+      expect(opened).toBe('ses_child_1');
+    });
+
+    // AC: the whole row is NOT the open target - only the dedicated link opens it.
+    it('does not emit openSession when the subagent tool row itself is clicked', () => {
+      const el = mount([openableSubagentPart()]);
+
+      let opened: string | null = null;
+      component.openSession.subscribe((id) => (opened = id));
+
+      const row = el.querySelector('.tool-row') as HTMLElement | null;
+      expect(row).toBeTruthy();
+      row!.click();
+      fixture.detectChanges();
+
+      // The row toggles expand/collapse; it must not navigate into the child.
+      expect(opened).toBeNull();
+    });
+
+    // AC: not rendered when the part is not an openable subagent (id unresolved).
+    it('does not render the .subagent-open link when no child id resolves', () => {
+      const pending = {
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-pending',
+        state: { status: 'running', input: { description: 'pending' } }
+      } as Part;
+      // No metadata.sessionID, no input.sessionID, no output marker -> not openable.
+      expect(component.isSubagentLink(pending)).toBe(false);
+
+      const el = mount([pending]);
+      expect(el.querySelector('.subagent-open')).toBeNull();
+    });
+
+    // AC: not rendered for an ordinary (non-subagent) tool part.
+    it('does not render the .subagent-open link for a non-subagent tool part', () => {
+      const el = mount([
+        { type: 'tool', tool: 'read', id: 't1', state: { status: 'completed', output: 'body' } } as Part
+      ]);
+      expect(el.querySelector('.subagent-open')).toBeNull();
+    });
+
+    // Regression guard: the hover-gated expand/collapse row/caret is untouched -
+    // an openable subagent row is still expandable and still shows its caret.
+    it('keeps the subagent tool row expandable with its caret (row affordance untouched)', () => {
+      const el = mount([openableSubagentPart()]);
+
+      const tool = el.querySelector('.tool') as HTMLElement | null;
+      expect(tool).toBeTruthy();
+      // The row is still an expandable tool (expand/collapse of the output).
+      expect(tool!.classList.contains('expandable')).toBe(true);
+      // The caret element (hover/open-revealed by SCSS) is still in the DOM.
+      expect(el.querySelector('.tool-caret')).toBeTruthy();
+      // ...and both affordances coexist: the open link is also present.
+      expect(el.querySelector('.subagent-open')).toBeTruthy();
+    });
+  });
 });

@@ -268,9 +268,16 @@
   padding: 0.1rem 0;
   font: inherit;
   font-size: 0.9rem;
+  font-weight: 600;
+  // Always-on, accent-colored link: it must announce itself as clickable from
+  // first paint, independent of the hover-gated .tool-caret / .tool-name row
+  // rules. No opacity gate and no :hover-only color change here - the accent
+  // color and full visibility apply the moment isSubagentLink(part) is true.
+  opacity: 1;
   color: var(--svy-accent, #f5a623);
   cursor: pointer;
 
+  // Secondary emphasis only - never the thing that first reveals clickability.
   &:hover,
   &:focus-visible {
     text-decoration: underline;
