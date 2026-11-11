@@ -7,9 +7,14 @@
   @for (part of renderable(); track partKey(part, $index)) {
     @if (isFile(part)) {
       @if (isImageFile(part)) {
-        <a class="attachment-image-link" [href]="fileUrl(part)" target="_blank" rel="noopener" [title]="fileName(part)">
+        <button
+          type="button"
+          class="attachment-image-link"
+          [title]="fileName(part)"
+          (click)="openLightbox(part, $event)"
+        >
           <img class="attachment-image" [src]="fileUrl(part)" [alt]="fileName(part)" />
-        </a>
+        </button>
       } @else {
         <span class="attachment-chip" [title]="fileName(part)">
           <span class="attachment-icon" aria-hidden="true">📎</span>
@@ -72,6 +77,33 @@
         }
       </div>
     }
+  }
+
+  @if (lightboxImage(); as img) {
+    <div
+      class="image-lightbox"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="img.alt"
+      (click)="closeLightbox()"
+      (keydown.escape)="closeLightbox()"
+      tabindex="-1"
+      #lightboxEl
+    >
+      <!-- stopPropagation so a click on the image itself does not dismiss -->
+      <img
+        class="image-lightbox-img"
+        [src]="img.url"
+        [alt]="img.alt"
+        (click)="$event.stopPropagation()"
+      />
+      <button
+        type="button"
+        class="image-lightbox-close"
+        aria-label="Close image"
+        (click)="closeLightbox()"
+      >✕</button>
+    </div>
   }
 
   @if (errorText(); as message) {

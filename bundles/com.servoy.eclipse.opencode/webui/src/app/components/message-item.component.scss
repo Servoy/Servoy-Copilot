@@ -29,11 +29,17 @@
 }
 
 // An attached image: a compact thumbnail above the message text (like
-// OpenChamber), clickable to open the full image in a new tab.
+// OpenChamber), clickable to open the full image enlarged in an in-document
+// lightbox overlay. The trigger is a <button>, so its default chrome is reset
+// to keep the thumbnail looking exactly as before.
 .attachment-image-link {
   display: inline-block;
   margin: 0 0 0.4rem;
   line-height: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
 }
 
 .attachment-image {
@@ -44,6 +50,56 @@
   border-radius: 10px;
   border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
   object-fit: contain;
+}
+
+// The lightbox: a fixed, full-viewport dimmed backdrop drawn above everything,
+// with the enlarged image centered and scaled to fit. Clicking the backdrop
+// dismisses it (cursor: zoom-out); clicking the image itself does not.
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.75);
+  cursor: zoom-out;
+}
+
+.image-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.image-lightbox-close {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--svy-hover, rgba(127, 127, 127, 0.2));
+  color: var(--svy-fg, #fff);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--svy-accent, #f5a623);
+  }
 }
 
 // A non-image attachment: a small chip showing the file name.

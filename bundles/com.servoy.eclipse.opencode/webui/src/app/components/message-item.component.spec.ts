@@ -376,4 +376,136 @@ describe('MessageItemComponent', () => {
       expect(el.querySelector('.reasoning-caret')?.textContent?.trim()).toBe('▾');
     });
   });
+
+  describe('image lightbox (SVY-21709)', () => {
+    // A 1x1 transparent PNG data: URL - a real, non-empty image attachment so
+    // isImageFilePart renders the thumbnail button.
+    const IMG_URL =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+    /** Mount an image attachment and run a first change-detection pass. */
+    function mountImage(filename = 'shot.png', url = IMG_URL): HTMLElement {
+      fixture.componentRef.setInput('role', 'user');
+      fixture.componentRef.setInput('parts', [
+        { type: 'file', mime: 'image/png', filename, url } as Part
+      ]);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    /** Open the lightbox by clicking the thumbnail trigger, then re-render. */
+    function openViaClick(el: HTMLElement): void {
+      const trigger = el.querySelector('.attachment-image-link') as HTMLButtonElement | null;
+      expect(trigger).toBeTruthy();
+      trigger!.click();
+      fixture.detectChanges();
+    }
+
+    // AC(a): clicking the thumbnail opens the enlarged in-document overlay.
+    it('opens the lightbox on thumbnail click, enlarging the image with its src', () => {
+      const el = mountImage();
+      // Closed to start: no overlay in the DOM.
+      expect(el.querySelector('.image-lightbox')).toBeNull();
+
+      openViaClick(el);
+
+      const overlay = el.querySelector('.image-lightbox');
+      expect(overlay).toBeTruthy();
+      const enlarged = el.querySelector('img.image-lightbox-img') as HTMLImageElement | null;
+      expect(enlarged).toBeTruthy();
+      expect(enlarged?.getAttribute('src')).toBe(IMG_URL);
+      // The enlarged image keeps an alt (from the filename) for assistive tech.
+      expect(enlarged?.getAttribute('alt')).toBe('shot.png');
+    });
+
+    // AC(b): clicking the backdrop (the overlay container) dismisses it.
+    it('closes the lightbox when the backdrop is clicked', () => {
+      const el = mountImage();
+      openViaClick(el);
+      const overlay = el.querySelector('.image-lightbox') as HTMLElement;
+      expect(overlay).toBeTruthy();
+
+      overlay.click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.image-lightbox')).toBeNull();
+    });
+
+    // AC(b): clicking the enlarged image itself does NOT dismiss (stopPropagation).
+    it('does NOT close when the enlarged image itself is clicked', () => {
+      const el = mountImage();
+      openViaClick(el);
+      const enlarged = el.querySelector('img.image-lightbox-img') as HTMLImageElement;
+      expect(enlarged).toBeTruthy();
+
+      enlarged.click();
+      fixture.detectChanges();
+
+      // The overlay is still present - the click did not bubble to the backdrop.
+      expect(el.querySelector('.image-lightbox')).toBeTruthy();
+    });
+
+    // AC(b)/(d): pressing Escape on the overlay dismisses it.
+    it('closes the lightbox on Escape', () => {
+      const el = mountImage();
+      openViaClick(el);
+      const overlay = el.querySelector('.image-lightbox') as HTMLElement;
+      expect(overlay).toBeTruthy();
+
+      overlay.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+      );
+      fixture.detectChanges();
+
+      expect(el.querySelector('.image-lightbox')).toBeNull();
+    });
+
+    // AC(b): the dedicated close button (✕) dismisses it.
+    it('closes the lightbox when the close button is clicked', () => {
+      const el = mountImage();
+      openViaClick(el);
+      const close = el.querySelector('.image-lightbox-close') as HTMLButtonElement | null;
+      expect(close).toBeTruthy();
+
+      close!.click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.image-lightbox')).toBeNull();
+    });
+
+    // AC(c): no new-window regression - the image attachment is a <button>, not
+    // an anchor, and nothing targets a new window.
+    it('renders the image attachment with no target="_blank" / new-window anchor', () => {
+      const el = mountImage();
+      // The trigger is a <button>, not an <a>.
+      const trigger = el.querySelector('.attachment-image-link');
+      expect(trigger?.tagName.toLowerCase()).toBe('button');
+      // No anchor opens a new window anywhere in the rendered attachment.
+      expect(el.querySelector('a[target="_blank"]')).toBeNull();
+      expect(el.querySelector('a.attachment-image-link')).toBeNull();
+    });
+
+    // AC(d): the open overlay is an accessible modal dialog.
+    it('exposes role="dialog" and aria-modal="true" on the open overlay', () => {
+      const el = mountImage();
+      openViaClick(el);
+      const overlay = el.querySelector('.image-lightbox') as HTMLElement;
+      expect(overlay).toBeTruthy();
+      expect(overlay.getAttribute('role')).toBe('dialog');
+      expect(overlay.getAttribute('aria-modal')).toBe('true');
+      // aria-label describes the modal from the image alt/filename.
+      expect(overlay.getAttribute('aria-label')).toBe('shot.png');
+    });
+
+    it('openLightbox sets the signal and closeLightbox clears it', () => {
+      const part = { type: 'file', mime: 'image/png', filename: 'p.png', url: IMG_URL } as Part;
+      expect(component.lightboxImage()).toBeNull();
+
+      component.openLightbox(part);
+      expect(component.lightboxImage()).toEqual({ url: IMG_URL, alt: 'p.png' });
+
+      component.closeLightbox();
+      expect(component.lightboxImage()).toBeNull();
+    });
+  });
 });

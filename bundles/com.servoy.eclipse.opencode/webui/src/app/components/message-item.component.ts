@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  output,
+  signal,
+  viewChild,
+  type ElementRef
+} from '@angular/core';
 
 import { MessageError, Part } from '../models/opencode.models';
 import {
@@ -51,6 +61,30 @@ export class MessageItemComponent {
   readonly openSession = output<string>();
 
   private readonly expanded = signal<Set<string>>(new Set());
+
+  /** The image currently shown enlarged in the lightbox, or null when closed. */
+  private readonly lightbox = signal<{ url: string; alt: string } | null>(null);
+
+  /** The open image for the template (null = lightbox closed). */
+  readonly lightboxImage = computed(() => this.lightbox());
+
+  /** The overlay element, present only while the lightbox is open. */
+  private readonly lightboxEl = viewChild<ElementRef<HTMLElement>>('lightboxEl');
+
+  /** The thumbnail that opened the lightbox, to return focus to on close. */
+  private lastTrigger: HTMLElement | null = null;
+
+  constructor() {
+    // Move focus into the overlay once it is in the DOM so Escape works and
+    // focus is not left behind on the now-hidden thumbnail. Signal-driven, so
+    // it runs without any zone.js reliance (zoneless-safe).
+    effect(() => {
+      const el = this.lightboxEl()?.nativeElement;
+      if (el) {
+        el.focus();
+      }
+    });
+  }
 
   readonly renderable = computed(() => this.parts().filter(isRenderablePart));
 
@@ -117,6 +151,26 @@ export class MessageItemComponent {
   /** The attachment's display name, falling back to a generic label. */
   fileName(part: Part): string {
     return part.filename && part.filename.trim().length > 0 ? part.filename : 'attachment';
+  }
+
+  /**
+   * Open the lightbox for an image attachment part, enlarging it in an
+   * in-document overlay instead of opening a new OS window. Remembers the
+   * triggering thumbnail so focus can return to it on close.
+   */
+  openLightbox(part: Part, event?: Event): void {
+    const trigger = event?.currentTarget;
+    this.lastTrigger = trigger instanceof HTMLElement ? trigger : null;
+    this.lightbox.set({ url: this.fileUrl(part), alt: this.fileName(part) });
+  }
+
+  /** Close the lightbox, returning focus to the triggering thumbnail if possible. */
+  closeLightbox(): void {
+    this.lightbox.set(null);
+    const trigger = this.lastTrigger;
+    this.lastTrigger = null;
+    // Best-effort focus-return; harmless if the element is gone.
+    trigger?.focus?.();
   }
 
   /** Friendly tool name, e.g. "Read File". */
