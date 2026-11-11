@@ -303,7 +303,42 @@ public final class SessionTranscript {
 				if (call != null) {
 					calls.add(call);
 				}
+				// opencode 2.x Code Mode: MCP tools are invoked from inside the
+				// `execute` tool's script (e.g. tools["servoy-workspace"].listProjects()),
+				// so they never appear as their own top-level tool parts - the only
+				// record is the execute part's state.metadata.toolCalls[]. Harvest those
+				// nested identities too, otherwise every Code-Mode MCP call is invisible
+				// to both the coverage report and the golden comparator (SVY-21711).
+				collectNestedCodeModeCalls(part, calls);
 			}
+		}
+	}
+
+	/**
+	 * Extracts the MCP tool identities a Code Mode {@code execute} part invoked from
+	 * its script, recorded in {@code state.metadata.toolCalls[]} as
+	 * {@code { tool: "server.tool", status: .. }}. Each becomes an
+	 * {@link McpToolCall} (server/tool split from the {@code server.tool} name);
+	 * arguments/output are not available at this granularity. A part with no such
+	 * metadata contributes nothing.
+	 *
+	 * @param part  a tool part (any tool; only {@code execute}-style parts carry the
+	 *              nested metadata, so a guard on the name is unnecessary)
+	 * @param calls the accumulator to add the nested calls to
+	 */
+	private static void collectNestedCodeModeCalls(JsonNode part, List<McpToolCall> calls) {
+		JsonNode state = part.get("state"); //$NON-NLS-1$
+		JsonNode metadata = state != null ? state.get("metadata") : part.get("metadata"); //$NON-NLS-1$ //$NON-NLS-2$
+		JsonNode toolCalls = metadata != null ? metadata.get("toolCalls") : null; //$NON-NLS-1$
+		if (toolCalls == null || !toolCalls.isArray()) {
+			return;
+		}
+		for (JsonNode entry : toolCalls) {
+			String name = firstText(entry, "tool", "toolName", "name"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			if (name == null || name.isBlank()) {
+				continue;
+			}
+			calls.add(McpToolCall.fromRawName(name, Collections.emptyMap(), null));
 		}
 	}
 

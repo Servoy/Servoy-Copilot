@@ -94,6 +94,47 @@ class SessionTranscriptTest {
 	}
 
 	@Nested
+	class CodeModeNestedCalls {
+
+		@Test
+		@DisplayName("MCP tools invoked inside an execute part are harvested from state.metadata.toolCalls")
+		void harvestsNestedExecuteCalls() {
+			// opencode 2.x Code Mode: the agent calls MCP tools from inside the
+			// `execute` script, so the only record is the execute part's
+			// state.metadata.toolCalls[] (SVY-21711).
+			String json = "{\"messages\":[{\"role\":\"assistant\",\"parts\":["
+					+ "{\"type\":\"tool\",\"name\":\"execute\",\"state\":{\"status\":\"completed\","
+					+ "\"input\":{\"code\":\"return await tools['servoy-workspace'].listProjects();\"},"
+					+ "\"metadata\":{\"toolCalls\":["
+					+ "{\"tool\":\"servoy-workspace.listProjects\",\"status\":\"completed\"},"
+					+ "{\"tool\":\"servoy-model.getTarget\",\"status\":\"completed\"}]}}}]}]}";
+			SessionTranscript transcript = SessionTranscript.fromExport(parse(json));
+			List<McpToolCall> calls = transcript.getToolCalls();
+			// The execute part itself is one call; its two nested MCP identities are
+			// added too, split into server/tool.
+			assertAll(
+					() -> assertTrue(calls.stream().anyMatch(
+							c -> "servoy-workspace".equals(c.server()) && "listProjects".equals(c.tool())),
+							"servoy-workspace.listProjects captured"),
+					() -> assertTrue(calls.stream().anyMatch(
+							c -> "servoy-model".equals(c.server()) && "getTarget".equals(c.tool())),
+							"servoy-model.getTarget captured"));
+		}
+
+		@Test
+		@DisplayName("an execute part with no nested toolCalls contributes only itself")
+		void executeWithoutNestedCalls() {
+			String json = "{\"messages\":[{\"role\":\"assistant\",\"parts\":["
+					+ "{\"type\":\"tool\",\"name\":\"execute\",\"state\":{\"status\":\"completed\","
+					+ "\"input\":{\"code\":\"return 1 + 1;\"}}}]}]}";
+			SessionTranscript transcript = SessionTranscript.fromExport(parse(json));
+			List<McpToolCall> calls = transcript.getToolCalls();
+			assertAll(() -> assertEquals(1, calls.size(), "only the execute call itself"),
+					() -> assertEquals("execute", calls.get(0).tool()));
+		}
+	}
+
+	@Nested
 	class ArgumentTypes {
 
 		@Test
