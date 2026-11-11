@@ -114,7 +114,16 @@ public final class CoverageReport {
 	}
 
 	/**
-	 * Aggregates the observations against the catalog.
+	 * Aggregates the observations against the catalog, with the MCP-tools dimension
+	 * falling back to the observed-union denominator.
+	 * <p>
+	 * Equivalent to {@link #aggregate(String, List, PackCatalog, Set)} with a
+	 * {@code null} advertised MCP set: the MCP dimension's catalog is the union of
+	 * the identities the suite observed (so MCP is always 100% with nothing
+	 * not-covered-yet). Use the four-argument overload to pass the real advertised
+	 * MCP tool set read from the running opencode server (SVY-21711), which makes
+	 * NOT-COVERED-YET meaningful.
+	 * </p>
 	 *
 	 * @param timestamp    the suite timestamp label (may be {@code null})
 	 * @param observations the per-baseline observations (may be {@code null}/empty)
@@ -123,6 +132,44 @@ public final class CoverageReport {
 	 */
 	public static CoverageReport aggregate(String timestamp, List<CoverageObservation> observations,
 			PackCatalog catalog) {
+		return aggregate(timestamp, observations, catalog, null);
+	}
+
+	/**
+	 * Aggregates the observations against the catalog, using an explicit MCP-tools
+	 * catalog (the <b>advertised</b> tool set of the running opencode server) as
+	 * the MCP denominator when one is supplied (SVY-21711).
+	 * <p>
+	 * The skills and agents dimensions are always catalog-based (a real offline
+	 * denominator from the extracted pack). The MCP dimension's denominator is
+	 * chosen by the caller:
+	 * </p>
+	 * <ul>
+	 * <li><b>{@code mcpCatalog} non-{@code null} and non-empty</b> - the real
+	 * advertised MCP tool set (every tool each configured MCP server exposes), so
+	 * NOT-COVERED-YET = advertised &minus; observed is meaningful (e.g. 3/155 with
+	 * the 152 untouched tools listed).</li>
+	 * <li><b>{@code mcpCatalog} {@code null} or empty</b> - fall back to the union
+	 * of the MCP identities observed across all baselines (the historical
+	 * behaviour), so the report never regresses when the server is unreachable or
+	 * the endpoint changed: every observed MCP tool is covered (100%) and
+	 * NOT-COVERED-YET is empty.</li>
+	 * </ul>
+	 * <p>
+	 * Either way the MCP identities are canonicalized so an observed
+	 * {@code server.tool} still matches a {@code server_tool} catalog entry.
+	 * </p>
+	 *
+	 * @param timestamp    the suite timestamp label (may be {@code null})
+	 * @param observations the per-baseline observations (may be {@code null}/empty)
+	 * @param catalog      the pack catalog denominator (may be {@code null})
+	 * @param mcpCatalog   the advertised MCP tool identities in {@code server_tool}
+	 *                     form (may be {@code null}/empty to use the observed-union
+	 *                     fallback)
+	 * @return a non-{@code null} aggregated report
+	 */
+	public static CoverageReport aggregate(String timestamp, List<CoverageObservation> observations,
+			PackCatalog catalog, Set<String> mcpCatalog) {
 		PackCatalog cat = catalog != null ? catalog : PackCatalog.empty();
 		List<CoverageObservation> obs = observations != null ? observations : Collections.emptyList();
 
@@ -132,28 +179,33 @@ public final class CoverageReport {
 		Dimension skills = foldDimension("Skills", cat.skills(), obs, CoverageObservation::skills, s -> s); //$NON-NLS-1$
 		Dimension agents = foldDimension("Agents", cat.agents(), obs, CoverageObservation::agents, s -> s); //$NON-NLS-1$
 
-		// The MCP dimension is OBSERVED-based: the remote MCP servers the pack's agents
-		// call (servoy-workspace, servoy-model, ...) are not reflectable from the
-		// extracted pack offline, so there is no offline per-tool denominator. The
-		// catalog for the MCP fold is therefore the union of the MCP identities
-		// observed across all baselines (each already a "server_tool" string from
-		// CoverageExtractor.identity), canonicalized so a "server.tool" and a
-		// "server_tool" form collapse to one entry. Consequence: every observed MCP
-		// tool is covered (100%), NOT-COVERED-YET for MCP is empty, and nothing is
-		// off-catalog. The tool-name format in the report is the verbatim export
-		// "server_tool" form.
-		Set<String> observedMcp = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-		for (CoverageObservation o : obs) {
-			if (o.mcpTools() != null) {
-				for (String id : o.mcpTools()) {
-					String canonical = canonicalMcpId(id);
-					if (canonical != null) {
-						observedMcp.add(canonical);
+		// The MCP dimension's catalog is either the advertised tool set read from the
+		// running opencode server (the real denominator -> NOT-COVERED-YET meaningful)
+		// or, when that is unavailable, the union of the MCP identities observed across
+		// all baselines (the fallback -> always 100%, nothing not-covered-yet). Both
+		// are canonicalized so a "server.tool" and a "server_tool" form collapse to one
+		// entry. The tool-name format in the report is the verbatim "server_tool" form.
+		Set<String> mcpCatalogSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+		if (mcpCatalog != null && !mcpCatalog.isEmpty()) {
+			for (String id : mcpCatalog) {
+				String canonical = canonicalMcpId(id);
+				if (canonical != null) {
+					mcpCatalogSet.add(canonical);
+				}
+			}
+		} else {
+			for (CoverageObservation o : obs) {
+				if (o.mcpTools() != null) {
+					for (String id : o.mcpTools()) {
+						String canonical = canonicalMcpId(id);
+						if (canonical != null) {
+							mcpCatalogSet.add(canonical);
+						}
 					}
 				}
 			}
 		}
-		Dimension mcpTools = foldDimension("MCP tools", observedMcp, obs, CoverageObservation::mcpTools, //$NON-NLS-1$
+		Dimension mcpTools = foldDimension("MCP tools", mcpCatalogSet, obs, CoverageObservation::mcpTools, //$NON-NLS-1$
 				CoverageReport::canonicalMcpId);
 
 		List<BaselineBreakdown> breakdowns = new ArrayList<>();

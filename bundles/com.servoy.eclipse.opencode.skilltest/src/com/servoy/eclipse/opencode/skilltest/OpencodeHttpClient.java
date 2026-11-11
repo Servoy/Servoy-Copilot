@@ -28,7 +28,6 @@ import java.time.Duration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
@@ -58,8 +57,8 @@ public final class OpencodeHttpClient {
 
 	/**
 	 * Hard per-attempt wall-clock cap for {@link #waitForCompletion}: the total
-	 * time one agent attempt may take, measured from the moment the wait starts
-	 * and <b>never reset</b>.
+	 * time one agent attempt may take, measured from the moment the wait starts and
+	 * <b>never reset</b>.
 	 * <p>
 	 * This exists because {@link #DEFAULT_STALL_TIMEOUT} alone cannot bound a run
 	 * (SVY-21366, build #64): the stall guard only measures <i>silence</i> and is
@@ -94,10 +93,15 @@ public final class OpencodeHttpClient {
 	 */
 	private static final String API = "/api"; //$NON-NLS-1$
 
-	/** Fixed HTTP basic-auth username opencode uses when a server password is set. */
+	/**
+	 * Fixed HTTP basic-auth username opencode uses when a server password is set.
+	 */
 	private static final String SERVER_AUTH_USER = "opencode"; //$NON-NLS-1$
 
-	/** {@code Authorization: Basic ...} header value, or {@code null} when no password is set. */
+	/**
+	 * {@code Authorization: Basic ...} header value, or {@code null} when no
+	 * password is set.
+	 */
 	private final String authHeader;
 
 	public OpencodeHttpClient(int port) {
@@ -196,9 +200,9 @@ public final class OpencodeHttpClient {
 
 	/**
 	 * Sends a prompt to a session asynchronously via
-	 * {@code POST /session/:id/prompt_async}. The server accepts the prompt
-	 * (HTTP 204) and starts the run in the background, returning immediately
-	 * instead of holding the connection open for the whole assistant turn.
+	 * {@code POST /session/:id/prompt_async}. The server accepts the prompt (HTTP
+	 * 204) and starts the run in the background, returning immediately instead of
+	 * holding the connection open for the whole assistant turn.
 	 * <p>
 	 * An Orchestrator baseline fans out into child sub-agent sessions and can run
 	 * for many minutes, which a single blocking POST cannot reliably wait out (it
@@ -285,10 +289,10 @@ public final class OpencodeHttpClient {
 	/**
 	 * Blocks until a session started with {@link #promptAsync} reaches an idle
 	 * state, polling {@link #getStatus}. There is <b>no overall time budget</b>:
-	 * this waits as long as the run takes and only returns once the session is
-	 * idle (a replayed Orchestrator baseline that spawns child sub-agents can run
-	 * for many minutes, and imposing a budget was the source of spurious
-	 * "timed out" failures).
+	 * this waits as long as the run takes and only returns once the session is idle
+	 * (a replayed Orchestrator baseline that spawns child sub-agents can run for
+	 * many minutes, and imposing a budget was the source of spurious "timed out"
+	 * failures).
 	 * <p>
 	 * One edge case is handled: right after {@code prompt_async} accepts, the
 	 * session may not yet appear as {@code busy} (a startup race), so this waits to
@@ -302,8 +306,7 @@ public final class OpencodeHttpClient {
 	 * @throws InterruptedException if interrupted while waiting
 	 * @throws IOException          on transport failure while polling
 	 */
-	public void waitForCompletion(String sessionId, Duration pollInterval)
-			throws IOException, InterruptedException {
+	public void waitForCompletion(String sessionId, Duration pollInterval) throws IOException, InterruptedException {
 		waitForCompletion(sessionId, pollInterval, () -> false);
 	}
 
@@ -326,16 +329,17 @@ public final class OpencodeHttpClient {
 	}
 
 	/**
-	 * Like {@link #waitForCompletion(String, Duration, java.util.function.BooleanSupplier)}
+	 * Like
+	 * {@link #waitForCompletion(String, Duration, java.util.function.BooleanSupplier)}
 	 * but with a stall guard: if the session reports no forward progress (stays
 	 * non-busy without ever having gone idle, i.e. the run appears wedged
 	 * server-side) for longer than {@code stallTimeout}, this throws so the caller
 	 * can record an ERROR instead of blocking forever.
 	 * <p>
-	 * The guard is <b>reset on every observed {@code busy}/{@code retry} sample</b>,
-	 * so a legitimately long Orchestrator run that keeps working (spawning
-	 * sub-agents, calling tools) never trips it - only a session that stops making
-	 * progress for the whole {@code stallTimeout} window does. Pass a
+	 * The guard is <b>reset on every observed {@code busy}/{@code retry}
+	 * sample</b>, so a legitimately long Orchestrator run that keeps working
+	 * (spawning sub-agents, calling tools) never trips it - only a session that
+	 * stops making progress for the whole {@code stallTimeout} window does. Pass a
 	 * zero/negative duration to disable the guard (unbounded wait).
 	 *
 	 * @param sessionId    the session id
@@ -358,14 +362,15 @@ public final class OpencodeHttpClient {
 	 * honour the stall guard, this sends short-lived (15 s) requests in a loop,
 	 * checking the cancel supplier and the stall deadline between calls:
 	 * <ul>
-	 *   <li>204 → idle, return.</li>
-	 *   <li>503 (still busy) / HTTP timeout → try again (stall guard resets on
-	 *       503 since the server confirms the run is in progress).</li>
-	 *   <li>other error → throw.</li>
+	 * <li>204 → idle, return.</li>
+	 * <li>503 (still busy) / HTTP timeout → try again (stall guard resets on 503
+	 * since the server confirms the run is in progress).</li>
+	 * <li>other error → throw.</li>
 	 * </ul>
 	 *
 	 * @param sessionId    the session id
-	 * @param pollInterval ignored (kept for API compat; the wait call itself blocks)
+	 * @param pollInterval ignored (kept for API compat; the wait call itself
+	 *                     blocks)
 	 * @param cancelled    supplies {@code true} when the run should be stopped
 	 * @param stallTimeout maximum time to tolerate with no progress before aborting
 	 * @throws InterruptedException if interrupted or cancelled
@@ -389,17 +394,17 @@ public final class OpencodeHttpClient {
 	 * silent.</li>
 	 * <li>{@code attemptTimeout} - total elapsed time, <b>never reset</b>, so it
 	 * also catches a session that keeps reporting itself busy while making no real
-	 * progress. This is the bound build #64 lacked: its last scenario stayed
-	 * "busy" for 53 minutes and the Jenkins pipeline timeout, not the harness,
-	 * ended the run.</li>
+	 * progress. This is the bound build #64 lacked: its last scenario stayed "busy"
+	 * for 53 minutes and the Jenkins pipeline timeout, not the harness, ended the
+	 * run.</li>
 	 * </ul>
 	 *
 	 * @param sessionId      the session id
 	 * @param pollInterval   ignored (kept for API compat; the wait call itself
 	 *                       blocks)
 	 * @param cancelled      supplies {@code true} when the run should be stopped
-	 * @param stallTimeout   maximum time to tolerate with no progress;
-	 *                       {@code <= 0} disables the guard
+	 * @param stallTimeout   maximum time to tolerate with no progress; {@code <= 0}
+	 *                       disables the guard
 	 * @param attemptTimeout maximum total time for the attempt regardless of
 	 *                       reported progress; {@code <= 0} disables the cap
 	 * @throws InterruptedException if interrupted or cancelled
@@ -428,8 +433,7 @@ public final class OpencodeHttpClient {
 						+ attemptTimeout.toSeconds() + "s (still reporting busy); aborted"); //$NON-NLS-1$
 			}
 			try {
-				HttpRequest request = request(
-						API + "/experimental/session/" + enc(sessionId) + "/wait", callTimeout) //$NON-NLS-1$ //$NON-NLS-2$
+				HttpRequest request = request(API + "/experimental/session/" + enc(sessionId) + "/wait", callTimeout) //$NON-NLS-1$ //$NON-NLS-2$
 						.POST(BodyPublishers.noBody()).build();
 				HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
 				if (response.statusCode() == 204 || response.statusCode() == 200) {
@@ -546,11 +550,11 @@ public final class OpencodeHttpClient {
 	}
 
 	/**
-	 * Builds the {@code { providerID, modelID }} object the opencode server
-	 * expects for the {@code model} field (a bare string is rejected with
-	 * "Improperly formed request."). Accepts either {@code "provider/model"} or a
-	 * bare model id (in which case only {@code modelID} is set and the server
-	 * falls back to its default provider).
+	 * Builds the {@code { providerID, modelID }} object the opencode server expects
+	 * for the {@code model} field (a bare string is rejected with "Improperly
+	 * formed request."). Accepts either {@code "provider/model"} or a bare model id
+	 * (in which case only {@code modelID} is set and the server falls back to its
+	 * default provider).
 	 *
 	 * @param model the model spec, e.g. {@code "kiro/auto"} or {@code "auto"}
 	 * @return the {@code model} JSON node to embed in the message body

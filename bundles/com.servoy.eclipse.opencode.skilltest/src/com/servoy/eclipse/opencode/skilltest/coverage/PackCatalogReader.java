@@ -18,8 +18,12 @@
 package com.servoy.eclipse.opencode.skilltest.coverage;
 
 import java.io.File;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,14 +45,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <li>agents from {@code agents/<name>.md} basenames, unioned with the
  * top-level {@code agent} block keys of {@code opencode.json} (which add the
  * built-in {@code build}/{@code plan} and any config-only agents),</li>
- * <li><b>MCP tools</b>: this reader does <b>not</b> produce a per-tool MCP
- * denominator. The remote MCP servers the pack's agents call
- * ({@code servoy-workspace}, {@code servoy-model}, ...) are not reflectable
- * from the extracted pack offline, so the real MCP denominator is the set of
- * tool identities <b>observed</b> across the suite (see
- * {@code CoverageReport.aggregate}). {@link PackCatalog#mcpTools()} from this
- * reader therefore holds only the {@code opencode.json} {@code mcp}
- * <b>server</b> names as a hint - never a reflected per-tool list.</li>
+ * <li><b>MCP tools</b>: {@link PackCatalog#mcpTools()} from {@link #read} holds
+ * only the {@code opencode.json} {@code mcp} <b>server</b> names (a hint).
+ * {@link #readMcpToolDenominator(Path)} produces the real per-tool MCP
+ * denominator, derived purely from code: the {@code opencode.json} {@code mcp}
+ * rename map (each entry's {@code url} last path segment is the developer.mcp
+ * {@code @McpServer} name) joined with developer.mcp {@code @McpServer}/
+ * {@code @Tool} reflection over
+ * {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES}, emitting each identity in
+ * the {@code <packServerName>_<toolName>} form seen in session exports (e.g.
+ * {@code servoy-workspace_listProjects}). It needs no live endpoint; on any
+ * reflective failure it returns an empty set so {@code CoverageReport.aggregate}
+ * falls back to the identities <b>observed</b> across the suite.</li>
  * </ul>
  * <p>
  * Each read is independently guarded; a missing or malformed source yields an
@@ -90,6 +98,15 @@ public final class PackCatalogReader {
 	private static final String AGENT_SUFFIX = ".md"; //$NON-NLS-1$
 	private static final String MCP_KEY = "mcp"; //$NON-NLS-1$
 	private static final String AGENT_KEY = "agent"; //$NON-NLS-1$
+	private static final String URL_KEY = "url"; //$NON-NLS-1$
+
+	/** The developer.mcp registry of built-in server classes. */
+	private static final String BUILTINS_CLASS = "com.servoy.eclipse.developer.mcp.McpServerBuiltins"; //$NON-NLS-1$
+	private static final String BUILTINS_FIELD = "BUILT_IN_SERVER_CLASSES"; //$NON-NLS-1$
+
+	/** The developer.mcp {@code @McpServer}/{@code @Tool} annotation types. */
+	private static final String MCP_SERVER_ANNOTATION = "com.servoy.eclipse.developer.mcp.annotations.McpServer"; //$NON-NLS-1$
+	private static final String TOOL_ANNOTATION = "com.servoy.eclipse.developer.mcp.annotations.Tool"; //$NON-NLS-1$
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -284,5 +301,241 @@ public final class PackCatalogReader {
 			// Malformed/unreadable opencode.json: degrade to an empty server set.
 		}
 		return servers;
+	}
+
+	/**
+	 * Builds the <b>MCP tool-identity denominator</b> for the coverage report from
+	 * the default/overridden config directory. See
+	 * {@link #readMcpToolDenominator(Path)}.
+	 *
+	 * @return the pack's MCP tool identities in {@code <packServer>_<toolName>}
+	 *         form, or an empty set on any failure
+	 */
+	public static Set<String> readMcpToolDenominator() {
+		return readMcpToolDenominator(resolveConfigDir());
+	}
+
+	/**
+	 * Builds the <b>MCP tool-identity denominator</b> for the coverage report: the
+	 * full set of tool identities the pack's configured MCP servers expose, each in
+	 * the {@code <packServerName>_<toolName>} form that appears in opencode session
+	 * exports (e.g. {@code servoy-workspace_listProjects}).
+	 * <p>
+	 * The set is derived purely from code - never from a live endpoint - by joining
+	 * two authoritative sources already in the workspace:
+	 * </p>
+	 * <ol>
+	 * <li>the extracted {@code opencode.json} {@code mcp} block, which renames each
+	 * developer.mcp server: each {@code mcp.<packServer>} entry has a {@code url}
+	 * whose last path segment is the developer.mcp {@code @McpServer} name (e.g.
+	 * {@code .../dev_mcp/servoy-ide}), giving the {@code packServer -> devServer}
+	 * map;</li>
+	 * <li>the developer.mcp {@code @McpServer}/{@code @Tool} reflection over
+	 * {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES}: for the server class whose
+	 * {@code @McpServer.name()} equals a {@code devServer}, every
+	 * {@code @Tool.name()} method yields the identity
+	 * {@code <packServer>_<toolName>}.</li>
+	 * </ol>
+	 * <p>
+	 * Only pack servers actually present in {@code opencode.json} contribute, so
+	 * the denominator reflects what THIS pack ships. A pack server whose url maps
+	 * to no known developer.mcp server, or a devServer with no reflectable class,
+	 * contributes nothing. Built-in / skill / task / subagent tools are naturally
+	 * excluded - they are not developer.mcp {@code @Tool}s.
+	 * </p>
+	 * <p>
+	 * All reflection is guarded: on any failure (the developer.mcp bundle absent
+	 * from the classpath, a missing/malformed {@code opencode.json}, any reflective
+	 * error) this returns an <b>empty</b> set so the caller falls back to the
+	 * observed-union denominator. This method never throws.
+	 * </p>
+	 *
+	 * @param configDir the extracted opencode config directory (may be
+	 *                  {@code null}/absent)
+	 * @return the pack's MCP tool identities in {@code <packServer>_<toolName>}
+	 *         form, or an empty set on any failure
+	 */
+	public static Set<String> readMcpToolDenominator(Path configDir) {
+		Set<String> identities = new LinkedHashSet<>();
+		try {
+			if (configDir == null) {
+				return identities;
+			}
+			File opencodeJson = new File(configDir.toFile(), OPENCODE_JSON);
+			// packServer -> devServer (the last url path segment).
+			Map<String, String> packToDev = readPackServerToDevServer(opencodeJson);
+			if (packToDev.isEmpty()) {
+				return identities;
+			}
+
+			// devServer -> list of @Tool names, reflected from the developer.mcp registry.
+			Map<String, Set<String>> devToTools = reflectDevServerTools();
+			if (devToTools.isEmpty()) {
+				return identities;
+			}
+
+			for (Map.Entry<String, String> entry : packToDev.entrySet()) {
+				String packServer = entry.getKey();
+				String devServer = entry.getValue();
+				Set<String> tools = devToTools.get(devServer);
+				if (tools == null) {
+					// The url mapped to no known developer.mcp server: contribute nothing.
+					continue;
+				}
+				for (String tool : tools) {
+					identities.add(packServer + "_" + tool); //$NON-NLS-1$
+				}
+			}
+		} catch (Throwable ignored) {
+			// Any failure (bundle absent, reflection error, malformed json): empty set so
+			// the caller falls back to the observed-union denominator. Never throws.
+			return new LinkedHashSet<>();
+		}
+		return identities;
+	}
+
+	/**
+	 * Reads the {@code mcp} block of {@code opencode.json} into a
+	 * {@code packServerName -> devServerName} map, where the devServer is the last
+	 * path segment of each entry's {@code url} (e.g. {@code servoy-workspace} ->
+	 * {@code servoy-ide} for {@code .../dev_mcp/servoy-ide}). An entry without a
+	 * usable {@code url} contributes nothing. Tolerant: a missing/malformed file or
+	 * absent block yields an empty map.
+	 */
+	private static Map<String, String> readPackServerToDevServer(File opencodeJson) {
+		Map<String, String> packToDev = new LinkedHashMap<>();
+		if (opencodeJson == null || !opencodeJson.isFile()) {
+			return packToDev;
+		}
+		try {
+			JsonNode root = MAPPER.readTree(opencodeJson);
+			JsonNode mcp = root != null ? root.get(MCP_KEY) : null;
+			if (mcp == null || !mcp.isObject()) {
+				return packToDev;
+			}
+			for (java.util.Iterator<String> it = mcp.fieldNames(); it.hasNext();) {
+				String packServer = it.next();
+				if (packServer == null || packServer.isBlank()) {
+					continue;
+				}
+				JsonNode entry = mcp.get(packServer);
+				if (entry == null || !entry.isObject()) {
+					continue;
+				}
+				JsonNode urlNode = entry.get(URL_KEY);
+				if (urlNode == null || !urlNode.isTextual()) {
+					continue;
+				}
+				String devServer = lastPathSegment(urlNode.asText());
+				if (devServer != null && !devServer.isBlank()) {
+					packToDev.put(packServer, devServer);
+				}
+			}
+		} catch (Exception ignored) {
+			// Malformed/unreadable opencode.json: degrade to whatever was collected.
+		}
+		return packToDev;
+	}
+
+	/**
+	 * @return the last {@code /}-separated path segment of the url, ignoring any
+	 *         query/fragment and a trailing slash; {@code null} when none
+	 */
+	private static String lastPathSegment(String url) {
+		if (url == null) {
+			return null;
+		}
+		String s = url.trim();
+		if (s.isEmpty()) {
+			return null;
+		}
+		// Drop any query/fragment so a trailing ?x / #y never becomes the segment.
+		int cut = s.length();
+		int q = s.indexOf('?');
+		if (q >= 0 && q < cut) {
+			cut = q;
+		}
+		int h = s.indexOf('#');
+		if (h >= 0 && h < cut) {
+			cut = h;
+		}
+		s = s.substring(0, cut);
+		// Trim a trailing slash so ".../servoy-ide/" still yields "servoy-ide".
+		while (s.endsWith("/")) { //$NON-NLS-1$
+			s = s.substring(0, s.length() - 1);
+		}
+		int slash = s.lastIndexOf('/');
+		String segment = slash >= 0 ? s.substring(slash + 1) : s;
+		return segment.isBlank() ? null : segment;
+	}
+
+	/**
+	 * Reflects {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES} and builds a
+	 * {@code devServerName -> @Tool names} map: for each built-in server class its
+	 * {@code @McpServer.name()} is the devServer and every {@code @Tool.name()}
+	 * method it declares is a tool name (falling back to the method name when the
+	 * {@code @Tool.name()} is blank, matching the annotation's documented default).
+	 * <p>
+	 * The developer.mcp bundle Require-Bundles make these classes and annotations
+	 * resolve on the skilltest bundle's classpath. Everything is guarded by the
+	 * caller's {@code try/catch(Throwable)}; a reflective failure simply yields an
+	 * empty map and the observed-union fallback.
+	 * </p>
+	 */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Set<String>> reflectDevServerTools() throws Exception {
+		Map<String, Set<String>> devToTools = new LinkedHashMap<>();
+		ClassLoader loader = PackCatalogReader.class.getClassLoader();
+
+		Class<? extends Annotation> mcpServerAnn = (Class<? extends Annotation>) Class.forName(MCP_SERVER_ANNOTATION,
+				false, loader);
+		Class<? extends Annotation> toolAnn = (Class<? extends Annotation>) Class.forName(TOOL_ANNOTATION, false,
+				loader);
+
+		Class<?> builtins = Class.forName(BUILTINS_CLASS, false, loader);
+		Object serverClassesObj = builtins.getField(BUILTINS_FIELD).get(null);
+		if (!(serverClassesObj instanceof Class<?>[])) {
+			return devToTools;
+		}
+		Class<?>[] serverClasses = (Class<?>[]) serverClassesObj;
+
+		for (Class<?> serverClass : serverClasses) {
+			if (serverClass == null) {
+				continue;
+			}
+			Annotation serverAnnotation = serverClass.getAnnotation(mcpServerAnn);
+			if (serverAnnotation == null) {
+				continue;
+			}
+			String devServer = annotationName(serverAnnotation);
+			if (devServer == null || devServer.isBlank()) {
+				continue;
+			}
+			Set<String> tools = devToTools.computeIfAbsent(devServer, k -> new LinkedHashSet<>());
+			for (Method method : serverClass.getDeclaredMethods()) {
+				Annotation toolAnnotation = method.getAnnotation(toolAnn);
+				if (toolAnnotation == null) {
+					continue;
+				}
+				String toolName = annotationName(toolAnnotation);
+				// @Tool.name() defaults to the method name when blank (see the annotation).
+				if (toolName == null || toolName.isBlank()) {
+					toolName = method.getName();
+				}
+				tools.add(toolName);
+			}
+		}
+		return devToTools;
+	}
+
+	/**
+	 * @return the {@code String name()} value of an
+	 *         {@code @McpServer}/{@code @Tool} annotation, reflected by method
+	 *         name, or {@code null} when absent
+	 */
+	private static String annotationName(Annotation annotation) throws Exception {
+		Method nameMethod = annotation.annotationType().getMethod("name"); //$NON-NLS-1$
+		Object value = nameMethod.invoke(annotation);
+		return value instanceof String ? (String) value : null;
 	}
 }

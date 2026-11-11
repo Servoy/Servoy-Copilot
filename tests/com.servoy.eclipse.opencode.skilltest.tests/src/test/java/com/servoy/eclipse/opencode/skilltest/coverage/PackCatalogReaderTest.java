@@ -43,11 +43,13 @@ import org.junit.jupiter.api.io.TempDir;
  * independently guarded so a missing/malformed source degrades to an empty set
  * rather than throwing (SVY-21711 §3.2).
  * <p>
- * The reader no longer reflects the developer.mcp
- * {@code @McpServer}/{@code @Tool} registry: the real MCP denominator is
- * observed-based (computed in {@code CoverageReport.aggregate} from what the
- * suite called), so {@code mcpTools()} here holds only the
- * {@code opencode.json} mcp server-name hints.
+ * {@link PackCatalog#mcpTools()} from {@code read} holds only the
+ * {@code opencode.json} mcp server-name hints. The real per-tool MCP
+ * denominator is {@link PackCatalogReader#readMcpToolDenominator(Path)}, covered
+ * by the {@code McpToolDenominator} nested class below: it joins the
+ * {@code opencode.json} mcp-rename map with developer.mcp
+ * {@code @McpServer}/{@code @Tool} reflection to emit
+ * {@code <packServerName>_<toolName>} identities.
  * </p>
  */
 public class PackCatalogReaderTest {
@@ -299,6 +301,166 @@ public class PackCatalogReaderTest {
 			System.clearProperty(PackCatalogReader.CONFIG_DIR_PROPERTY);
 			Path expected = Path.of(System.getProperty("user.home"), ".servoy", "opencode");
 			assertEquals(expected, PackCatalogReader.resolveConfigDir());
+		}
+	}
+
+	/**
+	 * Tests for {@link PackCatalogReader#readMcpToolDenominator(Path)} — the real
+	 * per-tool MCP denominator, built from the {@code opencode.json} mcp-rename map
+	 * (each entry's {@code url} last path segment is the developer.mcp
+	 * {@code @McpServer} name) joined with developer.mcp
+	 * {@code @McpServer}/{@code @Tool} reflection over
+	 * {@code McpServerBuiltins.BUILT_IN_SERVER_CLASSES}, each identity emitted in
+	 * the {@code <packServerName>_<toolName>} form seen in session exports.
+	 * <p>
+	 * This reflection needs developer.mcp on the classpath. The tests fragment
+	 * Require-Bundles it, so these assertions expect the real reflected tool names.
+	 * If reflection were unavailable in this JVM the method returns an empty set
+	 * (asserted by the defensive cases below), never throwing.
+	 * </p>
+	 */
+	@Nested
+	class McpToolDenominator {
+
+		@Test
+		@DisplayName("maps each pack server to its dev server via the url last segment and emits <packServer>_<tool>")
+		void mapsPackServerToDevServerTools(@TempDir Path configDir) throws IOException {
+			// servoy-workspace -> servoy-ide, servoy-model -> servoy-dev. The last path
+			// segment of each url is the developer.mcp @McpServer name.
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "servoy-workspace":{"type":"remote","url":"http://localhost:{env:MCP_PORT}/dev_mcp/servoy-ide"},
+					  "servoy-model":{"type":"remote","url":"http://localhost:{env:MCP_PORT}/dev_mcp/servoy-dev"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(
+					// listProjects is a confirmed @Tool on ServoyIdeServer (@McpServer
+					// name="servoy-ide"), renamed to the servoy-workspace pack server.
+					() -> assertTrue(denominator.contains("servoy-workspace_listProjects"),
+							"servoy-ide.listProjects renamed to servoy-workspace"),
+					// getTableInfo is a confirmed @Tool on ServoyDevServer (@McpServer
+					// name="servoy-dev"), renamed to the servoy-model pack server.
+					() -> assertTrue(denominator.contains("servoy-model_getTableInfo"),
+							"servoy-dev.getTableInfo renamed to servoy-model"),
+					// The developer.mcp-native namespace must NOT appear - the identity uses
+					// the PACK server name, not the developer.mcp @McpServer name.
+					() -> assertFalse(denominator.contains("servoy-ide_listProjects"),
+							"the developer.mcp-native name is the wrong namespace"),
+					// A built-in opencode tool is never a developer.mcp @Tool.
+					() -> assertFalse(denominator.contains("servoy-workspace_read")),
+					() -> assertFalse(denominator.contains("read")),
+					// Nothing should be empty when reflection is available.
+					() -> assertFalse(denominator.isEmpty(), "reflection resolved developer.mcp @Tools"));
+		}
+
+		@Test
+		@DisplayName("only pack servers present in opencode.json contribute to the denominator")
+		void onlyConfiguredPackServersContribute(@TempDir Path configDir) throws IOException {
+			// Only servoy-model (-> servoy-dev) is configured; servoy-ide tools must NOT
+			// appear under any pack name since servoy-workspace is not in the mcp block.
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "servoy-model":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-dev"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(() -> assertTrue(denominator.contains("servoy-model_getTableInfo")),
+					// no identity for the unconfigured servoy-ide server, under any name
+					() -> assertFalse(denominator.contains("servoy-workspace_listProjects")),
+					() -> assertTrue(denominator.stream().allMatch(id -> id.startsWith("servoy-model_")),
+							"every identity is namespaced by the one configured pack server"));
+		}
+
+		@Test
+		@DisplayName("a pack server whose url maps to no known developer.mcp server contributes nothing")
+		void unknownDevServerContributesNothing(@TempDir Path configDir) throws IOException {
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "servoy-workspace":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-ide"},
+					  "mystery":{"type":"remote","url":"http://localhost:1/dev_mcp/no-such-server"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(() -> assertTrue(denominator.contains("servoy-workspace_listProjects")),
+					// the unknown dev server yields no identities at all
+					() -> assertTrue(denominator.stream().noneMatch(id -> id.startsWith("mystery_"))));
+		}
+
+		@Test
+		@DisplayName("the whole configured pack rename map resolves to a large, non-empty denominator")
+		void fullPackResolves(@TempDir Path configDir) throws IOException {
+			// The real pack rename map (from the extracted opencode.json): every pack
+			// server and the developer.mcp server its url points at.
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "time":{"type":"remote","url":"http://localhost:1/dev_mcp/time"},
+					  "scratchpad":{"type":"remote","url":"http://localhost:1/dev_mcp/memory"},
+					  "servoy-history":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-context"},
+					  "servoy-editor":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-coder"},
+					  "servoy-workspace":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-ide"},
+					  "servoy-git":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-git"},
+					  "servoy-model":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-dev"},
+					  "servoy-test":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-test"},
+					  "servoy-form":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-form"},
+					  "servoy-packages":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-wpm"},
+					  "servoy-media":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-media"},
+					  "servoy-i18n":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-i18n"},
+					  "servoy-debug":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-debug"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(() -> assertFalse(denominator.isEmpty(), "the full pack resolves a non-empty denominator"),
+					// a few confirmed renamed identities across several servers
+					() -> assertTrue(denominator.contains("servoy-workspace_listProjects")),
+					() -> assertTrue(denominator.contains("servoy-model_getTableInfo")),
+					() -> assertTrue(denominator.contains("servoy-model_getTarget")),
+					() -> assertTrue(denominator.contains("servoy-form_getFormLayout")),
+					// every emitted identity is in <packServer>_<tool> form (has a separator)
+					() -> assertTrue(denominator.stream().allMatch(id -> id.indexOf('_') > 0)),
+					// 13 servers with ~158 tools total -> comfortably more than 50
+					() -> assertTrue(denominator.size() > 50, "a realistic full denominator is large"));
+		}
+
+		@Test
+		@DisplayName("a url with a trailing slash / query still resolves the dev server from the last segment")
+		void trailingSlashAndQuery(@TempDir Path configDir) throws IOException {
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "servoy-workspace":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-ide/"},
+					  "servoy-model":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-dev?x=1"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(() -> assertTrue(denominator.contains("servoy-workspace_listProjects")),
+					() -> assertTrue(denominator.contains("servoy-model_getTableInfo")));
+		}
+
+		@Test
+		@DisplayName("a missing / malformed opencode.json yields an empty set, never throws")
+		void missingOrMalformedYieldsEmpty(@TempDir Path configDir) throws IOException {
+			assertAll(
+					// no opencode.json at all
+					() -> assertTrue(PackCatalogReader.readMcpToolDenominator(configDir).isEmpty()),
+					// a null config dir
+					() -> assertTrue(PackCatalogReader.readMcpToolDenominator((Path) null).isEmpty()));
+			writeOpencodeJson(configDir, "{ this is : not valid json ");
+			assertTrue(PackCatalogReader.readMcpToolDenominator(configDir).isEmpty());
+		}
+
+		@Test
+		@DisplayName("an opencode.json without an mcp block yields an empty denominator")
+		void noMcpBlockYieldsEmpty(@TempDir Path configDir) throws IOException {
+			writeOpencodeJson(configDir, "{\"$schema\":\"https://opencode.ai/config.json\"}");
+			assertTrue(PackCatalogReader.readMcpToolDenominator(configDir).isEmpty());
+		}
+
+		@Test
+		@DisplayName("an mcp entry with no usable url contributes nothing (no NPE)")
+		void entryWithoutUrl(@TempDir Path configDir) throws IOException {
+			writeOpencodeJson(configDir, """
+					{"mcp":{
+					  "servoy-workspace":{"type":"remote","url":"http://localhost:1/dev_mcp/servoy-ide"},
+					  "broken":{"type":"remote"}
+					}}""");
+			java.util.Set<String> denominator = PackCatalogReader.readMcpToolDenominator(configDir);
+			assertAll(() -> assertTrue(denominator.contains("servoy-workspace_listProjects")),
+					() -> assertTrue(denominator.stream().noneMatch(id -> id.startsWith("broken_"))));
 		}
 	}
 }

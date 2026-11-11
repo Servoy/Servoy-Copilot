@@ -144,6 +144,84 @@ public class CoverageReportTest {
 		}
 
 		@Test
+		@DisplayName("MCP advertised-catalog: covered = observed ∩ advertised, not-covered = advertised − observed")
+		void mcpAdvertisedCatalogDenominator() {
+			// The real MCP denominator (SVY-21711): the advertised tool set read from the
+			// running opencode server, passed as the 4th aggregate() argument. The suite
+			// touched only one of the four advertised tools, so the other three must show
+			// as NOT-COVERED-YET (the whole point - a meaningful gap instead of N/N).
+			java.util.Set<String> advertised = Set.of("servoy-workspace_listProjects", "servoy-model_getTarget",
+					"servoy-model_getTableInfo", "servoy-form_getFormLayout");
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace_listProjects"))),
+					PackCatalog.empty(), advertised);
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(4, tools.catalogCount()), () -> assertEquals(1, tools.coveredCount()),
+					() -> assertTrue(tools.coveredToBaselines().containsKey("servoy-workspace_listProjects")),
+					() -> assertEquals(
+							Set.of("servoy-model_getTarget", "servoy-model_getTableInfo", "servoy-form_getFormLayout"),
+							new java.util.HashSet<>(tools.notCovered())),
+					() -> assertEquals(3, tools.notCovered().size()), () -> assertEquals(25, tools.percentage()),
+					() -> assertTrue(tools.offCatalog().isEmpty()));
+		}
+
+		@Test
+		@DisplayName("MCP advertised-catalog: an observed 'server.tool' matches an advertised 'server_tool'")
+		void mcpAdvertisedCanonicalizes() {
+			java.util.Set<String> advertised = Set.of("servoy-workspace_listProjects", "servoy-model_getTarget");
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace.listProjects"))),
+					PackCatalog.empty(), advertised);
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(2, tools.catalogCount()), () -> assertEquals(1, tools.coveredCount()),
+					() -> assertTrue(tools.coveredToBaselines().containsKey("servoy-workspace_listProjects")),
+					() -> assertTrue(tools.notCovered().contains("servoy-model_getTarget")),
+					// the dot form canonically matched the advertised underscore form
+					() -> assertTrue(tools.offCatalog().isEmpty()));
+		}
+
+		@Test
+		@DisplayName("MCP advertised-catalog: an observed tool NOT advertised surfaces as off-catalog")
+		void mcpAdvertisedOffCatalog() {
+			java.util.Set<String> advertised = Set.of("servoy-workspace_listProjects");
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(),
+							Set.of("servoy-workspace_listProjects", "servoy-mystery_doThing"))),
+					PackCatalog.empty(), advertised);
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(1, tools.catalogCount()), () -> assertEquals(1, tools.coveredCount()),
+					() -> assertTrue(tools.offCatalog().contains("servoy-mystery_doThing")),
+					() -> assertTrue(tools.notCovered().isEmpty()));
+		}
+
+		@Test
+		@DisplayName("an EMPTY advertised set falls back to the observed-union denominator (no regression)")
+		void mcpAdvertisedEmptyFallsBackToObserved() {
+			// When the server is unreachable / the endpoint changed, the advertised set is
+			// empty and aggregate must fall back to the observed union (today's behaviour):
+			// every observed tool covered (100%), nothing not-covered-yet.
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace_listProjects")),
+							obs("b2", Set.of(), Set.of(), Set.of("servoy-model_getTarget"))),
+					PackCatalog.empty(), Set.of());
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(2, tools.catalogCount()), () -> assertEquals(2, tools.coveredCount()),
+					() -> assertTrue(tools.notCovered().isEmpty()), () -> assertTrue(tools.offCatalog().isEmpty()),
+					() -> assertEquals(100, tools.percentage()));
+		}
+
+		@Test
+		@DisplayName("a null advertised set (3-arg aggregate) uses the observed-union fallback")
+		void mcpNullAdvertisedUsesObservedUnion() {
+			CoverageReport report = CoverageReport.aggregate("ts",
+					List.of(obs("b1", Set.of(), Set.of(), Set.of("servoy-workspace_listProjects"))),
+					PackCatalog.empty());
+			Dimension tools = report.getMcpTools();
+			assertAll(() -> assertEquals(1, tools.catalogCount()), () -> assertEquals(1, tools.coveredCount()),
+					() -> assertTrue(tools.notCovered().isEmpty()));
+		}
+
+		@Test
 		@DisplayName("the separator canonicalization only applies to MCP tools, not skills/agents")
 		void canonicalizationDoesNotTouchSkills() {
 			// A skill id that happens to contain a dot must NOT be treated as server.tool.

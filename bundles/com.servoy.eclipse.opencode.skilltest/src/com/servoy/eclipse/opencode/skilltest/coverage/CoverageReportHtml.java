@@ -156,7 +156,18 @@ public final class CoverageReportHtml {
 				}
 			}
 			PackCatalog catalog = PackCatalogReader.read();
-			CoverageReport report = CoverageReport.aggregate(timestamp, observations, catalog);
+			// Real MCP denominator (SVY-21711): the full set of tool identities the pack's
+			// configured MCP servers expose, derived purely from code - the extracted
+			// opencode.json mcp-rename map joined with developer.mcp @McpServer/@Tool
+			// reflection (see PackCatalogReader.readMcpToolDenominator). Best-effort - any
+			// failure yields an empty set, in which case CoverageReport.aggregate falls
+			// back to the observed-union denominator so the report never regresses. This
+			// must never fail the run.
+			Set<String> mcpDenominator = PackCatalogReader.readMcpToolDenominator();
+			if (logger != null) {
+				logger.accept("MCP tool denominator for coverage: " + mcpDenominator.size() + " tool(s)"); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			CoverageReport report = CoverageReport.aggregate(timestamp, observations, catalog, mcpDenominator);
 			File written = write(report, targetDir, fileName);
 			if (logger != null) {
 				logger.accept("Wrote skill-test coverage report: " + written); //$NON-NLS-1$
