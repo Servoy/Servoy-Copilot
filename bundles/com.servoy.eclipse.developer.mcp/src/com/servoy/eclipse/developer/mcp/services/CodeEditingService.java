@@ -215,6 +215,7 @@ public class CodeEditingService
 				readInputStream(previousState.getContents()),
 				Charset.forName(file.getCharset()));
 
+			WriteAccessValidator.requireWritable(file);
 			try (ByteArrayInputStream source = new ByteArrayInputStream(
 				previousContent.getBytes(Charset.forName(file.getCharset()))))
 			{
@@ -273,6 +274,7 @@ public class CodeEditingService
 			if (newFile.exists())
 				throw new RuntimeException("Error: A file named '" + newFileName + "' already exists in the same directory.");
 
+			WriteAccessValidator.requireWritable(file);
 			file.move(newPath, IResource.FORCE, null);
 			parent.refreshLocal(IResource.DEPTH_ONE, null);
 
@@ -312,6 +314,17 @@ public class CodeEditingService
 			if (existing != null && existing.exists())
 				throw new RuntimeException("Error: A resource named '" + resourceName + "' already exists at the destination.");
 
+			// A folder moves every file in it, so all of them are validated in one call.
+			List<IFile> movedFiles = new ArrayList<>();
+			sourceResource.accept(member -> {
+				if (member instanceof IFile memberFile)
+				{
+					movedFiles.add(memberFile);
+				}
+				return true;
+			});
+			WriteAccessValidator.requireWritable(movedFiles);
+
 			sourceResource.move(destinationPath, IResource.FORCE, new NullProgressMonitor());
 			sourceResource.getParent().refreshLocal(IResource.DEPTH_ONE, null);
 			targetFolder.refreshLocal(IResource.DEPTH_ONE, null);
@@ -332,6 +345,7 @@ public class CodeEditingService
 		try
 		{
 			IFile file = resolveFile(projectName, filePath);
+			WriteAccessValidator.requireWritable(file);
 			file.delete(true, null);
 			file.getParent().refreshLocal(IResource.DEPTH_ONE, null);
 			return "Success: File '" + filePath + "' deleted from project '" + projectName + "'.";
@@ -374,6 +388,7 @@ public class CodeEditingService
 			IFile file = resolveFile(projectName, filePath);
 			byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
 			ByteArrayInputStream source = new ByteArrayInputStream(bytes);
+			WriteAccessValidator.requireWritable(file);
 			file.setContents(source, IResource.FORCE, null);
 			file.refreshLocal(IResource.DEPTH_ZERO, null);
 			return "Success: Content of file '" + filePath + "' replaced in project '" + projectName + "'.";
@@ -433,6 +448,7 @@ public class CodeEditingService
 			}
 
 			byte[] bytes = joinLines(keptLines, eol, trailingNewline).getBytes(StandardCharsets.UTF_8);
+			WriteAccessValidator.requireWritable(file);
 			try (ByteArrayInputStream source = new ByteArrayInputStream(bytes))
 			{
 				file.setContents(source, IResource.FORCE, null);
@@ -470,6 +486,7 @@ public class CodeEditingService
 			String patchedContentString = joinLines(patchedLines, eol, trailingNewline);
 			String diff = generateSimpleDiff(originalContent, patchedContentString, filePath);
 
+			WriteAccessValidator.requireWritable(file);
 			try (ByteArrayInputStream source = new ByteArrayInputStream(
 				patchedContentString.getBytes(Charset.forName(file.getCharset()))))
 			{
@@ -565,8 +582,14 @@ public class CodeEditingService
 		return out.toByteArray();
 	}
 
+	/**
+	 * The shared write path. Validates write access first, so every caller that goes through here
+	 * (insert, replace-string, format, ...) asks the team provider to check a read-only file out
+	 * instead of failing on it.
+	 */
 	private static void writeFile(IFile file, String content) throws CoreException
 	{
+		WriteAccessValidator.requireWritable(file);
 		try (ByteArrayInputStream source = new ByteArrayInputStream(
 			content.getBytes(Charset.forName(file.getCharset()))))
 		{

@@ -473,15 +473,45 @@ public class GitService
 		return addFiles(projectName, null, filePattern);
 	}
 
+	/**
+	 * Stages project-relative files or folders. {@code filePattern} is comma-separated, and
+	 * {@code "."} means the whole project.
+	 * <p>
+	 * The pattern is resolved through {@link #resolveProjectPaths(String, String)} rather than handed
+	 * to JGit as given: JGit reads a pathspec from the repository root, so for a project under
+	 * {@code bundles/} a path copied out of {@code gitStatus} used to match nothing and still report
+	 * success (SVY-21303, upstream {@code aca70c0}).
+	 * </p>
+	 */
 	public String addFiles(String projectName, String repo, String filePattern)
 	{
+		Objects.requireNonNull(filePattern, "filePattern is required");
+
 		Repository repository = resolveRepository(projectName, repo);
+		List<String> pathspecs = resolveProjectPaths(projectName, filePattern);
+
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
 		try (Git git = new Git(repository))
 		{
-			git.add().addFilepattern(filePattern).call();
-			git.add().setUpdate(true).addFilepattern(filePattern).call();
+			var add = git.add();
+			var addUpdate = git.add().setUpdate(true);
+			if (pathspecs.isEmpty())
+			{
+				// The project IS the repository root, so the whole tree is the pattern.
+				add.addFilepattern(".");
+				addUpdate.addFilepattern(".");
+			}
+			else
+			{
+				for (String pathspec : pathspecs)
+				{
+					add.addFilepattern(pathspec);
+					addUpdate.addFilepattern(pathspec);
+				}
+			}
+			add.call();
+			addUpdate.call();
 		}
 		catch (Exception e)
 		{
@@ -561,7 +591,7 @@ public class GitService
 	public String getDiff(String projectName, String repo, boolean staged, String pathFilter, boolean ignoreWhitespace)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderDiff(repository, staged, resolveDiffPaths(projectName, pathFilter), ignoreWhitespace);
+		return renderDiff(repository, staged, resolveProjectPaths(projectName, pathFilter), ignoreWhitespace);
 	}
 
 	/**
@@ -617,20 +647,35 @@ public class GitService
 	}
 
 	/**
-	 * Translates a comma-separated list of project-relative paths into repository-relative paths for
-	 * {@link PathFilterGroup}. A path that escapes the project (absolute, {@code ..}, or a Windows
-	 * drive prefix) is rejected rather than silently resolved outside it.
+	 * Translates a comma-separated list of project-relative paths into repository-relative pathspecs.
+	 * <p>
+	 * Every tool in this service takes project-relative paths and {@code gitStatus} reports them that
+	 * way, but JGit reads a pathspec from the REPOSITORY root. For a project that does not sit at the
+	 * repository root - which is every project here, since they live under {@code bundles/} and
+	 * {@code tests/} - the two differ, and Git does not fail on a pathspec that matches nothing. So a
+	 * path copied out of {@code gitStatus} and handed straight to JGit silently matches nothing and
+	 * reports success. Upstream AssistAI hit the same thing and named it in commit {@code aca70c0}
+	 * (SVY-21303); this helper is the single place that resolution happens.
+	 * </p>
+	 * <p>
+	 * {@code "."} (or a blank filter) means "the whole project", which resolves to the project's own
+	 * prefix rather than the repository root, so staging "." in one project cannot stage another's
+	 * files. A path that escapes the project (absolute, {@code ..}, or a Windows drive prefix) is
+	 * rejected rather than silently resolved outside it.
+	 * </p>
 	 */
-	private List<String> resolveDiffPaths(String projectName, String pathFilter)
+	private List<String> resolveProjectPaths(String projectName, String pathFilter)
 	{
-		if (pathFilter == null || pathFilter.isBlank())
-		{
-			return List.of();
-		}
-
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
 		String projectPrefix = mapping == null ? "" : mapping.getRepoRelativePath(project);
+
+		if (pathFilter == null || pathFilter.isBlank() || ".".equals(pathFilter.trim()))
+		{
+			// "the whole project": its own prefix, never the repository root, so one project's "."
+			// cannot reach another project's files.
+			return projectPrefix == null || projectPrefix.isBlank() ? List.of() : List.of(projectPrefix);
+		}
 
 		return Arrays.stream(pathFilter.split(","))
 			.map(String::trim)
@@ -674,7 +719,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		List<String> pathspecs = resolveDiffPaths(projectName, ".".equals(filePattern.trim()) ? null : filePattern);
+		List<String> pathspecs = resolveProjectPaths(projectName, filePattern);
 
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
@@ -982,14 +1027,36 @@ public class GitService
 		return resetFiles(projectName, null, filePattern);
 	}
 
+	/**
+	 * Unstages project-relative files or folders. {@code filePattern} is comma-separated, and
+	 * {@code "."} means the whole project. Resolved through
+	 * {@link #resolveProjectPaths(String, String)} for the same reason as {@link #addFiles}: a
+	 * repository-root pathspec would silently match nothing for a nested project.
+	 */
 	public String resetFiles(String projectName, String repo, String filePattern)
 	{
+		Objects.requireNonNull(filePattern, "filePattern is required");
+
 		Repository repository = resolveRepository(projectName, repo);
+		List<String> pathspecs = resolveProjectPaths(projectName, filePattern);
+
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
 		try (Git git = new Git(repository))
 		{
-			git.reset().addPath(filePattern).call();
+			var reset = git.reset();
+			if (pathspecs.isEmpty())
+			{
+				reset.addPath(".");
+			}
+			else
+			{
+				for (String pathspec : pathspecs)
+				{
+					reset.addPath(pathspec);
+				}
+			}
+			reset.call();
 		}
 		catch (Exception e)
 		{
@@ -1103,11 +1170,50 @@ public class GitService
 		return stagePatch(projectName, null, patch);
 	}
 
+	/**
+	 * Stages selected changes from a unified diff into the index without leaving the working tree
+	 * altered.
+	 * <p>
+	 * The working tree is deliberately disturbed to do this: the target paths are checked out from
+	 * HEAD, the patch is applied on top, the resulting blobs are written into the index, and only then
+	 * is the caller's uncommitted content put back. So the saved content is the ONLY copy of the
+	 * caller's work between the checkout and the restore, and the restore MUST run on every exit path
+	 * - including a failing {@code apply()}, which is the ordinary outcome for a patch with stale
+	 * context. Restoring inside the try (with a catch that only rethrows) silently destroys
+	 * uncommitted work; upstream AssistAI shipped exactly that bug and named it in commit
+	 * {@code a6dc32d} (SVY-21303). Hence the restore lives in its own {@code finally}.
+	 * </p>
+	 */
 	public String stagePatch(String projectName, String repo, String patch)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		return applyPatchToIndex(repository, patch, () -> refreshAfterChange(projectName, repository));
+	}
+
+	/**
+	 * Stages a patch into an already-resolved repository's index. Split out from
+	 * {@link #stagePatch(String, String, String)} so the working-tree-preservation contract can be
+	 * exercised against a plain JGit repository without an Eclipse workspace: the public entry point
+	 * resolves the repository and supplies the workspace refresh, and this does the git work.
+	 *
+	 * @param repository the repository to stage into, already resolved
+	 * @param patch the unified diff to stage
+	 * @param afterChange run once the index and working tree are settled; may be {@code null}
+	 */
+	public static String applyPatchToIndex(Repository repository, String patch, Runnable afterChange)
+	{
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
+		// Populated before the checkout below destroys the working-tree content, and written back in
+		// the finally - never inside the try, where a throw would skip it.
+		Map<java.io.File, byte[]> savedWorkingTree = new HashMap<>();
+		// The index as it stood before any of this. JGit's apply() partially mutates the index before
+		// it throws, so a failed patch otherwise leaves the index claiming changes that never happened
+		// (a phantom staged deletion, in the case that surfaced this). Snapshotting the index FILE is
+		// the faithful way to undo that: restoring those bytes restores every entry at once.
+		java.io.File indexFile = repository.getIndexFile();
+		byte[] savedIndex = readIndexFileOrNull(indexFile);
+		boolean stagedSuccessfully = false;
 		try (Git gitCmd = new Git(repository))
 		{
 			java.io.File workTree = repository.getWorkTree();
@@ -1120,7 +1226,6 @@ public class GitService
 				return "No files affected by patch.";
 			}
 
-			Map<java.io.File, byte[]> savedWorkingTree = new HashMap<>();
 			for (var fileHeader : parsedPatch.getFiles())
 			{
 				java.io.File file = new java.io.File(workTree, fileHeader.getNewPath());
@@ -1171,10 +1276,7 @@ public class GitService
 				dirCache.unlock();
 			}
 
-			for (var entry : savedWorkingTree.entrySet())
-				Files.write(entry.getKey().toPath(), entry.getValue());
-
-			refreshAfterChange(projectName, repository);
+			stagedSuccessfully = true;
 			return "Patch staged successfully. Files: " + result.getUpdatedFiles().size();
 		}
 		catch (Exception e)
@@ -1183,7 +1285,71 @@ public class GitService
 		}
 		finally
 		{
+			// Roll the index back when the patch did not make it all the way through, so a failure
+			// cannot leave entries that describe changes which never happened.
+			if (!stagedSuccessfully && savedIndex != null)
+			{
+				try
+				{
+					Files.write(indexFile.toPath(), savedIndex);
+				}
+				catch (IOException indexProblem)
+				{
+					// Reported below with any working-tree problem, so it cannot mask the real failure.
+				}
+			}
+			// Put the caller's uncommitted content back whatever happened. A failure here must not mask
+			// the original one, so each file is attempted independently and any problem is collected.
+			List<String> restoreFailures = new java.util.ArrayList<>();
+			for (var entry : savedWorkingTree.entrySet())
+			{
+				try
+				{
+					Files.write(entry.getKey().toPath(), entry.getValue());
+				}
+				catch (IOException restoreProblem)
+				{
+					restoreFailures.add(entry.getKey() + " (" + restoreProblem.getMessage() + ")");
+				}
+			}
 			lock.unlock();
+			if (afterChange != null)
+			{
+				try
+				{
+					afterChange.run();
+				}
+				catch (RuntimeException refreshProblem)
+				{
+					// A refresh problem must not replace a real failure either.
+				}
+			}
+			if (!restoreFailures.isEmpty())
+			{
+				throw new IllegalStateException(
+					"Failed to restore the working tree after staging a patch; uncommitted content may be lost in: " +
+						String.join(", ", restoreFailures));
+			}
+		}
+	}
+
+	/**
+	 * The raw bytes of the index file, or {@code null} when there is no index yet (a repository with
+	 * nothing ever staged) or it cannot be read - in which case there is nothing to roll back to.
+	 */
+	private static byte[] readIndexFileOrNull(java.io.File indexFile)
+	{
+		if (indexFile == null || !indexFile.isFile())
+		{
+			return null;
+		}
+		try
+		{
+			return Files.readAllBytes(indexFile.toPath());
+		}
+		catch (IOException e)
+		{
+			return null;
 		}
 	}
 
