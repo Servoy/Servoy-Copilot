@@ -184,11 +184,11 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		assertTrue(statusAfterAdd.contains("Changes to be committed"));
 		assertTrue(statusAfterAdd.contains("newfile.txt"));
 
-		String commitResult = gitServer.gitCommit(PROJECT_NAME, null, "Add newfile");
+		String commitResult = gitServer.gitCommit(PROJECT_NAME, null, "Add newfile", null, null);
 		assertTrue(commitResult.contains("Committed"));
 		assertTrue(commitResult.contains("Add newfile"));
 
-		String logResult = gitServer.gitLog(PROJECT_NAME, null, "5");
+		String logResult = gitServer.gitLog(PROJECT_NAME, null, "5", null, null);
 		assertTrue(logResult.contains("Add newfile"));
 		assertTrue(logResult.contains("Initial commit"));
 	}
@@ -202,7 +202,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		String headBefore = resolveHead();
 		assertNotNull(headBefore);
 
-		String commitResult = gitServer.gitCommit(PROJECT_NAME, null, "empty commit attempt");
+		String commitResult = gitServer.gitCommit(PROJECT_NAME, null, "empty commit attempt", null, null);
 
 		// The tool must refuse rather than report a committed sha (SVY-21524).
 		assertNotNull(commitResult);
@@ -240,11 +240,11 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		createTestFile("repo_centric.txt", "content");
 		gitServer.gitAdd(null, PROJECT_NAME, "repo_centric.txt");
 
-		String commitResult = gitServer.gitCommit(null, PROJECT_NAME, "repo-centric commit");
+		String commitResult = gitServer.gitCommit(null, PROJECT_NAME, "repo-centric commit", null, null);
 		assertTrue(commitResult.contains("Committed"),
 				"repo-centric gitCommit should commit, but was: " + commitResult);
 
-		String logResult = gitServer.gitLog(null, PROJECT_NAME, "5");
+		String logResult = gitServer.gitLog(null, PROJECT_NAME, "5", null, null);
 		assertTrue(logResult.contains("repo-centric commit"));
 	}
 
@@ -280,7 +280,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 	public void testGitDiff_unstaged() {
 		createTestFile("initial.txt", "modified line");
 
-		String result = gitServer.gitDiff(PROJECT_NAME, null, null);
+		String result = gitServer.gitDiff(PROJECT_NAME, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("modified line"));
@@ -291,7 +291,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		createTestFile("initial.txt", "staged change");
 		gitServer.gitAdd(PROJECT_NAME, null, "initial.txt");
 
-		String result = gitServer.gitDiff(PROJECT_NAME, null, "true");
+		String result = gitServer.gitDiff(PROJECT_NAME, null, "true", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("staged change"));
@@ -368,7 +368,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 	public void testGitStagePatch_stagesPartialChange() {
 		createTestFile("patch_file.txt", "line1\nmodified\nline3\n");
 		gitServer.gitAdd(PROJECT_NAME, null, ".");
-		gitServer.gitCommit(PROJECT_NAME, null, "Add patch_file");
+		gitServer.gitCommit(PROJECT_NAME, null, "Add patch_file", null, null);
 
 		createTestFile("patch_file.txt", "line1\nchanged_line2\nline3\nnew_line4\n");
 
@@ -377,7 +377,7 @@ public class ServoyGitServerIntegrationTest extends DialogGuardBaseCopy {
 		String result = gitServer.gitStagePatch(PROJECT_NAME, null, patch);
 		assertNotNull(result);
 
-		String stagedDiff = gitServer.gitDiff(PROJECT_NAME, null, "true");
+		String stagedDiff = gitServer.gitDiff(PROJECT_NAME, null, "true", null, null, null, null);
 		assertNotNull(stagedDiff);
 		assertTrue(stagedDiff.contains("changed_line2") || stagedDiff.contains("new_line4"));
 	}

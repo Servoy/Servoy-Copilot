@@ -62,14 +62,81 @@ public class ServoyGitServer
 		return gitService.getStatus(projectName, repo);
 	}
 
-	@Tool(name = "gitLog", description = "Shows the commit history of a Git repository. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitShow", description = "Shows one commit and the change it introduced against its first parent - what 'git show' prints. A root commit is diffed against an empty tree; a merge commit lists both parents while the diff follows the first. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitShow(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "revision", description = "Branch, tag or commit sha to show. Default: HEAD", required = false) String revision,
+		@ToolParam(name = "pathFilter", description = "Comma-separated file or directory paths relative to the Eclipse project; when given, only those appear in the diff", required = false) String pathFilter)
+	{
+		return gitService.showCommit(projectName, repo, revision, pathFilter);
+	}
+
+	@Tool(name = "gitTagList", description = "Lists the repository's tags, marking annotated ones and showing their message. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitTagList(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo)
+	{
+		return gitService.listTags(projectName, repo);
+	}
+
+	@Tool(name = "gitTag", description = "Creates a tag at a revision (HEAD by default): annotated when a message is given, lightweight otherwise. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitTag(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "tagName", description = "The tag name (e.g. 'v1.2.0')", required = true) String tagName,
+		@ToolParam(name = "message", description = "When given, the tag is annotated and carries this message", required = false) String message,
+		@ToolParam(name = "revision", description = "Branch, tag or commit to tag. Default: HEAD", required = false) String revision)
+	{
+		return gitService.createTag(projectName, repo, tagName, message, revision);
+	}
+
+	@Tool(name = "gitDeleteTag", description = "Deletes a local tag, reporting what it pointed at before it went. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitDeleteTag(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "tagName", description = "The tag name to delete", required = true) String tagName)
+	{
+		return gitService.deleteTag(projectName, repo, tagName);
+	}
+
+	@Tool(name = "gitRemoteList", description = "Lists the remotes configured for the repository with their fetch and push URLs. Use this to discover a valid remote name instead of assuming 'origin'. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitRemoteList(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo)
+	{
+		return gitService.listRemotes(projectName, repo);
+	}
+
+	@Tool(name = "gitDiscardChanges", description = "DESTRUCTIVE AND IRREVERSIBLE: discards uncommitted modifications of tracked files by restoring their working-tree content from the index ('git checkout -- <path>'). The discarded content was never committed, so it is NOT in Local History and CANNOT be recovered - use gitStash instead when there is any doubt. Staged changes and untracked files are left alone. Paths are relative to the Eclipse project and may be comma-separated; '.' covers the whole project. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitDiscardChanges(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders relative to the Eclipse project, or '.' for the whole project", required = true) String filePattern)
+	{
+		return gitService.discardChanges(projectName, repo, filePattern);
+	}
+
+	@Tool(name = "gitResetToRevision", description = "Moves the checked-out branch to a revision ('git reset'). SOFT keeps the index and working tree, so the commits between become staged changes - the way to undo a commit while keeping its work. MIXED (the default) also resets the index. HARD also rewrites the working tree, which DISCARDS UNCOMMITTED WORK, and is how a conflicted merge or cherry-pick is abandoned. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitResetToRevision(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "revision", description = "Branch, tag or commit to move to (e.g. 'HEAD~1', a sha). Default: HEAD", required = false) String revision,
+		@ToolParam(name = "mode", description = "SOFT, MIXED or HARD. Default: MIXED", required = false) String mode)
+	{
+		return gitService.resetToRevision(projectName, repo, revision, mode);
+	}
+
+	@Tool(name = "gitLog", description = "Shows the commit history of a Git repository. Optionally walk back from a given revision, and/or list only the commits touching some project-relative paths. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitLog(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "maxCount", description = "Maximum number of commits to show (default: 20)", required = false) String maxCount)
+		@ToolParam(name = "maxCount", description = "Maximum number of commits to show (default: 20)", required = false) String maxCount,
+		@ToolParam(name = "revision", description = "Branch, tag or commit to walk back from. Default: the current branch", required = false) String revision,
+		@ToolParam(name = "pathFilter", description = "Comma-separated files or folders relative to the Eclipse project; when given, only commits touching them are listed", required = false) String pathFilter)
 	{
 		int count = Optional.ofNullable(maxCount).map(Integer::parseInt).orElse(20);
-		return gitService.getLog(projectName, repo, count);
+		return gitService.getLog(projectName, repo, count, revision, pathFilter);
 	}
 
 	@Tool(name = "gitAdd", description = "Stages files for the next commit. Use '.' to stage all changes (new, modified, and deleted files). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
@@ -81,26 +148,36 @@ public class ServoyGitServer
 		return gitService.addFiles(projectName, repo, filePattern);
 	}
 
-	@Tool(name = "gitCommit", description = "Commits the currently staged changes with the given message. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitCommit", description = "Commits the currently staged changes with the given message. With 'all' every tracked file's modifications and deletions are staged first, repository-wide ('git commit -a'; new files still need gitAdd). With 'amend' the previous commit is replaced instead of a new one being added - history rewriting, so only safe on a commit that has not been pushed. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitCommit(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "message", description = "The commit message", required = true) String message)
+		@ToolParam(name = "message", description = "The commit message", required = true) String message,
+		@ToolParam(name = "amend", description = "If 'true', replaces the previous commit. Default: false", required = false) String amend,
+		@ToolParam(name = "all", description = "If 'true', stages all tracked modifications and deletions before committing. Default: false", required = false) String all)
 	{
-		return gitService.commit(projectName, repo, message);
+		boolean amendPrevious = Optional.ofNullable(amend).map(Boolean::parseBoolean).orElse(false);
+		boolean stageTracked = Optional.ofNullable(all).map(Boolean::parseBoolean).orElse(false);
+		return gitService.commit(projectName, repo, message, amendPrevious, stageTracked);
 	}
 
-	@Tool(name = "gitDiff", description = "Shows the diff of changes in unified diff format. By default shows unstaged (working tree) changes; set staged to 'true' to see staged changes. Optionally limit it to some project-relative paths with 'pathFilter', and ignore whitespace-only differences with 'ignoreWhitespace'. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitDiff", description = "Shows a unified diff. Without revisions it compares the index with the working tree, or with staged 'true' HEAD with the index. With 'fromRevision' and/or 'toRevision' it compares two revisions, or a revision with the working tree when toRevision is omitted (fromRevision defaults to HEAD when only toRevision is given). Optionally limited to project-relative paths with 'pathFilter', and whitespace-only differences ignored with 'ignoreWhitespace'. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitDiff(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "staged", description = "If 'true', shows staged (cached) changes instead of unstaged. Default: false", required = false) String staged,
+		@ToolParam(name = "staged", description = "If 'true', shows staged (cached) changes instead of unstaged. Ignored when a revision is given. Default: false", required = false) String staged,
 		@ToolParam(name = "pathFilter", description = "Comma-separated file or directory paths relative to the Eclipse project; when given, only those are diffed", required = false) String pathFilter,
-		@ToolParam(name = "ignoreWhitespace", description = "If 'true', ignores whitespace-only differences, so a reindented line is not reported as changed. Default: false", required = false) String ignoreWhitespace)
+		@ToolParam(name = "ignoreWhitespace", description = "If 'true', ignores whitespace-only differences, so a reindented line is not reported as changed. Default: false", required = false) String ignoreWhitespace,
+		@ToolParam(name = "fromRevision", description = "Older side of the comparison: branch, tag or commit (e.g. 'main', 'HEAD~3')", required = false) String fromRevision,
+		@ToolParam(name = "toRevision", description = "Newer side of the comparison; the working tree when omitted", required = false) String toRevision)
 	{
 		boolean isStagedDiff = Optional.ofNullable(staged).map(Boolean::parseBoolean).orElse(false);
 		boolean skipWhitespace = Optional.ofNullable(ignoreWhitespace).map(Boolean::parseBoolean).orElse(false);
-		return gitService.getDiff(projectName, repo, isStagedDiff, pathFilter, skipWhitespace);
+		boolean comparingRevisions = (fromRevision != null && !fromRevision.isBlank()) ||
+			(toRevision != null && !toRevision.isBlank());
+		return comparingRevisions
+			? gitService.getRevisionDiff(projectName, repo, fromRevision, toRevision, pathFilter, skipWhitespace)
+			: gitService.getDiff(projectName, repo, isStagedDiff, pathFilter, skipWhitespace);
 	}
 
 	@Tool(name = "gitBranch", description = "Lists branches in the repository. The current branch is marked with an asterisk (*). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")

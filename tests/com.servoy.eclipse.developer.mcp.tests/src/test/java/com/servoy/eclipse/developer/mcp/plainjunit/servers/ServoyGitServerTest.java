@@ -106,7 +106,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitLog("NonExistentProject_XYZ", null, null);
+			server.gitLog("NonExistentProject_XYZ", null, null, null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -120,7 +120,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitDiff("NonExistentProject_XYZ", null, null, null, null);
+			server.gitDiff("NonExistentProject_XYZ", null, null, null, null, null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
@@ -148,7 +148,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitCommit("NonExistentProject_XYZ", null, "test message");
+			server.gitCommit("NonExistentProject_XYZ", null, "test message", null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)

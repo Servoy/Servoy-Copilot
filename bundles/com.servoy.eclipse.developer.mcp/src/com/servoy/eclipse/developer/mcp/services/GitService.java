@@ -23,8 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -442,10 +443,34 @@ public class GitService
 	@SuppressWarnings("deprecation")
 	public String getLog(String projectName, String repo, int maxCount)
 	{
+		return getLog(projectName, repo, maxCount, null, null);
+	}
+
+	/**
+	 * Lists the most recent commits reachable from a revision - the current branch by default -
+	 * optionally only those touching some project-relative paths. The {@code revision} and
+	 * {@code pathFilter} parameters are ported from AssistAI (upstream {@code aca70c0}).
+	 *
+	 * @param revision a branch, tag or commit to walk back from; {@code null} means the current branch
+	 * @param pathFilter optional comma-separated project-relative paths; only commits touching them are listed
+	 */
+	@SuppressWarnings("deprecation")
+	public String getLog(String projectName, String repo, int maxCount, String revision, String pathFilter)
+	{
 		Repository repository = resolveRepository(projectName, repo);
+		List<String> repositoryPaths = resolveProjectPaths(projectName, pathFilter);
 		try (Git git = new Git(repository))
 		{
-			var log = git.log().setMaxCount(maxCount).call();
+			var logCommand = git.log().setMaxCount(maxCount);
+			if (revision != null && !revision.isBlank())
+			{
+				logCommand.add(resolveRevision(repository, revision.trim()));
+			}
+			for (String repositoryPath : repositoryPaths)
+			{
+				logCommand.addPath(repositoryPath);
+			}
+			var log = logCommand.call();
 			var sb = new StringBuilder();
 
 			for (RevCommit commit : log)
@@ -532,13 +557,36 @@ public class GitService
 
 	public String commit(String projectName, String repo, String message)
 	{
+		return commit(projectName, repo, message, false, false);
+	}
+
+	/**
+	 * Commits the staged changes.
+	 * <p>
+	 * {@code all} stages every tracked file's modifications and deletions first, repository-wide
+	 * ({@code git commit -a}; new files still need {@code gitAdd}). {@code amend} replaces the
+	 * previous commit instead of adding one - history rewriting, so it is only safe on a commit that
+	 * has not been pushed. Both flags ported from AssistAI (upstream {@code aca70c0}).
+	 * </p>
+	 */
+	public String commit(String projectName, String repo, String message, boolean amend, boolean all)
+	{
 		Repository repository = resolveRepository(projectName, repo);
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
 		RevCommit commit;
 		try (Git git = new Git(repository))
 		{
-			commit = git.commit().setMessage(message).setAllowEmpty(false).call();
+			var command = git.commit().setMessage(message).setAllowEmpty(false);
+			if (amend)
+			{
+				command.setAmend(true);
+			}
+			if (all)
+			{
+				command.setAll(true);
+			}
+			commit = command.call();
 		}
 		catch (org.eclipse.jgit.api.errors.EmptyCommitException e)
 		{
@@ -553,7 +601,7 @@ public class GitService
 			lock.unlock();
 		}
 		refreshAfterChange(projectName, repository);
-		return "Committed: " + commit.getName() + " " + commit.getShortMessage();
+		return (amend ? "Amended: " : "Committed: ") + commit.getName() + " " + commit.getShortMessage();
 	}
 
 	public String getDiff(String projectName, boolean staged)
@@ -592,6 +640,61 @@ public class GitService
 	{
 		Repository repository = resolveRepository(projectName, repo);
 		return renderDiff(repository, staged, resolveProjectPaths(projectName, pathFilter), ignoreWhitespace);
+	}
+
+	/**
+	 * Compares two revisions, or a revision with the working tree when {@code toRevision} is omitted.
+	 * When only {@code toRevision} is given, {@code fromRevision} defaults to {@code HEAD}. Ported
+	 * from AssistAI (upstream {@code aca70c0}), which added revision comparison to {@code gitDiff}.
+	 *
+	 * @param fromRevision the older side; {@code null} means {@code HEAD} when {@code toRevision} is given
+	 * @param toRevision the newer side; {@code null} means the working tree
+	 */
+	public String getRevisionDiff(String projectName, String repo, String fromRevision, String toRevision,
+		String pathFilter, boolean ignoreWhitespace)
+	{
+		return renderRevisionDiff(resolveRepository(projectName, repo), fromRevision, toRevision,
+			resolveProjectPaths(projectName, pathFilter), ignoreWhitespace);
+	}
+
+	/** {@link #getRevisionDiff} on an already-resolved repository, so a plain test can drive it. */
+	public static String renderRevisionDiff(Repository repository, String fromRevision, String toRevision,
+		List<String> repositoryPaths, boolean ignoreWhitespace)
+	{
+		String from = fromRevision == null || fromRevision.isBlank() ? Constants.HEAD : fromRevision.trim();
+
+		try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+			DiffFormatter formatter = new DiffFormatter(out))
+		{
+			formatter.setRepository(repository);
+			formatter.setDiffComparator(ignoreWhitespace ? RawTextComparator.WS_IGNORE_ALL : RawTextComparator.DEFAULT);
+			formatter.setDetectRenames(true);
+			if (!repositoryPaths.isEmpty())
+			{
+				formatter.setPathFilter(PathFilterGroup.createFromStrings(repositoryPaths));
+			}
+
+			AbstractTreeIterator oldTree = prepareTreeParser(repository, resolveRevision(repository, from));
+			AbstractTreeIterator newTree = (toRevision == null || toRevision.isBlank())
+				? new FileTreeIterator(repository)
+				: prepareTreeParser(repository, resolveRevision(repository, toRevision.trim()));
+
+			List<DiffEntry> diffs = formatter.scan(oldTree, newTree);
+			for (DiffEntry diff : diffs)
+			{
+				formatter.format(diff);
+			}
+			String result = out.toString(StandardCharsets.UTF_8);
+			return result.isEmpty() ? "No changes." : result;
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to get diff: " + e.getMessage(), e);
+		}
 	}
 
 	/**
@@ -692,6 +795,463 @@ public class GitService
 				return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
 			})
 			.toList();
+	}
+
+	/**
+	 * Resolves a revision string to a commit, refusing one that does not exist rather than returning
+	 * {@code null} for a caller to trip over. Ported from AssistAI (upstream {@code aca70c0}).
+	 */
+	private static ObjectId resolveRevision(Repository repository, String revision) throws IOException
+	{
+		if (revision == null || revision.isBlank())
+		{
+			throw new IllegalArgumentException("A revision is required.");
+		}
+		ObjectId objectId = repository.resolve(revision);
+		if (objectId == null || !repository.getObjectDatabase().has(objectId))
+		{
+			throw new IllegalArgumentException("Git revision could not be resolved: " + revision);
+		}
+		return objectId;
+	}
+
+	public String listTags(String projectName)
+	{
+		return listTags(projectName, null);
+	}
+
+	/**
+	 * Lists the repository's tags, marking the annotated ones and showing their message. Ported from
+	 * AssistAI's {@code listTags} (upstream {@code aca70c0}); reported as prose rather than upstream's
+	 * {@code GitTagListResponse}.
+	 */
+	public String listTags(String projectName, String repo)
+	{
+		return renderTagList(resolveRepository(projectName, repo));
+	}
+
+	/** {@link #listTags} on an already-resolved repository, so a plain test can drive it. */
+	public static String renderTagList(Repository repository)
+	{
+		try (Git git = new Git(repository))
+		{
+			var tags = git.tagList().call();
+			if (tags.isEmpty())
+			{
+				return "No tags.";
+			}
+			StringBuilder sb = new StringBuilder();
+			for (org.eclipse.jgit.lib.Ref ref : tags)
+			{
+				sb.append(describeTag(repository, ref)).append("\n");
+			}
+			return sb.toString();
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to list tags: " + e.getMessage(), e);
+		}
+	}
+
+	/** One tag as a line of prose: name, the commit it points at, and an annotated tag's message. */
+	private static String describeTag(Repository repository, org.eclipse.jgit.lib.Ref ref) throws IOException
+	{
+		org.eclipse.jgit.lib.Ref peeled = repository.getRefDatabase().peel(ref);
+		ObjectId objectId = ref.getObjectId();
+		ObjectId peeledId = peeled.getPeeledObjectId();
+		boolean annotated = peeledId != null;
+
+		String message = null;
+		if (annotated)
+		{
+			try (RevWalk walk = new RevWalk(repository))
+			{
+				org.eclipse.jgit.revwalk.RevObject object = walk.parseAny(objectId);
+				if (object instanceof org.eclipse.jgit.revwalk.RevTag tag)
+				{
+					message = tag.getFullMessage() == null ? null : tag.getFullMessage().strip();
+				}
+			}
+		}
+
+		String name = Repository.shortenRefName(ref.getName());
+		String target = annotated ? peeledId.getName() : (objectId == null ? "?" : objectId.getName());
+		StringBuilder line = new StringBuilder(name)
+			.append(annotated ? " (annotated)" : "")
+			.append(" -> ")
+			.append(target.length() >= 7 ? target.substring(0, 7) : target);
+		if (message != null && !message.isEmpty())
+		{
+			line.append(" : ").append(message.lines().findFirst().orElse(""));
+		}
+		return line.toString();
+	}
+
+	public String createTag(String projectName, String tagName, String message, String revision)
+	{
+		return createTag(projectName, null, tagName, message, revision);
+	}
+
+	/**
+	 * Creates a tag at a revision (HEAD by default): annotated when a message is given, lightweight
+	 * otherwise. Ported from AssistAI's {@code createTag} (upstream {@code aca70c0}).
+	 */
+	public String createTag(String projectName, String repo, String tagName, String message, String revision)
+	{
+		return createTagIn(resolveRepository(projectName, repo), tagName, message, revision);
+	}
+
+	/** {@link #createTag} on an already-resolved repository, so a plain test can drive it. */
+	public static String createTagIn(Repository repository, String tagName, String message, String revision)
+	{
+		Objects.requireNonNull(tagName, "tagName is required");
+
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		try (Git git = new Git(repository); RevWalk walk = new RevWalk(repository))
+		{
+			ObjectId target = resolveRevision(repository,
+				revision == null || revision.isBlank() ? Constants.HEAD : revision);
+			org.eclipse.jgit.revwalk.RevObject object = walk.parseAny(target);
+			boolean annotated = message != null && !message.isBlank();
+
+			var command = git.tag().setName(tagName).setObjectId(object).setAnnotated(annotated);
+			if (annotated)
+			{
+				command.setMessage(message);
+			}
+			org.eclipse.jgit.lib.Ref ref = command.call();
+			return "Created " + (annotated ? "annotated" : "lightweight") + " tag: " + describeTag(repository, ref);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to create tag: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
+		}
+	}
+
+	public String deleteTag(String projectName, String tagName)
+	{
+		return deleteTag(projectName, null, tagName);
+	}
+
+	/**
+	 * Deletes a local tag, reporting what it was before it went. Ported from AssistAI's
+	 * {@code deleteTag} (upstream {@code aca70c0}).
+	 */
+	public String deleteTag(String projectName, String repo, String tagName)
+	{
+		return deleteTagIn(resolveRepository(projectName, repo), tagName);
+	}
+
+	/** {@link #deleteTag} on an already-resolved repository, so a plain test can drive it. */
+	public static String deleteTagIn(Repository repository, String tagName)
+	{
+		Objects.requireNonNull(tagName, "tagName is required");
+
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		try (Git git = new Git(repository))
+		{
+			org.eclipse.jgit.lib.Ref ref = repository.findRef(Constants.R_TAGS + tagName);
+			if (ref == null)
+			{
+				throw new IllegalArgumentException("No tag named '" + tagName + "'.");
+			}
+			String described = describeTag(repository, ref);
+			git.tagDelete().setTags(tagName).call();
+			return "Deleted tag: " + described;
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to delete tag: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
+		}
+	}
+
+	public String listRemotes(String projectName)
+	{
+		return listRemotes(projectName, null);
+	}
+
+	/**
+	 * Lists the configured remotes with their fetch and push URLs, so a caller can discover a valid
+	 * remote name instead of guessing {@code origin}. Ported from AssistAI's {@code listRemotes}
+	 * (upstream {@code aca70c0}).
+	 */
+	public String listRemotes(String projectName, String repo)
+	{
+		return renderRemoteList(resolveRepository(projectName, repo));
+	}
+
+	/** {@link #listRemotes} on an already-resolved repository, so a plain test can drive it. */
+	public static String renderRemoteList(Repository repository)
+	{
+		try (Git git = new Git(repository))
+		{
+			var configs = git.remoteList().call();
+			if (configs.isEmpty())
+			{
+				return "No remotes configured.";
+			}
+			StringBuilder sb = new StringBuilder();
+			for (org.eclipse.jgit.transport.RemoteConfig config : configs)
+			{
+				String fetchUrl = config.getURIs().isEmpty() ? null : config.getURIs().get(0).toString();
+				String pushUrl = config.getPushURIs().isEmpty() ? fetchUrl : config.getPushURIs().get(0).toString();
+				sb.append(config.getName()).append("\n")
+					.append("  fetch: ").append(fetchUrl == null ? "(none)" : fetchUrl).append("\n")
+					.append("  push:  ").append(pushUrl == null ? "(none)" : pushUrl).append("\n");
+			}
+			return sb.toString();
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to list remotes: " + e.getMessage(), e);
+		}
+	}
+
+	public String showCommit(String projectName, String revision, String pathFilter)
+	{
+		return showCommit(projectName, null, revision, pathFilter);
+	}
+
+	/**
+	 * Shows one commit and the change it introduced against its first parent - what {@code git show}
+	 * prints. A root commit is diffed against an empty tree, and a merge commit reports both parents
+	 * while the diff still follows the first. Ported from AssistAI's {@code show} (upstream
+	 * {@code aca70c0}); rendered as prose rather than upstream's {@code GitShowResponse}.
+	 *
+	 * @param revision the branch, tag or commit to show; {@code null} means {@code HEAD}
+	 * @param pathFilter optional comma-separated project-relative paths to limit the diff to
+	 */
+	public String showCommit(String projectName, String repo, String revision, String pathFilter)
+	{
+		return renderCommit(resolveRepository(projectName, repo), revision,
+			resolveProjectPaths(projectName, pathFilter));
+	}
+
+	/** {@link #showCommit} on an already-resolved repository, so a plain test can drive it. */
+	public static String renderCommit(Repository repository, String revision, List<String> repositoryPaths)
+	{
+		String requested = revision == null || revision.isBlank() ? Constants.HEAD : revision.trim();
+
+		try (RevWalk walk = new RevWalk(repository);
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			DiffFormatter formatter = new DiffFormatter(out))
+		{
+			RevCommit commit = walk.parseCommit(resolveRevision(repository, requested));
+
+			StringBuilder sb = new StringBuilder();
+			sb.append("commit ").append(commit.getName()).append("\n");
+			sb.append("Author: ").append(commit.getAuthorIdent().getName())
+				.append(" <").append(commit.getAuthorIdent().getEmailAddress()).append(">\n");
+			sb.append("Date:   ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z")
+				.format(commit.getAuthorIdent().getWhen())).append("\n");
+			if (commit.getParentCount() > 0)
+			{
+				StringBuilder parents = new StringBuilder();
+				for (RevCommit parent : commit.getParents())
+				{
+					parents.append(parents.length() == 0 ? "" : " ").append(parent.getName());
+				}
+				sb.append("Parents: ").append(parents).append("\n");
+			}
+			sb.append("\n").append(commit.getFullMessage().strip()).append("\n\n");
+
+			AbstractTreeIterator oldTree = commit.getParentCount() == 0
+				? new org.eclipse.jgit.treewalk.EmptyTreeIterator()
+				: prepareTreeParser(repository, commit.getParent(0).getId());
+			AbstractTreeIterator newTree = prepareTreeParser(repository, commit.getId());
+
+			formatter.setRepository(repository);
+			formatter.setDetectRenames(true);
+			if (!repositoryPaths.isEmpty())
+			{
+				formatter.setPathFilter(PathFilterGroup.createFromStrings(repositoryPaths));
+			}
+
+			List<DiffEntry> diffs = formatter.scan(oldTree, newTree);
+			formatter.format(diffs);
+			sb.append(out.toString(StandardCharsets.UTF_8));
+			return sb.toString();
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to show commit: " + e.getMessage(), e);
+		}
+	}
+
+	public String discardChanges(String projectName, String filePattern)
+	{
+		return discardChanges(projectName, null, filePattern);
+	}
+
+	/**
+	 * Discards uncommitted modifications of tracked files by restoring their working-tree content
+	 * from the index ({@code git checkout -- <path>}). Staged changes and untracked files are left
+	 * alone. Ported from AssistAI's {@code discardChanges} (upstream {@code aca70c0}).
+	 * <p>
+	 * <b>This cannot be undone</b> - the discarded content was never committed and is not in Local
+	 * History either, so the tool description tells the caller to stash first when in doubt.
+	 * </p>
+	 */
+	public String discardChanges(String projectName, String repo, String filePattern)
+	{
+		Objects.requireNonNull(filePattern, "filePattern is required");
+
+		Repository repository = resolveRepository(projectName, repo);
+		String result = discardChangesIn(repository, resolveProjectPaths(projectName, filePattern), filePattern);
+		refreshAfterChange(projectName, repository);
+		return result;
+	}
+
+	/** {@link #discardChanges} on an already-resolved repository, so a plain test can drive it. */
+	public static String discardChangesIn(Repository repository, List<String> pathspecs, String reportedPattern)
+	{
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		List<String> restored = new ArrayList<>();
+		try (Git git = new Git(repository))
+		{
+			var before = git.status().call();
+			Set<String> candidates = new TreeSet<>();
+			for (String path : before.getModified())
+			{
+				if (matchesPathspec(path, pathspecs)) candidates.add(path);
+			}
+			for (String path : before.getMissing())
+			{
+				if (matchesPathspec(path, pathspecs)) candidates.add(path);
+			}
+
+			if (!candidates.isEmpty())
+			{
+				var command = git.checkout();
+				if (pathspecs.isEmpty())
+				{
+					command.setAllPaths(true);
+				}
+				else
+				{
+					pathspecs.forEach(command::addPath);
+				}
+				command.call();
+
+				var after = git.status().call();
+				for (String path : candidates)
+				{
+					if (!after.getModified().contains(path) && !after.getMissing().contains(path))
+					{
+						restored.add(path);
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to discard changes: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
+		}
+		return restored.isEmpty()
+			? "No modified tracked files matched: " + reportedPattern
+			: "Discarded changes in " + restored.size() + " file(s):\n  " + String.join("\n  ", restored);
+	}
+
+	public String resetToRevision(String projectName, String revision, String mode)
+	{
+		return resetToRevision(projectName, null, revision, mode);
+	}
+
+	/**
+	 * Moves the checked-out branch to a revision ({@code git reset}). {@code SOFT} keeps the index and
+	 * working tree, so the commits between become staged changes; {@code MIXED} (the default) also
+	 * resets the index; {@code HARD} also rewrites the working tree, which <b>discards uncommitted
+	 * work</b> and is how a conflicted merge or cherry-pick is abandoned. Ported from AssistAI's
+	 * {@code resetToRevision} (upstream {@code aca70c0}).
+	 */
+	public String resetToRevision(String projectName, String repo, String revision, String mode)
+	{
+		Repository repository = resolveRepository(projectName, repo);
+		String result = resetToRevisionIn(repository, revision, mode);
+		refreshAfterChange(projectName, repository);
+		return result;
+	}
+
+	/** {@link #resetToRevision} on an already-resolved repository, so a plain test can drive it. */
+	public static String resetToRevisionIn(Repository repository, String revision, String mode)
+	{
+		String requested = revision == null || revision.isBlank() ? Constants.HEAD : revision.trim();
+		org.eclipse.jgit.api.ResetCommand.ResetType resetType;
+		try
+		{
+			resetType = mode == null || mode.isBlank()
+				? org.eclipse.jgit.api.ResetCommand.ResetType.MIXED
+				: org.eclipse.jgit.api.ResetCommand.ResetType.valueOf(mode.trim().toUpperCase());
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw new IllegalArgumentException("Unknown reset mode '" + mode + "'. Use SOFT, MIXED or HARD.");
+		}
+
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		String previousHead;
+		try (Git git = new Git(repository))
+		{
+			resolveRevision(repository, requested);
+			previousHead = headSha(repository);
+			git.reset().setMode(resetType).setRef(requested).call();
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to reset: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
+		}
+		return "Reset (" + resetType + ") to " + requested + ".\n  was: " + previousHead + "\n  now: " +
+			headSha(repository);
+	}
+
+	/** The current HEAD commit sha, or {@code "(none)"} in a repository with no commits. */
+	private static String headSha(Repository repository)
+	{
+		try
+		{
+			ObjectId head = repository.resolve(Constants.HEAD);
+			return head == null ? "(none)" : head.getName();
+		}
+		catch (IOException e)
+		{
+			return "(unknown)";
+		}
 	}
 
 	public String removeFromIndex(String projectName, String filePattern)
