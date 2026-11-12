@@ -8,8 +8,8 @@ divergences, sync log. This file holds only what is not in there.
 The first real sync of the upstream range `6e829a8..3218e3b` (**33 commits**) is **complete**;
 the baseline in `docs/assistai-sync.md` now sits at the tip `3218e3b`.
 
-Commits on `master`, **pushed** through `2113e54` (rebased onto `c879c1c`, so the shas below are
-the post-rebase ones):
+Commits on `master`, all **pushed** (rebased onto `c879c1c`, so the shas below are the post-rebase
+ones):
 
 | SHA | Content |
 |---|---|
@@ -18,9 +18,9 @@ the post-rebase ones):
 | `0cb10df` | 8 git tools + 3 widened (+27 tests) |
 | `5ded31c` | this handover file |
 | `2113e54` | `gitMerge`, `gitRebase`, `gitCherryPick`, `gitRevert`, `gitFetch`, `gitPull`, `gitPush` + `org.eclipse.equinox.security` (+51 tests) |
-| _(pending)_ | the two `a6dc32d` bug fixes: line-range refusal + CRLF line offsets (+34 tests) |
+| `59797c9` | the two `a6dc32d` bug fixes (line-range refusal, CRLF line offsets) + the repo-centric `getProject(null)` NPE Jenkins caught in `f3e5672` (+36 tests) |
 
-Git tool surface: 18 → **33**. Plain-JUnit suite: **1593/1593**. Zero compilation errors in
+Git tool surface: 18 → **33**. Plain-JUnit suite: **1595/1595**. Zero compilation errors in
 `com.servoy.eclipse.developer.mcp` and `.tests`.
 
 ## What is left
@@ -28,10 +28,18 @@ Git tool surface: 18 → **33**. Plain-JUnit suite: **1593/1593**. Zero compilat
 1. **Reply on the Jira case** addressing Andrei's review points — the central one was "no actual
    code sync was done". There are now six commits of real sync work, 33 commits resolved, three
    recorded divergences and three follow-up cases to point at.
-2. **Run the `integrationpde` tests.** The four new `ServoyCoderServerIntegrationTest` cases for
-   the line-range refusal have **not** been run: the PDE launch failed to start twice in this
-   session (`LAUNCH_FAILED` after ~10 min, "Launch was not registered to run at all"). The plain
-   tests covering the same decision (`CodeEditingServiceLineRangeTest`, 13 cases) do pass.
+2. **Run the `integrationpde` tests — this is the priority, not a formality.** The four new
+   `ServoyCoderServerIntegrationTest` cases for the line-range refusal have **not** been run: the
+   PDE launch failed to start twice in this session (`LAUNCH_FAILED` after ~10 min, "Launch was not
+   registered to run at all"). The plain tests covering the same decision
+   (`CodeEditingServiceLineRangeTest`, 13 cases) do pass.
+   <br>
+   **Why it matters:** `f3e5672` shipped **two** defects that only a workbench test could catch —
+   the `stagePatch` data loss found by review, and the repo-centric `getProject(null)` NPE Jenkins
+   found in `ServoyGitServerIntegrationTest.testRepoCentric_statusAndCommit_byRepoName` (fixed in
+   `59797c9`). Plain tests drive the extracted cores with arguments already resolved, so they
+   cannot see a null `projectName` arriving from the tool layer. Until that launcher runs locally,
+   Jenkins is the first thing that exercises these paths.
 
 ## Follow-up cases (filed 2026-11-12, all `Relates` SVY-21303)
 
@@ -92,7 +100,9 @@ production code** against a temporary JGit repository, no workbench.
 Cores now in `GitService`: `renderDiff`, `renderRevisionDiff`, `applyPatchToIndex`,
 `renderTagList`, `createTagIn`, `deleteTagIn`, `renderRemoteList`, `renderCommit`,
 `discardChangesIn`, `resetToRevisionIn`, `stageIn`, `unstageIn`, `mergeIn`, `rebaseIn`,
-`applyCommitsIn`, `fetchIn`, `pullIn`, `pushIn`.
+`applyCommitsIn`, `fetchIn`, `pullIn`, `pushIn`. Also `projectPrefixOrNull`, the single place a
+project name is turned into a repository prefix — and the single place "there is no project" is
+answered, which is what the repo-centric path needs.
 
 Tests using them, all in
 `tests/com.servoy.eclipse.developer.mcp.tests/src/test/java/com/servoy/eclipse/developer/mcp/plainjunit/services/`:
@@ -109,6 +119,12 @@ Tests using them, all in
   deletion, JGit refusing `--squash` with `--no-ff`, a cherry-pick onto an unchanged parent
   producing a byte-identical commit (same sha), and `pull` throwing `RefNotAdvertisedException`
   straight through instead of reporting what to do. Every one needed a real test to surface.
+- **A repository-only core hides the tool layer's arguments.** The split that makes these methods
+  testable without a workbench also means the plain tests never see what the `@Tool` method
+  actually passes down. `f3e5672`'s NPE is the example: `resolveProjectPaths` was given a `null`
+  `projectName` by the repo-centric path, which no core-level test could produce because the cores
+  take pathspecs already resolved. When a public method has a parameter that is legitimately
+  `null` on one path, test *that method*, not just its core.
 - **A stale incremental build hides signature errors.** After widening a method's parameter list,
   `getCompilationErrors` kept reporting "not applicable for the arguments" against already-fixed
   call sites. `eclipse-ide_buildWorkspace` with `buildKind=FULL` clears it.
