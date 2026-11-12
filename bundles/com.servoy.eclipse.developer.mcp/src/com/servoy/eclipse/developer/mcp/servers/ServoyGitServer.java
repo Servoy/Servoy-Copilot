@@ -90,14 +90,17 @@ public class ServoyGitServer
 		return gitService.commit(projectName, repo, message);
 	}
 
-	@Tool(name = "gitDiff", description = "Shows the diff of changes in unified diff format. By default shows unstaged (working tree) changes; set staged to 'true' to see staged changes. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitDiff", description = "Shows the diff of changes in unified diff format. By default shows unstaged (working tree) changes; set staged to 'true' to see staged changes. Optionally limit it to some project-relative paths with 'pathFilter', and ignore whitespace-only differences with 'ignoreWhitespace'. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitDiff(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "staged", description = "If 'true', shows staged (cached) changes instead of unstaged. Default: false", required = false) String staged)
+		@ToolParam(name = "staged", description = "If 'true', shows staged (cached) changes instead of unstaged. Default: false", required = false) String staged,
+		@ToolParam(name = "pathFilter", description = "Comma-separated file or directory paths relative to the Eclipse project; when given, only those are diffed", required = false) String pathFilter,
+		@ToolParam(name = "ignoreWhitespace", description = "If 'true', ignores whitespace-only differences, so a reindented line is not reported as changed. Default: false", required = false) String ignoreWhitespace)
 	{
 		boolean isStagedDiff = Optional.ofNullable(staged).map(Boolean::parseBoolean).orElse(false);
-		return gitService.getDiff(projectName, repo, isStagedDiff);
+		boolean skipWhitespace = Optional.ofNullable(ignoreWhitespace).map(Boolean::parseBoolean).orElse(false);
+		return gitService.getDiff(projectName, repo, isStagedDiff, pathFilter, skipWhitespace);
 	}
 
 	@Tool(name = "gitBranch", description = "Lists branches in the repository. The current branch is marked with an asterisk (*). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
@@ -187,6 +190,25 @@ public class ServoyGitServer
 		@ToolParam(name = "patch", description = "A unified diff patch string to stage. Must include file headers (--- a/path, +++ b/path) and @@ hunk headers.", required = true) String patch)
 	{
 		return gitService.stagePatch(projectName, repo, patch);
+	}
+
+	@Tool(name = "gitReadFile", description = "Reads a UTF-8 text file from a Git revision without changing the working tree. Use revision 'INDEX' to read the staged version; otherwise revision defaults to HEAD and may be a branch, tag, or commit. The path is relative to the Eclipse project. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitReadFile(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "filePath", description = "File path relative to the Eclipse project", required = true) String filePath,
+		@ToolParam(name = "revision", description = "Git branch, tag, commit, or 'INDEX' for the staged version. Default: HEAD", required = false) String revision)
+	{
+		return gitService.readFileAtRevision(projectName, repo, filePath, revision);
+	}
+
+	@Tool(name = "gitRemove", description = "Removes files from the index only ('git rm --cached <file>'), so Git stops tracking them while the files stay on disk as untracked. The working tree is never touched. Paths are relative to the Eclipse project and may be comma-separated; '.' covers every tracked file under the project. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitRemove(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders relative to the Eclipse project, or '.' for every tracked file", required = true) String filePattern)
+	{
+		return gitService.removeFromIndex(projectName, repo, filePattern);
 	}
 
 	@Tool(name = "gitInit", description = "Initializes a Git repository in the workspace root directory and connects all workspace projects to it. Creates a default .gitignore and an initial commit. If a repository already exists, connects the specified project to it.", type = "object")

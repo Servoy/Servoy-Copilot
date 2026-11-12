@@ -89,7 +89,13 @@ is what prevents the echo loop — the sync log alone records only upstream SHAs
 
 | Upstream SHA | Servoy SHA | File(s) | Resolution |
 |---|---|---|---|
-| _(none yet — no sync has applied anything)_ | | | |
+| `629fdf2` | `_pending_` | GitService.java | **adapted** — per-repository `ReentrantLock` added to 9 mutating methods (our repo-centric overloads; lock released before `refreshAfterChange`). Covers 3 methods upstream did not have at that commit. |
+| `f2f162f` | `_pending_` | GitService.java, ServoyGitServer.java | **adapted** — `getDiff` moved onto a `DiffFormatter` (the only way to express `ignoreWhitespace`), gained `pathFilter` + `ignoreWhitespace`, and both sides of the comparison are now explicit. Algorithm extracted as `renderDiff(Repository, ...)` so a plain test can drive the real code; `GitServiceDiffTest` was rewired off its own replica and extended to 22 tests. |
+| `07d6f07` | `_pending_` | GitService.java, ServoyGitServer.java | **applied** — `readFileAtRevision` + new `gitReadFile` tool; reads HEAD/branch/commit/`INDEX` without touching the working tree, with a 5 MiB cap and binary / path-traversal guards. |
+| `a97fdcd` | `_pending_` | GitService.java, ServoyGitServer.java | **applied** — `removeFromIndex` + new `gitRemove` tool (`git rm --cached`) via `DirCacheEditor.DeletePath`, under the new repository lock; `"."` means every tracked file. |
+
+> `_pending_` is filled in with this run's Servoy commit SHA once it is made — the
+> SHA cannot be known before the commit exists.
 
 ## Known divergences (upstream change deliberately NOT adopted)
 
@@ -112,6 +118,12 @@ case). Normally empty: a sync resolves everything.
 
 ## Sync log (upstream → Servoy)
 
+- 2026-11-12 — **first real sync, part 1 of the `6e829a8..3218e3b` range (33 commits).** Resolved 25 of them:
+  - **18 not-applicable** — JDT/Java-only or stripped territory: `8842151` (openProject tool), `6b611d0`, `edb25d0` (AiIgnoreService), `1accf8c` (extract type), `787065c` + `a607329` (organize imports), `8e09fb9` (MCP image content), `aa9d86f`/`a86690b`/`c583601` (upstream test runners), `40b6ad4` + `5ddaa2f` (Eclipse/Java formatter), `5e5d376` (headless test output), `3c8a9c2` (editor adapter chain), `43fc37b` (move type), `9b48a1d` (rename Java element), `7a54b38` (change method signature), `ab32be7` (merge of `b720591`, no distinct content).
+  - **3 already-have** — `f1c38ce` + `44b714d` (applyPatch robustness: we did the equivalent ourselves in SVY-21472, with tiered matching and a full-file fallback), `5533694` (charset on replace: we already use `file.getCharset()` throughout), `5731cf9` (encoding + line endings: we already have `detectDominantLineEnding`/`endsWithNewline`).
+  - **4 applied/adapted** — `629fdf2`, `f2f162f`, `07d6f07`, `a97fdcd` (see the ported-changes ledger). Whole plain-JUnit suite green: 1467/1467.
+  - **1 divergence** — `5a8e07b` (see Known divergences).
+  - **Still open: 6 commits** — `aca70c0`, `3536ca6`, `7219868`, `a6dc32d`, `663abce`, `b720591`. The baseline therefore stays at `6e829a8` until they are resolved; a sync advances it only once every commit in range is handled.
 - 2026-11-09 — **baseline corrected** to `6e829a8` (2026-05-16, the upstream commit contemporaneous with the port) after review found the previous bootstrap at `65e4aec` (2026-10-09) skipped all the history the case asked to reconcile. No code synced yet; 33 mapped-file commits are now in range for the first real run. Recorded `5a8e07b` as a known divergence from the upfront assessment.
 - 2026-10-09 — baseline bootstrapped at `65e4aec` (upstream tip at the time); no code changes. **Superseded** — see above.
 

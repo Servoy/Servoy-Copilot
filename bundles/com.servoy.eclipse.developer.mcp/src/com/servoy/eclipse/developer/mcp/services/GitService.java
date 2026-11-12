@@ -21,10 +21,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -47,6 +54,13 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.RawTextComparator;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.treewalk.FileTreeIterator;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 /**
  * Provides Git operations via EGit/JGit for MCP tools.
@@ -63,6 +77,24 @@ import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 @SuppressWarnings("restriction")
 public class GitService
 {
+	/**
+	 * One lock per repository working directory, so concurrent MCP tool calls cannot corrupt the
+	 * index or fail on a locked DirCache. Ported from AssistAI's {@code GitService} (upstream commit
+	 * {@code 629fdf2}): the MCP server can receive overlapping git calls, and JGit's index is not
+	 * safe for concurrent writers. Keyed by the absolute git-dir path so the same repository reached
+	 * through different projects (or through the repository-centric {@code repo} path) shares a lock.
+	 * <p>
+	 * Only mutating operations take the lock. The lock is released before the Eclipse workspace
+	 * refresh, so a refresh never runs while the repository is held.
+	 * </p>
+	 */
+	private static final ConcurrentHashMap<String, ReentrantLock> repoLocks = new ConcurrentHashMap<>();
+
+	private static ReentrantLock getRepositoryLock(Repository repository)
+	{
+		return repoLocks.computeIfAbsent(repository.getDirectory().getAbsolutePath(), k -> new ReentrantLock());
+	}
+
 
 	/**
 	 * Resolves the Git repository to operate on. When {@code repo} is given it takes precedence and is
@@ -444,17 +476,23 @@ public class GitService
 	public String addFiles(String projectName, String repo, String filePattern)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			git.add().addFilepattern(filePattern).call();
 			git.add().setUpdate(true).addFilepattern(filePattern).call();
-			refreshAfterChange(projectName, repository);
-			return "Added: " + filePattern;
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to add files: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Added: " + filePattern;
 	}
 
 	public String commit(String projectName, String message)
@@ -465,11 +503,12 @@ public class GitService
 	public String commit(String projectName, String repo, String message)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		RevCommit commit;
 		try (Git git = new Git(repository))
 		{
-			RevCommit commit = git.commit().setMessage(message).setAllowEmpty(false).call();
-			refreshAfterChange(projectName, repository);
-			return "Committed: " + commit.getName() + " " + commit.getShortMessage();
+			commit = git.commit().setMessage(message).setAllowEmpty(false).call();
 		}
 		catch (org.eclipse.jgit.api.errors.EmptyCommitException e)
 		{
@@ -479,18 +518,68 @@ public class GitService
 		{
 			throw new RuntimeException("Failed to commit: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Committed: " + commit.getName() + " " + commit.getShortMessage();
 	}
 
 	public String getDiff(String projectName, boolean staged)
 	{
-		return getDiff(projectName, null, staged);
+		return getDiff(projectName, null, staged, null, false);
 	}
 
 	public String getDiff(String projectName, String repo, boolean staged)
 	{
+		return getDiff(projectName, repo, staged, null, false);
+	}
+
+	/**
+	 * Renders a unified diff, optionally limited to some project-relative paths and optionally
+	 * ignoring whitespace.
+	 * <p>
+	 * Driven by a {@link DiffFormatter} rather than JGit's {@code DiffCommand}, because
+	 * {@code DiffCommand} exposes no way to set a diff comparator - so {@code ignoreWhitespace}
+	 * ({@link RawTextComparator#WS_IGNORE_ALL}) is not expressible through it at all. Ported from
+	 * AssistAI's {@code GitService} (upstream commit {@code f2f162f}), which introduced both filters
+	 * the same way.
+	 * </p>
+	 * <p>
+	 * Both sides of the comparison are named explicitly instead of relying on {@code DiffCommand}'s
+	 * implicit defaults: unstaged compares the index against the working tree, staged compares
+	 * {@code HEAD} against the index.
+	 * </p>
+	 *
+	 * @param projectName the Eclipse project name (legacy path); may be {@code null} when {@code repo} is given
+	 * @param repo a repository name or working-tree path (repository-centric path); may be {@code null}
+	 * @param staged {@code true} to diff HEAD against the index, {@code false} for index against the working tree
+	 * @param pathFilter optional comma-separated project-relative paths to limit the diff to; may be {@code null}
+	 * @param ignoreWhitespace {@code true} to ignore all whitespace differences
+	 */
+	public String getDiff(String projectName, String repo, boolean staged, String pathFilter, boolean ignoreWhitespace)
+	{
 		Repository repository = resolveRepository(projectName, repo);
-		try (Git git = new Git(repository);
-			ByteArrayOutputStream out = new ByteArrayOutputStream())
+		return renderDiff(repository, staged, resolveDiffPaths(projectName, pathFilter), ignoreWhitespace);
+	}
+
+	/**
+	 * Renders the diff of an already-resolved repository. This is the whole diff algorithm, split out
+	 * from {@link #getDiff(String, String, boolean, String, boolean)} so it can be exercised against a
+	 * plain JGit repository without an Eclipse workspace: the public entry points do the
+	 * workspace-dependent work (resolving the repository and translating project-relative paths) and
+	 * then delegate here.
+	 *
+	 * @param repository the repository to diff, already resolved
+	 * @param staged {@code true} to diff HEAD against the index, {@code false} for index against the working tree
+	 * @param repositoryPaths repository-relative paths to limit the diff to; empty for no path filter
+	 * @param ignoreWhitespace {@code true} to ignore all whitespace differences
+	 */
+	public static String renderDiff(Repository repository, boolean staged, List<String> repositoryPaths, boolean ignoreWhitespace)
+	{
+		try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+			DiffFormatter formatter = new DiffFormatter(out))
 		{
 			ObjectId head = repository.resolve("HEAD");
 			if (head == null)
@@ -498,22 +587,270 @@ public class GitService
 				return "No commits yet.";
 			}
 
-			var diffCommand = git.diff();
-			diffCommand.setOutputStream(out);
-			if (staged)
+			formatter.setRepository(repository);
+			formatter.setDiffComparator(ignoreWhitespace ? RawTextComparator.WS_IGNORE_ALL : RawTextComparator.DEFAULT);
+			formatter.setDetectRenames(true);
+			if (repositoryPaths != null && !repositoryPaths.isEmpty())
 			{
-				diffCommand.setCached(true);
-				var headTree = prepareTreeParser(repository, head);
-				diffCommand.setOldTree(headTree);
+				formatter.setPathFilter(PathFilterGroup.createFromStrings(repositoryPaths));
 			}
 
-			diffCommand.call();
-			String result = out.toString("UTF-8");
+			AbstractTreeIterator oldTree = staged ? prepareTreeParser(repository, head) : prepareIndexTreeParser(repository);
+			AbstractTreeIterator newTree = staged ? prepareIndexTreeParser(repository) : new FileTreeIterator(repository);
+
+			List<DiffEntry> diffs = formatter.scan(oldTree, newTree);
+			for (DiffEntry diff : diffs)
+			{
+				formatter.format(diff);
+			}
+			String result = out.toString(StandardCharsets.UTF_8);
 			return result.isEmpty() ? "No changes." : result;
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to get diff: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Translates a comma-separated list of project-relative paths into repository-relative paths for
+	 * {@link PathFilterGroup}. A path that escapes the project (absolute, {@code ..}, or a Windows
+	 * drive prefix) is rejected rather than silently resolved outside it.
+	 */
+	private List<String> resolveDiffPaths(String projectName, String pathFilter)
+	{
+		if (pathFilter == null || pathFilter.isBlank())
+		{
+			return List.of();
+		}
+
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+		String projectPrefix = mapping == null ? "" : mapping.getRepoRelativePath(project);
+
+		return Arrays.stream(pathFilter.split(","))
+			.map(String::trim)
+			.filter(path -> !path.isEmpty())
+			.map(path -> {
+				String input = path.replace('\\', '/');
+				Path normalizedPath = Path.of(input).normalize();
+				String normalized = normalizedPath.toString().replace('\\', '/');
+				if (normalizedPath.isAbsolute() || normalized.equals("..") || normalized.startsWith("../") ||
+					input.matches("^[A-Za-z]:.*"))
+				{
+					throw new IllegalArgumentException("Diff path must be relative to the Eclipse project: " + path);
+				}
+				return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
+			})
+			.toList();
+	}
+
+	public String removeFromIndex(String projectName, String filePattern)
+	{
+		return removeFromIndex(projectName, null, filePattern);
+	}
+
+	/**
+	 * Drops index entries while leaving the files on disk ({@code git rm --cached}), so Git stops
+	 * tracking them and they become untracked.
+	 * <p>
+	 * Fills a real gap: neither {@link #addFiles} nor {@link #resetFiles} can stop Git tracking a
+	 * file that HEAD contains - staging puts it back and resetting restores HEAD's entry. The entries
+	 * are removed from the {@link DirCache} directly rather than through JGit's {@code RmCommand},
+	 * whose path filter cannot express {@code "."} for a project at the repository root. Ported from
+	 * AssistAI's {@code GitService} (upstream commit {@code a97fdcd}); purely additive.
+	 * </p>
+	 *
+	 * @param projectName the Eclipse project name (legacy path); may be {@code null} when {@code repo} is given
+	 * @param repo a repository name or working-tree path (repository-centric path); may be {@code null}
+	 * @param filePattern comma-separated project-relative files or folders, or {@code "."} for everything
+	 */
+	public String removeFromIndex(String projectName, String repo, String filePattern)
+	{
+		Objects.requireNonNull(filePattern, "filePattern is required");
+
+		Repository repository = resolveRepository(projectName, repo);
+		List<String> pathspecs = resolveDiffPaths(projectName, ".".equals(filePattern.trim()) ? null : filePattern);
+
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		int removed = 0;
+		try
+		{
+			DirCache dirCache = repository.lockDirCache();
+			try
+			{
+				DirCacheEditor editor = dirCache.editor();
+				Set<String> paths = new TreeSet<>();
+				for (int i = 0; i < dirCache.getEntryCount(); i++)
+				{
+					String path = dirCache.getEntry(i).getPathString();
+					if (matchesPathspec(path, pathspecs) && paths.add(path))
+					{
+						editor.add(new DirCacheEditor.DeletePath(path));
+					}
+				}
+				editor.commit();
+				removed = paths.size();
+			}
+			finally
+			{
+				dirCache.unlock();
+			}
+		}
+		catch (Exception e)
+		{
+			throw new RuntimeException("Failed to remove files from the index: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return removed == 0
+			? "No tracked files matched: " + filePattern
+			: "Removed from the index (files kept on disk): " + removed;
+	}
+
+	/**
+	 * Whether a repository-relative index path is covered by the given pathspecs. An empty pathspec
+	 * list means "everything", matching {@code git rm --cached .}; a pathspec matches the path itself
+	 * or anything beneath it when it names a directory.
+	 */
+	private static boolean matchesPathspec(String path, List<String> pathspecs)
+	{
+		if (pathspecs == null || pathspecs.isEmpty())
+		{
+			return true;
+		}
+		for (String pathspec : pathspecs)
+		{
+			if (path.equals(pathspec) || path.startsWith(pathspec + "/"))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public String readFileAtRevision(String projectName, String filePath, String revision)
+	{
+		return readFileAtRevision(projectName, null, filePath, revision);
+	}
+
+	/**
+	 * Reads a UTF-8 text file out of a Git revision without touching the working tree.
+	 * <p>
+	 * Fills a real gap: there was no way to see what a file looked like at {@code HEAD}, on a branch,
+	 * at a commit, or as currently staged, short of checking it out. Ported from AssistAI's
+	 * {@code GitService} (upstream commit {@code 07d6f07}); purely additive.
+	 * </p>
+	 *
+	 * @param projectName the Eclipse project name (legacy path); may be {@code null} when {@code repo} is given
+	 * @param repo a repository name or working-tree path (repository-centric path); may be {@code null}
+	 * @param filePath the file path relative to the Eclipse project
+	 * @param revision a branch, tag or commit, or {@code INDEX} to read the staged version; {@code null} means {@code HEAD}
+	 */
+	public String readFileAtRevision(String projectName, String repo, String filePath, String revision)
+	{
+		Objects.requireNonNull(filePath, "filePath is required");
+		String effectiveRevision = (revision == null || revision.isBlank()) ? "HEAD" : revision.trim();
+
+		Repository repository = resolveRepository(projectName, repo);
+		String repositoryPath = toRepositoryRelativePath(projectName, filePath);
+
+		try
+		{
+			ObjectLoader loader;
+			if ("INDEX".equalsIgnoreCase(effectiveRevision))
+			{
+				DirCacheEntry entry = repository.readDirCache().getEntry(repositoryPath);
+				if (entry == null)
+				{
+					throw new IllegalArgumentException("File '" + filePath + "' was not found in the Git index.");
+				}
+				loader = repository.open(entry.getObjectId());
+			}
+			else
+			{
+				ObjectId treeId = repository.resolve(effectiveRevision + "^{tree}");
+				if (treeId == null)
+				{
+					throw new IllegalArgumentException("Git revision could not be resolved: " + effectiveRevision);
+				}
+				try (TreeWalk treeWalk = TreeWalk.forPath(repository, repositoryPath, treeId))
+				{
+					if (treeWalk == null)
+					{
+						throw new IllegalArgumentException(
+							"File '" + filePath + "' was not found at revision '" + effectiveRevision + "'.");
+					}
+					loader = repository.open(treeWalk.getObjectId(0));
+				}
+			}
+
+			if (loader.getSize() > MAX_REVISION_READ_BYTES)
+			{
+				throw new IllegalArgumentException("Git file is larger than the 5 MiB read limit: " + filePath);
+			}
+
+			byte[] content = loader.getBytes();
+			for (byte value : content)
+			{
+				if (value == 0)
+				{
+					throw new IllegalArgumentException("Git file appears to be binary: " + filePath);
+				}
+			}
+			return new String(content, StandardCharsets.UTF_8);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw e;
+		}
+		catch (IOException e)
+		{
+			throw new RuntimeException("Failed to read Git file: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Translates one project-relative path into a repository-relative path, rejecting a path that
+	 * escapes the project (absolute, {@code ..}, or a Windows drive prefix) rather than silently
+	 * resolving outside it.
+	 */
+	private String toRepositoryRelativePath(String projectName, String filePath)
+	{
+		String input = filePath.replace('\\', '/');
+		Path normalizedPath = Path.of(input).normalize();
+		String normalized = normalizedPath.toString().replace('\\', '/');
+		if (input.isBlank() || normalizedPath.isAbsolute() || normalized.equals("..") ||
+			normalized.startsWith("../") || input.matches("^[A-Za-z]:.*"))
+		{
+			throw new IllegalArgumentException("File path must be relative to the Eclipse project: " + filePath);
+		}
+
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+		String projectPrefix = mapping == null ? "" : mapping.getRepoRelativePath(project);
+		return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
+	}
+
+	/** Size cap for {@link #readFileAtRevision}, so a huge blob cannot be pulled into a tool response. */
+	private static final long MAX_REVISION_READ_BYTES = 5L * 1024 * 1024;
+
+	/** The index as a tree iterator, so a diff can name the index as one of its sides explicitly. */
+	private static AbstractTreeIterator prepareIndexTreeParser(Repository repository) throws IOException
+	{
+		try (ObjectInserter inserter = repository.newObjectInserter();
+			var reader = repository.newObjectReader())
+		{
+			var treeId = repository.readDirCache().writeTree(inserter);
+			return new CanonicalTreeParser(null, reader, treeId);
 		}
 	}
 
@@ -565,6 +902,8 @@ public class GitService
 	public String createBranch(String projectName, String repo, String branchName, String startPoint)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.branchCreate().setName(branchName);
@@ -573,13 +912,17 @@ public class GitService
 				cmd.setStartPoint(startPoint);
 			}
 			cmd.call();
-			refreshAfterChange(projectName, repository);
-			return "Created branch: " + branchName;
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to create branch: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Created branch: " + branchName;
 	}
 
 	public String deleteBranch(String projectName, String branchName, boolean force)
@@ -590,6 +933,8 @@ public class GitService
 	public String deleteBranch(String projectName, String repo, String branchName, boolean force)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.branchDelete().setBranchNames(branchName).setForce(force);
@@ -599,6 +944,10 @@ public class GitService
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to delete branch: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
 		}
 	}
 
@@ -610,16 +959,22 @@ public class GitService
 	public String checkoutBranch(String projectName, String repo, String branchName)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			git.checkout().setName(branchName).call();
-			refreshAfterChange(projectName, repository);
-			return "Switched to branch: " + branchName;
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to checkout branch: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Switched to branch: " + branchName;
 	}
 
 	public String resetFiles(String projectName, String filePattern)
@@ -630,16 +985,22 @@ public class GitService
 	public String resetFiles(String projectName, String repo, String filePattern)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			git.reset().addPath(filePattern).call();
-			refreshAfterChange(projectName, repository);
-			return "Unstaged: " + filePattern;
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to reset files: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Unstaged: " + filePattern;
 	}
 
 	public String stash(String projectName, String message)
@@ -650,6 +1011,9 @@ public class GitService
 	public String stash(String projectName, String repo, String message)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
+		org.eclipse.jgit.lib.ObjectId stashRef;
 		try (Git git = new Git(repository))
 		{
 			var cmd = git.stashCreate();
@@ -657,18 +1021,22 @@ public class GitService
 			{
 				cmd.setWorkingDirectoryMessage(message);
 			}
-			var stashRef = cmd.call();
-			refreshAfterChange(projectName, repository);
-			if (stashRef == null)
-			{
-				return "No local changes to stash.";
-			}
-			return "Stashed working directory: " + stashRef.getName();
+			stashRef = cmd.call();
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to stash: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		if (stashRef == null)
+		{
+			return "No local changes to stash.";
+		}
+		return "Stashed working directory: " + stashRef.getName();
 	}
 
 	public String stashPop(String projectName)
@@ -679,17 +1047,23 @@ public class GitService
 	public String stashPop(String projectName, String repo)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git git = new Git(repository))
 		{
 			git.stashApply().call();
 			git.stashDrop().call();
-			refreshAfterChange(projectName, repository);
-			return "Applied and dropped stash.";
 		}
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to pop stash: " + e.getMessage(), e);
 		}
+		finally
+		{
+			lock.unlock();
+		}
+		refreshAfterChange(projectName, repository);
+		return "Applied and dropped stash.";
 	}
 
 	public String stashList(String projectName)
@@ -732,6 +1106,8 @@ public class GitService
 	public String stagePatch(String projectName, String repo, String patch)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		ReentrantLock lock = getRepositoryLock(repository);
+		lock.lock();
 		try (Git gitCmd = new Git(repository))
 		{
 			java.io.File workTree = repository.getWorkTree();
@@ -804,6 +1180,10 @@ public class GitService
 		catch (Exception e)
 		{
 			throw new RuntimeException("Failed to stage patch: " + e.getMessage(), e);
+		}
+		finally
+		{
+			lock.unlock();
 		}
 	}
 

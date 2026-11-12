@@ -120,7 +120,7 @@ public class ServoyGitServerTest
 	{
 		try
 		{
-			server.gitDiff("NonExistentProject_XYZ", null, null);
+			server.gitDiff("NonExistentProject_XYZ", null, null, null, null);
 			fail("Should throw RuntimeException for missing project");
 		}
 		catch (RuntimeException e)
