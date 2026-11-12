@@ -288,6 +288,84 @@ public class ServoyGitServer
 		return gitService.removeFromIndex(projectName, repo, filePattern);
 	}
 
+	@Tool(name = "gitMerge", description = "Merges a branch, tag or commit into the checked-out branch. Reports FAST_FORWARD, MERGED, ALREADY_UP_TO_DATE, MERGED_NOT_COMMITTED (a squash: the result is staged, gitCommit it), CONFLICTED (conflict markers are in the working tree and the named files must be resolved, gitAdd-ed and gitCommit-ed, or the merge abandoned with gitResetToRevision HEAD mode HARD), BLOCKED (local changes to the named files would be overwritten; nothing was merged) or FAILED. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitMerge(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "ref", description = "The branch, tag or commit to merge into the current branch", required = true) String ref,
+		@ToolParam(name = "fastForward", description = "FF (fast-forward when possible, the default), NO_FF (always create a merge commit) or FF_ONLY (refuse unless a fast-forward)", required = false) String fastForward,
+		@ToolParam(name = "squash", description = "If 'true', stages the merged result without committing it. Default: false", required = false) String squash,
+		@ToolParam(name = "message", description = "Message for the merge commit", required = false) String message)
+	{
+		boolean squashResult = Optional.ofNullable(squash).map(Boolean::parseBoolean).orElse(false);
+		return gitService.merge(projectName, repo, ref, fastForward, squashResult, message);
+	}
+
+	@Tool(name = "gitRebase", description = "HISTORY REWRITING: rebases the checked-out branch onto an upstream, or drives a rebase already in progress. Replayed commits get new shas, so this is only safe on commits that have not been pushed. operation BEGIN (the default, needs 'upstream') starts it; on a conflict it reports STOPPED with the commit being replayed and the conflicting files, and the repository STAYS mid-rebase - resolve and gitAdd them, then call again with operation CONTINUE, or SKIP that commit, or ABORT to put the branch back. Other outcomes: OK, UP_TO_DATE, FAST_FORWARD, ABORTED, NOTHING_TO_COMMIT (the replayed commit became empty: SKIP or ABORT), UNCOMMITTED_CHANGES and BLOCKED (local changes stop it; commit or stash them first) and FAILED. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitRebase(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "upstream", description = "The branch, tag or commit to rebase onto (e.g. 'main', 'origin/main'). Required for BEGIN, ignored otherwise", required = false) String upstream,
+		@ToolParam(name = "operation", description = "BEGIN, CONTINUE, SKIP or ABORT. Default: BEGIN", required = false) String operation)
+	{
+		return gitService.rebase(projectName, repo, upstream, operation);
+	}
+
+	@Tool(name = "gitCherryPick", description = "Applies the changes of one or more existing commits to the checked-out branch as new commits. Reports APPLIED with the commits created, CONFLICTED (a commit did not apply cleanly: the named files hold conflict markers and the repository stays mid-operation until they are resolved, staged and committed, or abandoned with gitResetToRevision HEAD mode HARD) or BLOCKED (local changes to the named files would be overwritten; nothing was applied). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitCherryPick(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "commits", description = "Comma-separated commit shas or refs to apply, oldest first", required = true) String commits)
+	{
+		return gitService.cherryPick(projectName, repo, commits);
+	}
+
+	@Tool(name = "gitRevert", description = "Undoes the changes of one or more existing commits with new commits that apply the reverse patch, leaving history intact - the safe alternative to gitResetToRevision on commits that have been pushed. Reports APPLIED with the commits created, CONFLICTED (a reverse patch did not apply cleanly: the named files hold conflict markers and the repository stays mid-operation until they are resolved, staged and committed, or abandoned with gitResetToRevision HEAD mode HARD) or BLOCKED (local changes to the named files would be overwritten; nothing was applied). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitRevert(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "commits", description = "Comma-separated commit shas or refs to undo", required = true) String commits)
+	{
+		return gitService.revert(projectName, repo, commits);
+	}
+
+	@Tool(name = "gitFetch", description = "Fetches from a remote without touching the working tree, and reports every remote-tracking ref that moved. A remote that cannot be reached, or that refuses the credentials, is reported as FAILED with the reason rather than throwing. HTTPS credentials come from EGit's secure store, the same place the IDE's own fetch uses; SSH uses the IDE's keys and agent. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitFetch(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "remote", description = "The remote name. Default: origin - use gitRemoteList to see what is configured", required = false) String remote,
+		@ToolParam(name = "prune", description = "If 'true', removes remote-tracking refs the remote no longer has. Default: false", required = false) String prune)
+	{
+		boolean pruneRefs = Optional.ofNullable(prune).map(Boolean::parseBoolean).orElse(false);
+		return gitService.fetch(projectName, repo, remote, pruneRefs);
+	}
+
+	@Tool(name = "gitPull", description = "Fetches and then merges - or with 'rebase' rebases onto - the upstream of the checked-out branch. Reports FAST_FORWARD, MERGED, REBASED, ALREADY_UP_TO_DATE, CONFLICTED (the named files hold conflict markers and the repository is mid-merge or mid-rebase: finish it with gitAdd and gitCommit or gitRebase CONTINUE, or abandon it), BLOCKED (local changes to the named files would be overwritten; only the fetch happened) or FAILED. A branch with no configured upstream needs 'remoteBranch', or a gitPush with setUpstream 'true' first. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitPull(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "remote", description = "The remote name. Default: the branch's configured remote, else origin", required = false) String remote,
+		@ToolParam(name = "remoteBranch", description = "The branch on the remote. Default: the branch's configured upstream", required = false) String remoteBranch,
+		@ToolParam(name = "rebase", description = "If 'true', rebases local commits onto the fetched ones instead of merging. Default: false", required = false) String rebase)
+	{
+		boolean rebaseLocal = Optional.ofNullable(rebase).map(Boolean::parseBoolean).orElse(false);
+		return gitService.pull(projectName, repo, remote, remoteBranch, rebaseLocal);
+	}
+
+	@Tool(name = "gitPush", description = "Pushes a local branch - the checked-out one by default - to a remote. Reports PUSHED, UP_TO_DATE, REJECTED (the remote has commits the branch does not: gitPull first, or push again with force 'true' to overwrite) or FAILED (unreachable, or credentials refused), with each ref's outcome in Git's own words. WARNING: force 'true' OVERWRITES the remote branch and can destroy commits other people have. setUpstream 'true' records the pushed branch as the local branch's upstream, so later gitPull and gitPush calls need no arguments. HTTPS credentials come from EGit's secure store; SSH uses the IDE's keys and agent. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	public String gitPush(
+		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
+		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
+		@ToolParam(name = "remote", description = "The remote name. Default: origin", required = false) String remote,
+		@ToolParam(name = "branch", description = "The local branch to push. Default: the checked-out branch", required = false) String branch,
+		@ToolParam(name = "setUpstream", description = "If 'true', records the remote branch as the local branch's upstream ('git push -u'). Default: false", required = false) String setUpstream,
+		@ToolParam(name = "force", description = "If 'true', OVERWRITES the remote branch even when it has commits the local one does not. Default: false", required = false) String force)
+	{
+		boolean trackUpstream = Optional.ofNullable(setUpstream).map(Boolean::parseBoolean).orElse(false);
+		boolean forcePush = Optional.ofNullable(force).map(Boolean::parseBoolean).orElse(false);
+		return gitService.push(projectName, repo, remote, branch, trackUpstream, forcePush);
+	}
+
 	@Tool(name = "gitInit", description = "Initializes a Git repository in the workspace root directory and connects all workspace projects to it. Creates a default .gitignore and an initial commit. If a repository already exists, connects the specified project to it.", type = "object")
 	public String gitInit(
 		@ToolParam(name = "projectName", description = "Any Eclipse project name in the workspace (used to identify the workspace)", required = true) String projectName)

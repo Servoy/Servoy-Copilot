@@ -444,5 +444,100 @@ public class GitServiceToolsTest
 			assertThrows(IllegalArgumentException.class,
 				() -> GitService.renderRevisionDiff(repository, "no-such-revision", null, List.of(), false));
 		}
+
+	/**
+	 * The staging/unstaging half of the {@code aca70c0} path-resolution fix. The project-relative
+	 * to repository-relative translation itself needs a workbench ({@code RepositoryMapping}), so
+	 * what is covered here is the half that can be: given the repository-relative pathspecs the
+	 * translation produces, staging and unstaging touch exactly those files and nothing else.
+	 * <p>
+	 * This is what the fix was about. Before it, a project-relative path was handed to JGit as given
+	 * and silently matched nothing for a project under {@code bundles/} - Git does not fail on a
+	 * pathspec that matches nothing - while the tool still reported success.
+	 * </p>
+	 */
+	@Nested
+	@DisplayName("staging and unstaging by repository-relative pathspec")
+	class StagingByPathspec
+	{
+		/** Creates {@code bundles/project-a} and {@code bundles/project-b}, each with one file. */
+		@BeforeEach
+		void createNestedProjects() throws Exception
+		{
+			commitFile("root.txt", "root\n", "initial commit");
+			Files.createDirectories(tempDir.resolve("bundles/project-a"));
+			Files.createDirectories(tempDir.resolve("bundles/project-b"));
+			Files.writeString(tempDir.resolve("bundles/project-a/a.txt"), "a\n");
+			Files.writeString(tempDir.resolve("bundles/project-b/b.txt"), "b\n");
+		}
+
+		@Test
+		@DisplayName("a nested project's prefix stages only that project's files")
+		void stagesOnlyTheNamedProject() throws Exception
+		{
+			String result = GitService.stageIn(repository, List.of("bundles/project-a"), ".");
+
+			var staged = git.status().call().getAdded();
+			assertAll(
+				() -> assertTrue(result.contains("Added"), "Should report what it staged: " + result),
+				() -> assertTrue(staged.contains("bundles/project-a/a.txt"), "Project A's file must be staged"),
+				() -> assertFalse(staged.contains("bundles/project-b/b.txt"),
+					"Project B's file must NOT be staged - one project's '.' cannot reach another's files"));
+		}
+
+		@Test
+		@DisplayName("an empty pathspec list means the whole tree, which is the project-at-the-root case")
+		void emptyPathspecsStageEverything() throws Exception
+		{
+			GitService.stageIn(repository, List.of(), ".");
+
+			var staged = git.status().call().getAdded();
+			assertAll(
+				() -> assertTrue(staged.contains("bundles/project-a/a.txt"), "Project A's file must be staged"),
+				() -> assertTrue(staged.contains("bundles/project-b/b.txt"), "Project B's file must be staged"));
+		}
+
+		@Test
+		@DisplayName("a pathspec that matches nothing stages nothing - Git does not fail on it")
+		void pathspecMatchingNothingStagesNothing() throws Exception
+		{
+			// The pre-fix symptom: a project-relative path handed to JGit unresolved. It must be visibly
+			// a no-op, which is why the resolution has to happen before JGit sees it.
+			GitService.stageIn(repository, List.of("a.txt"), "a.txt");
+
+			assertTrue(git.status().call().getAdded().isEmpty(),
+				"An unresolved project-relative path matches nothing at the repository root");
+		}
+
+		@Test
+		@DisplayName("a deletion of a tracked file is staged too, not only modifications")
+		void stagesDeletions() throws Exception
+		{
+			GitService.stageIn(repository, List.of("bundles/project-a"), ".");
+			git.commit().setMessage("add project A").call();
+			Files.delete(tempDir.resolve("bundles/project-a/a.txt"));
+
+			GitService.stageIn(repository, List.of("bundles/project-a"), ".");
+
+			assertTrue(git.status().call().getRemoved().contains("bundles/project-a/a.txt"),
+				"The deletion must be staged - that is what the setUpdate(true) pass is for");
+		}
+
+		@Test
+		@DisplayName("unstaging a nested project's prefix leaves another project's staged files alone")
+		void unstagesOnlyTheNamedProject() throws Exception
+		{
+			GitService.stageIn(repository, List.of(), ".");
+
+			String result = GitService.unstageIn(repository, List.of("bundles/project-a"), ".");
+
+			var staged = git.status().call().getAdded();
+			assertAll(
+				() -> assertTrue(result.contains("Unstaged"), "Should report what it unstaged: " + result),
+				() -> assertFalse(staged.contains("bundles/project-a/a.txt"), "Project A's file must be unstaged"),
+				() -> assertTrue(staged.contains("bundles/project-b/b.txt"),
+					"Project B's file must stay staged"));
+		}
+	}
 	}
 }
