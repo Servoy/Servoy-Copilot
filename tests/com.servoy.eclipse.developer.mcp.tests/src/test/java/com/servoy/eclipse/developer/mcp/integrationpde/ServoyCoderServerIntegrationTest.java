@@ -192,6 +192,66 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 		}
 	}
 
+	/**
+	 * An {@code endLine} past the end of the file is REFUSED, not clamped (SVY-21303, upstream
+	 * AssistAI {@code a6dc32d}). Clamping silently widened the range to the end of the file, so a
+	 * caller that named a bounded range got lines it had excluded rewritten while being told the
+	 * replacement succeeded. The file must be left untouched.
+	 */
+	@Test
+	public void testReplaceString_endLineBeyondFileIsRefused() throws Exception {
+		createTestFile("replace_oob_end.txt", "aaa\nbbb\nccc");
+
+		try {
+			coderServer.replaceString(PROJECT_NAME, "replace_oob_end.txt", "bbb", "BBB", "2", "99");
+			assertTrue(false, "Should have refused an out-of-range endLine");
+		} catch (RuntimeException e) {
+			assertTrue(e.getMessage().contains("End line 99"), "Should name the bad line: " + e.getMessage());
+			assertTrue(e.getMessage().contains("beyond the end of the file"),
+				"Should say why it was refused: " + e.getMessage());
+		}
+		assertEquals("aaa\nbbb\nccc", readFile("replace_oob_end.txt"), "The file must be untouched");
+	}
+
+	/** A {@code startLine} past the end of the file is refused the same way. */
+	@Test
+	public void testReplaceString_startLineBeyondFileIsRefused() throws Exception {
+		createTestFile("replace_oob_start.txt", "aaa\nbbb\nccc");
+
+		try {
+			coderServer.replaceString(PROJECT_NAME, "replace_oob_start.txt", "aaa", "AAA", "99", null);
+			assertTrue(false, "Should have refused an out-of-range startLine");
+		} catch (RuntimeException e) {
+			assertTrue(e.getMessage().contains("Start line 99"), "Should name the bad line: " + e.getMessage());
+		}
+		assertEquals("aaa\nbbb\nccc", readFile("replace_oob_start.txt"), "The file must be untouched");
+	}
+
+	/** A zero or negative line is not a line at all, so it is refused rather than floored to 1. */
+	@Test
+	public void testReplaceString_zeroLineIsRefused() throws Exception {
+		createTestFile("replace_zero.txt", "aaa\nbbb");
+
+		try {
+			coderServer.replaceString(PROJECT_NAME, "replace_zero.txt", "aaa", "AAA", "0", null);
+			assertTrue(false, "Should have refused line 0");
+		} catch (RuntimeException e) {
+			assertTrue(e.getMessage().contains("1-based"), "Should say lines are 1-based: " + e.getMessage());
+		}
+		assertEquals("aaa\nbbb", readFile("replace_zero.txt"), "The file must be untouched");
+	}
+
+	/** The last line of the file is still in range - the refusal must not be off by one. */
+	@Test
+	public void testReplaceString_lastLineIsInRange() throws Exception {
+		createTestFile("replace_last.txt", "aaa\nbbb\nccc");
+
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_last.txt", "ccc", "CCC", "3", "3");
+
+		assertTrue(result.contains("Success"), "The last line must be replaceable: " + result);
+		assertTrue(readFile("replace_last.txt").contains("CCC"), "Should contain the replacement");
+	}
+
 	@Test
 	public void testReplaceFileContent_success() throws Exception {
 		createTestFile("replace_content.txt", "old content");

@@ -646,18 +646,19 @@ public class WorkspaceService
 
 		TextSearchRequestor requestor = new TextSearchRequestor()
 		{
-			// Per-file one-time cache of the current file's lines, so a file is read at most once per search
-			// and only one file's lines are ever held in memory. This keeps the reported line number and
-			// trimmed line content identical to the previous getLineInfo/readFileLines behaviour.
+			// Per-file one-time cache of the current file's line starts and lines, so a file is read at
+			// most once per search and only one file's content is ever held in memory.
 			private IFile currentFile;
 			private List<String> currentFileLines;
+			private int[] currentFileLineStarts;
 
 			@Override
 			public boolean acceptFile(IFile file) throws CoreException
 			{
-				// Release the previous file's lines before moving on.
+				// Release the previous file's content before moving on.
 				currentFile = null;
 				currentFileLines = null;
+				currentFileLineStarts = null;
 				return results.size() < limit && file != null && file.isAccessible();
 			}
 
@@ -681,6 +682,17 @@ public class WorkspaceService
 				return true;
 			}
 
+			/**
+			 * Maps a character offset reported by the search engine to a 1-based line number and that
+			 * line's text.
+			 * <p>
+			 * The line starts are measured on the file's ACTUAL content, never reconstructed from the
+			 * line texts. Rebuilding them as {@code line.length() + 1} assumes a one-character
+			 * delimiter, so in a CRLF file every line lost a character and the reported line number
+			 * drifted - about one line per 45 in normally-sized source. Upstream AssistAI hit the same
+			 * thing and named it in commit {@code a6dc32d} (SVY-21303).
+			 * </p>
+			 */
 			private LineInfo lineInfoFor(IFile file, int offset)
 			{
 				if (file == null) return new LineInfo(-1, "");
@@ -689,23 +701,20 @@ public class WorkspaceService
 					currentFile = file;
 					try
 					{
-						currentFileLines = readFileLines(file);
+						String content = readFileContent(file);
+						currentFileLines = splitLines(content);
+						currentFileLineStarts = lineStartOffsets(content);
 					}
 					catch (CoreException | IOException e)
 					{
 						currentFileLines = null;
+						currentFileLineStarts = null;
 					}
 				}
-				if (currentFileLines == null) return new LineInfo(-1, "");
-				int charCount = 0;
-				for (int i = 0; i < currentFileLines.size(); i++)
-				{
-					String line = currentFileLines.get(i);
-					int nextCharCount = charCount + line.length() + 1;
-					if (offset < nextCharCount) return new LineInfo(i + 1, line);
-					charCount = nextCharCount;
-				}
-				return new LineInfo(-1, "");
+				if (currentFileLines == null || currentFileLineStarts == null) return new LineInfo(-1, "");
+				int index = lineIndexFor(currentFileLineStarts, offset);
+				if (index < 0 || index >= currentFileLines.size()) return new LineInfo(-1, "");
+				return new LineInfo(index + 1, currentFileLines.get(index));
 			}
 		};
 
@@ -723,6 +732,98 @@ public class WorkspaceService
 	private record LineInfo(int lineNumber, String lineContent)
 	{
 	}
+	/**
+	 * Splits content into lines on {@code \r\n}, {@code \n} or a lone {@code \r}, dropping a single
+	 * trailing empty line so a file ending in a newline does not report a phantom last line. Used
+	 * together with {@link #lineStartOffsets(String)}, which indexes the SAME split.
+	 */
+	public static List<String> splitLines(String content)
+	{
+		List<String> lines = new ArrayList<>();
+		if (content == null) return lines;
+		int start = 0;
+		int i = 0;
+		while (i < content.length())
+		{
+			char c = content.charAt(i);
+			if (c == '\n')
+			{
+				lines.add(content.substring(start, i));
+				i++;
+				start = i;
+			}
+			else if (c == '\r')
+			{
+				lines.add(content.substring(start, i));
+				i += (i + 1 < content.length() && content.charAt(i + 1) == '\n') ? 2 : 1;
+				start = i;
+			}
+			else
+			{
+				i++;
+			}
+		}
+		if (start < content.length()) lines.add(content.substring(start));
+		return lines;
+	}
+
+	/**
+	 * The character offset at which each line of {@code content} starts, measured on the ACTUAL
+	 * content so a CRLF delimiter counts as the two characters it is. Parallel to
+	 * {@link #splitLines(String)}: entry {@code i} is where line {@code i} begins.
+	 */
+	public static int[] lineStartOffsets(String content)
+	{
+		List<Integer> starts = new ArrayList<>();
+		// Empty content has no lines, so it has no line starts either - splitLines("") is likewise
+		// empty, and the two must stay parallel for lineIndexFor to index one by the other.
+		if (content == null || content.isEmpty()) return new int[0];
+		starts.add(0);
+		int i = 0;
+		while (i < content.length())
+		{
+			char c = content.charAt(i);
+			if (c == '\n')
+			{
+				i++;
+				if (i < content.length()) starts.add(i);
+			}
+			else if (c == '\r')
+			{
+				i += (i + 1 < content.length() && content.charAt(i + 1) == '\n') ? 2 : 1;
+				if (i < content.length()) starts.add(i);
+			}
+			else
+			{
+				i++;
+			}
+		}
+		int[] result = new int[starts.size()];
+		for (int n = 0; n < starts.size(); n++)
+			result[n] = starts.get(n);
+		return result;
+	}
+
+	/**
+	 * The 0-based index of the line containing {@code offset}, by binary search over the line
+	 * starts, or {@code -1} for a negative offset or empty content. An offset past the end belongs
+	 * to the last line.
+	 */
+	public static int lineIndexFor(int[] lineStarts, int offset)
+	{
+		if (lineStarts == null || lineStarts.length == 0 || offset < 0) return -1;
+		int low = 0;
+		int high = lineStarts.length - 1;
+		while (low <= high)
+		{
+			int mid = (low + high) >>> 1;
+			if (lineStarts[mid] == offset) return mid;
+			if (lineStarts[mid] < offset) low = mid + 1;
+			else high = mid - 1;
+		}
+		return Math.max(0, low - 1);
+	}
+
 
 	private static int replaceInFile(IFile file, String containingText, String replacementText)
 		throws CoreException, IOException

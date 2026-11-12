@@ -802,12 +802,17 @@ public class GitService
 	 * files. A path that escapes the project (absolute, {@code ..}, or a Windows drive prefix) is
 	 * rejected rather than silently resolved outside it.
 	 * </p>
+	 * <p>
+	 * On the repository-centric path (SVY-21524) {@code projectName} is {@code null}: the caller
+	 * named a {@code repo} instead, so there is no project to resolve a prefix from and the paths are
+	 * already repository-relative. They are then used as given - no prefix is prepended - rather than
+	 * handed to {@code getProject(null)}, which throws a NullPointerException inside
+	 * {@code WorkspaceRoot}.
+	 * </p>
 	 */
 	private List<String> resolveProjectPaths(String projectName, String pathFilter)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
-		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
-		String projectPrefix = mapping == null ? "" : mapping.getRepoRelativePath(project);
+		String projectPrefix = projectPrefixOrNull(projectName);
 
 		if (pathFilter == null || pathFilter.isBlank() || ".".equals(pathFilter.trim()))
 		{
@@ -832,6 +837,25 @@ public class GitService
 			})
 			.toList();
 	}
+	/**
+	 * The repository-relative prefix of an Eclipse project, or {@code null} when there is no project
+	 * to ask.
+	 * <p>
+	 * {@code projectName} is {@code null} or blank on the repository-centric path (SVY-21524), where
+	 * the caller named a {@code repo} instead. {@code WorkspaceRoot.getProject(null)} throws a
+	 * NullPointerException from deep inside Eclipse ({@code ConcurrentHashMap.get}), so the absence
+	 * is answered here instead: no project, no prefix, and the caller's paths are taken as already
+	 * repository-relative.
+	 * </p>
+	 */
+	public static String projectPrefixOrNull(String projectName)
+	{
+		if (projectName == null || projectName.trim().isEmpty()) return null;
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+		return mapping == null ? "" : mapping.getRepoRelativePath(project);
+	}
+
 
 	/**
 	 * Resolves a revision string to a commit, refusing one that does not exist rather than returning
@@ -1475,9 +1499,9 @@ public class GitService
 			throw new IllegalArgumentException("File path must be relative to the Eclipse project: " + filePath);
 		}
 
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
-		RepositoryMapping mapping = RepositoryMapping.getMapping(project);
-		String projectPrefix = mapping == null ? "" : mapping.getRepoRelativePath(project);
+		// projectName is null on the repository-centric path, where the path is already
+		// repository-relative - see projectPrefixOrNull.
+		String projectPrefix = projectPrefixOrNull(projectName);
 		return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
 	}
 

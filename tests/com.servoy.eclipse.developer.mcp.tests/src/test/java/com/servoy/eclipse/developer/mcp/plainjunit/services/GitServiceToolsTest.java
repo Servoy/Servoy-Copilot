@@ -3,6 +3,7 @@ package com.servoy.eclipse.developer.mcp.plainjunit.services;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -537,6 +538,34 @@ public class GitServiceToolsTest
 				() -> assertFalse(staged.contains("bundles/project-a/a.txt"), "Project A's file must be unstaged"),
 				() -> assertTrue(staged.contains("bundles/project-b/b.txt"),
 					"Project B's file must stay staged"));
+		}
+	}
+
+	/**
+	 * The repository-centric path (SVY-21524) passes no {@code projectName} at all - the caller named
+	 * a {@code repo} instead - so there is no project to resolve a prefix from.
+	 * {@code WorkspaceRoot.getProject(null)} throws a NullPointerException from inside Eclipse
+	 * ({@code ConcurrentHashMap.get}), which is what {@code gitAdd(null, "<repo>", "file.txt")} hit.
+	 */
+	@Nested
+	@DisplayName("no project to resolve a prefix from")
+	class NoProject
+	{
+		@Test
+		@DisplayName("a null project name yields no prefix instead of throwing")
+		void nullProjectNameHasNoPrefix()
+		{
+			assertNull(GitService.projectPrefixOrNull(null),
+				"null must answer 'no project', not reach WorkspaceRoot.getProject(null)");
+		}
+
+		@Test
+		@DisplayName("a blank project name is treated the same as none")
+		void blankProjectNameHasNoPrefix()
+		{
+			assertAll(
+				() -> assertNull(GitService.projectPrefixOrNull("")),
+				() -> assertNull(GitService.projectPrefixOrNull("   ")));
 		}
 	}
 	}

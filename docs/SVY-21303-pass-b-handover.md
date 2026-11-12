@@ -8,42 +8,57 @@ divergences, sync log. This file holds only what is not in there.
 The first real sync of the upstream range `6e829a8..3218e3b` (**33 commits**) is **complete**;
 the baseline in `docs/assistai-sync.md` now sits at the tip `3218e3b`.
 
-Commits on `master`, **none pushed**:
+Commits on `master`, **pushed** through `2113e54` (rebased onto `c879c1c`, so the shas below are
+the post-rebase ones):
 
 | SHA | Content |
 |---|---|
-| `d6e62c7` | per-repo locking, `getDiff` on DiffFormatter + pathFilter/ignoreWhitespace, `gitReadFile`, `gitRemove` (+22 tests) |
-| `1a9b722` | `WriteAccessValidator` (8 write paths guarded), git path-resolution fix, two `stagePatch` bug fixes (+4 tests) |
-| `3c5b295` | 8 git tools + 3 widened (+27 tests) |
-| `46989c0` | this handover file |
-| _(pass B)_ | `gitMerge`, `gitRebase`, `gitCherryPick`, `gitRevert`, `gitFetch`, `gitPull`, `gitPush` + `org.eclipse.equinox.security` (+51 tests) |
+| `541a707` | per-repo locking, `getDiff` on DiffFormatter + pathFilter/ignoreWhitespace, `gitReadFile`, `gitRemove` (+22 tests) |
+| `f3e5672` | `WriteAccessValidator` (8 write paths guarded), git path-resolution fix, two `stagePatch` bug fixes (+4 tests) |
+| `0cb10df` | 8 git tools + 3 widened (+27 tests) |
+| `5ded31c` | this handover file |
+| `2113e54` | `gitMerge`, `gitRebase`, `gitCherryPick`, `gitRevert`, `gitFetch`, `gitPull`, `gitPush` + `org.eclipse.equinox.security` (+51 tests) |
+| _(pending)_ | the two `a6dc32d` bug fixes: line-range refusal + CRLF line offsets (+34 tests) |
 
-Git tool surface: 18 → **33**. Plain-JUnit suite: **1563/1563**. Zero compilation errors in
+Git tool surface: 18 → **33**. Plain-JUnit suite: **1593/1593**. Zero compilation errors in
 `com.servoy.eclipse.developer.mcp` and `.tests`.
 
 ## What is left
 
 1. **Reply on the Jira case** addressing Andrei's review points — the central one was "no actual
-   code sync was done". There are now five commits of real sync work, 33 commits resolved and
-   three recorded divergences to point at.
-2. **Push** (nothing is pushed yet).
+   code sync was done". There are now six commits of real sync work, 33 commits resolved, three
+   recorded divergences and three follow-up cases to point at.
+2. **Run the `integrationpde` tests.** The four new `ServoyCoderServerIntegrationTest` cases for
+   the line-range refusal have **not** been run: the PDE launch failed to start twice in this
+   session (`LAUNCH_FAILED` after ~10 min, "Launch was not registered to run at all"). The plain
+   tests covering the same decision (`CodeEditingServiceLineRangeTest`, 13 cases) do pass.
 
-## Deferred — do not lose these
+## Follow-up cases (filed 2026-11-12, all `Relates` SVY-21303)
 
-`a6dc32d`'s commit message names several bugs upstream found in code we share. They are
-**independent of the declined structured-result model** and may well affect our port. Agreed to
-become their own case rather than growing SVY-21303:
+| Case | What |
+|---|---|
+| **SVY-21784** | Adopt `structuredContent` — the `a6dc32d` divergence. Carries the incremental per-server path and the full consumer list, including `skill4servoy` as the biggest one. |
+| **SVY-21785** | Teach the `skill4servoy` pack the 15 new git tools; **first item** is the now-wrong `gitAdd` `"."` claim, the only one that can produce a wrong result (a commit missing its repo-root `handoff/**` in a nested layout). Regenerate `mcp-tools-report.md` before editing any skill text, or the `R-MCP` rule rejects the new names. |
+| **SVY-21786** | `replaceString` — the `5a8e07b` divergence, plus the silent replace-all found while assessing it. Occurrence semantics must land **before** the tiers. |
 
-- `replaceLines` **clamped an out-of-range `endLine` instead of refusing it**, silently rewriting
-  lines the caller had excluded. Check our `deleteLinesInFile` / line-range handling.
-- Search reported the **wrong line in CRLF files**, drifting about a line per 45, because offsets
-  were rebuilt as `length()+1`.
-- `insertIntoFile` defaulted its `line` parameter to `0`, which is not a line.
-- `ResourceVersion.NULL_STAMP = -1` was read as "no check requested", disabling the concurrency
-  guard it was meant to enforce.
+## Deferred — resolved
 
-Two of the earlier fixes came from reading that message rather than the diff — it is worth
-re-reading in full (`git -C /tmp/opencode/assistai-upstream log -1 a6dc32d`).
+`a6dc32d`'s commit message named four bugs in code we share. Audited against our source:
+
+- **`replaceStringInFile` clamped an out-of-range `endLine`** — real, **fixed here**. Note the
+  earlier version of this file pointed at `deleteLinesInFile`; that one already refuses correctly.
+  Now `requireLineRangeInFile`, with 13 plain + 4 integration tests.
+- **Search reported the wrong line in CRLF files** — real, **fixed here**. `length() + 1` assumes a
+  one-character delimiter; now `splitLines`/`lineStartOffsets`/`lineIndexFor` measure the real
+  content, with 17 tests including a 200-line CRLF file where the old arithmetic visibly drifts.
+- `insertIntoFile` defaulting `line` to `0` — **not applicable**, `ServoyCoderServer` already
+  defaults to `1`.
+- `ResourceVersion.NULL_STAMP` — **not applicable**, the class does not exist here (part of the
+  declined model; it would arrive with SVY-21784).
+
+The commit message is still worth re-reading in full
+(`git -C /tmp/opencode/assistai-upstream log -1 a6dc32d`) — two fixes came from it rather than
+from the diff.
 
 ## Conventions the ports follow (keep these for the next sync)
 

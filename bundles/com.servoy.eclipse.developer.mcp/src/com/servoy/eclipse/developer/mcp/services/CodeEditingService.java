@@ -150,14 +150,10 @@ public class CodeEditingService
 			List<String> lines = readFileLines(file);
 			int totalLines = lines.size();
 
-			int effectiveStart = (startLine != null) ? Math.max(0, startLine - 1) : 0;
-			int effectiveEnd = (endLine != null) ? Math.min(totalLines - 1, endLine - 1) : totalLines - 1;
+			requireLineRangeInFile(totalLines, startLine, endLine);
 
-			if (effectiveStart >= totalLines)
-				throw new RuntimeException("Error: Start line " + startLine + " is beyond the end of the file.");
-			effectiveEnd = Math.min(effectiveEnd, totalLines - 1);
-			if (effectiveStart > effectiveEnd)
-				throw new RuntimeException("Error: Start line cannot be greater than end line.");
+			int effectiveStart = (startLine != null) ? startLine - 1 : 0;
+			int effectiveEnd = (endLine != null) ? endLine - 1 : totalLines - 1;
 
 			StringBuilder rangeContent = new StringBuilder();
 			for (int i = effectiveStart; i <= effectiveEnd; i++)
@@ -652,6 +648,42 @@ public class CodeEditingService
 	 * {@code "\r"}, or {@code "\n"}. On a CRLF-vs-LF tie, LF is preferred. A content with no
 	 * terminator (empty or a single unterminated line) defaults to the platform-neutral {@code "\n"}.
 	 */
+	/**
+	 * Validates an optional 1-based line range against a file of {@code totalLines} lines, refusing
+	 * anything out of range instead of clamping it.
+	 * <p>
+	 * Clamping was the bug: {@code Math.min(totalLines - 1, endLine - 1)} silently widened a range
+	 * the caller had bounded, so asking about lines 10-20 of a 15-line file edited lines 10-15 and
+	 * reported success. A caller that names a range it cannot have is wrong about the file and needs
+	 * to be told, not quietly accommodated. Upstream AssistAI hit the same thing and named it in
+	 * commit {@code a6dc32d} (SVY-21303).
+	 * </p>
+	 *
+	 * @param totalLines the file's line count
+	 * @param startLine the 1-based first line, or {@code null} for the start of the file
+	 * @param endLine the 1-based last line, or {@code null} for the end of the file
+	 * @throws RuntimeException when either bound is below 1 or past the end of the file, or when
+	 *             they are inverted
+	 */
+	public static void requireLineRangeInFile(int totalLines, Integer startLine, Integer endLine)
+	{
+		if (startLine != null && startLine < 1)
+			throw new RuntimeException("Error: Start line " + startLine + " is not a line; lines are 1-based.");
+		if (endLine != null && endLine < 1)
+			throw new RuntimeException("Error: End line " + endLine + " is not a line; lines are 1-based.");
+		if (startLine != null && startLine > totalLines)
+			throw new RuntimeException("Error: Start line " + startLine + " is beyond the end of the file (" +
+				totalLines + " lines).");
+		if (endLine != null && endLine > totalLines)
+			throw new RuntimeException("Error: End line " + endLine + " is beyond the end of the file (" +
+				totalLines + " lines).");
+
+		int effectiveStart = (startLine != null) ? startLine - 1 : 0;
+		int effectiveEnd = (endLine != null) ? endLine - 1 : totalLines - 1;
+		if (effectiveStart > effectiveEnd)
+			throw new RuntimeException("Error: Start line cannot be greater than end line.");
+	}
+
 	public static String detectDominantLineEnding(String content)
 	{
 		if (content == null || content.isEmpty()) return "\n";
