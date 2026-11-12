@@ -237,7 +237,12 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                         # that file carries the model-call result and is archived below.
                         echo "collected logs:"; ls -la "$WORKSPACE/skilltest-logs" 2>/dev/null
                     '''
-                    archiveArtifacts artifacts: 'skilltest-logs/workbench.log, skilltest-reports/TEST-skilltest.xml, skilltest-reports/coverage-*.html, skilltest-reports/opencode-server.log',
+                    // The coverage report is written to the FIXED name coverage.html (one per
+                    // build, overwritten each run - SVY-21711), not the old coverage-<timestamp>.html.
+                    // Match that exact name; the stale timestamped files are cleaned below so they
+                    // stop accumulating in the (un-cleaned) workspace and the artifacts.
+                    sh 'rm -f "$WORKSPACE/skilltest-reports/coverage-"*.html 2>/dev/null || true'
+                    archiveArtifacts artifacts: 'skilltest-logs/workbench.log, skilltest-reports/TEST-skilltest.xml, skilltest-reports/coverage.html, skilltest-reports/opencode-server.log',
                                      allowEmptyArchive: true, fingerprint: false
                     junit allowEmptyResults: false,
                           testResults: 'skilltest-reports/TEST-*.xml, **/target/surefire-reports/TEST-*.xml'
