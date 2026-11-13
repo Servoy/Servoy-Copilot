@@ -121,6 +121,10 @@ public final class SkillTestReporter {
 				if (r.getJsUnitPass() != null) {
 					node.put("jsUnitPass", r.getJsUnitPass().booleanValue()); //$NON-NLS-1$
 				}
+				// Cost/efficiency metrics (SVY-21660): written additively. tokens/kiro
+				// objects are omitted entirely when unknown so a reader distinguishes
+				// "unknown" from a real zero.
+				writeMetrics(node, r.getMetrics());
 				// Per-trial distribution.
 				if (r.getTrials() != null && !r.getTrials().isEmpty()) {
 					ArrayNode trialsArr = node.putArray("trials"); //$NON-NLS-1$
@@ -139,6 +143,7 @@ public final class SkillTestReporter {
 						if (t.jsUnitPass() != null) {
 							tn.put("jsUnitPass", t.jsUnitPass().booleanValue()); //$NON-NLS-1$
 						}
+						writeMetrics(tn, t.metrics());
 					}
 				}
 			}
@@ -170,6 +175,151 @@ public final class SkillTestReporter {
 				n.put("output", c.output()); //$NON-NLS-1$
 			}
 		}
+	}
+
+	/**
+	 * Serialises the cost/efficiency metrics to {@code metrics} (SVY-21660).
+	 * Nothing is written when {@code metrics} is {@code null}. {@code toolCalls} is
+	 * always written when metrics exist; the {@code tokens}/{@code kiro} objects
+	 * are <b>omitted entirely</b> when unknown, so a reader distinguishes "unknown"
+	 * from a real zero.
+	 */
+	private static void writeMetrics(ObjectNode parent, RunMetrics metrics) {
+		if (metrics == null) {
+			return;
+		}
+		ObjectNode m = parent.putObject("metrics"); //$NON-NLS-1$
+		m.put("toolCalls", metrics.toolCalls()); //$NON-NLS-1$
+		RunMetrics.TokenUsage t = metrics.tokens();
+		if (t != null) {
+			ObjectNode tn = m.putObject("tokens"); //$NON-NLS-1$
+			tn.put("input", t.input()); //$NON-NLS-1$
+			tn.put("output", t.output()); //$NON-NLS-1$
+			tn.put("reasoning", t.reasoning()); //$NON-NLS-1$
+			tn.put("cacheRead", t.cacheRead()); //$NON-NLS-1$
+			tn.put("cacheWrite", t.cacheWrite()); //$NON-NLS-1$
+		}
+		RunMetrics.KiroUsage k = metrics.kiro();
+		if (k != null) {
+			ObjectNode kn = m.putObject("kiro"); //$NON-NLS-1$
+			kn.put("requests", k.requests()); //$NON-NLS-1$
+			kn.put("estCredits", k.estCredits()); //$NON-NLS-1$
+		}
+		// Scope-expansion fields (SVY-21660 B/C): written additively, omitted when
+		// unknown so old readers and old files are unaffected.
+		if (metrics.creditsDelta() != null) {
+			m.put("creditsDelta", metrics.creditsDelta().doubleValue()); //$NON-NLS-1$
+		}
+		// Account bracket readings (SVY-21660 live-data follow-up): before/after
+		// account used + the account limit, each omitted when unknown.
+		if (metrics.creditsBefore() != null) {
+			m.put("creditsBefore", metrics.creditsBefore().doubleValue()); //$NON-NLS-1$
+		}
+		if (metrics.creditsAfter() != null) {
+			m.put("creditsAfter", metrics.creditsAfter().doubleValue()); //$NON-NLS-1$
+		}
+		if (metrics.creditsLimit() != null) {
+			m.put("creditsLimit", metrics.creditsLimit().doubleValue()); //$NON-NLS-1$
+		}
+		if (!metrics.requestTokens().isEmpty()) {
+			ArrayNode rt = m.putArray("requestTokens"); //$NON-NLS-1$
+			for (RunMetrics.RequestTokens req : metrics.requestTokens()) {
+				ObjectNode rn = rt.addObject();
+				rn.put("index", req.index()); //$NON-NLS-1$
+				RunMetrics.TokenUsage rtok = req.tokens();
+				if (rtok != null) {
+					ObjectNode tok = rn.putObject("tokens"); //$NON-NLS-1$
+					tok.put("input", rtok.input()); //$NON-NLS-1$
+					tok.put("output", rtok.output()); //$NON-NLS-1$
+					tok.put("reasoning", rtok.reasoning()); //$NON-NLS-1$
+					tok.put("cacheRead", rtok.cacheRead()); //$NON-NLS-1$
+					tok.put("cacheWrite", rtok.cacheWrite()); //$NON-NLS-1$
+				}
+				if (!req.toolNames().isEmpty()) {
+					ArrayNode tn = rn.putArray("toolNames"); //$NON-NLS-1$
+					for (String name : req.toolNames()) {
+						tn.add(name);
+					}
+				}
+				if (req.skill() != null) {
+					rn.put("skill", req.skill()); //$NON-NLS-1$
+				}
+				// Per-request call count (SVY-21660): written additively so the
+				// round-trip preserves the value that drives the Actual column's
+				// first-call cost annotation. Absent in older files -> read back as 0.
+				rn.put("callCount", req.callCount()); //$NON-NLS-1$
+			}
+		}
+	}
+
+	/**
+	 * Rebuilds the cost/efficiency metrics from a persisted {@code metrics} node
+	 * (SVY-21660), or {@code null} when absent (older files lack it -&gt;
+	 * "unknown"). Absent {@code tokens}/{@code kiro} sub-objects become
+	 * {@code null} ("unknown").
+	 */
+	private static RunMetrics readMetrics(JsonNode node) {
+		if (node == null || !node.has("metrics")) { //$NON-NLS-1$
+			return null;
+		}
+		JsonNode m = node.get("metrics"); //$NON-NLS-1$
+		if (m == null || !m.isObject()) {
+			return null;
+		}
+		int toolCalls = m.path("toolCalls").asInt(); //$NON-NLS-1$
+		RunMetrics.TokenUsage tokens = null;
+		JsonNode tn = m.get("tokens"); //$NON-NLS-1$
+		if (tn != null && tn.isObject()) {
+			tokens = new RunMetrics.TokenUsage(tn.path("input").asLong(), tn.path("output").asLong(), //$NON-NLS-1$ //$NON-NLS-2$
+					tn.path("reasoning").asLong(), tn.path("cacheRead").asLong(), tn.path("cacheWrite").asLong()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+		RunMetrics.KiroUsage kiro = null;
+		JsonNode kn = m.get("kiro"); //$NON-NLS-1$
+		if (kn != null && kn.isObject()) {
+			kiro = new RunMetrics.KiroUsage(kn.path("requests").asInt(), kn.path("estCredits").asDouble()); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		// Scope-expansion fields (SVY-21660 B/C): read with has(...) guards; absent in
+		// an older file -> null/empty -> "unknown".
+		Double creditsDelta = m.has("creditsDelta") ? Double.valueOf(m.get("creditsDelta").asDouble()) : null; //$NON-NLS-1$ //$NON-NLS-2$
+		List<RunMetrics.RequestTokens> requestTokens = readRequestTokens(m.get("requestTokens")); //$NON-NLS-1$
+		Double creditsBefore = m.has("creditsBefore") ? Double.valueOf(m.get("creditsBefore").asDouble()) : null; //$NON-NLS-1$ //$NON-NLS-2$
+		Double creditsAfter = m.has("creditsAfter") ? Double.valueOf(m.get("creditsAfter").asDouble()) : null; //$NON-NLS-1$ //$NON-NLS-2$
+		Double creditsLimit = m.has("creditsLimit") ? Double.valueOf(m.get("creditsLimit").asDouble()) : null; //$NON-NLS-1$ //$NON-NLS-2$
+		return new RunMetrics(toolCalls, tokens, kiro, creditsDelta, requestTokens, creditsBefore, creditsAfter,
+				creditsLimit);
+	}
+
+	/**
+	 * Rebuilds the per-request token list from a persisted {@code requestTokens}
+	 * array (SVY-21660 C), or an empty list when absent (older files -&gt;
+	 * "unknown").
+	 */
+	private static List<RunMetrics.RequestTokens> readRequestTokens(JsonNode arr) {
+		List<RunMetrics.RequestTokens> list = new java.util.ArrayList<>();
+		if (arr == null || !arr.isArray()) {
+			return list;
+		}
+		for (JsonNode n : arr) {
+			int index = n.path("index").asInt(); //$NON-NLS-1$
+			RunMetrics.TokenUsage tokens = null;
+			JsonNode tn = n.get("tokens"); //$NON-NLS-1$
+			if (tn != null && tn.isObject()) {
+				tokens = new RunMetrics.TokenUsage(tn.path("input").asLong(), tn.path("output").asLong(), //$NON-NLS-1$ //$NON-NLS-2$
+						tn.path("reasoning").asLong(), tn.path("cacheRead").asLong(), tn.path("cacheWrite").asLong()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			}
+			List<String> toolNames = new java.util.ArrayList<>();
+			JsonNode names = n.get("toolNames"); //$NON-NLS-1$
+			if (names != null && names.isArray()) {
+				for (JsonNode nm : names) {
+					toolNames.add(nm.asText());
+				}
+			}
+			// callCount is additive (SVY-21660): absent in an older file -> 0 -> that
+			// request simply carries no first-call cost annotation on reload.
+			int callCount = n.path("callCount").asInt(); //$NON-NLS-1$
+			list.add(new RunMetrics.RequestTokens(index, tokens, toolNames, text(n, "skill"), callCount)); //$NON-NLS-1$
+		}
+		return list;
 	}
 
 	/** Serialises the outcome-check node tree to {@code outcomeNodes}. */
@@ -246,6 +396,7 @@ public final class SkillTestReporter {
 				}
 				result.withTrials(readTrials(node.get("trials"))); //$NON-NLS-1$
 				result.withAgent(text(node, "agent")); //$NON-NLS-1$
+				result.withMetrics(readMetrics(node));
 				map.put(id, result);
 			}
 		} catch (IOException e) {
@@ -294,7 +445,7 @@ public final class SkillTestReporter {
 			String jsReport = text(n, "jsUnitReport"); //$NON-NLS-1$
 			Boolean jsPass = n.has("jsUnitPass") ? Boolean.valueOf(n.get("jsUnitPass").asBoolean()) : null; //$NON-NLS-1$ //$NON-NLS-2$
 			trials.add(new SkillTestResult.Trial(index, pass, diff, readOutcomeNodes(n.get("outcomeNodes")), //$NON-NLS-1$
-					readToolCalls(n.get("actualCalls")), jsReport, jsPass)); //$NON-NLS-1$
+					readToolCalls(n.get("actualCalls")), jsReport, jsPass, readMetrics(n))); //$NON-NLS-1$
 		}
 		return trials;
 	}

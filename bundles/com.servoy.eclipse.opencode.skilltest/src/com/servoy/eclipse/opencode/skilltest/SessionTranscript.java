@@ -44,22 +44,43 @@ public final class SessionTranscript {
 	private final String agent;
 	private final String model;
 	private final String directory;
+	private final RunMetrics.TokenUsage tokens;
+	private final List<RunMetrics.RequestTokens> requestTokens;
 
 	public SessionTranscript(String prompt, List<McpToolCall> toolCalls) {
-		this(prompt, toolCalls, 0L, null, null, null);
+		this(prompt, toolCalls, 0L, null, null, null, null);
 	}
 
 	public SessionTranscript(String prompt, List<McpToolCall> toolCalls, long durationMillis) {
-		this(prompt, toolCalls, durationMillis, null, null, null);
+		this(prompt, toolCalls, durationMillis, null, null, null, null);
 	}
 
 	public SessionTranscript(String prompt, List<McpToolCall> toolCalls, long durationMillis, String agent,
 			String model) {
-		this(prompt, toolCalls, durationMillis, agent, model, null);
+		this(prompt, toolCalls, durationMillis, agent, model, null, null);
 	}
 
 	public SessionTranscript(String prompt, List<McpToolCall> toolCalls, long durationMillis, String agent,
 			String model, String directory) {
+		this(prompt, toolCalls, durationMillis, agent, model, directory, null);
+	}
+
+	public SessionTranscript(String prompt, List<McpToolCall> toolCalls, long durationMillis, String agent,
+			String model, String directory, RunMetrics.TokenUsage tokens) {
+		this(prompt, toolCalls, durationMillis, agent, model, directory, tokens, null);
+	}
+
+	/**
+	 * Full constructor (SVY-21660 expansion C): also carries the ordered
+	 * per-request token list built from the export - the single source of the
+	 * per-turn token figures the runner reports.
+	 *
+	 * @param requestTokens the ordered per-request token list, or {@code null}
+	 *                      /empty when none was resolvable
+	 */
+	public SessionTranscript(String prompt, List<McpToolCall> toolCalls, long durationMillis, String agent,
+			String model, String directory, RunMetrics.TokenUsage tokens,
+			List<RunMetrics.RequestTokens> requestTokens) {
 		this.prompt = prompt;
 		this.toolCalls = toolCalls == null ? Collections.emptyList()
 				: Collections.unmodifiableList(new ArrayList<>(toolCalls));
@@ -67,6 +88,9 @@ public final class SessionTranscript {
 		this.agent = agent;
 		this.model = model;
 		this.directory = directory;
+		this.tokens = tokens;
+		this.requestTokens = requestTokens == null ? Collections.emptyList()
+				: Collections.unmodifiableList(new ArrayList<>(requestTokens));
 	}
 
 	/**
@@ -122,6 +146,32 @@ public final class SessionTranscript {
 	}
 
 	/**
+	 * The best-effort token usage parsed from the export's {@code info.tokens}
+	 * (session-level or summed per-message), or {@code null} when nothing
+	 * resolvable was found (SVY-21660). {@code null} means "unknown" - never a
+	 * misleading {@code 0}; an all-zero payload is treated as absent.
+	 *
+	 * @return the token usage, or {@code null} when unknown
+	 */
+	public RunMetrics.TokenUsage getTokens() {
+		return tokens;
+	}
+
+	/**
+	 * The ordered per-request token list parsed from the export (SVY-21660
+	 * expansion C) - one entry per assistant message/request, each carrying that
+	 * request's tokens and the tool calls / skill it performed. This is the
+	 * <b>only</b> source for per-request attribution: the HTTP export carries each
+	 * assistant message's own {@code tokens} object at the MESSAGE top level. Never
+	 * {@code null}; empty when nothing resolvable was found.
+	 *
+	 * @return the per-request token list (never {@code null})
+	 */
+	public List<RunMetrics.RequestTokens> getRequestTokens() {
+		return requestTokens;
+	}
+
+	/**
 	 * Parses a native {@code opencode export} JSON document into a transcript.
 	 * <p>
 	 * The export JSON typically has a top-level {@code messages} array; each
@@ -154,6 +204,27 @@ public final class SessionTranscript {
 		String directory = sessionInfo != null ? textValue(sessionInfo, "directory") : null; //$NON-NLS-1$
 		String agent = sessionInfo != null ? textValue(sessionInfo, "agent") : null; //$NON-NLS-1$
 		String model = sessionInfo != null ? modelSpec(sessionInfo.get("model")) : null; //$NON-NLS-1$
+
+		// Token usage (SVY-21660), best-effort and version-tolerant: read the
+		// session-level `info.tokens` first; if it carries nothing, sum each
+		// message's `info.tokens` (opencode v2 carries tokens per assistant message,
+		// the session `info` often none) - mirroring how agent/model are resolved
+		// session-first then per-message. A long[5] accumulator holds
+		// input/output/reasoning/cacheRead/cacheWrite so a missing/renamed field
+		// never throws; left all-zero it is treated as absent (-> null -> "unknown").
+		long[] tokenTotals = new long[5];
+		accumulateTokens(sessionInfo != null ? sessionInfo.get("tokens") : null, tokenTotals); //$NON-NLS-1$
+		// Per-request token list (SVY-21660 expansion C): one entry per assistant
+		// message/request, each carrying that request's own tokens and the tool
+		// calls/skill collected for it. Built UNCONDITIONALLY from each message's own
+		// tokens object, independent of the session-vs-per-message summing above.
+		List<RunMetrics.RequestTokens> requestTokens = new ArrayList<>();
+		// Did the session level actually supply non-zero token data? Track that in a
+		// SEPARATE flag so the "sum per-message tokens" decision does not depend on
+		// the accumulator itself - otherwise the first non-zero message would flip the
+		// guard false and every later message would be skipped, under-counting a
+		// multi-turn run to only its first assistant turn (SVY-21660).
+		boolean sessionSuppliedTokens = !isAllZero(tokenTotals);
 
 		JsonNode messages = exportRoot.get("messages"); //$NON-NLS-1$
 		if (messages != null && messages.isArray()) {
@@ -201,7 +272,63 @@ public final class SessionTranscript {
 				}
 				JsonNode content = message.get("content"); //$NON-NLS-1$
 				JsonNode parts = message.get("parts"); //$NON-NLS-1$
+				// Track where this message's tool calls begin so the per-request entry
+				// (SVY-21660 C) captures exactly the calls made in this request.
+				int callsBefore = calls.size();
 				collectFromParts(content != null ? content : parts, role, promptHolder, calls);
+				// Each request's own token figures live at the MESSAGE's top level in
+				// the real opencode export - a sibling of id/type/agent/model/content/
+				// cost: { "type":"assistant", "agent":"Orchestrator", "cost":0,
+				// "tokens":{"input":49755,"output":61,...} } - with NO `info` wrapper.
+				// Older exports wrap them in `info.tokens`. Read the top level first and
+				// fall back to `info`, so both shapes are measured (SVY-21660 - verified
+				// against a real export dump: reading only `info.tokens` left the
+				// per-request list empty while the session total, which really is at
+				// exportRoot.info.tokens, kept working).
+				JsonNode msgTokens = message.get("tokens"); //$NON-NLS-1$
+				if ((msgTokens == null || !msgTokens.isObject()) && info != null) {
+					msgTokens = info.get("tokens"); //$NON-NLS-1$
+				}
+				// Sum per-message tokens only when the session level carried none, so a
+				// session that records tokens solely per assistant message is still
+				// measured. Gate on sessionSuppliedTokens (fixed once, before the walk)
+				// and accumulate UNCONDITIONALLY for every message - gating on the
+				// accumulator itself would skip every message after the first non-zero
+				// one and under-count a multi-turn run (SVY-21660).
+				if (!sessionSuppliedTokens) {
+					accumulateTokens(msgTokens, tokenTotals);
+				}
+				// Build one per-request entry per message carrying a non-zero tokens
+				// object (SVY-21660 C). Do NOT gate on the resolved `role` string: a
+				// real export's assistant message may carry no top-level `role`/`type`
+				// at all, and a non-zero tokens object is itself the reliable marker of
+				// an assistant request - user/system messages carry none.
+				if (msgTokens != null && msgTokens.isObject()) {
+					long[] one = new long[5];
+					accumulateTokens(msgTokens, one);
+					if (!isAllZero(one)) {
+						List<String> toolNames = new ArrayList<>();
+						for (int i = callsBefore; i < calls.size(); i++) {
+							toolNames.add(identity(calls.get(i)));
+						}
+						// The exact number of actual tool calls this request made,
+						// INCLUDING nested Code-Mode calls (collectFromParts /
+						// collectNestedCodeModeCalls appended them to `calls`). This call
+						// count - not the tool-name list size - is what drives the Actual
+						// column's first-call cost annotation mapping, so it lines up on
+						// real fan-out / Code-Mode runs (SVY-21660).
+						int callCount = calls.size() - callsBefore;
+						// The agent sits beside `tokens` at the message's top level in the
+						// real export; `info.agent` is the older shape.
+						String requestAgent = textValue(message, "agent"); //$NON-NLS-1$
+						if (requestAgent == null) {
+							requestAgent = textValue(info, "agent"); //$NON-NLS-1$
+						}
+						requestTokens.add(new RunMetrics.RequestTokens(requestTokens.size(),
+								new RunMetrics.TokenUsage(one[0], one[1], one[2], one[3], one[4]), toolNames,
+								requestAgent, callCount));
+					}
+				}
 			}
 		} else {
 			collectPartsRecursively(exportRoot, promptHolder, calls);
@@ -209,7 +336,17 @@ public final class SessionTranscript {
 		long duration = (minCreated != Long.MAX_VALUE && maxCompleted != Long.MIN_VALUE && maxCompleted > minCreated)
 				? maxCompleted - minCreated
 				: 0L;
-		return new SessionTranscript(promptHolder[0], calls, duration, agent, model, directory);
+		// All-zero (or nothing found) -> null -> "unknown": a missing measurement must
+		// never read as a free 0-token run (SVY-21660).
+		RunMetrics.TokenUsage tokens = isAllZero(tokenTotals) ? null
+				: new RunMetrics.TokenUsage(tokenTotals[0], tokenTotals[1], tokenTotals[2], tokenTotals[3],
+						tokenTotals[4]);
+		return new SessionTranscript(promptHolder[0], calls, duration, agent, model, directory, tokens, requestTokens);
+	}
+
+	/** The {@code server.tool} identity of a call, for the per-request table. */
+	private static String identity(McpToolCall call) {
+		return (call.server() != null ? call.server() + "." : "") + call.tool(); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/**
@@ -315,15 +452,15 @@ public final class SessionTranscript {
 	}
 
 	/**
-	 * Extracts the MCP tool identities a Code Mode {@code execute} part invoked from
-	 * its script, recorded in {@code state.metadata.toolCalls[]} as
+	 * Extracts the MCP tool identities a Code Mode {@code execute} part invoked
+	 * from its script, recorded in {@code state.metadata.toolCalls[]} as
 	 * {@code { tool: "server.tool", status: .. }}. Each becomes an
 	 * {@link McpToolCall} (server/tool split from the {@code server.tool} name);
 	 * arguments/output are not available at this granularity. A part with no such
 	 * metadata contributes nothing.
 	 *
-	 * @param part  a tool part (any tool; only {@code execute}-style parts carry the
-	 *              nested metadata, so a guard on the name is unnecessary)
+	 * @param part  a tool part (any tool; only {@code execute}-style parts carry
+	 *              the nested metadata, so a guard on the name is unnecessary)
 	 * @param calls the accumulator to add the nested calls to
 	 */
 	private static void collectNestedCodeModeCalls(JsonNode part, List<McpToolCall> calls) {
@@ -377,7 +514,10 @@ public final class SessionTranscript {
 		return McpToolCall.fromRawName(rawName, arguments, output);
 	}
 
-	/** Flattens a v2 {@code content:[{type:"text",text:..}]} block array into one string. */
+	/**
+	 * Flattens a v2 {@code content:[{type:"text",text:..}]} block array into one
+	 * string.
+	 */
 	private static String flattenContentText(JsonNode content) {
 		if (content == null || !content.isArray()) {
 			return null;
@@ -453,6 +593,47 @@ public final class SessionTranscript {
 		}
 		JsonNode value = node.get(field);
 		return value != null && value.isNumber() ? value.asLong() : 0L;
+	}
+
+	/**
+	 * Nested, null-tolerant long read: {@code node.get(outer).get(inner)}. Returns
+	 * {@code 0} on any missing/renamed level so a version drift never throws
+	 * (SVY-21660).
+	 */
+	private static long longValue(JsonNode node, String outer, String inner) {
+		if (node == null) {
+			return 0L;
+		}
+		JsonNode nested = node.get(outer);
+		return longValue(nested, inner);
+	}
+
+	/**
+	 * Accumulates a {@code tokens} node's best-effort sub-fields into
+	 * {@code totals} ([input, output, reasoning, cacheRead, cacheWrite]). Tolerates
+	 * a missing/renamed field (adds {@code 0});
+	 * {@code cache.read}/{@code cache.write} are read from the nested {@code cache}
+	 * object (SVY-21660).
+	 */
+	private static void accumulateTokens(JsonNode tokensNode, long[] totals) {
+		if (tokensNode == null || !tokensNode.isObject()) {
+			return;
+		}
+		totals[0] += longValue(tokensNode, "input"); //$NON-NLS-1$
+		totals[1] += longValue(tokensNode, "output"); //$NON-NLS-1$
+		totals[2] += longValue(tokensNode, "reasoning"); //$NON-NLS-1$
+		totals[3] += longValue(tokensNode, "cache", "read"); //$NON-NLS-1$ //$NON-NLS-2$
+		totals[4] += longValue(tokensNode, "cache", "write"); //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/** @return {@code true} when every accumulator entry is {@code 0}. */
+	private static boolean isAllZero(long[] totals) {
+		for (long t : totals) {
+			if (t != 0L) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static String firstText(JsonNode node, String... fields) {

@@ -42,10 +42,13 @@ public final class SkillTestResult {
 	 * @param actualCalls  this trial's actual tool calls (may be null)
 	 * @param jsUnitReport this trial's JSUnit Markdown report (may be null)
 	 * @param jsUnitPass   this trial's JSUnit pass flag (may be null)
+	 * @param metrics      this trial's cost/efficiency metrics (SVY-21660; may be
+	 *                     null when not captured or reconstructed from an older
+	 *                     {@code last-results.json})
 	 */
 	public record Trial(int index, boolean pass, String diff,
 			java.util.List<com.servoy.eclipse.opencode.skilltest.outcome.PersistOutcomeChecker.Node> outcomeNodes,
-			java.util.List<McpToolCall> actualCalls, String jsUnitReport, Boolean jsUnitPass) {
+			java.util.List<McpToolCall> actualCalls, String jsUnitReport, Boolean jsUnitPass, RunMetrics metrics) {
 	}
 
 	private final String baselineId;
@@ -273,5 +276,37 @@ public final class SkillTestResult {
 	/** @return the builder agent, or {@code null} when unknown */
 	public String getAgent() {
 		return agent;
+	}
+
+	/**
+	 * The run's cost/efficiency metrics (SVY-21660), or {@code null} when none were
+	 * captured or the result was reconstructed from an older
+	 * {@code last-results.json} (then every metric surface reads "unknown").
+	 */
+	private RunMetrics metrics;
+
+	/**
+	 * Attaches the run's cost/efficiency metrics (SVY-21660).
+	 * <p>
+	 * <b>Aggregation policy:</b> the attached metrics are the
+	 * <b>representative/kept trial's</b> metrics - the same trial whose detail
+	 * ({@code keptOutcomeNodes}/{@code keptDiff}/{@code keptJsUnit}) is kept (the
+	 * first failing trial, else the last passing one). This keeps the headline
+	 * figure consistent with the detail the report already shows. Per-trial figures
+	 * remain available in the {@link Trial} records for anyone who wants the
+	 * spread.
+	 * </p>
+	 *
+	 * @param metrics the kept trial's metrics (may be {@code null})
+	 * @return this result
+	 */
+	public SkillTestResult withMetrics(RunMetrics metrics) {
+		this.metrics = metrics;
+		return this;
+	}
+
+	/** @return the run's metrics, or {@code null} when unknown */
+	public RunMetrics getMetrics() {
+		return metrics;
 	}
 }

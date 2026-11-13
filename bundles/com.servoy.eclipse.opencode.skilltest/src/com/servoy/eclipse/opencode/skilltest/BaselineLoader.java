@@ -184,8 +184,8 @@ public final class BaselineLoader {
 
 	/**
 	 * Flips the {@code active} flag in a baseline's {@code baseline.json} sidecar,
-	 * preserving every other field (edits the JSON tree rather than
-	 * re-serialising a {@link Baseline}, which would need the golden transcript).
+	 * preserving every other field (edits the JSON tree rather than re-serialising
+	 * a {@link Baseline}, which would need the golden transcript).
 	 *
 	 * @param baselineFolder the baseline's folder
 	 * @param active         the new {@code active} value
@@ -223,20 +223,21 @@ public final class BaselineLoader {
 	}
 
 	/**
-	 * Writes the baseline's JSUnit verification (SVY-21366 §3.4b): sets/replaces the
-	 * {@code verify.jsunit} sidecar block and writes the injected test script into
-	 * the baseline folder. When {@code verify} is {@code null} the {@code verify}
-	 * block is removed (JSUnit verification disabled). Every other sidecar field is
-	 * preserved.
+	 * Writes the baseline's JSUnit verification (SVY-21366 §3.4b): sets/replaces
+	 * the {@code verify.jsunit} sidecar block and writes the injected test script
+	 * into the baseline folder. When {@code verify} is {@code null} the
+	 * {@code verify} block is removed (JSUnit verification disabled). Every other
+	 * sidecar field is preserved.
 	 *
 	 * @param baselineFolder the baseline's folder
-	 * @param verify         the JSUnit config to persist, or {@code null} to disable
+	 * @param verify         the JSUnit config to persist, or {@code null} to
+	 *                       disable
 	 * @param scriptName     solution-relative script file name (e.g.
 	 *                       {@code scopes/skilltest_verify.js}); ignored when
 	 *                       {@code verify} is {@code null}
 	 * @param scriptSource   the test script source to store at
-	 *                       {@code verify/<scriptName>}; ignored when {@code verify}
-	 *                       is {@code null}
+	 *                       {@code verify/<scriptName>}; ignored when
+	 *                       {@code verify} is {@code null}
 	 * @throws IOException if the sidecar or script cannot be written
 	 */
 	public static void writeJsUnitVerify(File baselineFolder, Baseline.JsUnitVerify verify, String scriptName,
@@ -269,7 +270,8 @@ public final class BaselineLoader {
 			jsunit.put("warmupTimeoutSeconds", verify.warmupTimeoutSeconds()); //$NON-NLS-1$
 			jsunit.put("required", verify.required()); //$NON-NLS-1$
 
-			// Store the injected test script under the baseline folder at verify/<scriptName>.
+			// Store the injected test script under the baseline folder at
+			// verify/<scriptName>.
 			if (scriptName != null && !scriptName.isBlank()) {
 				File scriptFile = new File(new File(baselineFolder, "verify"), scriptName); //$NON-NLS-1$
 				File parent = scriptFile.getParentFile();
@@ -340,13 +342,17 @@ public final class BaselineLoader {
 		if (verify == null || verify.scripts().isEmpty()) {
 			return null;
 		}
-		// Prefer the exact stored path (baseline-relative, e.g. "verify/scopes/foo.js").
+		// Prefer the exact stored path (baseline-relative, e.g.
+		// "verify/scopes/foo.js").
 		File scriptFile = new File(baselineFolder, verify.scripts().get(0));
 		if (!scriptFile.isFile()) {
-			// Path drift fallback: the sidecar pointer and the on-disk file can disagree if an
-			// earlier edit wrote a different prefix. Rather than return null (which makes the
+			// Path drift fallback: the sidecar pointer and the on-disk file can disagree if
+			// an
+			// earlier edit wrote a different prefix. Rather than return null (which makes
+			// the
 			// editor silently show the DEFAULT_SCRIPT and overwrite the real one on OK -
-			// SVY-21366), locate the actual script under <baseline>/verify by its base name.
+			// SVY-21366), locate the actual script under <baseline>/verify by its base
+			// name.
 			scriptFile = findScriptByName(new File(baselineFolder, "verify"), //$NON-NLS-1$
 					new File(verify.scripts().get(0)).getName());
 			if (scriptFile == null) {
@@ -360,7 +366,10 @@ public final class BaselineLoader {
 		}
 	}
 
-	/** Recursively finds a file named {@code fileName} under {@code dir}, or {@code null}. */
+	/**
+	 * Recursively finds a file named {@code fileName} under {@code dir}, or
+	 * {@code null}.
+	 */
 	static File findScriptByName(File dir, String fileName) {
 		if (dir == null || !dir.isDirectory() || fileName == null) {
 			return null;
@@ -424,12 +433,43 @@ public final class BaselineLoader {
 		List<OutcomeAssertion> expected = OutcomeAssertions.parse(root.get("expect")); //$NON-NLS-1$
 		Baseline.JsUnitVerify jsUnitVerify = parseJsUnitVerify(root.get("verify")); //$NON-NLS-1$
 		Baseline.AcceptanceVerify acceptanceVerify = parseAcceptanceVerify(root.get("verify")); //$NON-NLS-1$
+		Baseline.Budget budget = parseBudget(root.get("budget")); //$NON-NLS-1$
 
 		String exportName = text(root, "export", "export.json"); //$NON-NLS-1$ //$NON-NLS-2$
 		SessionTranscript golden = loadExport(new File(folder, exportName));
 
 		return new Baseline(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution,
-				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, golden);
+				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, budget,
+				golden);
+	}
+
+	/**
+	 * Parses the optional {@code budget} block (SVY-21660): a WARN-only
+	 * per-baseline soft budget. Shape:
+	 *
+	 * <pre>
+	 * "budget": { "metric": "toolCalls", "max": 25 }
+	 * "budget": { "metric": "toolCalls", "baselineValue": 18, "tolerancePct": 25 }
+	 * </pre>
+	 *
+	 * @param budgetNode the {@code budget} JSON node (may be {@code null})
+	 * @return the parsed budget, or {@code null} when the block is absent
+	 */
+	private static Baseline.Budget parseBudget(JsonNode budgetNode) {
+		if (budgetNode == null || budgetNode.isNull() || !budgetNode.isObject()) {
+			return null;
+		}
+		String metric = optText(budgetNode, "metric"); //$NON-NLS-1$
+		Integer max = budgetNode.has("max") && budgetNode.get("max").isNumber() //$NON-NLS-1$ //$NON-NLS-2$
+				? Integer.valueOf(budgetNode.get("max").asInt()) //$NON-NLS-1$
+				: null;
+		Integer baselineValue = budgetNode.has("baselineValue") && budgetNode.get("baselineValue").isNumber() //$NON-NLS-1$ //$NON-NLS-2$
+				? Integer.valueOf(budgetNode.get("baselineValue").asInt()) //$NON-NLS-1$
+				: null;
+		Integer tolerancePct = budgetNode.has("tolerancePct") && budgetNode.get("tolerancePct").isNumber() //$NON-NLS-1$ //$NON-NLS-2$
+				? Integer.valueOf(budgetNode.get("tolerancePct").asInt()) //$NON-NLS-1$
+				: null;
+		return new Baseline.Budget(metric, max, baselineValue, tolerancePct);
 	}
 
 	/**
@@ -448,8 +488,9 @@ public final class BaselineLoader {
 	 * <p>
 	 * An entry may be an object with {@code from}/{@code to}, or a bare string
 	 * (then {@code to} defaults to {@code from} with a leading {@code inputs/}
-	 * segment stripped). {@code from} is relative to the baseline folder; {@code to}
-	 * is relative to the agent's working directory (the active project's git root).
+	 * segment stripped). {@code from} is relative to the baseline folder;
+	 * {@code to} is relative to the agent's working directory (the active project's
+	 * git root).
 	 * </p>
 	 *
 	 * @param inputsNode the {@code inputs} JSON node (may be {@code null})
@@ -676,8 +717,9 @@ public final class BaselineLoader {
 	 * sidecar's {@code expect.persists} + {@code verify.acceptanceCriteria} +
 	 * {@code verify.jsunit}, and - when the plan carries a JSUnit script - the
 	 * generated script file under {@code verify/scopes/<name>.js} in the baseline
-	 * folder (the solution-relative path the sidecar's {@code verify.jsunit.scripts}
-	 * then references, matching what the verifier injects).
+	 * folder (the solution-relative path the sidecar's
+	 * {@code verify.jsunit.scripts} then references, matching what the verifier
+	 * injects).
 	 *
 	 * @param exportFile    the export JSON file the user picked from disk
 	 * @param baselinesRoot the baselines root to create the new folder under
@@ -693,13 +735,15 @@ public final class BaselineLoader {
 	}
 
 	/**
-	 * Like {@link #importExport(File, File, String, String, com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan)}
+	 * Like
+	 * {@link #importExport(File, File, String, String, com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan)}
 	 * but also writes the per-baseline run configuration the wizard collected
 	 * (starting-solution source, solution name, git/folder location+ref, number of
 	 * runs) into the sidecar's {@code precondition} + {@code maxAttempts}, instead
 	 * of the hardcoded defaults (SVY-21366).
 	 *
-	 * @param config the run configuration; {@code null} = {@link ImportConfig#defaults()}
+	 * @param config the run configuration; {@code null} =
+	 *               {@link ImportConfig#defaults()}
 	 */
 	public static File importExport(File exportFile, File baselinesRoot, String id, String title,
 			com.servoy.eclipse.opencode.skilltest.outcome.VerificationPlan plan, ImportConfig config)
@@ -749,11 +793,12 @@ public final class BaselineLoader {
 
 	/**
 	 * The per-baseline run configuration the import wizard collects on its details
-	 * page and writes into the new sidecar's {@code precondition} + {@code maxAttempts}
-	 * (SVY-21366): the starting-solution source (empty/git/folder), the solution to
-	 * create/activate, the git/folder location and ref, and the number of replay
-	 * trials. {@code null} defaults to an {@code empty} source on
-	 * {@link #DEFAULT_SOLUTION} with {@link #DEFAULT_MAX_ATTEMPTS} trials.
+	 * page and writes into the new sidecar's {@code precondition} +
+	 * {@code maxAttempts} (SVY-21366): the starting-solution source
+	 * (empty/git/folder), the solution to create/activate, the git/folder location
+	 * and ref, and the number of replay trials. {@code null} defaults to an
+	 * {@code empty} source on {@link #DEFAULT_SOLUTION} with
+	 * {@link #DEFAULT_MAX_ATTEMPTS} trials.
 	 *
 	 * @param source      the source kind (never {@code null})
 	 * @param solution    the solution project to create/activate (never blank)
@@ -764,13 +809,19 @@ public final class BaselineLoader {
 	public record ImportConfig(Baseline.Source.Type source, String solution, String location, String ref,
 			int maxAttempts) {
 
-		/** @return the default config: empty source, {@link #DEFAULT_SOLUTION}, {@link #DEFAULT_MAX_ATTEMPTS}. */
+		/**
+		 * @return the default config: empty source, {@link #DEFAULT_SOLUTION},
+		 *         {@link #DEFAULT_MAX_ATTEMPTS}.
+		 */
 		public static ImportConfig defaults() {
 			return new ImportConfig(Baseline.Source.Type.EMPTY, DEFAULT_SOLUTION, null, null, DEFAULT_MAX_ATTEMPTS);
 		}
 	}
 
-	/** A valid scope/file base name for a generated JSUnit script, defaulting when blank. */
+	/**
+	 * A valid scope/file base name for a generated JSUnit script, defaulting when
+	 * blank.
+	 */
 	private static String sanitizeScriptName(String name) {
 		String base = name == null ? "" : name.trim(); //$NON-NLS-1$
 		base = base.replaceAll("\\.js$", "").replaceAll("[^A-Za-z0-9_]+", "_"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
@@ -780,8 +831,8 @@ public final class BaselineLoader {
 
 	/**
 	 * Overwrites an existing baseline's {@code expect} block with the given
-	 * assertions, preserving every other sidecar field. Used by the view's
-	 * "edit assertions" action.
+	 * assertions, preserving every other sidecar field. Used by the view's "edit
+	 * assertions" action.
 	 *
 	 * @param baselineFolder the baseline's folder
 	 * @param expected       the assertions to persist (may be empty)
@@ -953,9 +1004,9 @@ public final class BaselineLoader {
 
 	/**
 	 * Parses the fixture reset manifest from a {@code precondition} block:
-	 * {@code delete} (files to remove) and {@code restore} (tracked files to
-	 * revert to git {@code HEAD}). Returns {@code null} when there is nothing to
-	 * reset, so the runner skips the setup step entirely.
+	 * {@code delete} (files to remove) and {@code restore} (tracked files to revert
+	 * to git {@code HEAD}). Returns {@code null} when there is nothing to reset, so
+	 * the runner skips the setup step entirely.
 	 *
 	 * @param precondition the {@code precondition} node (non-null)
 	 * @param solution     the resolved solution/project name (may be {@code null})

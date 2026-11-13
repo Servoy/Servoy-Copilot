@@ -33,6 +33,7 @@ Import-Package: com.fasterxml.jackson.core;version="[2.20.0,3.0.0)",
  io.modelcontextprotocol.json.schema.jackson2;version="[2.0.0,3.0.0)",
  io.modelcontextprotocol.spec;version="[2.0.0,3.0.0)",
  io.modelcontextprotocol.util;version="[2.0.0,3.0.0)",
+ org.sqlite;version="[3.0.0,4.0.0)",
  reactor.core.publisher;version="[3.0.0,4.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: com.servoy.eclipse.opencode.skilltest

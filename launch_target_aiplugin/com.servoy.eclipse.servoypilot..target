@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="60">
+<target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="61">
     <locations>
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="slicer" includeSource="true" type="InstallableUnit">
             <repository location="https://build.servoy.com/latest/servoy_lts_2026/update_site/"/>
@@ -85,6 +85,12 @@
                     <groupId>org.reactivestreams</groupId>
                     <artifactId>reactive-streams</artifactId>
                     <version>1.0.4</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>org.xerial</groupId>
+                    <artifactId>sqlite-jdbc</artifactId>
+                    <version>3.54.1.0</version>
                     <type>jar</type>
                 </dependency>
                 <dependency>

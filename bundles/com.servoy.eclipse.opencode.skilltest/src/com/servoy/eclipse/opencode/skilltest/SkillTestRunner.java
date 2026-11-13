@@ -22,8 +22,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.eclipse.core.resources.ResourcesPlugin;
-
 import com.servoy.eclipse.model.ServoyModelFinder;
 import com.servoy.eclipse.model.extensions.IServoyModel;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -224,6 +222,37 @@ public final class SkillTestRunner {
 		JsUnitVerifier.Result keptJsUnit = null;
 		String keptDiff = null;
 		boolean keptIsFailure = false;
+		// Cost/efficiency metrics (SVY-21660): a reader for the local Kiro usage
+		// snapshot, reused across trials, plus the kept representative trial's
+		// metrics (selected the same way the kept detail is).
+		RunMetrics keptMetrics = null;
+		KiroUsageReader kiroReader = new KiroUsageReader();
+		// Accurate per-scenario credit bracket (SVY-21660 B), built once per scenario.
+		// The credit start is read ONCE, before the first prompt, so the bracket spans
+		// the whole scenario's cost. All reads are DB-only, read-only, never throw into
+		// the run, make no network call and read no token; absent driver/file ->
+		// "unknown".
+		KiroCreditReader creditReader = new KiroCreditReader();
+		// Account used/limit come from kiro-usage.json (kiro.db has no account table,
+		// confirmed against live data). creditsStart is read ONCE before the first
+		// prompt; beforeStamp is the snapshot's freshness so the post-run read can
+		// wait for the plugin to sync before taking creditsEnd (SVY-21660 live-data
+		// follow-up).
+		java.util.OptionalDouble creditsStart = creditReader.accountUsed();
+		java.util.OptionalDouble creditsLimit = creditReader.accountLimit();
+		java.util.OptionalLong beforeStamp = creditReader.snapshotStamp();
+		logger.log("[skilltest] " + baseline.id() + " credits before (account used, estimate/shared account): " //$NON-NLS-1$ //$NON-NLS-2$
+				+ (creditsStart.isPresent() ? Double.toString(creditsStart.getAsDouble()) : "unknown") //$NON-NLS-1$
+				+ (creditsLimit.isPresent() ? " / limit " + creditsLimit.getAsDouble() : "")); //$NON-NLS-1$ //$NON-NLS-2$
+		// The kept trial's session id and its per-request token list. The per-turn
+		// token figures come from the HTTP export (SVY-21660 C): every assistant
+		// message carries its own `tokens` object at the MESSAGE top level, so
+		// SessionTranscript.fromExport is the single source and nothing has to outlive
+		// the trial - each session is deleted in the trial's own finally, as it always
+		// was.
+		String keptSessionId = null;
+		List<RunMetrics.RequestTokens> keptRequestTokens = List.of();
+		java.util.OptionalDouble creditsEnd = java.util.OptionalDouble.empty();
 		for (int attempt = 1; attempt <= maxAttempts; attempt++) {
 			attempts = attempt;
 			String sessionId = null;
@@ -264,6 +293,36 @@ public final class SkillTestRunner {
 					actual = SessionTranscript.fromExport(client.getMessages(sessionId));
 				}
 				lastActualCalls = actual.getToolCalls();
+
+				// Cost/efficiency metrics (SVY-21660): the tool-call count is the
+				// primary, always-reliable figure; the token usage is best-effort from
+				// the export; the Kiro figure is an optional estimate read from the local
+				// usage snapshot keyed by this session id. Read Kiro while the session
+				// still exists, because the usage file entry keyed by session id may be
+				// purged when the session is deleted at the end of this trial.
+				// Per-request token list (SVY-21660 C): the export carries each
+				// assistant message's own `tokens` object at the MESSAGE top level, so
+				// the transcript's list is the single source - measured against a real
+				// export dump, and the harness's sessions are never written to
+				// opencode.db's session_v2/session_message at all, so there is no DB
+				// path to prefer. Each entry already carries its own exact callCount
+				// (calls.size() - callsBefore, incl. nested Code-Mode calls), the value
+				// that drives the Actual column's first-call cost annotation.
+				List<RunMetrics.RequestTokens> requestTokens = actual.getRequestTokens();
+				RunMetrics trialMetrics = new RunMetrics(actual.getToolCalls().size(), actual.getTokens(),
+						kiroReader.readForSession(sessionId).orElse(null), null, requestTokens);
+
+				// End-of-scenario credit reading (SVY-21660 B): taken after completion
+				// and while the session still exists. Overwritten each trial so the LAST
+				// trial's post-completion reading is the bracket end. The kept session id +
+				// its per-request list are captured here for the Δ fallback and headline.
+				// The account figure lives in kiro-usage.json, which the plugin syncs only
+				// periodically - so a bare read right after completion would still reflect
+				// the pre-run snapshot and Δ would read ~0. Bounded-wait for the snapshot
+				// to advance past the pre-run freshness stamp (or the used figure to move)
+				// before reading the end, up to ~10s with the existing poll interval; a
+				// never-advancing snapshot leaves creditsEnd empty ("sync pending").
+				creditsEnd = waitForCreditSync(creditReader, beforeStamp, creditsStart, cancel);
 
 				// The build is done. Re-read the active solution from disk BEFORE any
 				// verification tier runs. While the agent writes a persist it can leave
@@ -338,7 +397,7 @@ public final class SkillTestRunner {
 				// Record this trial for the distribution view.
 				trials.add(new SkillTestResult.Trial(attempt, match, match ? "" : diff, outcomeNodes, //$NON-NLS-1$
 						lastActualCalls, jsUnit != null ? jsUnit.report() : null,
-						jsUnit != null ? Boolean.valueOf(jsUnit.pass()) : null));
+						jsUnit != null ? Boolean.valueOf(jsUnit.pass()) : null, trialMetrics));
 
 				if (match) {
 					passCount++;
@@ -349,6 +408,9 @@ public final class SkillTestRunner {
 						keptOutcomeNodes = outcomeNodes;
 						keptJsUnit = jsUnit;
 						keptDiff = "";
+						keptMetrics = trialMetrics;
+						keptSessionId = sessionId;
+						keptRequestTokens = requestTokens;
 					}
 				} else {
 					lastOutcomeNodes = outcomeNodes;
@@ -361,6 +423,9 @@ public final class SkillTestRunner {
 						keptOutcomeNodes = outcomeNodes;
 						keptJsUnit = jsUnit;
 						keptDiff = diff;
+						keptMetrics = trialMetrics;
+						keptSessionId = sessionId;
+						keptRequestTokens = requestTokens;
 						keptIsFailure = true;
 					}
 				}
@@ -399,16 +464,150 @@ public final class SkillTestRunner {
 		String jsUnitReport = jsUnitForReport != null ? jsUnitForReport.report() : null;
 		Boolean jsUnitPass = jsUnitForReport != null ? Boolean.valueOf(jsUnitForReport.pass()) : null;
 
+		// Per-turn token figures (SVY-21660 C) come from the kept trial's HTTP export,
+		// captured inside the loop: each assistant message carries its own `tokens`
+		// object at the MESSAGE top level, so no post-run read is needed and the
+		// session can be (and is) deleted per trial. An empty list simply means
+		// "unknown" (no per-call annotation).
+		logger.log("[skilltest] " + baseline.id() + " per-request tokens from the export: " //$NON-NLS-1$ //$NON-NLS-2$
+				+ keptRequestTokens.size() + " request(s)" //$NON-NLS-1$
+				+ (keptRequestTokens.isEmpty() ? " (unknown - the export carried no per-message tokens)" : "")); //$NON-NLS-1$ //$NON-NLS-2$
+
+		// Accurate per-scenario credits (SVY-21660 B): Δused = end - start when both
+		// present and end >= start; otherwise fall back to the kept trial's
+		// per-session figure; otherwise "unknown" (null). Logged with the
+		// estimate/shared-account caveat. The headline RunMetrics carries this Δ plus
+		// the kept trial's per-request token list (C) alongside the kept trial's
+		// tool-call/token/Kiro figures.
+		Double creditsDelta = computeCreditsDelta(creditsStart, creditsEnd, creditReader, keptSessionId);
+		logger.log("[skilltest] " + baseline.id() + " credits before (account used): " //$NON-NLS-1$ //$NON-NLS-2$
+				+ (creditsStart.isPresent() ? Double.toString(creditsStart.getAsDouble()) : "unknown") //$NON-NLS-1$
+				+ "; after (account used): " //$NON-NLS-1$
+				+ (creditsEnd.isPresent() ? Double.toString(creditsEnd.getAsDouble()) : "unknown (sync pending)") //$NON-NLS-1$
+				+ "; Δused (estimate/shared account): " //$NON-NLS-1$
+				+ (creditsDelta != null ? Double.toString(creditsDelta) : "unknown")); //$NON-NLS-1$
+		Double beforeVal = creditsStart.isPresent() ? Double.valueOf(creditsStart.getAsDouble()) : null;
+		Double afterVal = creditsEnd.isPresent() ? Double.valueOf(creditsEnd.getAsDouble()) : null;
+		Double limitVal = creditsLimit.isPresent() ? Double.valueOf(creditsLimit.getAsDouble()) : null;
+		RunMetrics headlineMetrics = withScenarioCost(keptMetrics, creditsDelta, keptRequestTokens, beforeVal, afterVal,
+				limitVal);
+
 		if (passCount == maxAttempts) {
 			return SkillTestResult.pass(baseline.id(), attempts).withTranscript(prompt, expectedCalls, lastActualCalls)
 					.withOutcomeNodes(keptOutcomeNodes).withJsUnit(jsUnitReport, jsUnitPass).withTrials(trials)
-					.withAgent(effectiveAgent);
+					.withAgent(effectiveAgent).withMetrics(headlineMetrics);
 		}
 		String failDiff = distribution + (keptDiff != null && !keptDiff.isBlank() ? "\n" + keptDiff : ""); //$NON-NLS-1$ //$NON-NLS-2$
 		return SkillTestResult.fail(baseline.id(), attempts, failDiff)
 				.withTranscript(prompt, expectedCalls, lastActualCalls)
 				.withOutcomeNodes(keptOutcomeNodes != null ? keptOutcomeNodes : lastOutcomeNodes)
-				.withJsUnit(jsUnitReport, jsUnitPass).withTrials(trials).withAgent(effectiveAgent);
+				.withJsUnit(jsUnitReport, jsUnitPass).withTrials(trials).withAgent(effectiveAgent)
+				.withMetrics(headlineMetrics);
+	}
+
+	/**
+	 * Computes the accurate per-scenario credits consumed (SVY-21660 B): the
+	 * start/end account-used delta when both readings are present and
+	 * {@code end >= start}; otherwise the kept trial's per-session figure;
+	 * otherwise {@code null} ("unknown"). Never throws - a read failure yields
+	 * {@code null}.
+	 *
+	 * @param start         the account-used reading before the first prompt
+	 * @param end           the account-used reading after completion
+	 * @param reader        the credit reader (for the per-session fallback)
+	 * @param keptSessionId the kept trial's session id (fallback key, may be
+	 *                      {@code null})
+	 * @return the Δused, or {@code null} for "unknown"
+	 */
+	private static Double computeCreditsDelta(java.util.OptionalDouble start, java.util.OptionalDouble end,
+			KiroCreditReader reader, String keptSessionId) {
+		if (start.isPresent() && end.isPresent() && end.getAsDouble() >= start.getAsDouble()) {
+			return Double.valueOf(end.getAsDouble() - start.getAsDouble());
+		}
+		java.util.OptionalDouble perSession = reader.creditsForSession(keptSessionId);
+		return perSession.isPresent() ? Double.valueOf(perSession.getAsDouble()) : null;
+	}
+
+	/**
+	 * Folds the scenario-level cost (Δused credits + the kept trial's per-request
+	 * token list) onto the kept trial's {@link RunMetrics} to make the headline
+	 * figure (SVY-21660 B/C). When the kept metrics are {@code null} (nothing
+	 * captured) a bare metrics carrier is built so the Δ/list still surface.
+	 *
+	 * @param kept          the kept trial's metrics (may be {@code null})
+	 * @param creditsDelta  the scenario Δused, or {@code null} for "unknown"
+	 * @param requestTokens the kept trial's per-request token list (may be empty)
+	 * @return the headline metrics, or {@code null} only when nothing at all is
+	 *         known
+	 */
+	private static RunMetrics withScenarioCost(RunMetrics kept, Double creditsDelta,
+			List<RunMetrics.RequestTokens> requestTokens, Double creditsBefore, Double creditsAfter,
+			Double creditsLimit) {
+		List<RunMetrics.RequestTokens> rt = requestTokens != null ? requestTokens : List.of();
+		boolean haveBracket = creditsBefore != null || creditsAfter != null || creditsLimit != null;
+		if (kept == null) {
+			if (creditsDelta == null && rt.isEmpty() && !haveBracket) {
+				return null;
+			}
+			return new RunMetrics(0, null, null, creditsDelta, rt, creditsBefore, creditsAfter, creditsLimit);
+		}
+		// Prefer the explicitly passed list: it is the kept trial's export-derived
+		// per-request list (SVY-21660 C), captured in the loop from each assistant
+		// message's own top-level `tokens`. The kept metrics' own list is the same
+		// data and is only used when the passed one is empty.
+		List<RunMetrics.RequestTokens> merged = !rt.isEmpty() ? rt : kept.requestTokens();
+		return new RunMetrics(kept.toolCalls(), kept.tokens(), kept.kiro(), creditsDelta, merged, creditsBefore,
+				creditsAfter, creditsLimit);
+	}
+
+	/**
+	 * Bounded wait for the Kiro plugin to sync the account snapshot
+	 * ({@code kiro-usage.json}) after a scenario (SVY-21660 live-data follow-up).
+	 * The account {@code used} figure lives in the JSON, which the plugin writes
+	 * only periodically, so a bare read right after completion still reflects the
+	 * pre-run state. This polls the snapshot's freshness stamp until it advances
+	 * past {@code beforeStamp} (or the account {@code used} moves off
+	 * {@code before}), up to ~10s using the existing {@link #POLL_INTERVAL} and
+	 * respecting cancellation - never a raw unbounded sleep. When the snapshot
+	 * never advances within the budget, {@link java.util.OptionalDouble#empty()} is
+	 * returned so the Δ reads "sync pending / unknown".
+	 *
+	 * @param reader      the credit reader
+	 * @param beforeStamp the snapshot freshness read before the first prompt
+	 * @param before      the account used read before the first prompt
+	 * @param cancel      cancellation supplier
+	 * @return the post-sync account used, or empty when the sync did not land
+	 */
+	private java.util.OptionalDouble waitForCreditSync(KiroCreditReader reader, java.util.OptionalLong beforeStamp,
+			java.util.OptionalDouble before, java.util.function.BooleanSupplier cancel) {
+		long budgetMs = 10_000L;
+		long stepMs = Math.max(200L, POLL_INTERVAL.toMillis() / 4);
+		long deadline = System.nanoTime() + budgetMs * 1_000_000L;
+		java.util.OptionalDouble latest = reader.accountUsed();
+		while (System.nanoTime() < deadline) {
+			if (cancel.getAsBoolean()) {
+				return latest;
+			}
+			java.util.OptionalLong nowStamp = reader.snapshotStamp();
+			boolean stampAdvanced = nowStamp.isPresent()
+					&& (beforeStamp.isEmpty() || nowStamp.getAsLong() > beforeStamp.getAsLong());
+			java.util.OptionalDouble nowUsed = reader.accountUsed();
+			boolean usedMoved = nowUsed.isPresent() && before.isPresent()
+					&& nowUsed.getAsDouble() != before.getAsDouble();
+			if (stampAdvanced || usedMoved) {
+				return nowUsed.isPresent() ? nowUsed : latest;
+			}
+			latest = nowUsed.isPresent() ? nowUsed : latest;
+			try {
+				Thread.sleep(stepMs);
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+				return latest;
+			}
+		}
+		// The snapshot never advanced within the budget: the end reading is unreliable
+		// (still the pre-run snapshot), so report "sync pending" rather than a false Δ.
+		return java.util.OptionalDouble.empty();
 	}
 
 	/**

@@ -22,7 +22,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
+import com.servoy.eclipse.opencode.skilltest.RunMetrics;
 import com.servoy.eclipse.opencode.skilltest.SkillTestResult;
 
 /**
@@ -47,7 +49,27 @@ public final class JUnitXmlReporter {
 	 * @throws IOException if the file cannot be written
 	 */
 	public static Path writeReport(Path outputDir, String suiteName, List<SkillTestResult> results) throws IOException {
+		return writeReport(outputDir, suiteName, results, Map.of());
+	}
+
+	/**
+	 * Writes {@code TEST-<suiteName>.xml} into {@code outputDir}, with optional
+	 * per-baseline budget warnings (SVY-21660) surfaced in {@code <system-out>}.
+	 *
+	 * @param outputDir      the directory to write the report into (created if
+	 *                       absent)
+	 * @param suiteName      the JUnit suite name
+	 * @param results        the per-baseline results
+	 * @param budgetWarnings baseline id -&gt; WARN-only over-budget message (may be
+	 *                       empty); these never change failure/error counts or a
+	 *                       {@code <testcase>} body
+	 * @return the report file written
+	 * @throws IOException if the file cannot be written
+	 */
+	public static Path writeReport(Path outputDir, String suiteName, List<SkillTestResult> results,
+			Map<String, String> budgetWarnings) throws IOException {
 		Files.createDirectories(outputDir);
+		Map<String, String> warnings = budgetWarnings != null ? budgetWarnings : Map.of();
 
 		int tests = results.size();
 		int failures = 0;
@@ -81,27 +103,33 @@ public final class JUnitXmlReporter {
 				xml.append(cdata(failureBody(r)));
 				xml.append("\n    </failure>\n"); //$NON-NLS-1$
 			}
-			case PASS -> {
-				// On pass, still surface a JSUnit report (if any) as system-out so the
-				// behavioural verification is visible in the Jenkins report.
-				if (r.getJsUnitReport() != null && !r.getJsUnitReport().isBlank()) {
-					xml.append("    <system-out>\n").append(cdata("JSUnit verification (PASS):\n" //$NON-NLS-1$ //$NON-NLS-2$
-							+ r.getJsUnitReport())).append("\n    </system-out>\n"); //$NON-NLS-1$
-				}
-			}
 			case ERROR -> {
 				xml.append("    <error message=\"").append(esc(nullToEmpty(r.getErrorMessage()))).append("\">\n"); //$NON-NLS-1$ //$NON-NLS-2$
 				xml.append(cdata(nullToEmpty(r.getErrorMessage())));
 				xml.append("\n    </error>\n"); //$NON-NLS-1$
 			}
+			default -> {
+				// pass / skipped: nothing added to the testcase body itself
+			}
+			}
+			// Cost/efficiency metrics (SVY-21660): emit a system-out block for EVERY
+			// status with a one-line metrics summary, any budget warning, and (on PASS)
+			// the existing JSUnit report. Informational only - failures/errors and the
+			// <testcase> body above are unchanged.
+			String systemOut = systemOutBody(r, warnings.get(id));
+			if (!systemOut.isBlank()) {
+				xml.append("    <system-out>\n").append(cdata(systemOut)).append("\n    </system-out>\n"); //$NON-NLS-1$ //$NON-NLS-2$
 			}
 			xml.append("  </testcase>\n"); //$NON-NLS-1$
 		}
 		xml.append("</testsuite>\n"); //$NON-NLS-1$
 
-		// The XML content keeps the raw suiteName (XML-escaped in the attribute above), but the
-		// FILE name must be filesystem-safe: a suiteName with a path-illegal char (e.g. '<' on
-		// Windows) would make Path.resolve throw InvalidPathException and lose the whole report.
+		// The XML content keeps the raw suiteName (XML-escaped in the attribute above),
+		// but the
+		// FILE name must be filesystem-safe: a suiteName with a path-illegal char (e.g.
+		// '<' on
+		// Windows) would make Path.resolve throw InvalidPathException and lose the
+		// whole report.
 		// Replace anything outside [A-Za-z0-9._-] with '_' for the file name only.
 		String safeSuite = suiteName == null ? "suite" : suiteName.replaceAll("[^A-Za-z0-9._-]", "_"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		if (safeSuite.isBlank()) {
@@ -110,6 +138,32 @@ public final class JUnitXmlReporter {
 		Path reportFile = outputDir.resolve("TEST-" + safeSuite + ".xml"); //$NON-NLS-1$ //$NON-NLS-2$
 		Files.writeString(reportFile, xml.toString(), StandardCharsets.UTF_8);
 		return reportFile;
+	}
+
+	/**
+	 * Builds the {@code <system-out>} body for a testcase (SVY-21660): a one-line
+	 * metrics summary, any WARN-only budget line, and (on PASS) the JSUnit report.
+	 * Informational only - never affects failure/error counts.
+	 */
+	private static String systemOutBody(SkillTestResult r, String budgetWarning) {
+		StringBuilder sb = new StringBuilder();
+		RunMetrics m = r.getMetrics();
+		sb.append("Metrics: tool calls=") //$NON-NLS-1$
+				.append(m != null ? Integer.toString(m.toolCalls()) : "unknown") //$NON-NLS-1$
+				.append(", tokens=").append(m != null ? m.tokensLabel() : "unknown") //$NON-NLS-1$ //$NON-NLS-2$
+				.append(", kiro=").append(m != null ? m.kiroLabel() : "unknown (estimate)"); //$NON-NLS-1$ //$NON-NLS-2$
+		// Accurate per-scenario credits Δ + compact per-request ranking (SVY-21660
+		// B/C): informational, degrades to "unknown".
+		sb.append("\nCredits used (\u0394): ").append(m != null ? m.creditsLabel() : "unknown"); //$NON-NLS-1$ //$NON-NLS-2$
+		sb.append("\nPer-request tokens: ").append(m != null ? m.requestRankingLabel() : "unknown"); //$NON-NLS-1$ //$NON-NLS-2$
+		if (budgetWarning != null && !budgetWarning.isBlank()) {
+			sb.append("\nBudget warning: ").append(budgetWarning); //$NON-NLS-1$
+		}
+		if (r.getStatus() == SkillTestResult.Status.PASS && r.getJsUnitReport() != null
+				&& !r.getJsUnitReport().isBlank()) {
+			sb.append("\nJSUnit verification (PASS):\n").append(r.getJsUnitReport()); //$NON-NLS-1$
+		}
+		return sb.toString();
 	}
 
 	/**
@@ -144,7 +198,10 @@ public final class JUnitXmlReporter {
 		}
 	}
 
-	/** Renders one outcome node (and its property checks + children) as indented text. */
+	/**
+	 * Renders one outcome node (and its property checks + children) as indented
+	 * text.
+	 */
 	private static void appendNode(StringBuilder sb,
 			com.servoy.eclipse.opencode.skilltest.outcome.PersistOutcomeChecker.Node node, String indent) {
 		sb.append(indent).append(node.pass() ? "[PASS] " : "[FAIL] ") //$NON-NLS-1$ //$NON-NLS-2$

@@ -24,12 +24,13 @@ import java.util.Map;
 import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeAssertion;
 
 /**
- * A golden-fixture baseline: the {@code baseline.json} sidecar metadata plus the
- * parsed golden {@link SessionTranscript} loaded from its {@code export.json}.
+ * A golden-fixture baseline: the {@code baseline.json} sidecar metadata plus
+ * the parsed golden {@link SessionTranscript} loaded from its
+ * {@code export.json}.
  * <p>
- * The prompt to replay is {@link #promptOverride()} if set, otherwise the prompt
- * extracted from the golden transcript. Compare tuning lives in the nested
- * {@link Compare} record.
+ * The prompt to replay is {@link #promptOverride()} if set, otherwise the
+ * prompt extracted from the golden transcript. Compare tuning lives in the
+ * nested {@link Compare} record.
  * </p>
  * <p>
  * A baseline may also declare {@link #expected() expected outcomes}
@@ -88,8 +89,8 @@ public final class Baseline {
 
 	/**
 	 * A baseline-owned input file staged into the agent's working directory before
-	 * each replay, so a prompt that refers to a file "in this workspace" (e.g. a
-	 * UI mockup under {@code specs/}) finds it regardless of the machine or the
+	 * each replay, so a prompt that refers to a file "in this workspace" (e.g. a UI
+	 * mockup under {@code specs/}) finds it regardless of the machine or the
 	 * {@code source} kind - including {@code empty}, which has no checkout.
 	 * <p>
 	 * Owned by the <b>baseline</b>, not the solution (the same way the JSUnit
@@ -116,8 +117,8 @@ public final class Baseline {
 	 * {@code @Before}-style, so every run starts from the same state the golden was
 	 * recorded against. Parsed from the {@code precondition} block of the sidecar.
 	 * <p>
-	 * All paths are relative to the {@code solution} project's root.
-	 * {@code delete} paths are removed if present (files the agent creates, e.g.
+	 * All paths are relative to the {@code solution} project's root. {@code delete}
+	 * paths are removed if present (files the agent creates, e.g.
 	 * {@code forms/test1_.frm}); {@code restore} paths are reverted to their
 	 * committed git {@code HEAD} content (tracked files the agent modifies, e.g.
 	 * {@code solution_settings.obj}).
@@ -169,19 +170,22 @@ public final class Baseline {
 	 * from the baseline folder into the active solution after the skill run, then
 	 * {@link #scope}/{@link #method} tell {@code JSUnitRunnerService} what to run.
 	 *
-	 * @param scripts        baseline-relative {@code .js} files to inject into the
-	 *                       active solution before running (path each declares is
-	 *                       relative to the solution project root, e.g.
-	 *                       {@code scopes/skilltest_verify.js}); empty = do not
-	 *                       inject - either run {@link #existingScripts} or the
-	 *                       declared {@link #scope}
-	 * @param existingScripts solution-relative {@code .js} files that ALREADY exist
-	 *                       in a non-empty (git/folder) solution and should be run
-	 *                       WITHOUT injecting anything (e.g. {@code globals.js},
-	 *                       {@code forms/customers.js}). When non-empty the verifier
-	 *                       skips injection and runs each file's scope, aggregating
-	 *                       the results. Mutually exclusive with {@link #scripts} in
-	 *                       practice; empty = fall back to injection / {@link #scope}
+	 * @param scripts              baseline-relative {@code .js} files to inject
+	 *                             into the active solution before running (path
+	 *                             each declares is relative to the solution project
+	 *                             root, e.g. {@code scopes/skilltest_verify.js});
+	 *                             empty = do not inject - either run
+	 *                             {@link #existingScripts} or the declared
+	 *                             {@link #scope}
+	 * @param existingScripts      solution-relative {@code .js} files that ALREADY
+	 *                             exist in a non-empty (git/folder) solution and
+	 *                             should be run WITHOUT injecting anything (e.g.
+	 *                             {@code globals.js}, {@code forms/customers.js}).
+	 *                             When non-empty the verifier skips injection and
+	 *                             runs each file's scope, aggregating the results.
+	 *                             Mutually exclusive with {@link #scripts} in
+	 *                             practice; empty = fall back to injection /
+	 *                             {@link #scope}
 	 * @param scope                the scope/form/{@code ALL}/{@code MODULES}/
 	 *                             {@code FORMS} to run
 	 * @param method               optional single {@code test_} method to run, else
@@ -190,13 +194,15 @@ public final class Baseline {
 	 * @param warmupTimeoutSeconds generous timeout that must also cover the
 	 *                             first-time Titanium/NG client bundle build and
 	 *                             SmartClient boot a freshly imported solution pays
-	 *                             on its first JSUnit launch. The verifier runs with
+	 *                             on its first JSUnit launch. The verifier runs
+	 *                             with
 	 *                             {@code max(timeoutSeconds, warmupTimeoutSeconds)}
 	 *                             so that cold-start build time is not charged
-	 *                             against {@code timeoutSeconds} (SVY-21366). A value
-	 *                             {@code <= 0} means "no extra warmup budget".
-	 * @param required             if {@code false}, JSUnit failures are reported but
-	 *                             do not fail the baseline
+	 *                             against {@code timeoutSeconds} (SVY-21366). A
+	 *                             value {@code <= 0} means "no extra warmup
+	 *                             budget".
+	 * @param required             if {@code false}, JSUnit failures are reported
+	 *                             but do not fail the baseline
 	 */
 	public record JsUnitVerify(List<String> scripts, List<String> existingScripts, String scope, String method,
 			int timeoutSeconds, int warmupTimeoutSeconds, boolean required) {
@@ -206,7 +212,10 @@ public final class Baseline {
 			existingScripts = existingScripts == null ? Collections.emptyList() : List.copyOf(existingScripts);
 		}
 
-		/** @return {@code true} when existing solution test files should be run instead of injecting. */
+		/**
+		 * @return {@code true} when existing solution test files should be run instead
+		 *         of injecting.
+		 */
 		public boolean usesExistingScripts() {
 			return existingScripts != null && !existingScripts.isEmpty();
 		}
@@ -228,21 +237,21 @@ public final class Baseline {
 	 * (SVY-21366). Natural-language criteria authored by a human at baseline-setup
 	 * time; at run time a judge - running in a separate opencode session, which may
 	 * use the same model as the builder - reads the built form's source artifacts
-	 * (the {@code .frm} JSON, the form and
-	 * solution {@code .less}/{@code css}, the form's {@code .js} with its
-	 * {@code onShow} handler) plus the UI mockup and decides pass/fail per
-	 * criterion - the way an SDD review agent signs off, rather than asserting a
-	 * frozen persist tree that a valid LLM run reproduces a different way.
+	 * (the {@code .frm} JSON, the form and solution {@code .less}/{@code css}, the
+	 * form's {@code .js} with its {@code onShow} handler) plus the UI mockup and
+	 * decides pass/fail per criterion - the way an SDD review agent signs off,
+	 * rather than asserting a frozen persist tree that a valid LLM run reproduces a
+	 * different way.
 	 *
 	 * @param criteria   the natural-language acceptance criteria, each a single
 	 *                   must-hold statement (never {@code null})
-	 * @param judgeModel the model to grade with (e.g. {@code anthropic/claude-...});
-	 *                   MUST differ from the baseline's builder {@link #model()} so
-	 *                   the form's author is not its own judge. {@code null}/blank
-	 *                   = let the runner pick a default judge model that is not the
-	 *                   builder model
-	 * @param required   if {@code false}, a judge FAIL is reported but does not fail
-	 *                   the baseline (advisory); default {@code true} (gates)
+	 * @param judgeModel the model to grade with (e.g.
+	 *                   {@code anthropic/claude-...}); MUST differ from the
+	 *                   baseline's builder {@link #model()} so the form's author is
+	 *                   not its own judge. {@code null}/blank = let the runner pick
+	 *                   a default judge model that is not the builder model
+	 * @param required   if {@code false}, a judge FAIL is reported but does not
+	 *                   fail the baseline (advisory); default {@code true} (gates)
 	 */
 	public record AcceptanceVerify(List<String> criteria, String judgeModel, boolean required) {
 
@@ -253,6 +262,43 @@ public final class Baseline {
 		/** @return {@code true} when there is at least one criterion to grade. */
 		public boolean hasCriteria() {
 			return !criteria.isEmpty();
+		}
+	}
+
+	/**
+	 * Optional, WARN-only per-baseline soft budget (SVY-21660), parsed from the
+	 * {@code budget} block of the sidecar. It flags a cost regression beyond a
+	 * configurable threshold as a <b>warning only</b> - it never changes the
+	 * PASS/FAIL verdict, the JUnit failure/error counts or a {@code <testcase>}
+	 * body. Shape:
+	 *
+	 * <pre>
+	 * "budget": {
+	 *   "metric": "toolCalls",   // default; "tokens" allowed, honoured only when token data is present
+	 *   "max": 25,               // absolute ceiling; OR
+	 *   "baselineValue": 18,     // a recorded reference, with
+	 *   "tolerancePct": 25       // flag when current exceeds baselineValue * (1 + tolerancePct/100)
+	 * }
+	 * </pre>
+	 *
+	 * @param metric        the budgeted metric: {@code "toolCalls"} (default) or
+	 *                      {@code "tokens"}
+	 * @param max           an absolute ceiling, or {@code null} when not set
+	 * @param baselineValue a reference value, or {@code null} when not set
+	 * @param tolerancePct  the tolerance percentage applied to
+	 *                      {@code baselineValue}, or {@code null} when not set
+	 */
+	public record Budget(String metric, Integer max, Integer baselineValue, Integer tolerancePct) {
+
+		public Budget {
+			if (metric == null || metric.isBlank()) {
+				metric = "toolCalls"; //$NON-NLS-1$
+			}
+		}
+
+		/** @return {@code true} when the budget targets token usage. */
+		public boolean isTokenMetric() {
+			return "tokens".equalsIgnoreCase(metric); //$NON-NLS-1$
 		}
 	}
 
@@ -273,6 +319,7 @@ public final class Baseline {
 	private final List<OutcomeAssertion> expected;
 	private final JsUnitVerify jsUnitVerify;
 	private final AcceptanceVerify acceptanceVerify;
+	private final Budget budget;
 	private final SessionTranscript goldenTranscript;
 
 	/**
@@ -288,10 +335,24 @@ public final class Baseline {
 				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, null, goldenTranscript);
 	}
 
+	/**
+	 * Backwards-compatible constructor (no soft budget, SVY-21660), for the call
+	 * sites that predate {@link Budget}; delegates with {@code budget = null}.
+	 */
 	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
 			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
 			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
 			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, SessionTranscript goldenTranscript) {
+		this(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution, source,
+				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, null,
+				goldenTranscript);
+	}
+
+	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
+			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
+			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
+			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, Budget budget,
+			SessionTranscript goldenTranscript) {
 		this.id = id;
 		this.title = title;
 		this.active = active;
@@ -309,6 +370,7 @@ public final class Baseline {
 		this.expected = expected == null ? Collections.emptyList() : List.copyOf(expected);
 		this.jsUnitVerify = jsUnitVerify;
 		this.acceptanceVerify = acceptanceVerify;
+		this.budget = budget;
 		this.goldenTranscript = goldenTranscript;
 	}
 
@@ -350,10 +412,11 @@ public final class Baseline {
 
 	/**
 	 * @return additional project names to clean (delete with content) before setup,
-	 *         alongside {@link #solution()} - typically the Servoy resources project
-	 *         (e.g. {@code servoy_resources}) and any modules, mirroring the
-	 *         integration tests' {@code deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES)}.
-	 *         Parsed from {@code precondition.cleanProjects}. Never {@code null}.
+	 *         alongside {@link #solution()} - typically the Servoy resources
+	 *         project (e.g. {@code servoy_resources}) and any modules, mirroring
+	 *         the integration tests'
+	 *         {@code deleteProjects(TEST_SOLUTION, SERVOY_RESOURCES)}. Parsed from
+	 *         {@code precondition.cleanProjects}. Never {@code null}.
 	 */
 	public List<String> cleanProjects() {
 		return cleanProjects;
@@ -361,8 +424,9 @@ public final class Baseline {
 
 	/**
 	 * @return the baseline-owned input files to stage into the agent's working
-	 *         directory before each replay (parsed from {@code precondition.inputs}).
-	 *         Never {@code null}; empty when the baseline declares none.
+	 *         directory before each replay (parsed from
+	 *         {@code precondition.inputs}). Never {@code null}; empty when the
+	 *         baseline declares none.
 	 */
 	public List<Input> inputs() {
 		return inputs;
@@ -435,6 +499,19 @@ public final class Baseline {
 	 */
 	public boolean hasAcceptanceVerify() {
 		return acceptanceVerify != null && acceptanceVerify.hasCriteria();
+	}
+
+	/**
+	 * @return the optional soft budget declared by this baseline (SVY-21660), or
+	 *         {@code null} when none is declared
+	 */
+	public Budget budget() {
+		return budget;
+	}
+
+	/** @return {@code true} if this baseline declares a soft budget. */
+	public boolean hasBudget() {
+		return budget != null;
 	}
 
 	public SessionTranscript goldenTranscript() {

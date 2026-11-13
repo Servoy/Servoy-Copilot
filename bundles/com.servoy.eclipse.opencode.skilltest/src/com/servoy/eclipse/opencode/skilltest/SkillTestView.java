@@ -17,8 +17,6 @@
 
 package com.servoy.eclipse.opencode.skilltest;
 
-import com.servoy.eclipse.model.util.ServoyLog;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -46,9 +44,10 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.ui.part.ViewPart;
 
+import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.opencode.Activator;
 import com.servoy.eclipse.ui.browser.BrowserFactory;
 import com.servoy.eclipse.ui.browser.IBrowser;
-import com.servoy.eclipse.opencode.Activator;
 
 /**
  * Dedicated Eclipse view for the Servoy AI skill-test baselines (SVY-21366).
@@ -111,6 +110,24 @@ public class SkillTestView extends ViewPart {
 			SkillTestResult r = lastResults.get(e.baseline().id());
 			return r != null ? r.getStatus().toString() : "—"; //$NON-NLS-1$
 		});
+		// Cost/efficiency columns (SVY-21660): the primary tool-call count and the
+		// best-effort token figure ("unknown" when absent). No separate Kiro column
+		// (decision 3) - the Kiro figure lives in the HTML detail + JUnit system-out.
+		// A "\u26a0" marks an over-budget result (WARN-only; never a FAIL).
+		createColumn("Tool calls", 90, e -> { //$NON-NLS-1$
+			SkillTestResult r = lastResults.get(e.baseline().id());
+			RunMetrics m = r != null ? r.getMetrics() : null;
+			if (m == null) {
+				return "unknown"; //$NON-NLS-1$
+			}
+			String warn = budgetWarning(e.baseline(), m);
+			return Integer.toString(m.toolCalls()) + (warn != null ? " \u26a0" : ""); //$NON-NLS-1$ //$NON-NLS-2$
+		});
+		createColumn("Tokens", 160, e -> { //$NON-NLS-1$
+			SkillTestResult r = lastResults.get(e.baseline().id());
+			RunMetrics m = r != null ? r.getMetrics() : null;
+			return m != null ? m.tokensLabel() : "unknown"; //$NON-NLS-1$
+		});
 
 		viewer.addSelectionChangedListener(event -> showDetail());
 		// Double-click the Active cell (or a row) toggles the active flag.
@@ -136,6 +153,18 @@ public class SkillTestView extends ViewPart {
 	private static String baselineLabel(Baseline baseline) {
 		String title = baseline.title();
 		return title != null && !title.isBlank() ? title : baseline.id();
+	}
+
+	/**
+	 * Evaluates a baseline's optional soft budget against a run's metrics
+	 * (SVY-21660), returning a WARN-only message when over budget, or {@code null}
+	 * when within budget / no budget / no metrics. Never affects PASS/FAIL.
+	 */
+	private static String budgetWarning(Baseline baseline, RunMetrics metrics) {
+		if (baseline == null || !baseline.hasBudget() || metrics == null) {
+			return null;
+		}
+		return BudgetEvaluator.evaluate(baseline.budget(), metrics).orElse(null);
 	}
 
 	private void createColumn(String title, int width,
@@ -295,7 +324,7 @@ public class SkillTestView extends ViewPart {
 			detail.setText(SkillTestHtml.notRun(entry.baseline().id()));
 			return;
 		}
-		detail.setText(SkillTestHtml.render(r));
+		detail.setText(SkillTestHtml.render(r, budgetWarning(entry.baseline(), r.getMetrics())));
 	}
 
 	private BaselineLoader.Entry selectedEntry() {

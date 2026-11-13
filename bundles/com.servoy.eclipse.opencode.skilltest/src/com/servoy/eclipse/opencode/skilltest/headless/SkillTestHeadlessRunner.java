@@ -340,9 +340,21 @@ public class SkillTestHeadlessRunner implements IApplication {
 			}
 		}
 
-		// 6. Always write a report so the CI JUnit publisher finds a file.
+		// 6. Always write a report so the CI JUnit publisher finds a file. Carry any
+		// WARN-only budget warnings (SVY-21660) into <system-out>; they never change
+		// failure/error counts.
 		Path outputDir = configuration.getOutputDir();
-		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results); //$NON-NLS-1$
+		java.util.Map<String, String> budgetWarnings = new java.util.HashMap<>();
+		for (BaselineLoader.Entry entry : entries) {
+			SkillTestResult result = results.stream().filter(res -> entry.baseline().id().equals(res.getBaselineId()))
+					.findFirst().orElse(null);
+			if (entry.baseline().hasBudget() && result != null && result.getMetrics() != null) {
+				com.servoy.eclipse.opencode.skilltest.BudgetEvaluator
+						.evaluate(entry.baseline().budget(), result.getMetrics())
+						.ifPresent(w -> budgetWarnings.put(entry.baseline().id(), w));
+			}
+		}
+		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results, budgetWarnings); //$NON-NLS-1$
 		output("JUnit XML report written to: " + reportFile.toAbsolutePath());
 		output(runner.formatResults(results));
 

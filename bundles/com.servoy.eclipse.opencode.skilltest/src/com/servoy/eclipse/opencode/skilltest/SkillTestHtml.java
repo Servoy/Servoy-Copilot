@@ -62,6 +62,19 @@ public final class SkillTestHtml {
 	 * @return an HTML document
 	 */
 	public static String render(SkillTestResult r) {
+		return render(r, null);
+	}
+
+	/**
+	 * Renders a full result: header, sent prompt, cost/efficiency metrics
+	 * (SVY-21660), and expected-vs-actual tool calls.
+	 *
+	 * @param r             the result to render
+	 * @param budgetWarning an optional WARN-only over-budget message (rendered as a
+	 *                      non-fatal note), or {@code null} when within budget
+	 * @return an HTML document
+	 */
+	public static String render(SkillTestResult r, String budgetWarning) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("<div class=\"header ").append(statusClass(r.getStatus())).append("\">"); //$NON-NLS-1$ //$NON-NLS-2$
 		sb.append("<span class=\"status\">").append(r.getStatus()).append("</span> "); //$NON-NLS-1$ //$NON-NLS-2$
@@ -86,6 +99,11 @@ public final class SkillTestHtml {
 			sb.append("<div class=\"bubble prompt\">").append(esc(r.getPrompt())).append("</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 
+		// Cost / efficiency metrics (SVY-21660): tool-call count (primary), token
+		// breakdown or "unknown", Kiro requests/estCredits or "unknown (estimate)",
+		// and any WARN-only over-budget note (visually distinct from FAIL).
+		sb.append(metricsSection(r.getMetrics(), budgetWarning));
+
 		// Multi-trial distribution: render each trial as its own collapsible section
 		// (SVY-21366: look at the distribution, not one pass/fail). A single-trial run
 		// falls through to the flat sections below.
@@ -107,6 +125,10 @@ public final class SkillTestHtml {
 					boolean jp = Boolean.TRUE.equals(t.jsUnitPass());
 					sb.append("<div class=\"bubble ").append(jp ? "outcome-pass" : "outcome-fail").append("\"><pre>") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 							.append(esc(t.jsUnitReport())).append("</pre></div>"); //$NON-NLS-1$
+				}
+				// Per-trial cost/efficiency metrics (SVY-21660) so the spread is visible.
+				if (t.metrics() != null) {
+					sb.append(metricsLine(t.metrics()));
 				}
 				sb.append("</details>"); //$NON-NLS-1$
 			}
@@ -159,6 +181,89 @@ public final class SkillTestHtml {
 	 * Renders the collapsible "Tool calls (informational)" section (expected vs
 	 * actual). Shared by the single-trial and multi-trial layouts.
 	 */
+	/**
+	 * Renders the "Metrics" section (SVY-21660): tool-call count (primary), tokens
+	 * or "unknown", Kiro requests/estCredits or "unknown (estimate)", and any
+	 * WARN-only over-budget note. Shown even when metrics are {@code null} (older
+	 * reconstructed results) so the "unknown" state is explicit.
+	 */
+	private static String metricsSection(RunMetrics m, String budgetWarning) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("<div class=\"section-title\">Metrics</div>"); //$NON-NLS-1$
+		sb.append("<div class=\"bubble\">"); //$NON-NLS-1$
+		if (m == null) {
+			sb.append("Tool calls: <b>unknown</b><br>Tokens: unknown<br>Kiro: unknown (estimate)" //$NON-NLS-1$
+					+ "<br>Credits used (\u0394): unknown"); //$NON-NLS-1$
+		} else {
+			sb.append("Tool calls: <b>").append(m.toolCalls()).append("</b><br>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("Tokens: ").append(esc(m.tokensLabel())).append("<br>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("Kiro: ").append(esc(m.kiroLabel())).append("<br>"); //$NON-NLS-1$ //$NON-NLS-2$
+			// Accurate per-scenario credits Δ (SVY-21660 B), labelled an estimate on a
+			// shared account.
+			sb.append("Credits used (\u0394): ").append(esc(m.creditsLabel())); //$NON-NLS-1$
+		}
+		sb.append("</div>"); //$NON-NLS-1$
+		if (budgetWarning != null && !budgetWarning.isBlank()) {
+			sb.append("<div class=\"bubble budget-warn\">\u26a0 over budget: ") //$NON-NLS-1$
+					.append(esc(budgetWarning)).append("</div>"); //$NON-NLS-1$
+		}
+		// Per-request token table (SVY-21660 C): ranked by input, the most inefficient
+		// request highlighted, with cache-read ratio + base input + the "no caching"
+		// note when the ratio is ~0. Per-tool cost is an attribution estimate.
+		if (m != null && !m.requestTokens().isEmpty()) {
+			sb.append(requestTokenTable(m));
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * Renders the per-request token table (SVY-21660 C): one row per request, with
+	 * input/output/cache and the cache-read ratio, sorted by input descending so
+	 * the most inefficient step is at the top (and highlighted). A caveat line
+	 * states that opencode meters per request, so a per-tool figure is an
+	 * attribution estimate.
+	 */
+	private static String requestTokenTable(RunMetrics m) {
+		java.util.List<RunMetrics.RequestTokens> reqs = new java.util.ArrayList<>(m.requestTokens());
+		RunMetrics.RequestTokens worst = m.mostInefficientRequest();
+		reqs.sort((a, b) -> Long.compare(b.tokens() != null ? b.tokens().input() : 0,
+				a.tokens() != null ? a.tokens().input() : 0));
+		StringBuilder sb = new StringBuilder();
+		sb.append("<div class=\"section-title\">Per-request tokens (ranked by input)</div>"); //$NON-NLS-1$
+		long base = m.baseInput();
+		sb.append("<div class=\"muted\">Base input (re-sent every turn): ") //$NON-NLS-1$
+				.append(base >= 0 ? Long.toString(base) : "unknown") //$NON-NLS-1$
+				.append(". opencode meters per request - when a request makes several tool calls they share " //$NON-NLS-1$
+						+ "that request's token figure, so a per-tool cost is an attribution estimate.</div>"); //$NON-NLS-1$
+		sb.append("<table class=\"oc-props\"><tr><th>#</th><th>Input</th><th>Output</th>" //$NON-NLS-1$
+				+ "<th>Cache read</th><th>Cache-read %</th><th>Tools / skill</th></tr>"); //$NON-NLS-1$
+		for (RunMetrics.RequestTokens rt : reqs) {
+			boolean isWorst = worst != null && rt.index() == worst.index();
+			RunMetrics.TokenUsage t = rt.tokens();
+			sb.append("<tr class=\"").append(isWorst ? "p-fail" : "p-pass").append("\">"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			sb.append("<td class=\"k\">").append(rt.index()).append(isWorst ? " \u26a0" : "").append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			sb.append("<td class=\"v\">").append(t != null ? t.input() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<td class=\"v\">").append(t != null ? t.output() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<td class=\"v\">").append(t != null ? t.cacheRead() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<td class=\"v\">").append(String.format("%.1f%%", rt.cacheReadRatio() * 100d)) //$NON-NLS-1$ //$NON-NLS-2$
+					.append(rt.noCaching() ? " (no caching - full context re-sent)" : "").append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			StringBuilder ts = new StringBuilder(String.join(", ", rt.toolNames())); //$NON-NLS-1$
+			if (rt.skill() != null && !rt.skill().isBlank()) {
+				ts.append(ts.length() > 0 ? " / " : "").append(rt.skill()); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			sb.append("<td class=\"v\">").append(esc(ts.toString())).append("</td></tr>"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		sb.append("</table>"); //$NON-NLS-1$
+		return sb.toString();
+	}
+
+	/** A compact one-line metrics summary for a single trial (SVY-21660). */
+	private static String metricsLine(RunMetrics m) {
+		return "<div class=\"muted\">Metrics \u2014 tool calls: " + m.toolCalls() //$NON-NLS-1$
+				+ ", tokens: " + esc(m.tokensLabel()) + ", Kiro: " + esc(m.kiroLabel()) //$NON-NLS-1$ //$NON-NLS-2$
+				+ ", credits \u0394: " + esc(m.creditsLabel()) + "</div>"; //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
 	private static String toolCallsSection(SkillTestResult r) {
 		// Tool calls are informational (the model may reorder/rephrase/add calls);
 		// they no longer decide the result when outcome checks are present.
@@ -166,8 +271,11 @@ public final class SkillTestHtml {
 		StringBuilder sb = new StringBuilder();
 		sb.append("<details><summary class=\"section-summary\">Tool calls (informational)</summary>"); //$NON-NLS-1$
 		sb.append("<div class=\"cols\">"); //$NON-NLS-1$
-		sb.append(column("Expected", r.getExpectedCalls(), r.getActualCalls())); //$NON-NLS-1$
-		sb.append(column("Actual", r.getActualCalls(), r.getExpectedCalls())); //$NON-NLS-1$
+		// Expected column is never cost-annotated (metrics describe the actual run).
+		sb.append(column("Expected", r.getExpectedCalls(), r.getActualCalls(), null)); //$NON-NLS-1$
+		// Actual column only: annotate the first call of each request with its
+		// approximate (request-shared) cost (SVY-21660).
+		sb.append(column("Actual", r.getActualCalls(), r.getExpectedCalls(), r.getMetrics())); //$NON-NLS-1$
 		sb.append("</div></details>"); //$NON-NLS-1$
 		return sb.toString();
 	}
@@ -207,8 +315,17 @@ public final class SkillTestHtml {
 	/**
 	 * Renders one column of tool calls. Each call is marked as matched (present in
 	 * {@code other}) or unmatched (missing/extra) by tool identity.
+	 * <p>
+	 * When {@code metrics} is non-{@code null} (the Actual column only), the
+	 * <b>first</b> tool call of each request is annotated with that request's
+	 * approximate, request-shared cost (SVY-21660): {@code "&asymp; N tok &middot;
+	 * ~C cr (est; request-shared)"}, where {@code N} is the request's token total
+	 * and {@code C} its input-proportional share of the scenario credit delta.
+	 * Later calls in the same request carry no annotation, since tokens are metered
+	 * per request and not per call. The Expected column passes {@code null} metrics
+	 * and is never annotated.
 	 */
-	private static String column(String heading, List<McpToolCall> calls, List<McpToolCall> other) {
+	private static String column(String heading, List<McpToolCall> calls, List<McpToolCall> other, RunMetrics metrics) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("<div class=\"col\"><div class=\"col-head\">").append(esc(heading)).append("</div>"); //$NON-NLS-1$ //$NON-NLS-2$
 		if (calls == null) {
@@ -219,11 +336,22 @@ public final class SkillTestHtml {
 			sb.append("<div class=\"muted\">(no tool calls)</div></div>"); //$NON-NLS-1$
 			return sb.toString();
 		}
+		// Per-request cost annotations (Actual column only; null/empty otherwise).
+		// requestCostAnnotations.get(callIndex) is the label to attach to the FIRST
+		// call of a request, or null for every other call.
+		Map<Integer, String> firstCallCost = firstCallCostByIndex(metrics, calls.size());
+		int callIndex = 0;
 		for (McpToolCall call : calls) {
 			boolean matched = other != null
 					&& other.stream().anyMatch(o -> o.matchesIdentity(call.server(), call.tool()));
 			sb.append("<div class=\"call ").append(matched ? "matched" : "unmatched").append("\">"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-			sb.append("<div class=\"tool\">").append(esc(identity(call))).append("</div>"); //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append("<div class=\"tool\">").append(esc(identity(call))); //$NON-NLS-1$
+			String cost = firstCallCost.get(callIndex);
+			if (cost != null) {
+				sb.append("<span class=\"call-cost\">").append(esc(cost)).append("</span>"); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			sb.append("</div>"); //$NON-NLS-1$
+			callIndex++;
 			if (!call.arguments().isEmpty()) {
 				sb.append("<table class=\"args\">"); //$NON-NLS-1$
 				for (Map.Entry<String, Object> arg : call.arguments().entrySet()) {
@@ -236,6 +364,96 @@ public final class SkillTestHtml {
 		}
 		sb.append("</div>"); //$NON-NLS-1$
 		return sb.toString();
+	}
+
+	/**
+	 * Maps call positions to a first-of-request cost annotation (SVY-21660), for
+	 * the Actual column only.
+	 * <p>
+	 * opencode meters tokens <b>per request</b>, not per tool call, so there is no
+	 * exact per-call figure: the annotation is attached to the <b>first</b> call of
+	 * each request and reads {@code "&asymp; N tok &middot; ~C cr (est;
+	 * request-shared)"}, where {@code N} is that request's token total
+	 * ({@link RunMetrics.TokenUsage#total()}) and {@code C} is its
+	 * input-proportional share of the scenario credit delta ({@code creditsDelta *
+	 * requestInput / sumOfAllRequestInputs}). When the credit delta is unknown (or
+	 * the total input is {@code 0}) the credit part degrades to {@code ~? cr}
+	 * without fabricating a number.
+	 * <p>
+	 * <b>Mapping:</b> the actual calls and the per-request list are both in order,
+	 * so the calls are walked while the requests are walked: each request consumes
+	 * its {@link RunMetrics.RequestTokens#callCount()} calls (the exact per-request
+	 * call count, nested Code-Mode calls included, carried from the transcript's
+	 * {@code calls.size() - callsBefore}), and the first call consumed by a request
+	 * carries its annotation. Mapping by the call count rather than the
+	 * {@code toolNames()} list size is what makes the annotation render on real
+	 * fan-out / Code-Mode runs, where the DB-sourced headline list has no names and
+	 * nested Code-Mode names never line up with the flat Actual call list. A
+	 * request with {@code callCount <= 0} (unknown count, or trailing calls not
+	 * attributed to any request) is simply skipped: a blank annotation is always
+	 * preferred over a wrong number.
+	 *
+	 * @param metrics   the run metrics, or {@code null} for no annotation (Expected
+	 *                  column)
+	 * @param callCount the number of actual tool calls rendered in this column
+	 * @return a map from 0-based call index to its annotation; empty when there is
+	 *         nothing to annotate
+	 */
+	private static Map<Integer, String> firstCallCostByIndex(RunMetrics metrics, int callCount) {
+		if (metrics == null || metrics.requestTokens() == null || metrics.requestTokens().isEmpty()) {
+			return Map.of();
+		}
+		List<String> perRequest = requestCostAnnotations(metrics);
+		Map<Integer, String> byCallIndex = new java.util.HashMap<>();
+		int callCursor = 0;
+		for (int reqIdx = 0; reqIdx < metrics.requestTokens().size() && callCursor < callCount; reqIdx++) {
+			RunMetrics.RequestTokens rt = metrics.requestTokens().get(reqIdx);
+			// Map by the explicit per-request call count (incl. nested Code-Mode
+			// calls), NOT the tool-name list size: the DB-sourced headline list has
+			// no names on fan-out runs, and Code-Mode names never line up with the
+			// flat Actual call list. callCount is set from the transcript's
+			// calls.size()-callsBefore, so it matches the Actual column (SVY-21660).
+			int consumed = rt.callCount();
+			if (consumed <= 0) {
+				// No calls attributable to this request (count unknown / fan-out blank):
+				// cannot place its annotation unambiguously, so leave this request blank.
+				continue;
+			}
+			// Annotate EVERY call of this turn with the turn's token figure (calls in
+			// one turn share it - the label says "this turn"), not just the first, so
+			// every tool-call row shows its cost.
+			String label = perRequest.get(reqIdx);
+			for (int i = 0; i < consumed && callCursor < callCount; i++, callCursor++) {
+				byCallIndex.put(callCursor, label);
+			}
+		}
+		return byCallIndex;
+	}
+
+	/**
+	 * Builds the ordered per-request cost annotation strings (one per request, in
+	 * request order), each {@code "&asymp; N tok &middot; ~C cr (est;
+	 * request-shared)"} - or tokens-only with {@code ~? cr} when the scenario
+	 * credit delta is unknown or the total request input is {@code 0}. The credit
+	 * share is proportional to each request's input ({@code creditsDelta *
+	 * requestInput / sumOfAllRequestInputs}).
+	 *
+	 * @param metrics the run metrics (must have a non-empty request list)
+	 * @return one annotation per request, in request order
+	 */
+	private static List<String> requestCostAnnotations(RunMetrics metrics) {
+		List<RunMetrics.RequestTokens> reqs = metrics.requestTokens();
+		List<String> out = new java.util.ArrayList<>(reqs.size());
+		for (RunMetrics.RequestTokens rt : reqs) {
+			RunMetrics.TokenUsage t = rt.tokens();
+			long tokens = t != null ? t.total() : 0L;
+			// Simple + honest: show the turn's token figure on each call of that turn.
+			// opencode meters per request/turn, so calls in one turn share it - hence
+			// "this turn". No per-call credit (credits are a session figure, shown in
+			// the Metrics block, not per call).
+			out.add("\u2248 " + tokens + " tok (this turn)"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		return out;
 	}
 
 	private static String identity(McpToolCall call) {
@@ -275,6 +493,7 @@ public final class SkillTestHtml {
 			+ ".bubble.prompt{background:#e8f0fe;border:1px solid #d2e3fc;border-radius:8px;padding:8px 10px;white-space:pre-wrap;}"
 			+ ".bubble.outcome-fail{background:#fce8e6;border:1px solid #f3c0bc;border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:11px;}"
 			+ ".bubble.outcome-pass{background:#e6f4ea;border:1px solid #b7dfc3;border-radius:8px;padding:8px 10px;}"
+			+ ".bubble.budget-warn{background:#fef7e0;border:1px solid #f9df8a;color:#8a6d00;border-radius:8px;padding:8px 10px;}"
 			+ "summary.section-summary{font-weight:600;margin:10px 0 4px;color:#5f6368;text-transform:uppercase;font-size:10px;letter-spacing:.5px;cursor:pointer;}"
 			+ "details.oc{border:1px solid #dadce0;border-radius:6px;margin:4px 0;padding:4px 8px;}"
 			+ "details.oc.oc-pass{border-left:4px solid #137333;}"
@@ -294,6 +513,7 @@ public final class SkillTestHtml {
 			+ ".call.matched{border-left:4px solid #137333;}"
 			+ ".call.unmatched{border-left:4px solid #c5221f;background:#fef7f7;}"
 			+ ".call .tool{font-family:Consolas,monospace;font-weight:600;}"
+			+ ".call-cost{float:right;color:#80868b;font-style:italic;font-weight:400;font-size:10px;margin-left:8px;}"
 			+ ".args{width:100%;border-collapse:collapse;margin-top:4px;}"
 			+ ".args td{vertical-align:top;padding:1px 4px;font-family:Consolas,monospace;font-size:11px;}"
 			+ ".args .k{color:#5f6368;white-space:nowrap;}" + ".args .v{word-break:break-word;}"
