@@ -54,8 +54,9 @@ public class PersistRenameService {
 			FormSpecGenerator specGenerator = new FormSpecGenerator();
 			String solutionName = project.getSolution().getName();
 
+			// the renamed file keeps its own extension: a .ts spec stays .ts, a .js spec stays .js
 			java.nio.file.Path oldSpecJs = specGenerator.findExistingSetupFile(oldFormName, solutionName);
-			java.nio.file.Path newSpecJs = specGenerator.getSetupFilePath(newFormName, solutionName);
+			java.nio.file.Path newSpecJs = withSameExtension(oldSpecJs, FormSpecGenerator.SPEC_SETUP_EXTENSIONS, solutionName, newFormName);
 			if (oldSpecJs != null && newSpecJs != null && java.nio.file.Files.exists(oldSpecJs)
 					&& !java.nio.file.Files.exists(newSpecJs)) {
 				java.nio.file.Path newSpecParent = newSpecJs.getParent();
@@ -66,7 +67,7 @@ public class PersistRenameService {
 			}
 
 			java.nio.file.Path oldSpecCy = specGenerator.findExistingSpecFile(oldFormName, solutionName);
-			java.nio.file.Path newSpecCy = specGenerator.getSpecFilePath(newFormName, solutionName);
+			java.nio.file.Path newSpecCy = withSameExtension(oldSpecCy, FormSpecGenerator.SPEC_CY_EXTENSIONS, solutionName, newFormName);
 			if (oldSpecCy != null && newSpecCy != null && java.nio.file.Files.exists(oldSpecCy)
 					&& !java.nio.file.Files.exists(newSpecCy)) {
 				java.nio.file.Path newSpecParent = newSpecCy.getParent();
@@ -78,6 +79,24 @@ public class PersistRenameService {
 		} catch (Exception e) {
 			ServoyLog.logWarning("renameFormSpecFiles: " + e.getMessage(), e);
 		}
+	}
+
+	/**
+	 * @return the solution-prefixed path for {@code newFormName} next to {@code oldFile}, with the extension {@code oldFile} has (one of
+	 *         {@code extensions}); null when {@code oldFile} is null or has none of them.
+	 */
+	private static java.nio.file.Path withSameExtension(java.nio.file.Path oldFile, java.util.List<String> extensions, String solutionName,
+			String newFormName) {
+		if (oldFile == null || oldFile.getParent() == null) {
+			return null;
+		}
+		String oldName = oldFile.getFileName().toString();
+		for (String extension : extensions) {
+			if (oldName.endsWith(extension)) {
+				return oldFile.getParent().resolve(solutionName + "." + newFormName + extension);
+			}
+		}
+		return null;
 	}
 
 	public String renameRelation(String oldName, String newName, ServoyProject project) throws RepositoryException {

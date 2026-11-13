@@ -310,6 +310,16 @@ public class ServoyTestingServerTest {
 	}
 
 	@Test
+	public void testFormSpecTools_descriptionsMentionTypeScriptSpecs() {
+		for (String toolName : List.of("generateFormSpec", "testForm", "showFormInBrowser", "showAndTest")) {
+			Method m = findToolMethod(toolName);
+			assertNotNull(m, toolName + " must be a registered tool");
+			assertTrue(m.getAnnotation(Tool.class).description().contains(".spec.cy.ts"),
+					toolName + " description must tell the model that a form test may be a .spec.cy.ts file");
+		}
+	}
+
+	@Test
 	public void testGenerateFormSpec_descriptionMentionsSpecCy() {
 		Method m = findToolMethod("generateFormSpec");
 		assertNotNull(m);

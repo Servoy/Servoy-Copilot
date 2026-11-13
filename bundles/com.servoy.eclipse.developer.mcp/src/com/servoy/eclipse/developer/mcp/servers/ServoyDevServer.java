@@ -723,7 +723,7 @@ public class ServoyDevServer {
 					+ "a workspace-relative path ('mySolution/forms/myForm.frm'), "
 					+ "a solution-relative path ('forms/myForm'), "
 					+ "or an absolute filesystem path inside the workspace. "
-					+ "For forms, also renames associated .spec.cy.js and .spec.js test files if present. "
+					+ "For forms, also renames associated .spec.cy.js/.spec.cy.ts and .spec.js/.spec.ts test files if present. "
 					+ "newName must be a bare name (no path separators). Renames in-place \u2014 never moves.",
 			type = "object")
 	public String renameFile(

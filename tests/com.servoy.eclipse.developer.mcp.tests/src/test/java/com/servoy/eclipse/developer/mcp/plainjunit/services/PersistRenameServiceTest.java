@@ -3,12 +3,14 @@ package com.servoy.eclipse.developer.mcp.plainjunit.services;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
 
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.developer.mcp.services.PersistRenameService;
 
 public class PersistRenameServiceTest {
@@ -185,5 +187,58 @@ public class PersistRenameServiceTest {
 	@Test
 	public void testPersistRenameService_hasRenameSolutionMethod() throws NoSuchMethodException {
 		assertNotNull(PersistRenameService.class.getMethod("renameSolution", String.class, String.class));
+	}
+
+	private static java.nio.file.Path invokeWithSameExtension(java.nio.file.Path oldFile, java.util.List<String> extensions,
+			String solutionName, String newFormName) throws Exception {
+		Method m = PersistRenameService.class.getDeclaredMethod("withSameExtension", java.nio.file.Path.class, java.util.List.class,
+				String.class, String.class);
+		m.setAccessible(true);
+		return (java.nio.file.Path) m.invoke(null, oldFile, extensions, solutionName, newFormName);
+	}
+
+	@Test
+	public void testWithSameExtension_keepsTypeScriptFormSpecExtension() throws Exception {
+		java.nio.file.Path old = java.nio.file.Paths.get("cy-form", "sol.oldForm.spec.cy.ts");
+
+		java.nio.file.Path renamed = invokeWithSameExtension(old, FormSpecGenerator.SPEC_CY_EXTENSIONS, "sol", "newForm");
+
+		assertEquals(java.nio.file.Paths.get("cy-form", "sol.newForm.spec.cy.ts"), renamed);
+	}
+
+	@Test
+	public void testWithSameExtension_keepsJavaScriptFormSpecExtension() throws Exception {
+		java.nio.file.Path old = java.nio.file.Paths.get("cy-form", "sol.oldForm.spec.cy.js");
+
+		java.nio.file.Path renamed = invokeWithSameExtension(old, FormSpecGenerator.SPEC_CY_EXTENSIONS, "sol", "newForm");
+
+		assertEquals(java.nio.file.Paths.get("cy-form", "sol.newForm.spec.cy.js"), renamed);
+	}
+
+	@Test
+	public void testWithSameExtension_keepsSetupFileExtension() throws Exception {
+		java.nio.file.Path oldTs = java.nio.file.Paths.get("cy-form-spec", "sol.oldForm.spec.ts");
+		java.nio.file.Path oldJs = java.nio.file.Paths.get("cy-form-spec", "sol.oldForm.spec.js");
+
+		assertEquals(java.nio.file.Paths.get("cy-form-spec", "sol.newForm.spec.ts"),
+				invokeWithSameExtension(oldTs, FormSpecGenerator.SPEC_SETUP_EXTENSIONS, "sol", "newForm"));
+		assertEquals(java.nio.file.Paths.get("cy-form-spec", "sol.newForm.spec.js"),
+				invokeWithSameExtension(oldJs, FormSpecGenerator.SPEC_SETUP_EXTENSIONS, "sol", "newForm"));
+	}
+
+	@Test
+	public void testWithSameExtension_returnsNullForNullFileUnknownExtensionOrNoParent() throws Exception {
+		assertNull(invokeWithSameExtension(null, FormSpecGenerator.SPEC_CY_EXTENSIONS, "sol", "newForm"));
+		assertNull(invokeWithSameExtension(java.nio.file.Paths.get("cy-form", "sol.oldForm.txt"), FormSpecGenerator.SPEC_CY_EXTENSIONS,
+				"sol", "newForm"));
+		assertNull(invokeWithSameExtension(java.nio.file.Paths.get("sol.oldForm.spec.cy.ts"), FormSpecGenerator.SPEC_CY_EXTENSIONS, "sol",
+				"newForm"), "a path without a parent folder cannot be renamed next to itself");
+	}
+
+	@Test
+	public void testWithSameExtension_aSetupSpecTsIsNotMistakenForAFormSpec() throws Exception {
+		java.nio.file.Path setupTs = java.nio.file.Paths.get("cy-form-spec", "sol.oldForm.spec.ts");
+
+		assertNull(invokeWithSameExtension(setupTs, FormSpecGenerator.SPEC_CY_EXTENSIONS, "sol", "newForm"));
 	}
 }

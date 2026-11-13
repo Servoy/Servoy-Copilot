@@ -402,6 +402,46 @@ public class RenamePersistIntegrationTest extends TestUtilitiesClassCopy {
 	}
 
 	@Test
+	public void testRenameForm_withTypeScriptSpecFiles_keepsTypeScriptExtensions() throws Exception {
+		String formName = "tsSpecForm_" + System.currentTimeMillis();
+		String newName = formName + "_renamed";
+
+		new ServoyArtifactCreationService().createForm(formName, "css", 640, 480, null, null, null);
+		assertNotNull(activeProject.getEditingSolution().getForm(formName), "Form creation should succeed");
+
+		String solutionName = activeProject.getSolution().getName();
+		FormSpecGenerator specGenerator = new FormSpecGenerator();
+		java.nio.file.Path cyDir = specGenerator.getFormSpecDir();
+		java.nio.file.Path setupDir = cyDir.resolveSibling("cy-form-spec");
+		java.nio.file.Path oldCyTs = cyDir.resolve(solutionName + "." + formName + ".spec.cy.ts");
+		java.nio.file.Path oldSetupTs = setupDir.resolve(solutionName + "." + formName + ".spec.ts");
+		java.nio.file.Path newCyTs = cyDir.resolve(solutionName + "." + newName + ".spec.cy.ts");
+		java.nio.file.Path newSetupTs = setupDir.resolve(solutionName + "." + newName + ".spec.ts");
+		java.nio.file.Path newCyJs = cyDir.resolve(solutionName + "." + newName + ".spec.cy.js");
+		java.nio.file.Path newSetupJs = setupDir.resolve(solutionName + "." + newName + ".spec.js");
+		try {
+			java.nio.file.Files.createDirectories(cyDir);
+			java.nio.file.Files.createDirectories(setupDir);
+			java.nio.file.Files.writeString(oldCyTs, "describe('" + formName + "', () => {});", StandardCharsets.UTF_8);
+			java.nio.file.Files.writeString(oldSetupTs, "function spec_setUp() {}", StandardCharsets.UTF_8);
+
+			String result = renameService.renameForm(formName, newName, activeProject);
+			assertTrue(result.contains("successfully") || result.contains("Renamed"), "Should indicate success: " + result);
+
+			assertFalse(java.nio.file.Files.exists(oldCyTs), "Old .spec.cy.ts should be gone");
+			assertFalse(java.nio.file.Files.exists(oldSetupTs), "Old .spec.ts should be gone");
+			assertTrue(java.nio.file.Files.exists(newCyTs), "Renamed form spec must stay .spec.cy.ts");
+			assertTrue(java.nio.file.Files.exists(newSetupTs), "Renamed setup file must stay .spec.ts");
+			assertFalse(java.nio.file.Files.exists(newCyJs), "No .spec.cy.js must appear for a .ts spec");
+			assertFalse(java.nio.file.Files.exists(newSetupJs), "No .spec.js must appear for a .ts setup file");
+		} finally {
+			for (java.nio.file.Path p : new java.nio.file.Path[] { oldCyTs, oldSetupTs, newCyTs, newSetupTs, newCyJs, newSetupJs }) {
+				java.nio.file.Files.deleteIfExists(p);
+			}
+		}
+	}
+
+	@Test
 	public void testRenameForm_withOnlyJsFile_renames_jsFile() throws Exception {
 		String formName = "jsOnlyForm_" + System.currentTimeMillis();
 		String newName = formName + "_renamed";

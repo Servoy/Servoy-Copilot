@@ -16,7 +16,7 @@ Deliverables, in two repos (plus a "no change" confirmation for a third):
   - Increment A (core, stands alone): new MCP tool `servoy-test_getFormInteractiveElements`.
   - Increment B (optional, recommended, separable): new MCP tool `servoy-test_locateForm`, which combines find, path and elements in one call and surfaces ambiguity.
 - **skill4servoy:** expose the new tool(s) and the existing but under-exposed navigation tools to the right agents, and teach the agents when to use them. Includes a full exposure audit.
-- **servoy-eclipse:** no change (confirmed, section 3.9).
+- **servoy-eclipse:** no change for Increments A and B (confirmed, section 3.9). The follow-up in section 10 (a blocker reported on the ticket after the build) did change `com.servoy.eclipse.cypress`.
 
 ## 2. Background
 
@@ -501,3 +501,70 @@ Built: Increment A (`getFormInteractiveElements`) and Increment B (`locateForm`,
 ### 9.4 Still open
 
 Q3 to Q5 keep their defaults (no). Q6 (`servoy-debug` config entry, hardcoded ports) and Q9 (a 2026.12 version-pack entry) are owner decisions outside Servoy-Copilot. Q7 (let `generateFormSpec` reuse the element service) is a follow-up case.
+
+## 10. Follow-up: form tests that are `.spec.cy.ts`, and "form spec" routing (blocker reported on the ticket, 2026-11-13)
+
+Not part of Increments A and B. A comment on the ticket reported that a form test for one form could not be created: `hasTest` stayed `false` and the E2E-Tester said it had no `generateFormSpec`, no `getFormInteractiveElements` and no access to the skill. Evidence and the ruled-out theories are in `SVY-21573-triage.md`, section "Follow-up". The tools and grants were present; two other causes were found. This section specifies the fix for them. It overrides the "servoy-eclipse stays untouched" lines of sections 3.9 and 7 for this follow-up only.
+
+### 10.1 Requirements
+
+1. A request for a "form spec" (and "generate/create/extend a form test") is routed to the E2E-Tester, and the Orchestrator does not say that no such tool exists.
+2. A repo may keep its form tests in `cy-form/` as `.spec.cy.js` or `.spec.cy.ts`. Discovery (`hasTest`, `discoverAllTestForms`, `hasAnyTest`) sees both, and a form that has both is listed once.
+3. `generateFormSpec` never creates a spec or setup file next to an existing one in the other extension.
+4. A new form spec is written as `.spec.cy.ts` only when `cy-form/` already holds more `.spec.cy.ts` than `.spec.cy.js` files. A tie, an empty folder and a missing folder give `.spec.cy.js`.
+5. The setup file in `cy-form-spec/` is recognised as `.spec.js` or `.spec.ts`. A new setup file is always `.spec.js`, because it is a Servoy scope file with `spec_setUp()` / `spec_tearDown()`.
+6. Running a form test, matching its video and screenshot, and opening it from the results view work for both extensions.
+7. Renaming a form keeps each spec and setup file's own extension.
+8. The tool descriptions say that a form test may be `.spec.cy.ts`.
+
+### 10.2 Design
+
+skill4servoy (`.opencode-shippable`):
+- `agents/Orchestrator.md`: the `formtest` row of the routes table reads "create / extend / generate a form test or form spec"; the "check your specialists" list gains "the E2E-Tester: a form test or form spec (`servoy-test_generateFormSpec`)".
+- `skills/servoy-orchestrator/context/routes.md`: the `#formtest` trigger sentence matches the table.
+
+servoy-eclipse, `com.servoy.eclipse.cypress` (branch `lts_2026`):
+- `FormSpecGenerator`: public constants `SPEC_CY_JS_EXTENSION`, `SPEC_CY_TS_EXTENSION`, `SPEC_CY_EXTENSIONS`, `SPEC_SETUP_EXTENSIONS`; public static helpers `isFormSpecFileName`, `stripFormSpecExtension`, `firstExisting`, `firstExistingSetup`, `detectSpecExtension(Path)`. `generateSpec`, `specExists`, `oldSpecExists`, `getSpecFilePath`, `getSetupFilePath`, `findExistingSpecFile` and `findExistingSetupFile` use them. Existing files win over the detected extension.
+- `CypressTestDiscoveryService`: the three form-test scans use `FormSpecGenerator.SPEC_CY_EXTENSIONS`; `discoverAllTestForms` applies `distinct()`.
+- `FormSpecRunner`: `findMatchingFile` and `findScreenshot` match the form spec name for both extensions, and the "Spec file not found" message names both.
+- `CypressTestResultsView.resolveTestFile` returns the existing `.js` or `.ts` form spec, else the `.js` path.
+
+Servoy-Copilot, `com.servoy.eclipse.developer.mcp`:
+- `PersistRenameService.renameFormSpecFiles` derives the new path with `withSameExtension(oldFile, extensions, solutionName, newFormName)`, so the extension of the old file is kept.
+- `ServoyTestingServer`: the descriptions of `generateFormSpec`, `testForm`, `showFormInBrowser` and `showAndTest`, and `ServoyDevServer`: the rename tool description, mention `.spec.cy.ts` / `.spec.ts`.
+
+Not changed: the save location (`jenkins-custom/e2e-test-scripts/cypress/cy-form` and `cy-form-spec`) stays fixed; the generator creates a missing folder on first write. The generated spec body is plain Cypress and was not changed.
+
+### 10.3 Acceptance criteria
+
+- [x] `hasFormTest`, `discoverAllTestForms` and `hasAnyTest` find a `.spec.cy.ts` file, with and without the solution prefix, and do not match another form's file.
+- [x] A form with both a `.js` and a `.ts` spec is listed once.
+- [x] `detectSpecExtension` returns `.ts` only when `.ts` form specs strictly outnumber `.js` ones; null, missing, empty and tie give `.js`; setup files and `.mp4` artifacts do not count.
+- [x] `firstExisting` and `firstExistingSetup` find the first existing file, `.js` before `.ts`; a setup `.spec.ts` is never taken for a form spec.
+- [x] `generateSpec` with an existing `.spec.cy.ts` and `.spec.ts` pair reports that they exist and creates no `.js` file; with only the `.ts` form spec it creates only the missing `.spec.js` setup file and leaves the `.ts` file untouched.
+- [x] Video and screenshot lookup match `.spec.cy.ts` names, with and without the solution prefix, and do not match a form whose name merely ends with the requested one.
+- [x] Renaming a form with `.ts` spec and setup files produces `.ts` files and no `.js` files.
+- [x] The four tool descriptions contain `.spec.cy.ts`.
+- [ ] A replay of a plain "generate a form spec for `<form>`" prompt reaches the E2E-Tester (not run).
+
+### 10.4 Tests
+
+- servoy-eclipse, `com.servoy.eclipse.cypress.tests` (plainjunit): `CypressTestDiscoveryServiceTest` (nested `TypeScriptFormSpecs`, `ExtensionDetection`) and `FormSpecRunnerTest` (`.ts` video and screenshot cases).
+- servoy-eclipse, PDE: `FormSpecGeneratorModelIntegrationTest` (`testGenerateSpecWithExistingTypeScriptSpecDoesNotCreateJavaScriptDuplicate`, `testGenerateSpecWithExistingTypeScriptSpecButNoSetupCreatesOnlyTheSetupFile`).
+- Servoy-Copilot, plainjunit: `PersistRenameServiceTest` (`withSameExtension`, through reflection) and `ServoyTestingServerTest.testFormSpecTools_descriptionsMentionTypeScriptSpecs`.
+- Servoy-Copilot, PDE: `RenamePersistIntegrationTest.testRenameForm_withTypeScriptSpecFiles_keepsTypeScriptExtensions`.
+
+### 10.5 Status
+
+Coded and tested, not committed.
+- `com.servoy.eclipse.cypress.tests` plainjunit: 657 of 657 pass.
+- PDE, `lts_2026` launcher: `RenamePersistIntegrationTest` 36 of 36, `FormSpecGeneratorModelIntegrationTest` 7 of 7, `CypressFormTestingIntegrationTest` 48 of 48.
+- `com.servoy.eclipse.developer.mcp.tests` plainjunit: 1573 of 1578. The 5 failures are `JSUnitCoverageServiceTest` (2) and `GitServiceToolsTest` (3), in code this follow-up does not touch. The `GitServiceToolsTest` messages show `<one\n>` against `<one\n>`, which points to a line-ending difference; this was not confirmed.
+- `s4s.py validate` for the skill4servoy change: 0 findings on the changed lines, 3 rising size trends for the maintainer to decide. No replay has been run, and `AGENTS.md` of skill4servoy requires one before the change counts as proven.
+- One run of `CypressFormTestingIntegrationTest.testGenerateFormSpec_validForm_generatesFiles` failed with "Form not found" and passed on every rerun, alone and in the whole class. The test creates the form in the editing solution and `generateSpec` reads it from the flattened solution; the timing cause was not proven.
+
+### 10.6 Still open
+
+- Make the `cy-form` location configurable (for example from `e2e_path` in the repo's `AGENTS.md`). Not done.
+- A new setup file is always `.spec.js`. Say if it should follow the form spec's extension.
+- `PersistRenameService` and `CypressTestDiscoveryService` are in different repos; the rename change needs the servoy-eclipse change (the public `SPEC_*_EXTENSIONS` constants) to compile, so the two must ship together.

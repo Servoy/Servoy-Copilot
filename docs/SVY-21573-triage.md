@@ -12,7 +12,7 @@ _Written in the servoy-eclipse session and moved to the Servoy-Copilot repo. See
   - `src\com\servoy\eclipse\developer\mcp\services\ServoySolutionService.java` (`findForm` / `scoreForm`)
   - `src\com\servoy\eclipse\developer\mcp\services\FormNavigationGraphService.java` and `NavigationGraph.java`
   - Tests: `D:\Eclipse\202603Workspace\Servoy-Copilot\tests\com.servoy.eclipse.developer.mcp.tests` (`plainjunit` package, e.g. `ServoyTestingServerTest`, `NavigationGraphTest`)
-- servoy-eclipse (`D:\Eclipse\202603Workspace\servoy-eclipse`) needs no change. The only related code there is `com.servoy.eclipse.cypress\src\com\servoy\eclipse\cypress\services\FormSpecGenerator.java` (the "#formtest" flow). Its `.frm` parsing is private and regex-based; see the premise check below.
+- servoy-eclipse (`D:\Eclipse\202603Workspace\servoy-eclipse`) needed no change for the original scope (a blocker reported after the build did lead to a change there; see "Follow-up" at the end of this report). The only related code there is `com.servoy.eclipse.cypress\src\com\servoy\eclipse\cypress\services\FormSpecGenerator.java` (the "#formtest" flow). Its `.frm` parsing is private and regex-based; see the premise check below.
 
 ## Reported problem
 
@@ -139,3 +139,36 @@ Not applicable. Two product decisions are worth confirming at spec time, but nei
 - **Where:** Servoy-Copilot, bundle `com.servoy.eclipse.developer.mcp`. servoy-eclipse needed no change. The user also asked for the new tools, and the older navigation tools, to be exposed to the right agents in skill4servoy, which was done and committed separately.
 - **Corrections to this report:** `hasForm()` cannot tell an isolated form from a wrong name (fixed in the text above), and the unreachable/unknownForm distinction therefore does not hold for forms without edges. `locateForm` maps it to `unreachable`.
 - **Details, deviations and limitations:** see section 9 of `SVY-21573-bug-triage-form-lookup.spec.md`.
+
+## Follow-up: blocker reported on the ticket after the build (2026-11-13)
+
+A comment on the ticket reported that a form test for `footerfrm` could not be created: `hasTest` stayed `false`, and the E2E-Tester said it lacked `generateFormSpec`, `getFormInteractiveElements` and the `servoy-e2etester` skill. Investigated in a follow-up session. **Verdict: the reported reasons were wrong; the real causes were a routing gap and a hardcoded `.spec.cy.js`.**
+
+### What was ruled out, with evidence
+
+- **The tools exist and are granted.** `generateFormSpec`, `getFormInteractiveElements` and `locateForm` are `@Tool`s in `ServoyTestingServer` and are in the live tools report taken from port 8183 (174 tools). `E2E-Tester.md` grants all three plus the `servoy-e2etester` skill; the deployed copy under the install workspace has the same grants.
+- **The tool lists the sessions reported were per-agent grants, not the server's tools.** The Orchestrator holds one `servoy-test` tool (`findForm`). The Developer holds `checkNGClientStatus`, `runJsUnitTests`, `runTestMethod`, `showFormInBrowser`. `generateFormSpec` is granted to the E2E-Tester only.
+- **No grant was removed recently.** `generateFormSpec` was added to `E2E-Tester.md` on 2026-09-29 and `getFormInteractiveElements` on 2026-10-19 (the SVY-21573 commit).
+- **Not a stale build.** An earlier theory that the running Developer predated the tools was wrong: the live tool list contains them.
+- **The skill name in the report (`servoy-test-e2etester`) does not exist.** The skill is `servoy-e2etester`. The `external_directory` denial for the `C:\Servoy_TESTING\...` path was the sandbox working as designed.
+
+### Root cause 1 (skill4servoy): "form spec" was not a route trigger
+
+A session asking "Generate a form spec for form X with viewportWidths ..." went to the Orchestrator, which answered that no such tool exists and never dispatched the E2E-Tester. The `formtest` route triggered on "form test" only, and the Orchestrator's "check your specialists before you say a capability does not exist" list did not name the form-test tool.
+
+Fix (skill4servoy, `.opencode-shippable`): the `formtest` row in `Orchestrator.md`, the matching line in `routes.md`, and one line in the specialist list now cover "form spec" and `servoy-test_generateFormSpec`. `s4s.py validate` reports 0 findings on these lines and 3 rising size trends (about +108 bytes in `Orchestrator.md`); a replay has not been run.
+
+### Root cause 2 (servoy-eclipse): form tests were hardcoded to `.spec.cy.js`
+
+`com.servoy.eclipse.cypress` wrote and scanned `.spec.cy.js` only. A repo whose form tests are `.spec.cy.ts` therefore reported `hasTest=false` for every form, and `generateFormSpec` could only write the other language. The E2E path already accepted both `.cy.js` and `.cy.ts`; the form-test path did not.
+
+Fix (`servoy-eclipse`, branch `lts_2026`):
+- `CypressTestDiscoveryService`: `hasFormTest`, `discoverAllTestForms` and `hasAnyTest` accept both extensions; a form with both a `.js` and a `.ts` spec is listed once.
+- `FormSpecGenerator`: recognises an existing spec or setup file in either extension and never creates a duplicate next to it. A new spec is `.spec.cy.ts` only when `cy-form/` already holds more `.ts` form specs than `.js` ones; an empty or missing folder and a tie give `.js`. New setup files stay `.spec.js` (a Servoy scope file).
+- `FormSpecRunner` and `CypressTestResultsView`: video and screenshot matching, the "spec file not found" message and "open test file" handle both extensions.
+
+Fix (Servoy-Copilot): `PersistRenameService` keeps each file's own extension when a form is renamed; the `generateFormSpec`, `testForm`, `showFormInBrowser`, `showAndTest` and rename tool descriptions mention `.spec.cy.ts` / `.spec.ts`.
+
+### Not changed
+
+The save location (`jenkins-custom/e2e-test-scripts/cypress/cy-form`) is still fixed. The generator creates the folder on first write, so a missing `jenkins-custom` is not a blocker. Making the location configurable was not done.
