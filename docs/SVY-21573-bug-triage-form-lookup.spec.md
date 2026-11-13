@@ -545,7 +545,7 @@ Not changed: the save location (`jenkins-custom/e2e-test-scripts/cypress/cy-form
 - [x] Video and screenshot lookup match `.spec.cy.ts` names, with and without the solution prefix, and do not match a form whose name merely ends with the requested one.
 - [x] Renaming a form with `.ts` spec and setup files produces `.ts` files and no `.js` files.
 - [x] The four tool descriptions contain `.spec.cy.ts`.
-- [ ] A replay of a plain "generate a form spec for `<form>`" prompt reaches the E2E-Tester (not run).
+- [x] A routing replay (8 prompts, answers only, nothing dispatched) sends "generate a form spec" and "create a form spec" for `<form>` to `#formtest` and the E2E-Tester, and dispatches instead of answering "no such tool" when the prompt names `servoy-test_generateFormSpec`. Run by the user through an OpenChamber session on the Orchestrator; 8 of 8 as expected. An end-to-end replay that dispatches and writes a spec was not run.
 
 ### 10.4 Tests
 
@@ -556,15 +556,15 @@ Not changed: the save location (`jenkins-custom/e2e-test-scripts/cypress/cy-form
 
 ### 10.5 Status
 
-Coded and tested, not committed.
+Coded, tested and committed: servoy-eclipse `7549a33931`, Servoy-Copilot `378b46b`, skill4servoy `3fdc0ca`.
 - `com.servoy.eclipse.cypress.tests` plainjunit: 657 of 657 pass.
 - PDE, `lts_2026` launcher: `RenamePersistIntegrationTest` 36 of 36, `FormSpecGeneratorModelIntegrationTest` 7 of 7, `CypressFormTestingIntegrationTest` 48 of 48.
 - `com.servoy.eclipse.developer.mcp.tests` plainjunit: 1573 of 1578. The 5 failures are `JSUnitCoverageServiceTest` (2) and `GitServiceToolsTest` (3), in code this follow-up does not touch. The `GitServiceToolsTest` messages show `<one\n>` against `<one\n>`, which points to a line-ending difference; this was not confirmed.
-- `s4s.py validate` for the skill4servoy change: 0 findings on the changed lines, 3 rising size trends for the maintainer to decide. No replay has been run, and `AGENTS.md` of skill4servoy requires one before the change counts as proven.
+- `s4s.py validate` for the skill4servoy change: 0 findings on the changed lines, 3 rising size trends for the maintainer to decide. The routing replay passed (see 10.3); it was routing-only, so an end-to-end replay that dispatches and writes a spec is still not done.
 - One run of `CypressFormTestingIntegrationTest.testGenerateFormSpec_validForm_generatesFiles` failed with "Form not found" and passed on every rerun, alone and in the whole class. The test creates the form in the editing solution and `generateSpec` reads it from the flattened solution; the timing cause was not proven.
 
 ### 10.6 Still open
 
-- Make the `cy-form` location configurable (for example from `e2e_path` in the repo's `AGENTS.md`). Not done.
+- Decided: the `cy-form` and `cy-form-spec` locations stay fixed (`jenkins-custom/e2e-test-scripts/cypress/...`). A missing `jenkins-custom` is created on first write, so it is not a blocker. Making the location configurable (for example from `e2e_path` in the repo's `AGENTS.md`) is not planned.
 - A new setup file is always `.spec.js`. Say if it should follow the form spec's extension.
 - `PersistRenameService` and `CypressTestDiscoveryService` are in different repos; the rename change needs the servoy-eclipse change (the public `SPEC_*_EXTENSIONS` constants) to compile, so the two must ship together.

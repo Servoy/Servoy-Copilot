@@ -142,7 +142,7 @@ Not applicable. Two product decisions are worth confirming at spec time, but nei
 
 ## Follow-up: blocker reported on the ticket after the build (2026-11-13)
 
-A comment on the ticket reported that a form test for `footerfrm` could not be created: `hasTest` stayed `false`, and the E2E-Tester said it lacked `generateFormSpec`, `getFormInteractiveElements` and the `servoy-e2etester` skill. Investigated in a follow-up session. **Verdict: the reported reasons were wrong; the real causes were a routing gap and a hardcoded `.spec.cy.js`.**
+A comment on the ticket reported that a form test for `footerfrm` could not be created: `hasTest` stayed `false`, and the E2E-Tester said it lacked `generateFormSpec`, `getFormInteractiveElements` and the `servoy-e2etester` skill. Investigated in a follow-up session. **Verdict: the reported reasons were wrong; the real causes were a routing gap and a hardcoded `.spec.cy.js`.** Fixed and committed (servoy-eclipse `7549a33931`, Servoy-Copilot `378b46b`, skill4servoy `3fdc0ca`).
 
 ### What was ruled out, with evidence
 
@@ -156,7 +156,7 @@ A comment on the ticket reported that a form test for `footerfrm` could not be c
 
 A session asking "Generate a form spec for form X with viewportWidths ..." went to the Orchestrator, which answered that no such tool exists and never dispatched the E2E-Tester. The `formtest` route triggered on "form test" only, and the Orchestrator's "check your specialists before you say a capability does not exist" list did not name the form-test tool.
 
-Fix (skill4servoy, `.opencode-shippable`): the `formtest` row in `Orchestrator.md`, the matching line in `routes.md`, and one line in the specialist list now cover "form spec" and `servoy-test_generateFormSpec`. `s4s.py validate` reports 0 findings on these lines and 3 rising size trends (about +108 bytes in `Orchestrator.md`); a replay has not been run.
+Fix (skill4servoy, `.opencode-shippable`): the `formtest` row in `Orchestrator.md`, the matching line in `routes.md`, and one line in the specialist list now cover "form spec" and `servoy-test_generateFormSpec`. `s4s.py validate` reports 0 findings on these lines and 3 rising size trends (about +108 bytes in `Orchestrator.md`). A routing-only replay of 8 prompts passed: "generate a form spec" and "create a form spec" go to `#formtest` / E2E-Tester. No end-to-end replay that dispatches and writes a spec has been run.
 
 ### Root cause 2 (servoy-eclipse): form tests were hardcoded to `.spec.cy.js`
 
