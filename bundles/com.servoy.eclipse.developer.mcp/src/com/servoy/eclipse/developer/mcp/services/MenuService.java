@@ -29,9 +29,21 @@ import com.servoy.j2db.persistence.Solution;
 @Creatable
 public class MenuService
 {
+	/**
+	 * Returns the active developer Servoy model. Isolated as a seam so unit tests
+	 * can inject a stub/mock model and exercise this service's own logic (guards,
+	 * "menu not found" paths, parameter validation, result formatting and the
+	 * recursive menu-item helpers) without a live workbench; production resolves
+	 * the real model from {@link ServoyModelManager}.
+	 */
+	protected IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	public String listMenus(String scope)
 	{
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject activeProject = model.getActiveProject();
 		if (activeProject == null || activeProject.getEditingSolution() == null)
 			return "Error: No active Servoy solution project found";
@@ -101,7 +113,7 @@ public class MenuService
 		if (name == null || name.isBlank())
 			return "Error: Menu name is required";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			return "Error: No active Servoy solution project found";
@@ -152,7 +164,7 @@ public class MenuService
 		if (menu == null)
 			return "Error: Menu '" + menuName + "' not found";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null)
 			return "Error: No active Servoy solution project found";
@@ -208,7 +220,7 @@ public class MenuService
 		if (menu == null)
 			return "Error: Menu '" + name + "' not found";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null)
 			return "Error: No active Servoy solution project found";
@@ -261,7 +273,7 @@ public class MenuService
 		if (item == null)
 			return "Error: MenuItem '" + itemName + "' not found in menu '" + menuName + "'";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null)
 			return "Error: No active Servoy solution project found";
@@ -314,7 +326,7 @@ public class MenuService
 		if (name == null || name.isBlank())
 			return "Error: Menu name is required";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			return "Error: No active Servoy solution project found";
@@ -363,7 +375,7 @@ public class MenuService
 		if (item == null)
 			return "Error: MenuItem '" + itemName + "' not found in menu '" + menuName + "'";
 
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null)
 			return "Error: No active Servoy solution project found";
@@ -384,7 +396,7 @@ public class MenuService
 
 	private Menu findMenu(String menuName)
 	{
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject project = model.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			return null;

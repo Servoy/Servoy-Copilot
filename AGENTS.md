@@ -389,6 +389,36 @@ The two phase-1 test modules use **different OSGi shapes**, which is worth under
 
 This removes the original forcing reason entirely: the test fragments get back the single-classloader convenience (lean manifest, package-private access), the shared infra lives in one requirable bundle, and the big dependency list is stated **once** in the test-support bundle instead of copied into every test bundle. It also makes the JaCoCo story uniform — production classes are then always in the host bundle, so the report always runs there. The `Copy`-suffix convention and the cross-repo mirroring rule (below) still apply to the classes in their new home.
 
+### Test strategy — prefer plain JUnit + Mockito, keep integration tests for real core collaboration
+
+**Default: test OUR code as a plain-JUnit unit test, mocking the Servoy/Eclipse core at the boundary. Use a full-workbench `integrationpde` test only when the test genuinely needs the real core.** The forked workbench is slow (minutes to boot) and every `integrationpde` test pays that cost, so each one must earn it. Crucially: **the behaviour of Servoy/Eclipse core (the persistence model, DLTK, the renderer, JSUnit, the workspace) is tested in servoy-eclipse, not here.** A test in this repo that drives the real core only to re-assert core behaviour is testing the wrong thing in the wrong place — and slowly.
+
+**What "our code" is (unit-test it):** the MCP service/server layer's own logic — parameter validation, active-solution / null guards, name resolution, dispatch/routing, result formatting (the markdown/JSON a tool returns), error and "not found" messages, and pure helpers (offsets, path logic, parsing). This is reachable with a mocked model and no workbench.
+
+**The seam + Mockito pattern (pilot: `CodeAnalysisService` / `CodeAnalysisServiceTest`).** Services grab the model via the static `ServoyModelManager.getServoyModelManager().getServoyModel()`. To make that injectable, extract a tiny protected seam and call it instead:
+```java
+protected IDeveloperServoyModel getServoyModel() {
+    return ServoyModelManager.getServoyModelManager().getServoyModel();
+}
+```
+The test subclasses the service, overrides `getServoyModel()` to return a Mockito mock of `IDeveloperServoyModel` (an interface), and stubs the core objects it hands back (`ServoyProject`, `Solution`, `Form`, …) to return empty/null **at the boundary** — just enough to drive our branches. We never assert on core behaviour; we assert on what our code does with it. Mockito is on the target platform (`mockito-core`, `mockito-junit-jupiter`, `objenesis`, `byte-buddy`, `byte-buddy-agent`, mirrored from the servoy-eclipse master target); the `.tests` MANIFEST imports `org.mockito`, `org.mockito.stubbing`. Mockito 5's default inline mock-maker can stub the concrete core classes (it self-attaches its agent; a harmless JDK-21 warning). Keep this a small, behaviour-preserving production change (a getter), never widen a method's visibility for a test — use reflection for private/package-private members, as the existing tests do.
+
+**When a test MUST stay `integrationpde`** — it needs at least one of these *real* things, which cannot be honestly mocked without rebuilding the core:
+- a real `FlattenedSolution` / persistence model walked or mutated (form inheritance, relations, valuelists, rename/duplicate that lands on disk/model and is then asserted);
+- a real render / embedded browser (`/formtemplate`, FormLayout, FormPreview, show-form-in-browser);
+- a real JSUnit / SmartClient / debug runtime launch;
+- real DLTK resolution against real `.js` sources (script context, call-hierarchy offsets, script resolver);
+- a real database / app-server, real workspace resources, Eclipse markers/quick-fixes, local history.
+
+**When to split a test:** if an `integrationpde` test today asserts BOTH a guard/validation/formatting detail AND the real end-to-end result, move the former to a unit test (mock seam) and keep a thin integration happy-path for the latter. Net effect: far fewer workbench starts, much faster CI, same real coverage (unit + integration are merged into one JaCoCo report — see the JaCoCo section).
+
+**Heuristic inventory of the current `developer.mcp` `integrationpde` tests** (confirm per class when you actually tackle it — the final call is made by reading the test body, not the name):
+- *Stay integration (real render / runtime / model-mutation / DLTK / db):* `FormLayout*`, `FormPreviewServiceTest`, `ShowFormInBrowserIntegrationTest`, `FormInteractiveElementsIntegrationTest`, `FormSpecBehaviourIntegrationTest`, `JSUnitRunner*` / `RunTestMethodIntegrationTest` / `AddTestMethodIntegrationTest` / `CreateTestFileIntegrationTest`, `CypressFormTestingIntegrationTest`, `CreateArtifactsIntegrationTest` / `CreateSolutionIntegrationTest` / `CreateFormEventsWiringIntegrationTest`, `RenamePersistIntegrationTest`, `PersistDuplicateIntegrationTest`, `DatabaseToolsIntegrationTest`, `SecurityToolsIntegrationTest`, `MenuToolsIntegrationTest`, `ScriptContextServiceIntegrationTest` / `CodeContextServiceIntegrationTest` / `ServoyScriptResolverIntegrationTest`, `CodeAnalysisIntegrationTest`, `FormNavigationGraphServiceIntegrationTest` / `GetNavigationPathIntegrationTest`, `ServoyMediaServer*IntegrationTest`, `ServoyWpmServerIntegrationTest`, `ServoyI18nServerIntegrationTest`, `ServoyGitServerIntegrationTest`, `ContextServerHistoryIntegrationTest`, `RunningClientExecutionIntegrationTest`, `E2EToolsIntegrationTest`, `ServoyIdeServer*IntegrationTest`.
+- *Split — move guards/validation/dispatch/formatting to unit, keep a thin real happy-path:* the `*Server*` wrappers (`ServoyDevServer*`, `ServoyCoderServerIntegrationTest`, `ServoySolutionServiceIntegrationTest`, `ValidationToolsIntegrationTest`, `DocumentationToolsIntegrationTest`), and the own-logic portions of the services above (as done for `CodeAnalysisService`).
+- *Already has the pure parts as plain JUnit* (leave the integration test for the real path): `GitService*` (temp-repo), `CodeEditingService*`, `FormNavigationGraph`/`NavigationGraph` algorithm, `FormSpecModelBuilder*`, `HandlerEffectRecognizer`, `ResolvedElementsProcessor`, the `*ValidatorService` classes, `FormLocatorService`.
+
+Roll this out per service/server as its own reviewed change (production seam + unit tests), not in one sweep — each needs the seam + a mock and a check that the integration test still covers the real path.
+
 ---
 
 ## 1c. Resolving solution objects — ALWAYS use the flattened solution

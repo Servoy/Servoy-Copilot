@@ -39,13 +39,24 @@ import com.servoy.j2db.persistence.ValueList;
 @Creatable
 public class ServoySolutionService
 {
+	/**
+	 * Returns the active developer Servoy model. Isolated as a seam so unit tests
+	 * can inject a stub/mock model and exercise this service's own logic (guards,
+	 * ranking/scoring, result formatting) without a live workbench; production
+	 * resolves the real model from {@link ServoyModelManager}.
+	 */
+	protected IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	// -------------------------------------------------------------------------
 	// Forms
 	// -------------------------------------------------------------------------
 
 	public String listForms(String scope)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
@@ -104,7 +115,7 @@ public class ServoySolutionService
 	 */
 	public String findForm(String query)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
@@ -169,7 +180,7 @@ public class ServoySolutionService
 	 */
 	public List<FormCandidate> rankForms(String query)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 		if (servoyProject == null || servoyProject.getEditingSolution() == null) return new ArrayList<>();
 
@@ -263,7 +274,7 @@ public class ServoySolutionService
 
 	public String listRelations(String scope)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
@@ -325,7 +336,7 @@ public class ServoySolutionService
 
 	public String listValueLists(String scope)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
@@ -383,7 +394,7 @@ public class ServoySolutionService
 
 	public String listStyles(String scope)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
@@ -422,7 +433,7 @@ public class ServoySolutionService
 
 	private String deleteArtifacts(List<String> names, String artifactType, ArtifactFinder finder)
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 
 		if (servoyProject == null || servoyProject.getEditingSolution() == null)
