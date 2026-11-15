@@ -74,6 +74,21 @@
 							<arguments>run build</arguments>
 						</configuration>
 					</execution>
+
+					<!-- 4. Angular Vitest tests with V8 coverage (writes ../target/coverage:
+					     cobertura + lcov + html + json-summary). Jenkins publishes the cobertura
+					     report via recordCoverage. Skipped when tests are skipped. -->
+					<execution>
+						<id>webui vitest coverage</id>
+						<phase>test</phase>
+						<goals>
+							<goal>npm</goal>
+						</goals>
+						<configuration>
+							<skip>${maven.test.skip}</skip>
+							<arguments>run test:coverage</arguments>
+						</configuration>
+					</execution>
 				</executions>
 			</plugin>
 		</plugins>

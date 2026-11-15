@@ -348,6 +348,17 @@ sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -Pcoverage-report org.jacoco:jac
 - The stage sits inside the same `when { SKILLTEST_ONLY != 'true' }` guard as the rest and is wrapped in `catchError(buildResult: 'UNSTABLE')`, so a coverage hiccup never fails the whole build.
 - It runs **before** the `Integration Tests` stage, which does not `clean`, so the plainjunit exec/report is reported before anything else touches `target`. The published number is therefore **plainjunit coverage only** (same caveat as above).
 
+### Angular webui coverage (Vitest / V8)
+
+The chat UI (`bundles/com.servoy.eclipse.opencode/webui/`) has its own coverage, separate from the Java JaCoCo recipe. It follows the servoy-eclipse Angular pattern (e.g. `com.servoy.eclipse.designer.wpm`): Vitest with the V8 provider (`@vitest/coverage-v8`, already a devDependency), emitting a **Cobertura** report that Jenkins' Coverage plugin reads.
+
+- **`webui/vitest.config.ts`** — referenced from `angular.json` → `test.options.runnerConfig`. It only sets `coverage.reportsDirectory: '../target/coverage'` and `coverage.reporter: ['text-summary','json-summary','lcov','cobertura']`, so the `@angular/build:unit-test` builder keeps providing its own TestBed environment. `reportsDirectory` lands under the **Maven bundle's** `target/` so the build and Jenkins can find `target/coverage/cobertura-coverage.xml`.
+- **`webui/package.json`** — a `test:coverage` script: `ng test --no-watch --coverage --coverage-include "src/**/*.ts" --coverage-exclude "**/*.spec.ts" --coverage-exclude "**/*.d.ts" --coverage-exclude "**/main.ts" --coverage-exclude "**/environments/**"`. The include/exclude go on the **CLI**, not in the vitest config — the Angular unit-test builder does not read them from the config file.
+- **`bundles/com.servoy.eclipse.opencode/pom.xml`** — a 4th `frontend-maven-plugin` execution (`webui vitest coverage`, `npm run test:coverage`) bound to the `test` phase, `<skip>${maven.test.skip}</skip>`. So a normal `mvn clean install`/`verify` runs the 287 webui tests with coverage; `-Dmaven.test.skip=true` skips them.
+- **`Jenkinsfile`** — a **second** `recordCoverage` in the `Coverage Report` stage's `post`, `parser: 'COBERTURA'`, its **own** `id`/`name` (`vitest-webui`), `ignoreParsingErrors: true`, `sourceCodeRetention: 'EVERY_BUILD'`. It is a separate `recordCoverage` call from the JaCoCo one on purpose: one `recordCoverage` listing mixed/duplicate reports makes the last-parsed one overwrite the others (a lesson from servoy-eclipse), so each project gets its own call with a unique id. `ignoreParsingErrors` guards against istanbul's cobertura reporter emitting duplicate `<method>` elements the parser rejects.
+
+Run it locally from `webui/`: `npm run test:coverage` (writes `../target/coverage/`), or through Maven: `mvn test -pl bundles/com.servoy.eclipse.opencode -am -Dtycho.localArtifacts=ignore`. Current coverage is ~72% statements / ~72% lines over the 12 spec files.
+
 ### Test-project shape: fragment vs plain bundle (and a known ergonomics wart)
 
 The two phase-1 test modules use **different OSGi shapes**, which is worth understanding before adding a new test bundle or touching their manifests:

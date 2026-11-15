@@ -66,7 +66,8 @@
           "options": {
             "tsConfig": "tsconfig.spec.json",
             "buildTarget": "servoy-ai-chat:build",
-            "runner": "vitest"
+            "runner": "vitest",
+            "runnerConfig": "vitest.config.ts"
           }
         }
       }

@@ -92,7 +92,25 @@ pipeline {
             }
             post {
                 always {
-                    recordCoverage(tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']])
+                    // Java (JaCoCo) coverage of the plainjunit tests.
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                        id: 'jacoco-java',
+                        name: 'JaCoCo Coverage - Java (plainjunit)'
+                    )
+                    // Angular webui (Vitest / V8) coverage, Cobertura report produced by the
+                    // 'webui vitest coverage' frontend-maven-plugin run in the build stage.
+                    // Own recordCoverage with its own id/name so it gets an independent entry
+                    // and trend (a single recordCoverage over mixed parsers would collide).
+                    // ignoreParsingErrors: istanbul's cobertura reporter can emit duplicate
+                    // <method> elements that the coverage parser otherwise rejects.
+                    recordCoverage(
+                        tools: [[parser: 'COBERTURA', pattern: 'bundles/com.servoy.eclipse.opencode/target/coverage/cobertura-coverage.xml']],
+                        id: 'vitest-webui',
+                        name: 'Vitest Coverage - webui (opencode chat UI)',
+                        ignoreParsingErrors: true,
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
                 }
             }
         }
