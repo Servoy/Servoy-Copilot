@@ -42,6 +42,17 @@ import com.servoy.j2db.util.DataSourceUtils;
 
 @McpServer(name = "servoy-i18n")
 public class ServoyI18nServer {
+	/**
+	 * Returns the active developer Servoy model. Extracted as a protected seam so
+	 * plain-JUnit unit tests can override it with a Mockito mock and drive this
+	 * server's own validation/guard/formatting branches without a running
+	 * workbench (the static {@code ServoyModelManager} initializer is not usable
+	 * outside the PDE/OSGi container).
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	@Tool(name = "i18n_listTables", description = "Lists existing i18n-compatible tables across all configured database servers. "
 			+ "A table is compatible if it has columns 'message_key', 'message_value', and 'message_language'. "
 			+ "Use this when the active solution has no i18nDataSource configured and you need to find or choose an existing i18n table.", type = "object")
@@ -122,7 +133,7 @@ public class ServoyI18nServer {
 
 			String solutionNote = null;
 			try {
-				IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+				IDeveloperServoyModel model = getServoyModel();
 				ServoyProject activeProject = model.getActiveProject();
 				if (activeProject != null && activeProject.getSolution() != null) {
 					String i18nDataSource = activeProject.getSolution().getI18nDataSource();
@@ -187,7 +198,7 @@ public class ServoyI18nServer {
 			return "Error: tableName parameter is required";
 
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject activeProject = model.getActiveProject();
 			if (activeProject == null)
 				return "Error: No active solution. Activate a solution first.";

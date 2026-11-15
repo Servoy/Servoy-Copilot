@@ -17,13 +17,17 @@
 package com.servoy.eclipse.developer.mcp.plainjunit.servers;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.TreeMap;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,11 +36,16 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.developer.mcp.McpServerBuiltins;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.servers.ServoyI18nServer;
+import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.eclipse.model.repository.EclipseMessages;
+import com.servoy.j2db.persistence.I18NUtil;
+import com.servoy.j2db.persistence.Solution;
 
 @DisplayName("ServoyI18nServer")
 public class ServoyI18nServerTest {
@@ -256,6 +265,164 @@ public class ServoyI18nServerTest {
 			String result = server.i18nSearchMessages("   ");
 			assertNotNull(result);
 			assertTrue(result.startsWith("Error:"), "Blank searchValue should return an error");
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Seam-driven unit tests: the Servoy model boundary is mocked through the
+	// protected getServoyModel() seam, so this server's own validation/guard/
+	// dispatch/formatting branches run without a workbench. The platform
+	// ResourceBundle (com.servoy.j2db.messages) is a real, stable resource on the
+	// test classpath, so i18nSearchMessages' platform-defaults formatting is also
+	// exercised here. The core's behaviour itself is NOT under test (that belongs
+	// in servoy-eclipse / ServoyI18nServerIntegrationTest).
+	// -----------------------------------------------------------------------
+
+	/** A {@link ServoyI18nServer} whose model seam returns the supplied mock. */
+	private static ServoyI18nServer serverWith(IDeveloperServoyModel model) {
+		return new ServoyI18nServer() {
+			@Override
+			protected IDeveloperServoyModel getServoyModel() {
+				return model;
+			}
+		};
+	}
+
+	@Nested
+	@DisplayName("i18nSearchMessages with a mocked model")
+	class SearchMessagesMocked {
+
+		/**
+		 * A known platform default key/value present in the
+		 * {@code com.servoy.j2db.messages} ResourceBundle. Used to assert the
+		 * platform-defaults branch of i18nSearchMessages formats a real match.
+		 */
+		private static final String PLATFORM_VALUE = "Cancel";
+
+		@Test
+		@DisplayName("searches platform defaults and reports 'No active solution' when there is no active project")
+		void platformMatchesNoActiveSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenReturn(null);
+
+			String result = serverWith(model).i18nSearchMessages(PLATFORM_VALUE);
+
+			assertAll(() -> assertNotNull(result),
+					() -> assertTrue(result.startsWith("Platform defaults ("),
+							"should lead with the platform-defaults section; got: " + result),
+					() -> assertTrue(result.contains("Solution keys ("),
+							"should contain the solution-keys section; got: " + result),
+					() -> assertTrue(result.contains("No active solution"),
+							"solution note should say there is no active solution; got: " + result));
+		}
+
+		@Test
+		@DisplayName("notes 'No solution i18n configured' when the active solution has no i18nDataSource")
+		void noI18nDataSourceConfigured() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getSolution()).thenReturn(solution);
+			when(solution.getI18nDataSource()).thenReturn(null);
+
+			String result = serverWith(model).i18nSearchMessages(PLATFORM_VALUE);
+
+			assertTrue(result.contains("No solution i18n configured"),
+					"should note that no solution i18n is configured; got: " + result);
+		}
+
+		@Test
+		@DisplayName("formats solution-key matches from the messages manager")
+		void formatsSolutionMatches() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			EclipseMessages messagesManager = mock(EclipseMessages.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getSolution()).thenReturn(solution);
+			when(solution.getI18nDataSource()).thenReturn("db:/example/messages");
+			when(model.getMessagesManager()).thenReturn(messagesManager);
+
+			TreeMap<String, I18NUtil.MessageEntry> messages = new TreeMap<>();
+			messages.put("en.greeting", new I18NUtil.MessageEntry("en", "greeting", "Please cancel"));
+			messages.put("en.other", new I18NUtil.MessageEntry("en", "other", "nothing to see"));
+			when(messagesManager.getDatasourceMessages("db:/example/messages")).thenReturn(messages);
+
+			String result = serverWith(model).i18nSearchMessages(PLATFORM_VALUE);
+
+			assertAll(
+					() -> assertTrue(result.contains("greeting=Please cancel"),
+							"matching solution key should be listed; got: " + result),
+					() -> assertFalse(result.contains("other=nothing to see"),
+							"non-matching solution value should be omitted; got: " + result));
+		}
+
+		@Test
+		@DisplayName("reports no matches when neither platform nor solution contains the value")
+		void noMatches() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenReturn(null);
+
+			String result = serverWith(model).i18nSearchMessages("zzz-no-such-i18n-value-zzz");
+
+			assertEquals("No matching i18n keys found", result);
+		}
+
+		@Test
+		@DisplayName("captures a model failure into the solution note rather than throwing")
+		void modelFailureBecomesNote() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenThrow(new RuntimeException("boom"));
+
+			String result = serverWith(model).i18nSearchMessages(PLATFORM_VALUE);
+
+			assertTrue(result.contains("Could not search solution keys"),
+					"a model failure should surface as a solution note; got: " + result);
+		}
+	}
+
+	@Nested
+	@DisplayName("i18nSetTable with a mocked model")
+	class SetTableMocked {
+
+		@Test
+		@DisplayName("reports no active solution when there is no active project")
+		void noActiveProject() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenReturn(null);
+
+			String result = serverWith(model).i18nSetTable("myServer", "messages", null);
+
+			assertAll(() -> assertNotNull(result),
+					() -> assertTrue(result.startsWith("Error: No active solution"),
+							"should report no active solution; got: " + result));
+		}
+
+		@Test
+		@DisplayName("surfaces a model failure through the catch block as an error")
+		void modelFailureBecomesError() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenThrow(new RuntimeException("kaboom"));
+
+			String result = serverWith(model).i18nSetTable("myServer", "messages", "false");
+
+			assertAll(() -> assertNotNull(result),
+					() -> assertTrue(result.startsWith("Error:"), "should return an error; got: " + result),
+					() -> assertTrue(result.contains("kaboom"),
+							"the error message should carry the cause; got: " + result));
+		}
+
+		@Test
+		@DisplayName("validates blank params before the model is ever consulted")
+		void blankParamsShortCircuitBeforeModel() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyI18nServer serverUnderTest = serverWith(model);
+
+			assertAll(
+					() -> assertTrue(serverUnderTest.i18nSetTable("  ", "messages", null).contains("serverName")),
+					() -> assertTrue(serverUnderTest.i18nSetTable("myServer", "  ", null).contains("tableName")));
+			lenient().when(model.getActiveProject()).thenReturn(null);
 		}
 	}
 

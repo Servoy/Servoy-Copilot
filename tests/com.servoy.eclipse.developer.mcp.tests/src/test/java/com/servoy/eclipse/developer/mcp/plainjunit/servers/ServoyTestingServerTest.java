@@ -1,21 +1,32 @@
 package com.servoy.eclipse.developer.mcp.plainjunit.servers;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
+import com.servoy.eclipse.model.nature.ServoyProject;
 
 public class ServoyTestingServerTest {
 	@Test
@@ -1114,5 +1125,226 @@ public class ServoyTestingServerTest {
 	@DisplayName("locateForm with a blank query returns the exact query error")
 	void locateForm_blankQuery() {
 		assertEquals("Error: query parameter is required", new ServoyTestingServer().locateForm("   ", null));
+	}
+
+	// -----------------------------------------------------------------------
+	// Model-seam driven guards (mock the Servoy model boundary).
+	//
+	// These exercise ONLY the server's own no-active-project / no-active-solution
+	// guards, reached through the protected getServoyModel() seam. The Servoy core
+	// is stubbed to return null/empty at the boundary; nothing of the core's real
+	// behaviour is under test (that belongs to servoy-eclipse / integrationpde).
+	// -----------------------------------------------------------------------
+
+	/** A {@link ServoyTestingServer} whose model seam returns the supplied mock. */
+	private static ServoyTestingServer serverWith(IDeveloperServoyModel model) {
+		return new ServoyTestingServer() {
+			@Override
+			protected IDeveloperServoyModel getServoyModel() {
+				return model;
+			}
+		};
+	}
+
+	/** A model whose active project is {@code null}. */
+	private static IDeveloperServoyModel modelWithNoActiveProject() {
+		IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+		when(model.getActiveProject()).thenReturn(null);
+		return model;
+	}
+
+	@Nested
+	@DisplayName("createTestFile guards")
+	class CreateTestFileGuards {
+		@Test
+		@DisplayName("createTestFile with TARGET and no active project reports no active project")
+		void targetNoActiveProject() {
+			String result = serverWith(modelWithNoActiveProject()).createTestFile("test_utils.js", "TARGET");
+			assertEquals("Error: No active project found. Please open a Servoy solution.", result);
+		}
+
+		@Test
+		@DisplayName("createTestFile with TARGET (any case) and no active project still guards")
+		void targetCaseInsensitive() {
+			String result = serverWith(modelWithNoActiveProject()).createTestFile("utils_test.js", "target");
+			assertEquals("Error: No active project found. Please open a Servoy solution.", result);
+		}
+
+		@Test
+		@DisplayName("createTestFile rejects a null file name before touching the model")
+		void nullFileName() {
+			// The extension validation runs before the model is consulted.
+			String result = serverWith(modelWithNoActiveProject()).createTestFile(null, "TARGET");
+			assertTrue(result.startsWith("Error: Test file name must end with '.js'"), "got: " + result);
+		}
+
+		@Test
+		@DisplayName("createTestFile rejects a name that neither starts with test_ nor ends with _test")
+		void badConvention() {
+			String result = serverWith(modelWithNoActiveProject()).createTestFile("utils.js", "TARGET");
+			assertTrue(result.contains("must follow the convention 'test_*.js' or '*_test.js'"), "got: " + result);
+		}
+	}
+
+	@Nested
+	@DisplayName("addTestMethod guards")
+	class AddTestMethodGuards {
+		@Test
+		@DisplayName("addTestMethod with no active project reports no active project")
+		void noActiveProject() {
+			String result = serverWith(modelWithNoActiveProject()).addTestMethod("test_utils.js", "test_it",
+					"doAssertSomething();");
+			assertEquals("Error: No active project found. Please open a Servoy solution.", result);
+		}
+	}
+
+	@Nested
+	@DisplayName("generateCypressE2ETest guards")
+	class GenerateCypressE2ETestGuards {
+		@Test
+		@DisplayName("generateCypressE2ETest with no active project reports no active Servoy project")
+		void noActiveProject() {
+			String result = serverWith(modelWithNoActiveProject()).generateCypressE2ETest("dialogform1", "a scenario",
+					null, null, null, null, null, null, null);
+			assertEquals("Error: No active Servoy project found.", result);
+		}
+
+		@Test
+		@DisplayName("generateCypressE2ETest with an active project but no editing solution reports no active Servoy project")
+		void noEditingSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(null);
+			String result = serverWith(model).generateCypressE2ETest("dialogform1", "a scenario", null, null, null,
+					null, null, null, null);
+			assertEquals("Error: No active Servoy project found.", result);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Pure private/package helpers reached via reflection - no model needed.
+	// -----------------------------------------------------------------------
+
+	@Nested
+	@DisplayName("extractFunctionName (private static)")
+	class ExtractFunctionName {
+		private String extractFunctionName(String code) throws Exception {
+			Method m = ServoyTestingServer.class.getDeclaredMethod("extractFunctionName", String.class);
+			m.setAccessible(true);
+			return (String) m.invoke(null, code);
+		}
+
+		@Test
+		@DisplayName("extracts the name of a declared function")
+		void extracts() throws Exception {
+			assertEquals("calcTotal", extractFunctionName("function calcTotal(a, b) { return a + b; }"));
+		}
+
+		@Test
+		@DisplayName("returns null for null input or code with no function")
+		void noFunction() throws Exception {
+			org.junit.jupiter.api.Assertions.assertNull(extractFunctionName(null));
+			org.junit.jupiter.api.Assertions.assertNull(extractFunctionName("var x = 1;"));
+		}
+	}
+
+	@Nested
+	@DisplayName("extractTestParameters (private static)")
+	class ExtractTestParameters {
+		private String[] extractTestParameters(String code, String functionName) throws Exception {
+			Method m = ServoyTestingServer.class.getDeclaredMethod("extractTestParameters", String.class, String.class);
+			m.setAccessible(true);
+			return (String[]) m.invoke(null, code, functionName);
+		}
+
+		@Test
+		@DisplayName("splits and trims the parameter list of the named function")
+		void splitsParams() throws Exception {
+			assertArrayEquals(new String[] { "price", "qty" },
+					extractTestParameters("function total(price, qty) { }", "total"));
+		}
+
+		@Test
+		@DisplayName("returns an empty array for a no-arg function")
+		void emptyParams() throws Exception {
+			assertEquals(0, extractTestParameters("function go() { }", "go").length);
+		}
+
+		@Test
+		@DisplayName("returns an empty array when code or function name is null or the function is absent")
+		void nullOrMissing() throws Exception {
+			assertEquals(0, extractTestParameters(null, "go").length);
+			assertEquals(0, extractTestParameters("function go(a) {}", null).length);
+			assertEquals(0, extractTestParameters("function other(a) {}", "go").length);
+		}
+	}
+
+	@Nested
+	@DisplayName("injectLoginIntoBeforeEach (private)")
+	class InjectLogin {
+		private String injectLoginIntoBeforeEach(ServoyTestingServer server, String content) throws Exception {
+			Method m = ServoyTestingServer.class.getDeclaredMethod("injectLoginIntoBeforeEach", String.class);
+			m.setAccessible(true);
+			return (String) m.invoke(server, content);
+		}
+
+		@Test
+		@DisplayName("inserts cy.login() before the cy.visit in beforeEach")
+		void injects() throws Exception {
+			String content = "describe('x', () => {\n  beforeEach(() => {\n    cy.visit('/');\n  });\n});\n";
+			String out = injectLoginIntoBeforeEach(new ServoyTestingServer(), content);
+			assertTrue(out.contains("cy.login();"), "should inject cy.login(): " + out);
+			assertTrue(out.contains("cy.visit('"), "should keep the visit call: " + out);
+			assertTrue(out.indexOf("cy.login();") < out.indexOf("cy.visit('"), "login must come before visit");
+		}
+
+		@Test
+		@DisplayName("returns the content unchanged when there is no matching beforeEach visit")
+		void unchanged() throws Exception {
+			String content = "describe('x', () => {\n  it('does', () => {});\n});\n";
+			assertEquals(content, injectLoginIntoBeforeEach(new ServoyTestingServer(), content));
+		}
+	}
+
+	@Nested
+	@DisplayName("discoverCypressHelpers (private)")
+	class DiscoverCypressHelpers {
+		private String discoverCypressHelpers(ServoyTestingServer server, Path dir) throws Exception {
+			Method m = ServoyTestingServer.class.getDeclaredMethod("discoverCypressHelpers", Path.class);
+			m.setAccessible(true);
+			return (String) m.invoke(server, dir);
+		}
+
+		@Test
+		@DisplayName("returns null when the support directory does not exist")
+		void missingDir(@TempDir Path tmp) throws Exception {
+			assertEquals(null, discoverCypressHelpers(new ServoyTestingServer(), tmp.resolve("nope")));
+		}
+
+		@Test
+		@DisplayName("includes real command files and skips e2e.js and comment-only files")
+		void collectsCommands(@TempDir Path tmp) throws Exception {
+			Files.writeString(tmp.resolve("commands.js"), "Cypress.Commands.add('login', () => {});\n",
+					StandardCharsets.UTF_8);
+			Files.writeString(tmp.resolve("e2e.js"), "import './commands';\n", StandardCharsets.UTF_8);
+			Files.writeString(tmp.resolve("empty.js"), "// just a comment\n\n", StandardCharsets.UTF_8);
+			String result = discoverCypressHelpers(new ServoyTestingServer(), tmp);
+			assertNotNull(result);
+			assertTrue(result.contains("Cypress.Commands.add"), "should include the real command file: " + result);
+			assertTrue(result.contains("commands.js"), "should label the file: " + result);
+			assertFalse(result.contains("import './commands'"), "should skip e2e.js: " + result);
+			assertFalse(result.contains("just a comment"), "should skip comment-only files: " + result);
+		}
+	}
+
+	@Nested
+	@DisplayName("resolveE2EFileName edge cases")
+	class ResolveE2EFileNameEdges {
+		@Test
+		@DisplayName("a bare name with no extension is normalized to .cy.ts")
+		void bareName() {
+			assertEquals("flow.cy.ts", ServoyTestingServer.resolveE2EFileName("flow", "ignored"));
+		}
 	}
 }

@@ -65,6 +65,15 @@ public class ServoyTestingServer
 	}
 
 	/**
+	 * Seam over the static {@link ServoyModelManager} model lookup so unit tests
+	 * can substitute a mock {@link com.servoy.eclipse.core.IDeveloperServoyModel}.
+	 */
+	protected com.servoy.eclipse.core.IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
+	/**
 	 * Scans the cypress/support/ directory (recursively) for custom commands and
 	 * helper functions. Reads all .js and .ts files (excluding e2e.js/e2e.ts which
 	 * are just imports) and returns their content so the AI can use existing
@@ -202,8 +211,8 @@ public class ServoyTestingServer
 		try
 		{
 			String result = formPreview.showFormInBrowser(formName, openBrowser);
-			if (!result.startsWith("Error") && !specGenerator.specExists(formName, ServoyModelManager
-				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
+			if (!result.startsWith("Error") && !specGenerator.specExists(formName,
+				getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String specResult = generateSpecWithModel(formName);
 				if (!specResult.startsWith("Error"))
@@ -269,8 +278,8 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			if (!specGenerator.specExists(formName, ServoyModelManager
-				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
+			if (!specGenerator.specExists(formName,
+				getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String genResult = generateSpecWithModel(formName);
 				if (genResult.startsWith("Error"))
@@ -295,8 +304,8 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			if (!specGenerator.specExists(formName, ServoyModelManager
-				.getServoyModelManager().getServoyModel().getActiveProject().getSolution().getName()))
+			if (!specGenerator.specExists(formName,
+				getServoyModel().getActiveProject().getSolution().getName()))
 			{
 				String genResult = generateSpecWithModel(formName);
 				if (genResult.startsWith("Error"))
@@ -510,8 +519,7 @@ public class ServoyTestingServer
 			String actualSolutionName = solutionName;
 			if ("TARGET".equalsIgnoreCase(solutionName))
 			{
-				com.servoy.eclipse.model.nature.ServoyProject activeProject = com.servoy.eclipse.core.ServoyModelManager
-					.getServoyModelManager().getServoyModel().getActiveProject();
+				com.servoy.eclipse.model.nature.ServoyProject activeProject = getServoyModel().getActiveProject();
 				if (activeProject != null)
 				{
 					actualSolutionName = activeProject.getProject().getName();
@@ -541,8 +549,7 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			com.servoy.eclipse.model.nature.ServoyProject activeProject = com.servoy.eclipse.core.ServoyModelManager
-				.getServoyModelManager().getServoyModel().getActiveProject();
+			com.servoy.eclipse.model.nature.ServoyProject activeProject = getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "Error: No active project found. Please open a Servoy solution.";
@@ -972,8 +979,7 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			com.servoy.eclipse.model.nature.ServoyProject servoyProject = com.servoy.eclipse.core.ServoyModelManager
-				.getServoyModelManager().getServoyModel().getActiveProject();
+			com.servoy.eclipse.model.nature.ServoyProject servoyProject = getServoyModel().getActiveProject();
 			if (servoyProject == null || servoyProject.getEditingSolution() == null)
 			{
 				return "Error: No active Servoy project found.";
