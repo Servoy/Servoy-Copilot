@@ -71,49 +71,6 @@ pipeline {
                 }
             }
         }
-        stage('Coverage Report') {
-            // JaCoCo coverage for the plain-JUnit tests. The 'Build with Tycho 5' stage above
-            // already ran those tests with the agent attached (prepare-agent + @{jacocoArgLine}
-            // in each .tests pom), so target/jacoco.exec exists per test module. The jacoco
-            // 'report' goal cannot be redirected to another module's classes, so it is run in
-            // each PRODUCTION bundle (-Pcoverage-report points it at the sibling .tests exec).
-            // This reflects plainjunit coverage only - the integrationpde PDE tests are not yet
-            // wired for coverage. See AGENTS.md "JaCoCo code coverage".
-            when { expression { env.SKILLTEST_ONLY != 'true' } }
-            steps {
-                configFileProvider([
-                    configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
-                    configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
-                ]) {
-                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                        sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -Pcoverage-report org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp $Dproperties'
-                    }
-                }
-            }
-            post {
-                always {
-                    // Java (JaCoCo) coverage of the plainjunit tests.
-                    recordCoverage(
-                        tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
-                        id: 'jacoco-java',
-                        name: 'JaCoCo Coverage - Java (plainjunit)'
-                    )
-                    // Angular webui (Vitest / V8) coverage, Cobertura report produced by the
-                    // 'webui vitest coverage' frontend-maven-plugin run in the build stage.
-                    // Own recordCoverage with its own id/name so it gets an independent entry
-                    // and trend (a single recordCoverage over mixed parsers would collide).
-                    // ignoreParsingErrors: istanbul's cobertura reporter can emit duplicate
-                    // <method> elements that the coverage parser otherwise rejects.
-                    recordCoverage(
-                        tools: [[parser: 'COBERTURA', pattern: 'bundles/com.servoy.eclipse.opencode/target/coverage/cobertura-coverage.xml']],
-                        id: 'vitest-webui',
-                        name: 'Vitest Coverage - webui (opencode chat UI)',
-                        ignoreParsingErrors: true,
-                        sourceCodeRetention: 'EVERY_BUILD'
-                    )
-                }
-            }
-        }
         stage('Deploy Plugin Site') {
             when { expression { env.SKILLTEST_ONLY != 'true' } }
             steps {
@@ -144,6 +101,53 @@ pipeline {
             post {
                 always {
                     junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        stage('Coverage Report') {
+            // JaCoCo coverage for ALL Java tests - plainjunit AND the integrationpde PDE tests.
+            // This runs AFTER 'Integration Tests' on purpose: the integration run writes
+            // target/jacoco-it.exec in each .tests module (the jacoco-prepare-agent-it execution
+            // sets tycho.testArgLine, surfaced into the integration-profile tycho-surefire argLine
+            // via the additionalTestArgLine indirection), and the plainjunit run in
+            // 'Build with Tycho 5' already wrote target/jacoco.exec.
+            // The jacoco 'report' goal cannot be redirected to another module's classes, so it is
+            // run in each PRODUCTION bundle (-Pcoverage-report), which first MERGES both exec files
+            // into target/jacoco-merged.exec ('merge' goal) and then reports this bundle's own
+            // classes against the merged data ('report' goal). So the published number reflects
+            // unit + integration coverage. See AGENTS.md "JaCoCo code coverage".
+            when { expression { env.SKILLTEST_ONLY != 'true' } }
+            steps {
+                configFileProvider([
+                    configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
+                    configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
+                ]) {
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -Pcoverage-report org.jacoco:jacoco-maven-plugin:merge org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp $Dproperties'
+                    }
+                }
+            }
+            post {
+                always {
+                    // Java (JaCoCo) coverage of the plainjunit + integrationpde tests (merged).
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                        id: 'jacoco-java',
+                        name: 'JaCoCo Coverage - Java (unit + integration)'
+                    )
+                    // Angular webui (Vitest / V8) coverage, Cobertura report produced by the
+                    // 'webui vitest coverage' frontend-maven-plugin run in the build stage.
+                    // Own recordCoverage with its own id/name so it gets an independent entry
+                    // and trend (a single recordCoverage over mixed parsers would collide).
+                    // ignoreParsingErrors: istanbul's cobertura reporter can emit duplicate
+                    // <method> elements that the coverage parser otherwise rejects.
+                    recordCoverage(
+                        tools: [[parser: 'COBERTURA', pattern: 'bundles/com.servoy.eclipse.opencode/target/coverage/cobertura-coverage.xml']],
+                        id: 'vitest-webui',
+                        name: 'Vitest Coverage - webui (opencode chat UI)',
+                        ignoreParsingErrors: true,
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
                 }
             }
         }

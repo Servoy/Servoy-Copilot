@@ -99,6 +99,18 @@
 	<profiles>
 		<profile>
 			<id>integration</id>
+			<!-- additionalTestArgLine is the tycho/jacoco double-indirection token (the documented
+			     Lorenzo Bettini pattern). It holds the LITERAL string ${tycho.testArgLine}, which
+			     Maven does NOT expand here - it is expanded only when the tycho-surefire <argLine>
+			     dereferences ${additionalTestArgLine}, at mojo-execution time, by which point
+			     jacoco:prepare-agent has set tycho.testArgLine to the -javaagent arg. This extra
+			     level of indirection is REQUIRED: tycho resolves a property that argLine references
+			     directly (e.g. ${tycho.testArgLine}) too early - before prepare-agent runs - so a
+			     direct reference, or an empty default, would freeze an empty value and the agent
+			     would never reach the fork (which is exactly why the first attempt wrote no exec). -->
+			<properties>
+				<additionalTestArgLine>${tycho.testArgLine}</additionalTestArgLine>
+			</properties>
 			<build>
 				<plugins>
 					<plugin>
@@ -108,6 +120,43 @@
 						<configuration>
 							<skip>true</skip>
 						</configuration>
+					</plugin>
+					<!-- JaCoCo code coverage for the integrationpde PDE tests (Phase 2).
+					     This is a SEPARATE prepare-agent from the plainjunit one in the base build.
+					     For an eclipse-test-plugin, jacoco:prepare-agent writes the -javaagent string
+					     into the DEFAULT property tycho.testArgLine (not argLine) - we keep that default
+					     here and only redirect its destFile to a SEPARATE jacoco-it.exec so it never
+					     collides with the unit jacoco.exec. tycho-surefire would normally pick up
+					     tycho.testArgLine automatically, but this module sets a custom <argLine>, which
+					     would otherwise overwrite it. The tycho pitfall (and the reason the first
+					     attempt wrote no exec): a <argLine> referencing a property is resolved by tycho
+					     BEFORE jacoco:prepare-agent runs, so a property given an empty default simply
+					     freezes empty. The documented fix is one more level of indirection:
+					       - prepare-agent sets tycho.testArgLine (done below, with its own destFile),
+					       - the execution's <configuration> sets additionalTestArgLine=${tycho.testArgLine}
+					         (resolved late, when the agent string already exists),
+					       - the tycho-surefire <argLine> references ${additionalTestArgLine}.
+					     The agent flushes jacoco-it.exec on the workbench JVM's clean shutdown
+					     (dumponexit, default true). The exec is merged with jacoco.exec and reported in
+					     the HOST bundle's module (see its coverage-report profile). -->
+					<plugin>
+						<groupId>org.jacoco</groupId>
+						<artifactId>jacoco-maven-plugin</artifactId>
+						<version>0.8.13</version>
+						<executions>
+							<execution>
+								<id>jacoco-prepare-agent-it</id>
+								<goals>
+									<goal>prepare-agent</goal>
+								</goals>
+								<configuration>
+									<!-- default propertyName for eclipse-test-plugin is tycho.testArgLine;
+									     only the destFile is redirected so it does not collide with the
+									     plainjunit jacoco.exec -->
+									<destFile>${project.build.directory}/jacoco-it.exec</destFile>
+								</configuration>
+							</execution>
+						</executions>
 					</plugin>
 					<plugin>
 						<groupId>org.eclipse.tycho</groupId>
@@ -127,7 +176,9 @@
 							<useUIThread>false</useUIThread>
 							<product>com.servoy.eclipse.core.ide</product>
 							<application>org.eclipse.ui.ide.workbench</application>
-							<argLine>-Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
+							<!-- ${additionalTestArgLine} carries the JaCoCo agent (see the jacoco plugin
+							     above); prepended so it reaches the forked workbench JVM. -->
+							<argLine>${additionalTestArgLine} -Xms256m -Xmx2048m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<dependencies>
 								<dependency>

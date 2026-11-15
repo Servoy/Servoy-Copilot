@@ -112,9 +112,19 @@
 		     Usage (from the repo root):
 		       mvn clean verify -Dtycho.localArtifacts=ignore -Dmaven.test.failure.ignore=true \
 		           -pl bundles/com.servoy.eclipse.opencode,tests/com.servoy.eclipse.opencode.tests -am
-		       mvn -Pcoverage-report org.jacoco:jacoco-maven-plugin:report \
+		       mvn -Pcoverage-report org.jacoco:jacoco-maven-plugin:merge org.jacoco:jacoco-maven-plugin:report \
 		           -pl bundles/com.servoy.eclipse.opencode -Dtycho.localArtifacts=ignore -o
-		     Output: bundles/com.servoy.eclipse.opencode/target/site/jacoco/jacoco.xml (and html). -->
+		     Output: bundles/com.servoy.eclipse.opencode/target/site/jacoco/jacoco.xml (and html).
+
+		     Phase 2: coverage now merges BOTH exec files from the test fragment - jacoco.exec
+		     (plainjunit) and jacoco-it.exec (integrationpde PDE tests, written only when the
+		     integration profile ran). The 'merge' goal combines whichever exist into
+		     target/jacoco-merged.exec; the 'report' goal analyzes this bundle's own classes
+		     against that merged data. One plugin-level <configuration> serves both direct goals:
+		     'merge' reads <fileSets>/<destFile> and ignores <dataFile>; 'report' reads <dataFile>
+		     and ignores the fileSets - so they do not conflict and the Jenkins invocation stays a
+		     simple 'merge report' goal pair. A missing jacoco-it.exec is harmless (merge just
+		     takes what is there), so this works for a plainjunit-only run too. -->
 		<profile>
 			<id>coverage-report</id>
 			<build>
@@ -124,8 +134,22 @@
 						<artifactId>jacoco-maven-plugin</artifactId>
 						<version>0.8.13</version>
 						<configuration>
-							<!-- The exec file produced by the test fragment's forked test JVM. -->
-							<dataFile>${project.basedir}/../../tests/com.servoy.eclipse.opencode.tests/target/jacoco.exec</dataFile>
+							<!-- 'merge' inputs: the unit + integration exec files produced by the
+							     test fragment's forked JVMs. A listed file that does not exist is
+							     simply skipped. -->
+							<fileSets>
+								<fileSet>
+									<directory>${project.basedir}/../../tests/com.servoy.eclipse.opencode.tests/target</directory>
+									<includes>
+										<include>jacoco.exec</include>
+										<include>jacoco-it.exec</include>
+									</includes>
+								</fileSet>
+							</fileSets>
+							<!-- 'merge' output (ignored by 'report'). -->
+							<destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+							<!-- 'report' input (ignored by 'merge'): the merged data. -->
+							<dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
 							<outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
 						</configuration>
 					</plugin>
