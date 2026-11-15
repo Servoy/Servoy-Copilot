@@ -1,4 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
+h<project xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
@@ -23,6 +23,40 @@
                 <configuration>
                     <skip>true</skip>
                 </configuration>
+            </plugin>
+            <!-- JaCoCo code coverage (SVY: coverage recipe).
+                 prepare-agent writes the -javaagent:... string into the property named
+                 'jacocoArgLine' (NOT the default 'argLine', because this module sets its own
+                 literal surefire <argLine> and we want the concatenation to be explicit).
+                 The surefire <argLine> below references it as @{jacocoArgLine} (late
+                 evaluation), so the agent actually reaches the forked test JVM - that is the
+                 step the servoy-eclipse attempt was missing, and why no jacoco.exec was ever
+                 written there. The RESULT is target/jacoco.exec with the runtime coverage data.
+
+                 The HTML/XML report is NOT generated here: this test plugin Require-Bundles the
+                 production bundle (com.servoy.eclipse.developer.mcp), so the classes exercised
+                 at runtime belong to that bundle, not to this module's target/classes (which
+                 holds only the compiled test classes). The jacoco 'report' goal can only
+                 analyze the current module's own build output - it has no classDirectories/
+                 sourceDirectories parameters - so the report is produced in the production
+                 bundle's own module, pointed at this exec file, as a second step (see the
+                 production bundle pom / the recipe). -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.13</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                            <destFile>${project.build.directory}/jacoco.exec</destFile>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- plainjunit tests run on a flat classpath (like Eclipse "Run as JUnit"), without an OSGi runtime -->
             <plugin>
@@ -52,7 +86,9 @@
                     <includes>
                         <include>**/plainjunit/**/*.java</include>
                     </includes>
-                    <argLine>-Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED</argLine>
+                    <!-- @{jacocoArgLine} is the JaCoCo agent, set by prepare-agent above. Late
+                         (@{...}) evaluation so the resolved -javaagent reaches the fork. -->
+                    <argLine>@{jacocoArgLine} -Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <!-- tycho-surefire always starts an OSGi runtime; it is only used by the integration profile -->

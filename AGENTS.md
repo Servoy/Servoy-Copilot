@@ -266,6 +266,110 @@ Within servoy-eclipse, shared helpers (event-pump utilities, app-server wait, di
 
 > **Two-file result + format coverage (SVY-21577 follow-up):** `getFormLayout` never inlines the two heavy parts of a render. The rendered `html` is **always** written to an `htmlFile` (pretty-printed by jsoup, one element per indented line) and the computed-appearance map to an `appearanceFile` (pretty JSON, one node per line); the tool result is only a small envelope of metadata (`form`/`selector`/`viewport`/`window`/`elementCount`), the two absolute file paths and a `guidance` string. This keeps every call cheap in the model's context regardless of form size and lets the agent grep/ranged-read only the element it needs. jsoup (`org.jsoup`, already on the target platform) is imported in `com.servoy.eclipse.developer.mcp`'s `MANIFEST.MF` for the HTML pretty-printer (`FormLayoutInspectionService.prettyPrintHtml`, which falls back to the raw HTML on a parse failure). `FormLayoutToolIntegrationTest`'s `envelopeOf` helper reads both files back, folds them under the `html`/`appearance` keys the assertions use, and asserts: neither part is inlined; both files exist and are pretty-printed (`assertHtmlIsPrettyPrinted` / `assertJsonIsPrettyPrinted` — multiple physical lines + newline-anchored indentation); and the inline `guidance` names both files and carries the required points — absolute paths, pass unchanged (no `../`), pretty-printed/greppable (`assertGuidance`). `FormLayoutStyledRenderIntegrationTest`'s own `envelopeOf` folds just `appearanceFile` back under `appearance`. These fire on every successful render, so they catch a revert of the two-file split or the pretty-printer without being green-for-green. The classes are PDE/Servoy integration and run with `eclipse-pde_runJUnitPluginTests` (or `mvn verify -Pintegration`); still gated by the `/formtemplate` render prerequisite described in their Javadoc.
 
+### JaCoCo code coverage (plain-JUnit tests)
+
+JaCoCo coverage is wired for the phase-1 **plain-JUnit** tests (the `**/plainjunit/**` forks run by plain `maven-surefire`), not yet for the forked-workbench `integrationpde` PDE tests. The recipe is deliberately split into a **capture** step (in each `.tests` module) and a **report** step (in the production bundle), run as two Maven invocations.
+
+**1. Capture — in each `.tests` module's `pom.xml`.** Add `jacoco-maven-plugin`'s `prepare-agent` writing the agent string into a *named* property, and make the plain-surefire `<argLine>` reference it:
+
+```xml
+<plugin>
+  <groupId>org.jacoco</groupId>
+  <artifactId>jacoco-maven-plugin</artifactId>
+  <version>0.8.13</version>
+  <executions>
+    <execution>
+      <id>jacoco-prepare-agent</id>
+      <goals><goal>prepare-agent</goal></goals>
+      <configuration>
+        <propertyName>jacocoArgLine</propertyName>
+        <destFile>${project.build.directory}/jacoco.exec</destFile>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+```
+```xml
+<!-- surefire plainjunit-tests execution -->
+<argLine>@{jacocoArgLine} -Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED</argLine>
+```
+
+> **This `@{jacocoArgLine}` reference is the whole trick, and the step the first servoy-eclipse attempt was missing.** `prepare-agent` only *computes* the `-javaagent:…` string and stores it in a Maven property — it does **not** inject it into the forked test JVM. Surefire adds the agent to the fork only if its own `<argLine>` **references that property**. The servoy-eclipse attempt set the property (the log even printed "jacocoArgLine set to -javaagent:…"), but its literal `<argLine>` never referenced it, so the agent was never on the fork's command line, no `jacoco.exec` was written, and every report said "Skipping JaCoCo execution due to missing execution data file." The tests running is unrelated — the agent *attach* is the missing link. Use the late-evaluation `@{...}` form (not `${...}`) so the resolved agent path reaches the fork. These modules set their own literal `<argLine>`, hence a distinct `propertyName` (`jacocoArgLine`) prepended explicitly rather than relying on the default `argLine` property.
+
+**2. Report — in the production bundle's `pom.xml`, as a `coverage-report` profile.** The `report` goal has **no** `classDirectories`/`sourceDirectories` parameters — it only ever analyzes *the current module's own* `target/classes` + source roots. So the report must run in the module that **owns the production classes**, pointed at the test module's exec file:
+
+```xml
+<profiles>
+  <profile>
+    <id>coverage-report</id>
+    <build>
+      <plugins>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>0.8.13</version>
+          <configuration>
+            <dataFile>${project.basedir}/../../tests/<the .tests module>/target/jacoco.exec</dataFile>
+            <outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
+          </configuration>
+        </plugin>
+      </plugins>
+    </build>
+  </profile>
+</profiles>
+```
+
+It is a **separate step / profile** because the production bundle builds *before* the test module in reactor order — a report bound into the production bundle's own lifecycle would run before the exec file exists.
+
+**3. Run it (two invocations, from the repo root).** Use `-Dmaven.test.failure.ignore=true` so a pre-existing local-only test failure still lets the build reach the exec-write, and always `-Dtycho.localArtifacts=ignore`:
+
+```
+mvn clean verify -Dtycho.localArtifacts=ignore -Dmaven.test.failure.ignore=true \
+    -pl bundles/com.servoy.eclipse.opencode,tests/com.servoy.eclipse.opencode.tests,bundles/com.servoy.eclipse.developer.mcp,tests/com.servoy.eclipse.developer.mcp.tests -am
+mvn -Pcoverage-report org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.opencode        -Dtycho.localArtifacts=ignore -o
+mvn -Pcoverage-report org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.developer.mcp     -Dtycho.localArtifacts=ignore -o
+```
+Output per bundle: `target/site/jacoco/jacoco.xml` (+ html/csv) with real covered/missed numbers.
+
+**Where the production classes live depends on the test-bundle shape (see the fragment-vs-bundle note below), and that decides which module runs the report:**
+- `com.servoy.eclipse.opencode.tests` is a **fragment** → the code under test is in its **host** bundle `com.servoy.eclipse.opencode` → report runs there.
+- `com.servoy.eclipse.developer.mcp.tests` is a **plain bundle** that `Require-Bundle`s its production bundle → report runs in `com.servoy.eclipse.developer.mcp`. If one test bundle exercises several production bundles, run (or `report-aggregate`) a report per production bundle from the one `jacoco.exec`.
+
+**Not done yet / future:** coverage for the `integrationpde` PDE tests (the agent would have to attach to the `tycho-surefire` forked workbench via its `<argLine>` — same `@{...}` principle, but in the `integration` profile's `tycho-surefire` config, untested so far), and single-command packaging (a dedicated aggregate report module). The `opencode.skilltest.tests` module has no `plainjunit` tests, so it has no phase-1 coverage target.
+
+**On CI (Jenkinsfile).** The capture needs no CI change — the main `clean install` build runs the plainjunit tests with the agent attached, so `target/jacoco.exec` is written per `.tests` module. A dedicated **`Coverage Report`** stage (right after `Build with Tycho 5`, before `Deploy Plugin Site`) then runs the `report` goal in both production bundles and publishes the result:
+
+```groovy
+sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -Pcoverage-report org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp $Dproperties'
+// post { always { recordCoverage(tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']]) } }
+```
+
+- `recordCoverage` needs the Jenkins **Coverage plugin** on the controller (a "No such DSL method 'recordCoverage'" error means it is missing). It gives the coverage column, trend graph and per-build diff.
+- The stage sits inside the same `when { SKILLTEST_ONLY != 'true' }` guard as the rest and is wrapped in `catchError(buildResult: 'UNSTABLE')`, so a coverage hiccup never fails the whole build.
+- It runs **before** the `Integration Tests` stage, which does not `clean`, so the plainjunit exec/report is reported before anything else touches `target`. The published number is therefore **plainjunit coverage only** (same caveat as above).
+
+### Test-project shape: fragment vs plain bundle (and a known ergonomics wart)
+
+The two phase-1 test modules use **different OSGi shapes**, which is worth understanding before adding a new test bundle or touching their manifests:
+
+| | `com.servoy.eclipse.opencode.tests` | `com.servoy.eclipse.developer.mcp.tests` |
+|---|---|---|
+| Shape | **Fragment** (`Fragment-Host: com.servoy.eclipse.opencode`) | **Plain bundle** (`Require-Bundle: com.servoy.eclipse.developer.mcp, …`) |
+| Classloader | Merges into the host — one classloader | Its own classloader |
+| Sees host internals | Yes, incl. package-private | Only the host's `Export-Package`ed API |
+| Dependencies | Inherits the host's whole set for free | Must **restate** the host's runtime deps (jackson, mcp sdk, tomcat, dltk, …) |
+| Can be `Require-Bundle`d by another bundle | **No** | Yes |
+
+**History — it was a fragment and was deliberately converted.** `com.servoy.eclipse.developer.mcp.tests` started as a fragment (commit `7ca1997`) and stayed one through the Cypress-extraction and the Jupiter migration. It was turned into a plain bundle in **commit `1f3dd4f` (SVY-21284)** for one specific reason: the sibling test project `com.servoy.eclipse.servoypilot.assistenttests` needed to reuse the shared `…integrationpde.utils` `Copy` base classes, and to do that it has to `Require-Bundle` the module that holds them — **a fragment cannot be required by another bundle**. The same commit added `Export-Package: com.servoy.eclipse.developer.mcp.integrationpde.utils` to the test bundle and widened the production bundle's own `Export-Package` so the (now separately-classloaded) tests could still reach the code under test through public API. So the long `Require-Bundle`/`Import-Package` list in `developer.mcp.tests` today is **not** "the test project tests more than the main project" — it is mostly the host's own transitive deps, re-stated because the fragment's free inheritance was lost, plus the one exported test-utils package.
+
+**The wart:** that conversion made this test bundle more annoying to maintain — its manifest now mirrors the production bundle's dependency list, and it can no longer reach package-private internals. `opencode.tests`, still a fragment, does not have this problem.
+
+**Recommended future refactor (documented, not yet done — would want its own Jira case, mirrored into servoy-eclipse):** extract the shared `Copy` base classes into their own **test-support bundle** (e.g. `com.servoy.eclipse.developer.mcp.testsupport`, `packaging=eclipse-plugin`, **test-only — must NOT be added to `com.servoy.eclipse.servoypilot.feature` / the p2 site**, same exclusion reasoning as the `.tests` projects). Then:
+- turn `developer.mcp.tests` **back into a fragment** of `com.servoy.eclipse.developer.mcp`, additionally `Require-Bundle`-ing the test-support bundle (a fragment is allowed to require other bundles — it historically required `com.servoy.eclipse.cypress`);
+- point `assistenttests` at the **test-support bundle** instead of at `developer.mcp.tests`.
+
+This removes the original forcing reason entirely: the test fragments get back the single-classloader convenience (lean manifest, package-private access), the shared infra lives in one requirable bundle, and the big dependency list is stated **once** in the test-support bundle instead of copied into every test bundle. It also makes the JaCoCo story uniform — production classes are then always in the host bundle, so the report always runs there. The `Copy`-suffix convention and the cross-repo mirroring rule (below) still apply to the classes in their new home.
+
 ---
 
 ## 1c. Resolving solution objects — ALWAYS use the flattened solution

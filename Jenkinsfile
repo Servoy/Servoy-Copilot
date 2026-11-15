@@ -71,6 +71,31 @@ pipeline {
                 }
             }
         }
+        stage('Coverage Report') {
+            // JaCoCo coverage for the plain-JUnit tests. The 'Build with Tycho 5' stage above
+            // already ran those tests with the agent attached (prepare-agent + @{jacocoArgLine}
+            // in each .tests pom), so target/jacoco.exec exists per test module. The jacoco
+            // 'report' goal cannot be redirected to another module's classes, so it is run in
+            // each PRODUCTION bundle (-Pcoverage-report points it at the sibling .tests exec).
+            // This reflects plainjunit coverage only - the integrationpde PDE tests are not yet
+            // wired for coverage. See AGENTS.md "JaCoCo code coverage".
+            when { expression { env.SKILLTEST_ONLY != 'true' } }
+            steps {
+                configFileProvider([
+                    configFile(fileId: 'ba7b9372-76e5-4898-a2be-1dde60a0d6e3', variable: 'MAVEN_SETTINGS'),
+                    configFile(fileId: 'maven_toolchain', variable: 'TOOLCHAIN')
+                ]) {
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        sh 'mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" -Pcoverage-report org.jacoco:jacoco-maven-plugin:report -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp $Dproperties'
+                    }
+                }
+            }
+            post {
+                always {
+                    recordCoverage(tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']])
+                }
+            }
+        }
         stage('Deploy Plugin Site') {
             when { expression { env.SKILLTEST_ONLY != 'true' } }
             steps {

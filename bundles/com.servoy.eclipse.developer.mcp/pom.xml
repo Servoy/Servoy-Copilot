@@ -11,4 +11,38 @@
     </parent>
     <artifactId>com.servoy.eclipse.developer.mcp</artifactId>
     <packaging>eclipse-plugin</packaging>
+
+    <profiles>
+        <!-- JaCoCo report step (SVY: coverage recipe), activated with -Pcoverage-report.
+             Run AFTER a reactor build that executed the tests (which wrote the exec file in
+             the com.servoy.eclipse.developer.mcp.tests module). This profile analyzes THIS
+             bundle's own compiled classes (target/classes = the production code) and its
+             sources, reading the coverage data recorded by the test fork. It is a separate
+             step because this bundle builds BEFORE the test module in reactor order, so the
+             exec file does not yet exist during this module's own lifecycle.
+
+             Usage (from the repo root):
+               mvn clean verify -Dtycho.localArtifacts=ignore -Dmaven.test.failure.ignore=true \
+                   -pl bundles/com.servoy.eclipse.developer.mcp,tests/com.servoy.eclipse.developer.mcp.tests -am
+               mvn -Pcoverage-report org.jacoco:jacoco-maven-plugin:report \
+                   -pl bundles/com.servoy.eclipse.developer.mcp -Dtycho.localArtifacts=ignore -o
+             Output: bundles/com.servoy.eclipse.developer.mcp/target/site/jacoco/jacoco.xml (and html). -->
+        <profile>
+            <id>coverage-report</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>0.8.13</version>
+                        <configuration>
+                            <!-- The exec file produced by the test module's forked test JVM. -->
+                            <dataFile>${project.basedir}/../../tests/com.servoy.eclipse.developer.mcp.tests/target/jacoco.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
