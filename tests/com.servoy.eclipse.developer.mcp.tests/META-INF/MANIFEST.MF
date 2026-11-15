@@ -98,6 +98,8 @@ Import-Package: org.bouncycastle.pqc.jcajce.provider.uov;version="[1.85.0,2.0.0)
  org.sablo.specification.property;version="[2026.3.0,2027.0.0)",
  org.sablo.websocket,
  org.slf4j;version="[2.0.0,3.0.0)",
- reactor.core.publisher;version="[3.8.0,4.0.0)"
+ reactor.core.publisher;version="[3.8.0,4.0.0)",
+ org.mockito,
+ org.mockito.stubbing
 Automatic-Module-Name: com.servoy.eclipse.developer.mcp.tests
 Export-Package: com.servoy.eclipse.developer.mcp.integrationpde.utils

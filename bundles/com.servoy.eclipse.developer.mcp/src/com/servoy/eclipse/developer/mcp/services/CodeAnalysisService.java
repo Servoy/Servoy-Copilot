@@ -65,6 +65,16 @@ public class CodeAnalysisService {
 	public CodeAnalysisService() {
 	}
 
+	/**
+	 * Returns the active developer Servoy model. Isolated as a seam so unit tests
+	 * can inject a stub/mock model and exercise this service's own logic (guards,
+	 * name resolution, result formatting) without a live workbench; production
+	 * resolves the real model from {@link ServoyModelManager}.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	// ---------------------------------------------------------------------------
 	// findReferences
 	// ---------------------------------------------------------------------------
@@ -80,7 +90,7 @@ public class CodeAnalysisService {
 	 * @return markdown-formatted list of references
 	 */
 	public String findReferences(String fullyQualifiedClassName, String elementName) {
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 		if (activeProject == null || activeProject.getEditingSolution() == null)
 			return "No active solution. Open a Servoy solution first.";
@@ -166,7 +176,7 @@ public class CodeAnalysisService {
 	 * @return markdown-formatted hierarchy showing supertypes and subtypes
 	 */
 	public String getTypeHierarchy(String formName) {
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 		if (activeProject == null || activeProject.getEditingSolution() == null)
 			return "No active solution. Open a Servoy solution first.";
@@ -236,7 +246,7 @@ public class CodeAnalysisService {
 	 */
 	public String getMethodCallHierarchy(String fullyQualifiedClassName, String methodName, String methodSignature,
 			String maxDepth) {
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject activeProject = servoyModel.getActiveProject();
 		if (activeProject == null || activeProject.getEditingSolution() == null)
 			return "No active solution. Open a Servoy solution first.";

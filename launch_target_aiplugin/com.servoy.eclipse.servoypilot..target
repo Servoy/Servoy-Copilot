@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="61">
+<target includeMode="feature" name="com.servoy.eclipse.servoypilot.target" sequenceNumber="62">
     <locations>
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="slicer" includeSource="true" type="InstallableUnit">
             <repository location="https://build.servoy.com/latest/servoy_lts_2026/update_site/"/>
@@ -97,6 +97,42 @@
                     <groupId>org.yaml</groupId>
                     <artifactId>snakeyaml</artifactId>
                     <version>2.6</version>
+                    <type>jar</type>
+                </dependency>
+                <!-- Mockito for plain-JUnit unit tests of the MCP service layer: stub the
+                     Servoy/Eclipse core at the boundary (e.g. IDeveloperServoyModel, ServoyProject,
+                     Solution) so our own logic is tested without a live workbench. Versions mirror
+                     the servoy-eclipse master target. byte-buddy(-agent) + objenesis are Mockito's
+                     runtime deps, listed explicitly because this Maven location uses
+                     includeDependencyDepth="none" (transitive deps are not pulled in). -->
+                <dependency>
+                    <groupId>org.mockito</groupId>
+                    <artifactId>mockito-core</artifactId>
+                    <version>5.24.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>org.mockito</groupId>
+                    <artifactId>mockito-junit-jupiter</artifactId>
+                    <version>5.24.0</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>org.objenesis</groupId>
+                    <artifactId>objenesis</artifactId>
+                    <version>3.6</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>net.bytebuddy</groupId>
+                    <artifactId>byte-buddy</artifactId>
+                    <version>1.18.15</version>
+                    <type>jar</type>
+                </dependency>
+                <dependency>
+                    <groupId>net.bytebuddy</groupId>
+                    <artifactId>byte-buddy-agent</artifactId>
+                    <version>1.18.15</version>
                     <type>jar</type>
                 </dependency>
             </dependencies>
