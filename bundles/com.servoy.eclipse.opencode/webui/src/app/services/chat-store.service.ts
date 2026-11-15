@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 
 import { forkJoin } from 'rxjs';
 
@@ -71,7 +71,7 @@ export interface SessionNode {
  * live from the {@code /event} bus stream.
  */
 @Injectable({ providedIn: 'root' })
-export class ChatStore {
+export class ChatStore implements OnDestroy {
   private readonly api = inject(OpencodeApiService);
   private readonly eventStream = inject(EventStreamService);
 
@@ -1126,14 +1126,40 @@ export class ChatStore {
    * session fetches after idle and stop as soon as a real (non-placeholder)
    * title is in hand, instead of waiting for the periodic status poll.
    */
+  /**
+   * Handles of the still-pending post-idle title-refresh timers (see
+   * {@link ChatStore#scheduleTitleRefresh}). Tracked so they can be cancelled -
+   * when a newer idle supersedes them, and on destroy - instead of firing after
+   * the store is gone. Leaving them to fire is what surfaced as a stray
+   * "Cannot read properties of undefined (reading 'subscribe')" during test
+   * teardown: a timer resolving after the TestBed injector (and its mocked
+   * {@code OpencodeApiService}) was torn down.
+   */
+  private titleRefreshTimers: ReturnType<typeof setTimeout>[] = [];
+
+  /** Cancels every still-pending title-refresh timer. */
+  private clearTitleRefreshTimers(): void {
+    this.titleRefreshTimers.forEach((h) => clearTimeout(h));
+    this.titleRefreshTimers = [];
+  }
+
+  /** Cancels any pending timers when the store is destroyed (e.g. TestBed teardown). */
+  ngOnDestroy(): void {
+    this.clearTitleRefreshTimers();
+  }
+
   private scheduleTitleRefresh(): void {
     const id = this.activeSessionId();
     if (!id || this.hasRealTitle(id)) {
       return;
     }
+    // A fresh idle supersedes any still-pending refresh from a previous one.
+    this.clearTitleRefreshTimers();
     const delays = [800, 1600, 3200, 5000, 9000, 13000];
     delays.forEach((delay) => {
-      setTimeout(() => {
+      const handle = setTimeout(() => {
+        // Drop our own handle so a fired timer is not carried around.
+        this.titleRefreshTimers = this.titleRefreshTimers.filter((h) => h !== handle);
         // Session may have changed, been removed, or already got its title.
         if (this.activeSessionId() !== id || this.hasRealTitle(id)) {
           return;
@@ -1149,6 +1175,7 @@ export class ChatStore {
           }
         });
       }, delay);
+      this.titleRefreshTimers.push(handle);
     });
   }
 
