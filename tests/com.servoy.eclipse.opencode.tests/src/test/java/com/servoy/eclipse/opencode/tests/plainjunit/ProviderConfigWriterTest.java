@@ -453,4 +453,289 @@ class ProviderConfigWriterTest {
 		String content = Files.readString(configFile, StandardCharsets.UTF_8);
 		assertTrue(content.contains(mcpBlock), "The mcp block content must be byte-for-byte preserved");
 	}
+
+	// =======================================================================
+	// Pure static JSON-string helpers. These are package-private static in
+	// com.servoy.eclipse.opencode; this test lives in a different package, so
+	// they are reached reflectively (same mechanism the secure-store seam uses
+	// above) - production visibility is never changed.
+	// =======================================================================
+
+	private static String extractTopLevelString(String json, String key) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("extractTopLevelString", String.class, String.class); //$NON-NLS-1$
+		m.setAccessible(true);
+		return (String) m.invoke(null, json, key);
+	}
+
+	private static String extractTopLevelObject(String json, String key) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("extractTopLevelObject", String.class, String.class); //$NON-NLS-1$
+		m.setAccessible(true);
+		return (String) m.invoke(null, json, key);
+	}
+
+	private static String upsertTopLevelString(String json, String key, String value) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("upsertTopLevelString", String.class, String.class, //$NON-NLS-1$
+				String.class);
+		m.setAccessible(true);
+		return (String) m.invoke(null, json, key, value);
+	}
+
+	private static String upsertTopLevelObject(String json, String key, String objectJson) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("upsertTopLevelObject", String.class, String.class, //$NON-NLS-1$
+				String.class);
+		m.setAccessible(true);
+		return (String) m.invoke(null, json, key, objectJson);
+	}
+
+	private static String insertTopLevelEntry(String json, String fragment) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("insertTopLevelEntry", String.class, String.class); //$NON-NLS-1$
+		m.setAccessible(true);
+		return (String) m.invoke(null, json, fragment);
+	}
+
+	private static String mergeIntoExisting(String json) throws Exception {
+		Method m = ProviderConfigWriter.class.getDeclaredMethod("mergeIntoExisting", String.class); //$NON-NLS-1$
+		m.setAccessible(true);
+		return (String) m.invoke(null, json);
+	}
+
+	@Nested
+	class ExtractTopLevelString {
+
+		@Test
+		@DisplayName("Reads the string value of a present top-level key")
+		void presentKey_returnsValue() throws Exception {
+			String json = "{ \"model\": \"litellm/zip-model\", \"theme\": \"dark\" }"; //$NON-NLS-1$
+			assertEquals("litellm/zip-model", extractTopLevelString(json, "model")); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("dark", extractTopLevelString(json, "theme")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Absent key ⇒ null")
+		void absentKey_returnsNull() throws Exception {
+			assertNull(extractTopLevelString("{ \"model\": \"x\" }", "missing")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Key present but no colon after it ⇒ null")
+		void keyWithoutColon_returnsNull() throws Exception {
+			// The search key appears, but there is no ':' following it (truncated doc).
+			assertNull(extractTopLevelString("{ \"model\" ", "model")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Value after colon is not a quoted string and no later quote exists ⇒ null")
+		void noOpeningQuote_returnsNull() throws Exception {
+			// A number value with no string anywhere after the colon.
+			assertNull(extractTopLevelString("{ \"port\": 8080 }".replace("}", ""), "port")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+
+		@Test
+		@DisplayName("Opening quote but no closing quote ⇒ null")
+		void unterminatedString_returnsNull() throws Exception {
+			assertNull(extractTopLevelString("{ \"model\": \"unterminated", "model")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Empty string value ⇒ empty string")
+		void emptyValue_returnsEmptyString() throws Exception {
+			assertEquals("", extractTopLevelString("{ \"model\": \"\" }", "model")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+	}
+
+	@Nested
+	class ExtractTopLevelObject {
+
+		@Test
+		@DisplayName("Reads a nested object value including its braces")
+		void presentObject_returnsBracedValue() throws Exception {
+			String json = "{ \"provider\": { \"litellm\": { \"name\": \"X\" } }, \"model\": \"m\" }"; //$NON-NLS-1$
+			assertEquals("{ \"litellm\": { \"name\": \"X\" } }", extractTopLevelObject(json, "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Empty object value ⇒ {}")
+		void emptyObject_returnsBraces() throws Exception {
+			assertEquals("{}", extractTopLevelObject("{ \"mcp\": {} }", "mcp")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+
+		@Test
+		@DisplayName("Absent key ⇒ null")
+		void absentKey_returnsNull() throws Exception {
+			assertNull(extractTopLevelObject("{ \"model\": \"m\" }", "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Key present but no colon ⇒ null")
+		void keyWithoutColon_returnsNull() throws Exception {
+			assertNull(extractTopLevelObject("{ \"provider\" ", "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Value after colon is not an object (no opening brace) ⇒ null")
+		void noOpeningBrace_returnsNull() throws Exception {
+			assertNull(extractTopLevelObject("{ \"model\": \"a string\" ", "model")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Unbalanced braces (no matching close) ⇒ null")
+		void unbalancedBraces_returnsNull() throws Exception {
+			assertNull(extractTopLevelObject("{ \"provider\": { \"litellm\": { \"name\": \"X\" } ", "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	@Nested
+	class UpsertTopLevelString {
+
+		@Test
+		@DisplayName("Existing key ⇒ value replaced, rest preserved")
+		void existingKey_valueReplaced() throws Exception {
+			String json = "{ \"model\": \"old\", \"theme\": \"dark\" }"; //$NON-NLS-1$
+			String result = upsertTopLevelString(json, "model", "new"); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("new", extractTopLevelString(result, "model")); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("dark", extractTopLevelString(result, "theme"), "other keys untouched"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Absent key ⇒ inserted before the closing brace")
+		void absentKey_inserted() throws Exception {
+			String json = "{\n  \"theme\": \"dark\"\n}"; //$NON-NLS-1$
+			String result = upsertTopLevelString(json, "model", "m"); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("m", extractTopLevelString(result, "model")); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("dark", extractTopLevelString(result, "theme")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key but no colon ⇒ json returned unchanged")
+		void existingKeyNoColon_returnsUnchanged() throws Exception {
+			String json = "{ \"model\" "; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelString(json, "model", "new")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key, colon, but no opening quote for the value ⇒ unchanged")
+		void existingKeyNoValueQuote_returnsUnchanged() throws Exception {
+			String json = "{ \"model\": "; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelString(json, "model", "new")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key, opening quote, but value not terminated ⇒ unchanged")
+		void existingKeyUnterminatedValue_returnsUnchanged() throws Exception {
+			String json = "{ \"model\": \"open"; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelString(json, "model", "new")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	@Nested
+	class UpsertTopLevelObject {
+
+		@Test
+		@DisplayName("Existing object key ⇒ whole object replaced")
+		void existingKey_objectReplaced() throws Exception {
+			String json = "{ \"provider\": { \"old\": 1 }, \"model\": \"m\" }"; //$NON-NLS-1$
+			String result = upsertTopLevelObject(json, "provider", "{ \"new\": 2 }"); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("{ \"new\": 2 }", extractTopLevelObject(result, "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("m", extractTopLevelString(result, "model"), "sibling key preserved"); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Absent key ⇒ object inserted before the closing brace")
+		void absentKey_inserted() throws Exception {
+			String json = "{\n  \"model\": \"m\"\n}"; //$NON-NLS-1$
+			String result = upsertTopLevelObject(json, "provider", "{ \"x\": 1 }"); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("{ \"x\": 1 }", extractTopLevelObject(result, "provider")); //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals("m", extractTopLevelString(result, "model")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key but no colon ⇒ unchanged")
+		void existingKeyNoColon_returnsUnchanged() throws Exception {
+			String json = "{ \"provider\" "; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelObject(json, "provider", "{}")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key, colon, but no opening brace ⇒ unchanged")
+		void existingKeyNoBrace_returnsUnchanged() throws Exception {
+			String json = "{ \"provider\": "; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelObject(json, "provider", "{}")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		@Test
+		@DisplayName("Existing key with unbalanced braces ⇒ unchanged")
+		void existingKeyUnbalanced_returnsUnchanged() throws Exception {
+			String json = "{ \"provider\": { \"a\": 1 "; //$NON-NLS-1$
+			assertEquals(json, upsertTopLevelObject(json, "provider", "{}")); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	@Nested
+	class InsertTopLevelEntry {
+
+		@Test
+		@DisplayName("Inserts with a comma when the object already has entries")
+		void nonEmptyObject_addsComma() throws Exception {
+			String json = "{\n  \"a\": 1\n}"; //$NON-NLS-1$
+			String result = insertTopLevelEntry(json, "\"b\": 2"); //$NON-NLS-1$
+			assertTrue(result.contains("\"a\": 1"), "existing entry kept"); //$NON-NLS-1$
+			assertTrue(result.contains("\"b\": 2"), "new fragment added"); //$NON-NLS-1$
+			assertTrue(result.stripTrailing().endsWith("}"), "still a closed object"); //$NON-NLS-1$
+			// A comma must separate the old last entry from the new one.
+			assertTrue(result.replaceAll("\\s", "").contains("1,\"b\":2"), "comma inserted between entries"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+
+		@Test
+		@DisplayName("Inserts without an extra comma into an empty object")
+		void emptyObject_noLeadingComma() throws Exception {
+			String json = "{}"; //$NON-NLS-1$
+			String result = insertTopLevelEntry(json, "\"a\": 1"); //$NON-NLS-1$
+			assertTrue(result.contains("\"a\": 1")); //$NON-NLS-1$
+			assertFalse(result.replaceAll("\\s", "").contains("{,"), "no stray comma right after the opening brace"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+
+		@Test
+		@DisplayName("Does not double a comma when content already ends with one")
+		void trailingComma_noDoubleComma() throws Exception {
+			String json = "{\n  \"a\": 1,\n}"; //$NON-NLS-1$
+			String result = insertTopLevelEntry(json, "\"b\": 2"); //$NON-NLS-1$
+			assertFalse(result.replaceAll("\\s", "").contains(",,"), "must not produce a double comma"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			assertTrue(result.contains("\"b\": 2")); //$NON-NLS-1$
+		}
+
+		@Test
+		@DisplayName("No closing brace at all ⇒ json returned unchanged")
+		void noClosingBrace_returnsUnchanged() throws Exception {
+			String json = "no json here"; //$NON-NLS-1$
+			assertEquals(json, insertTopLevelEntry(json, "\"a\": 1")); //$NON-NLS-1$
+		}
+	}
+
+	@Nested
+	class MergeIntoExisting {
+
+		@Test
+		@DisplayName("$schema absent ⇒ inserted right after the first brace with the correct URL")
+		void schemaAbsent_inserted() throws Exception {
+			String json = "{\n  \"model\": \"m\"\n}"; //$NON-NLS-1$
+			String result = mergeIntoExisting(json);
+			assertTrue(result.contains("\"$schema\""), "$schema key added"); //$NON-NLS-1$
+			assertTrue(result.contains(McpConfigWriter.SCHEMA_URL), "schema URL used");
+			assertTrue(result.contains("\"model\": \"m\""), "existing content preserved"); //$NON-NLS-1$
+		}
+
+		@Test
+		@DisplayName("$schema already present ⇒ returned byte-for-byte unchanged")
+		void schemaPresent_unchanged() throws Exception {
+			String json = "{\n  \"$schema\": \"" + McpConfigWriter.SCHEMA_URL + "\",\n  \"model\": \"m\"\n}"; //$NON-NLS-1$ //$NON-NLS-2$
+			assertEquals(json, mergeIntoExisting(json), "a doc that already has $schema must not change");
+		}
+
+		@Test
+		@DisplayName("No opening brace ⇒ returned unchanged (nothing to insert into)")
+		void noOpeningBrace_unchanged() throws Exception {
+			String json = "not json"; //$NON-NLS-1$
+			assertEquals(json, mergeIntoExisting(json));
+		}
+	}
 }

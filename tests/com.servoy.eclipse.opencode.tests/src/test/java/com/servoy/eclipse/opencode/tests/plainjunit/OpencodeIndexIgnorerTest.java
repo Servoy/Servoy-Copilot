@@ -121,6 +121,92 @@ public class OpencodeIndexIgnorerTest {
 		assertEquals(lines, result);
 	}
 
+	@Test
+	public void computeGitignore_patternAbsent_appendsIt() {
+		List<String> lines = Arrays.asList("node_modules", "target/");
+		List<String> result = OpencodeIndexIgnorer.computeGitignore(lines);
+		assertEquals(3, result.size(), "one line appended");
+		assertEquals(OpencodeIndexIgnorer.GITIGNORE_PATTERN, result.get(result.size() - 1),
+				"the index pattern is appended last");
+		assertTrue(result.subList(0, 2).equals(lines), "existing lines preserved in order");
+	}
+
+	@Test
+	public void computeGitignore_equivalentSpellingNoSlashes_notDuplicated() {
+		// ".opencode/index" (no leading/trailing slash) is recognised as the same path.
+		List<String> lines = Arrays.asList("node_modules", ".opencode/index");
+		List<String> result = OpencodeIndexIgnorer.computeGitignore(lines);
+		assertEquals(lines, result, "an equivalent spelling must not trigger an append");
+	}
+
+	@Test
+	public void computeGitignore_leadingSlashOnlySpelling_notDuplicated() {
+		// "/.opencode/index" (leading slash, no trailing) normalises to the same path.
+		List<String> lines = Arrays.asList("/.opencode/index");
+		List<String> result = OpencodeIndexIgnorer.computeGitignore(lines);
+		assertEquals(lines, result);
+	}
+
+	@Test
+	public void computeGitignore_surroundingWhitespace_notDuplicated() {
+		// A line with leading/trailing whitespace is stripped before comparison.
+		List<String> lines = Arrays.asList("   " + OpencodeIndexIgnorer.GITIGNORE_PATTERN + "  ");
+		List<String> result = OpencodeIndexIgnorer.computeGitignore(lines);
+		assertEquals(lines, result, "surrounding whitespace must not defeat the match");
+	}
+
+	@Test
+	public void computeGitignore_commentedAndBlankLinesIgnored_appends() {
+		// Comment lines and blank lines are skipped, so the pattern is still appended.
+		List<String> lines = Arrays.asList("# /.opencode/index/", "", "   ", "node_modules");
+		List<String> result = OpencodeIndexIgnorer.computeGitignore(lines);
+		assertEquals(OpencodeIndexIgnorer.GITIGNORE_PATTERN, result.get(result.size() - 1),
+				"a commented spelling must not count as present");
+		assertEquals(lines.size() + 1, result.size());
+	}
+
+	// -----------------------------------------------------------------------
+	// containsPattern coverage (exercised through ensureGitignoreContent)
+	// -----------------------------------------------------------------------
+
+	@Test
+	public void ensureGitignoreContent_leadingSlashOnlySpelling_returnsNull() {
+		assertNull(OpencodeIndexIgnorer.ensureGitignoreContent("/.opencode/index\n"));
+	}
+
+	@Test
+	public void ensureGitignoreContent_trailingSlashOnlySpelling_returnsNull() {
+		assertNull(OpencodeIndexIgnorer.ensureGitignoreContent(".opencode/index/\n"));
+	}
+
+	@Test
+	public void ensureGitignoreContent_surroundingWhitespace_returnsNull() {
+		assertNull(OpencodeIndexIgnorer.ensureGitignoreContent("  " + OpencodeIndexIgnorer.GITIGNORE_PATTERN + " \n"));
+	}
+
+	@Test
+	public void ensureGitignoreContent_blankLinesSkipped_appends() {
+		// Only blank lines present -> pattern must be appended.
+		String existing = "\n\n   \n";
+		String result = OpencodeIndexIgnorer.ensureGitignoreContent(existing);
+		assertTrue(result.contains(OpencodeIndexIgnorer.GITIGNORE_PATTERN));
+	}
+
+	@Test
+	public void ensureGitignoreContent_emptyString_appendsWithoutExtraNewline() {
+		// Empty (but non-null) input must not prepend a spurious blank line.
+		String result = OpencodeIndexIgnorer.ensureGitignoreContent("");
+		assertEquals(OpencodeIndexIgnorer.GITIGNORE_PATTERN + "\n", result);
+	}
+
+	@Test
+	public void ensureGitignoreContent_endsWithBareCr_doesNotAddExtraNewline() {
+		// A trailing lone '\r' already counts as a line end, so no extra separator.
+		String existing = "node_modules\r";
+		String result = OpencodeIndexIgnorer.ensureGitignoreContent(existing);
+		assertEquals("node_modules\r" + OpencodeIndexIgnorer.GITIGNORE_PATTERN + "\n", result);
+	}
+
 	// -----------------------------------------------------------------------
 	// ensureGitignore (file level)
 	// -----------------------------------------------------------------------

@@ -336,4 +336,51 @@ class OpencodeChatServletTest {
 			assertFalse(OpencodeChatServlet.isHashedAsset(assetPath), assetPath + " should NOT be treated as hashed");
 		}
 	}
+
+	@Nested
+	class BasicAuthHeader {
+		/**
+		 * {@code basicAuthHeader(String)} is package-private on
+		 * {@link OpencodeChatServlet} (in {@code com.servoy.eclipse.opencode.tomcat}).
+		 * These tests live in a different package, so it is reached by reflection
+		 * rather than by widening the production method's visibility.
+		 */
+		private static String basicAuthHeader(String password) throws Exception {
+			java.lang.reflect.Method m = OpencodeChatServlet.class.getDeclaredMethod("basicAuthHeader", String.class);
+			m.setAccessible(true);
+			return (String) m.invoke(null, password);
+		}
+
+		@Test
+		@DisplayName("null password yields no Authorization header (unsecured server)")
+		void nullPasswordNoHeader() throws Exception {
+			assertEquals(null, basicAuthHeader(null));
+		}
+
+		@Test
+		@DisplayName("empty password yields no Authorization header")
+		void emptyPasswordNoHeader() throws Exception {
+			assertEquals(null, basicAuthHeader(""));
+		}
+
+		@Test
+		@DisplayName("a password produces a Basic header over the fixed 'opencode' user")
+		void passwordProducesBasicHeader() throws Exception {
+			// opencode:s3cr3t -> base64
+			String expected = "Basic " + java.util.Base64.getEncoder()
+					.encodeToString("opencode:s3cr3t".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			assertEquals(expected, basicAuthHeader("s3cr3t"));
+		}
+
+		@Test
+		@DisplayName("the header is a decodable 'user:password' credential pair")
+		void headerDecodesToUserColonPassword() throws Exception {
+			String header = basicAuthHeader("p@ss:word");
+			assertTrue(header.startsWith("Basic "), header);
+			String decoded = new String(java.util.Base64.getDecoder().decode(header.substring("Basic ".length())),
+					java.nio.charset.StandardCharsets.UTF_8);
+			assertEquals("opencode:p@ss:word", decoded,
+					"only the first colon separates user from password; the rest belongs to the password");
+		}
+	}
 }

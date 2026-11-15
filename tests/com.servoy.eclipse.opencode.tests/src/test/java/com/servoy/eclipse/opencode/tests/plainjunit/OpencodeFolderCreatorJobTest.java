@@ -119,6 +119,26 @@ public class OpencodeFolderCreatorJobTest {
 		assertEquals(expected, OpencodeFolderCreatorJob.readUrlContent(f.toURI().toURL()));
 	}
 
+	@Test
+	public void readUrlContent_emptyFile_returnsEmptyString() throws Exception {
+		File f = Files.createFile(tmp.resolve("empty.txt")).toFile();
+		assertEquals("", OpencodeFolderCreatorJob.readUrlContent(f.toURI().toURL()),
+				"An empty file must read back as the empty string");
+	}
+
+	// --- needsInstall: read-error branch ---
+
+	@Test
+	public void needsInstall_sentinelUnreadable_returnsTrue() throws Exception {
+		// Both marker and sentinel "exist" but the sentinel path is a directory, so
+		// Files.readString throws IOException -> defensive re-install (returns true).
+		File marker = Files.createFile(tmp.resolve(".fullygenerated")).toFile();
+		File sentinelDir = Files.createDirectory(tmp.resolve("package_copy.json")).toFile();
+
+		assertTrue(OpencodeFolderCreatorJob.needsInstall(marker, sentinelDir, "{}"),
+				"An unreadable sentinel must defensively trigger a re-install");
+	}
+
 	// --- deleteDirectory ---
 
 	@Test
