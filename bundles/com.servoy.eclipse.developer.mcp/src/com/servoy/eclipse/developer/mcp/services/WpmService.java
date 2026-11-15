@@ -28,9 +28,19 @@ public class WpmService
 {
 	private static final int MAX_RESULTS = 15;
 
+	/**
+	 * Seam over the static WPM package listing {@link GetAllInstalledPackages#getAllInstalledPackages(boolean, boolean)}.
+	 * Extracted so unit tests can supply a crafted package list and exercise this service's own
+	 * filtering/scoring/dependency/"not found" logic without a live WPM backend, workbench or network.
+	 */
+	protected JSONArray fetchAllPackages() throws Exception
+	{
+		return GetAllInstalledPackages.getAllInstalledPackages(false, true);
+	}
+
 	public List<ScoredPackage> searchPackages(String query, String packageType) throws Exception
 	{
-		JSONArray allPackages = GetAllInstalledPackages.getAllInstalledPackages(false, true);
+		JSONArray allPackages = fetchAllPackages();
 		List<ScoredPackage> scored = new ArrayList<>();
 		String[] keywords = query.toLowerCase(Locale.ROOT).split("\\s+");
 
@@ -107,7 +117,7 @@ public class WpmService
 
 	public String installPackage(String packageName, String version, String solutionName) throws Exception
 	{
-		JSONArray allPackages = GetAllInstalledPackages.getAllInstalledPackages(false, true);
+		JSONArray allPackages = fetchAllPackages();
 		JSONObject targetPkg = null;
 
 		for (int i = 0; i < allPackages.length(); i++)
@@ -182,7 +192,7 @@ public class WpmService
 	 */
 	public String uninstallPackage(String packageName, String solutionName, boolean force) throws Exception
 	{
-		JSONArray allPackages = GetAllInstalledPackages.getAllInstalledPackages(false, true);
+		JSONArray allPackages = fetchAllPackages();
 		JSONObject targetPkg = null;
 
 		for (int i = 0; i < allPackages.length(); i++)
@@ -316,7 +326,7 @@ public class WpmService
 	 */
 	public List<JSONObject> getAvailableWebPackages(String packageType, boolean onlyUpdates) throws Exception
 	{
-		JSONArray allPackages = GetAllInstalledPackages.getAllInstalledPackages(false, true);
+		JSONArray allPackages = fetchAllPackages();
 		List<JSONObject> result = new ArrayList<>();
 
 		for (int i = 0; i < allPackages.length(); i++)
@@ -361,7 +371,7 @@ public class WpmService
 	 */
 	public List<JSONObject> getInstalledPackages(String packageType) throws Exception
 	{
-		JSONArray allPackages = GetAllInstalledPackages.getAllInstalledPackages(false, true);
+		JSONArray allPackages = fetchAllPackages();
 		List<JSONObject> result = new ArrayList<>();
 
 		for (int i = 0; i < allPackages.length(); i++)
