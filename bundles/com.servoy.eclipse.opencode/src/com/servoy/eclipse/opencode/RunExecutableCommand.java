@@ -120,9 +120,23 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			// POSIX: launch opencode as the leader of a new session/process group via
 			// setsid, so its pgid equals its pid. That lets Activator.stopServer()
 			// signal the whole group (opencode + bun + MCP children) with a single
-			// SIGTERM/SIGKILL to -<pid> during graceful shutdown. setsid execs the
-			// target directly (it is not already a group leader as a JVM child), so
-			// the pid getProcess() reports is the group leader.
+			// SIGTERM to -<pid> during graceful shutdown. setsid execs the target
+			// directly (it is not already a group leader as a JVM child), so the pid
+			// getProcess() reports is the group leader.
+			//
+			// SAFETY (build #80): we must NEVER send a negative-pid group signal
+			// unless the child really is its own group leader. Plain `setsid <exe>`
+			// forks (making a new group) ONLY when setsid is itself already a group
+			// leader; otherwise it exec()s the target IN PLACE, leaving it in the
+			// CALLER's group. Under Jenkins (no job control) the forked workbench JVM
+			// is not a group leader, so `setsid` without this check could exec
+			// opencode straight into Jenkins' own process group - and the later
+			// `kill -TERM -<pid>` would then hit the ENTIRE Jenkins group, taking down
+			// the controller JVM (build #80: Jenkins exit 143 / Jetty shutdown ~0.5s
+			// after the JSUnit-verify teardown). So after launch we VERIFY the child's
+			// real pgid actually equals its pid (i.e. it leads its own group) before
+			// allowing any group-targeted kill; see verifyIsGroupLeader() /
+			// terminateGroupGracefully().
 			command.add("setsid");
 			command.add(executable.getAbsolutePath());
 			command.addAll(arguments);
@@ -152,6 +166,15 @@ public class RunExecutableCommand implements IRunNPMCommand {
 				"In dir: " + (workingDirectory != null ? workingDirectory.getAbsolutePath() : "<inherited>"));
 
 		process = builder.start();
+
+		// Confirm the setsid child really leads its own process group (pgid == pid)
+		// before we ever allow a group-targeted kill. If setsid exec'd in place (it
+		// was not a group leader, e.g. under Jenkins), the child inherited the JVM's
+		// group and a negative-pid signal would hit the whole Jenkins tree - so demote
+		// to per-process kills in that case (build #80).
+		if (newProcessGroupLeader) {
+			newProcessGroupLeader = verifyIsGroupLeader(process.pid());
+		}
 
 		// Stream the merged output to the console until the process closes it.
 		try (BufferedReader reader = new BufferedReader(
@@ -283,6 +306,17 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	 * dispose cleanly. Only effective when the launch put opencode in its own
 	 * process group (via {@code setsid}), in which case its pgid equals the tracked
 	 * pid and {@code kill -TERM -<pid>} reaches the whole group.
+	 * <p>
+	 * CRITICAL SAFETY (build #80): before issuing the negative-pid (whole-group)
+	 * signal, this re-verifies that the tracked child is genuinely its own group
+	 * leader ({@code pgid == pid}) and that its group is <b>not</b> this JVM's own
+	 * group. If {@code setsid} had exec'd in place (it was not itself a group leader,
+	 * as happens under Jenkins' no-job-control shell), the child would still sit in
+	 * the JVM's - and therefore Jenkins' - process group, and {@code kill -TERM
+	 * -<pid>} would then tear down the entire Jenkins controller tree (exit 143 /
+	 * Jetty shutdown). On any such doubt we refuse the group kill and return
+	 * {@code false}, so the caller falls back to the per-process brute-force path.
+	 * </p>
 	 *
 	 * @return {@code true} if a SIGTERM was issued to the group, {@code false}
 	 *         otherwise. Never throws.
@@ -293,6 +327,17 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			return false;
 		}
 		long pid = p.pid();
+		// Final safety re-check before firing a negative-pid (whole-group) signal: the
+		// child must still lead its own group, and that group must NOT be the JVM's own
+		// group. This closes the build #80 regression where a group-targeted kill could
+		// reach Jenkins' controller JVM. Any doubt -> refuse the group kill (the caller
+		// falls back to the per-process brute-force path).
+		if (!isSafeOwnGroupLeader(pid)) {
+			ServoyLog.logInfo("OpenCode: refusing group SIGTERM to -" + pid
+					+ " - child is not a verified standalone group leader; using per-process kill instead");
+			newProcessGroupLeader = false;
+			return false;
+		}
 		try {
 			// Negative pid targets the whole process group whose pgid == pid.
 			new ProcessBuilder("kill", "-TERM", "-" + pid).redirectErrorStream(true).start().waitFor(5,
@@ -303,6 +348,108 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			ServoyLog.logInfo("OpenCode: kill -TERM -" + pid + " failed: " + e.getMessage());
 			return false;
 		}
+	}
+
+	/**
+	 * Verifies, right after launch, that the {@code setsid}-launched child actually
+	 * became its own process-group leader (i.e. its pgid equals its pid). This is
+	 * the guard against the build #80 failure: when {@code setsid} is not itself a
+	 * group leader (as under Jenkins, which has no job control) it exec()s the
+	 * target in place, leaving it in the JVM's - and therefore Jenkins' - process
+	 * group. A negative-pid group kill in that state would terminate the whole
+	 * Jenkins tree.
+	 *
+	 * @param pid the launched child's pid
+	 * @return {@code true} only if the child provably leads its own group and that
+	 *         group differs from this JVM's; {@code false} on any doubt
+	 */
+	private static boolean verifyIsGroupLeader(long pid) {
+		boolean safe = isSafeOwnGroupLeader(pid);
+		if (safe) {
+			ServoyLog.logInfo("OpenCode: verified opencode pid " + pid
+					+ " leads its own process group - group shutdown enabled");
+		} else {
+			ServoyLog.logInfo("OpenCode: opencode pid " + pid
+					+ " did NOT become its own group leader (setsid exec'd in place?) - "
+					+ "group kill DISABLED, will use per-process kill (protects a shared/Jenkins group)");
+		}
+		return safe;
+	}
+
+	/**
+	 * @return {@code true} iff process {@code pid} is alive, is its own process-group
+	 *         leader ({@code pgid == pid}), and that group is <b>not</b> this JVM's
+	 *         own process group. Any read failure or ambiguity yields {@code false},
+	 *         so a group-targeted kill is only ever issued when it is provably safe.
+	 */
+	private static boolean isSafeOwnGroupLeader(long pid) {
+		Long childPgid = readPgid(pid);
+		if (childPgid == null || childPgid.longValue() != pid) {
+			return false; // unknown, or not a group leader -> unsafe
+		}
+		Long ownPgid = readPgid(currentPid());
+		// If we cannot read our own pgid, be conservative only when it would collide;
+		// here we simply require the child's group to differ from ours when known.
+		if (ownPgid != null && ownPgid.longValue() == childPgid.longValue()) {
+			return false; // child shares the JVM's group -> never group-kill
+		}
+		return true;
+	}
+
+	/**
+	 * Reads a process's group id from {@code /proc/<pid>/stat} (field 5, pgrp). This
+	 * avoids spawning {@code ps} and is accurate on Linux (the CI platform). Returns
+	 * {@code null} when the file is missing/unreadable or cannot be parsed.
+	 */
+	private static Long readPgid(long pid) {
+		java.nio.file.Path stat = java.nio.file.Path.of("/proc", String.valueOf(pid), "stat");
+		if (!java.nio.file.Files.isReadable(stat)) {
+			return null;
+		}
+		try {
+			return parsePgidFromStat(java.nio.file.Files.readString(stat, StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Parses the process-group id (field 5, {@code pgrp}) out of the contents of a
+	 * Linux {@code /proc/<pid>/stat} line. Package-visible and pure so it can be unit
+	 * tested without a real {@code /proc} (SVY-21643, build #80 guard).
+	 * <p>
+	 * The format is {@code pid (comm) state ppid pgrp ...}. {@code comm} is the
+	 * executable name and may itself contain spaces and parentheses (e.g.
+	 * {@code (my proc)}), so this splits on the <b>last</b> {@code ')'} and reads the
+	 * whitespace-separated fields after it: {@code state(0) ppid(1) pgrp(2)}.
+	 *
+	 * @param stat the raw stat line
+	 * @return the pgrp, or {@code null} when the line is missing, truncated, or the
+	 *         pgrp field is not an integer
+	 */
+	static Long parsePgidFromStat(String stat) {
+		if (stat == null) {
+			return null;
+		}
+		int close = stat.lastIndexOf(')');
+		if (close < 0 || close + 2 >= stat.length()) {
+			return null;
+		}
+		String[] rest = stat.substring(close + 2).trim().split("\\s+");
+		// rest[0]=state, rest[1]=ppid, rest[2]=pgrp
+		if (rest.length < 3) {
+			return null;
+		}
+		try {
+			return Long.valueOf(rest[2]);
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	/** @return this JVM's own pid. */
+	private static long currentPid() {
+		return ProcessHandle.current().pid();
 	}
 
 	/**
