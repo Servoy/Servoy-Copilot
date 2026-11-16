@@ -29,6 +29,7 @@
   }
 
   pre {
+    position: relative;
     margin: 0 0 0.7rem;
     padding: 0.8rem 1rem;
     overflow-x: auto;
@@ -41,6 +42,46 @@
       background: transparent;
       padding: 0;
       font-size: 0.85rem;
+    }
+
+    &:hover .svy-copy-btn {
+      opacity: 1;
+    }
+  }
+
+  .svy-copy-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    padding: 0.15rem 0.45rem;
+    font-family: var(--svy-mono, 'JetBrains Mono', 'Consolas', monospace);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--svy-muted, #6b7075);
+    background: var(--svy-surface, #ffffff);
+    border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
+    border-radius: 5px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+      opacity: 1;
+      color: var(--svy-fg, #1f2328);
+      background: var(--svy-hover, rgba(127, 127, 127, 0.1));
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--svy-accent, #f5a623);
+      outline-offset: 1px;
+    }
+
+    &.copied,
+    &[data-copied] {
+      opacity: 1;
+      color: var(--svy-accent, #f5a623);
+      border-color: var(--svy-accent, #f5a623);
     }
   }
 

@@ -52,5 +52,89 @@ export class MarkdownRendererComponent {
         // Highlighting is best-effort; leave the plain code block on failure.
       }
     });
+    this.addCopyButtons(el);
+  }
+
+  /**
+   * Adds a copy button to each {@code <pre>} code block. Idempotent across
+   * streaming re-renders: because {@code innerHTML} rebuilds the whole subtree
+   * on every render, each call starts from button-less markup and attaches
+   * exactly one fresh button per block.
+   */
+  private addCopyButtons(el: HTMLElement): void {
+    el.querySelectorAll('pre').forEach((pre) => {
+      // Capture the raw source BEFORE appending the button so the button's own
+      // label can never leak into the copied text.
+      const code = (pre.querySelector('code')?.textContent ?? pre.textContent ?? '');
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'svy-copy-btn';
+      button.setAttribute('aria-label', 'Copy code');
+      button.textContent = 'Copy';
+
+      button.addEventListener('click', () => {
+        void this.copyText(code, button);
+      });
+
+      pre.appendChild(button);
+    });
+  }
+
+  /**
+   * Copies {@code code} to the clipboard, preferring the async Clipboard API
+   * and falling back to a hidden textarea + {@code execCommand('copy')} for the
+   * embedded browser. Any failure is swallowed so it never breaks rendering.
+   */
+  private async copyText(code: string, button: HTMLButtonElement): Promise<void> {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      }
+    } catch {
+      // Fall through to the execCommand fallback.
+    }
+
+    if (!copied) {
+      copied = this.copyViaTextarea(code);
+    }
+
+    if (copied) {
+      this.showCopiedFeedback(button);
+    }
+  }
+
+  private copyViaTextarea(code: string): boolean {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = code;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  private showCopiedFeedback(button: HTMLButtonElement): void {
+    button.textContent = 'Copied!';
+    button.setAttribute('data-copied', '');
+    button.classList.add('copied');
+    setTimeout(() => {
+      // Guard: a re-render may have detached this button already.
+      if (!button.isConnected) {
+        return;
+      }
+      button.textContent = 'Copy';
+      button.removeAttribute('data-copied');
+      button.classList.remove('copied');
+    }, 1500);
   }
 }
