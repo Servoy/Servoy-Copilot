@@ -147,11 +147,47 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testServoyTestingServer_generateFormSpecHasFormNameParam() {
+		// SVY-21619: generateFormSpec gained a second optional 'viewportWidths' parameter.
 		Method method = findToolMethod("generateFormSpec");
 		assertNotNull(method);
-		assertEquals(1, method.getParameterCount(), "generateFormSpec must have 1 parameter");
-		ToolParam param = method.getParameters()[0].getAnnotation(ToolParam.class);
-		assertNotNull(param, "generateFormSpec parameter must have @ToolParam");
+		assertEquals(2, method.getParameterCount(), "generateFormSpec must have 2 parameters (formName + viewportWidths)");
+		ToolParam formName = method.getParameters()[0].getAnnotation(ToolParam.class);
+		assertNotNull(formName, "generateFormSpec first parameter must have @ToolParam");
+		assertEquals("formName", formName.name(), "first parameter must be formName");
+		assertTrue(formName.required(), "formName must be required");
+	}
+
+	@Test
+	@DisplayName("generateFormSpec exposes an optional viewportWidths @ToolParam (SVY-21619)")
+	public void testServoyTestingServer_generateFormSpecHasViewportWidthsParam() {
+		Method method = findToolMethod("generateFormSpec");
+		assertNotNull(method);
+		assertEquals(2, method.getParameterCount());
+		ToolParam viewportWidths = method.getParameters()[1].getAnnotation(ToolParam.class);
+		assertNotNull(viewportWidths, "second parameter must have @ToolParam");
+		assertEquals("viewportWidths", viewportWidths.name(), "second parameter must be viewportWidths");
+		assertFalse(viewportWidths.required(), "viewportWidths must be optional (required = false)");
+		assertFalse(viewportWidths.description().isBlank(), "viewportWidths must have a non-empty description");
+	}
+
+	@Test
+	@DisplayName("generateFormSpec description documents the always-on reporting and the viewportWidths cross-check")
+	public void testGenerateFormSpec_descriptionMentionsViewportMeasurement() {
+		Method m = findToolMethod("generateFormSpec");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue(desc.contains("viewportWidths"), "description must name the viewportWidths param: " + desc);
+		assertTrue(desc.contains("innerWidth"), "description must mention the always-on window.innerWidth reporting: " + desc);
+	}
+
+	@Test
+	@DisplayName("generateFormSpec rejects an invalid viewportWidths token with an Error: string naming the token (SVY-21619)")
+	public void testGenerateFormSpec_invalidViewportWidths_returnsError() {
+		ServoyTestingServer server = new ServoyTestingServer();
+		String result = server.generateFormSpec("anyForm", "375,abc");
+		assertNotNull(result);
+		assertTrue(result.startsWith("Error"), "an invalid token must yield an Error: string: " + result);
+		assertTrue(result.contains("abc"), "the error must name the offending token: " + result);
 	}
 
 	@Test
@@ -598,10 +634,34 @@ public class ServoyTestingServerTest {
 	}
 
 	@Test
-	public void testGenerateCypressE2ETest_hasNineParams() {
+	public void testGenerateCypressE2ETest_hasTenParams() {
+		// SVY-21619: a 10th optional 'viewportWidths' parameter was added after loginSuccessSelector.
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m, "generateCypressE2ETest tool not found");
-		assertEquals(9, m.getParameterCount(), "Expected 9 parameters");
+		assertEquals(10, m.getParameterCount(), "Expected 10 parameters (9 original + viewportWidths)");
+	}
+
+	@Test
+	@DisplayName("generateCypressE2ETest's 10th parameter is the optional viewportWidths @ToolParam (SVY-21619)")
+	public void testGenerateCypressE2ETest_hasViewportWidthsParam() {
+		Method m = findToolMethod("generateCypressE2ETest");
+		assertNotNull(m, "generateCypressE2ETest tool not found");
+		assertEquals(10, m.getParameterCount());
+		ToolParam viewportWidths = m.getParameters()[9].getAnnotation(ToolParam.class);
+		assertNotNull(viewportWidths, "the 10th parameter must have @ToolParam");
+		assertEquals("viewportWidths", viewportWidths.name(), "the 10th parameter must be viewportWidths");
+		assertFalse(viewportWidths.required(), "viewportWidths must be optional (required = false)");
+		assertFalse(viewportWidths.description().isBlank(), "viewportWidths must have a non-empty description");
+	}
+
+	@Test
+	@DisplayName("generateCypressE2ETest description documents the always-on reporting and the viewportWidths cross-check")
+	public void testGenerateCypressE2ETest_descriptionMentionsViewportMeasurement() {
+		Method m = findToolMethod("generateCypressE2ETest");
+		assertNotNull(m);
+		String desc = m.getAnnotation(Tool.class).description();
+		assertTrue(desc.contains("viewportWidths"), "description must name the viewportWidths param: " + desc);
+		assertTrue(desc.contains("innerWidth"), "description must mention the always-on window.innerWidth reporting: " + desc);
 	}
 
 	@Test
@@ -1226,7 +1286,7 @@ public class ServoyTestingServerTest {
 		@DisplayName("generateCypressE2ETest with no active project reports no active Servoy project")
 		void noActiveProject() {
 			String result = serverWith(modelWithNoActiveProject()).generateCypressE2ETest("dialogform1", "a scenario",
-					null, null, null, null, null, null, null);
+					null, null, null, null, null, null, null, null);
 			assertEquals("Error: No active Servoy project found.", result);
 		}
 
@@ -1238,7 +1298,7 @@ public class ServoyTestingServerTest {
 			when(model.getActiveProject()).thenReturn(project);
 			when(project.getEditingSolution()).thenReturn(null);
 			String result = serverWith(model).generateCypressE2ETest("dialogform1", "a scenario", null, null, null,
-					null, null, null, null);
+					null, null, null, null, null);
 			assertEquals("Error: No active Servoy project found.", result);
 		}
 	}
@@ -1582,7 +1642,7 @@ public class ServoyTestingServerTest {
 			setField(server, "specModelBuilder", builder);
 
 			assertEquals("Opened form 'orders'", server.showFormInBrowser("orders"));
-			verify(gen, never()).generateSpec(anyString(), org.mockito.ArgumentMatchers.any());
+			verify(gen, never()).generateSpec(anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList());
 		}
 
 		@Test
@@ -1595,7 +1655,7 @@ public class ServoyTestingServerTest {
 			when(gen.specExists("orders", "sol")).thenReturn(false);
 			// FormSpecModel is final (not mockable); a null model drives the same append path.
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenReturn("Created spec");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Created spec");
 			ServoyTestingServer server = new ServoyTestingServer() {
 				@Override
 				protected IDeveloperServoyModel getServoyModel() {
@@ -1639,7 +1699,7 @@ public class ServoyTestingServerTest {
 			when(preview.showFormInBrowser("orders", true)).thenReturn("Opened form 'orders'");
 			when(gen.specExists("orders", "sol")).thenReturn(false);
 			when(builder.build("orders")).thenThrow(new RuntimeException("cannot build model"));
-			when(gen.generateSpec("orders", null)).thenReturn("Basic spec");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Basic spec");
 			ServoyTestingServer server = new ServoyTestingServer() {
 				@Override
 				protected IDeveloperServoyModel getServoyModel() {
@@ -1652,7 +1712,7 @@ public class ServoyTestingServerTest {
 
 			String result = server.showFormInBrowser("orders");
 			assertTrue(result.contains("Basic spec"), "uses the basic (null-model) spec: " + result);
-			verify(gen).generateSpec("orders", null);
+			verify(gen).generateSpec("orders", null, java.util.List.of());
 		}
 	}
 
@@ -1667,14 +1727,14 @@ public class ServoyTestingServerTest {
 			// FormSpecModel is a final class (not mockable); the builder returns its real
 			// result, so a null model is enough to drive the build -> generateSpec hand-off.
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenReturn("Created spec for orders");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Created spec for orders");
 			ServoyTestingServer server = new ServoyTestingServer();
 			setField(server, "specGenerator", gen);
 			setField(server, "specModelBuilder", builder);
 
-			assertEquals("Created spec for orders", server.generateFormSpec("orders"));
+			assertEquals("Created spec for orders", server.generateFormSpec("orders", null));
 			verify(builder).build("orders");
-			verify(gen).generateSpec("orders", null);
+			verify(gen).generateSpec("orders", null, java.util.List.of());
 		}
 
 		@Test
@@ -1683,12 +1743,12 @@ public class ServoyTestingServerTest {
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenThrow(new RuntimeException("gen failed"));
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenThrow(new RuntimeException("gen failed"));
 			ServoyTestingServer server = new ServoyTestingServer();
 			setField(server, "specGenerator", gen);
 			setField(server, "specModelBuilder", builder);
 
-			assertEquals("Error: gen failed", server.generateFormSpec("orders"));
+			assertEquals("Error: gen failed", server.generateFormSpec("orders", null));
 		}
 	}
 
@@ -1723,7 +1783,7 @@ public class ServoyTestingServerTest {
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			when(gen.specExists("orders", "sol")).thenReturn(false);
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenReturn("Error: cannot generate");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Error: cannot generate");
 			ServoyTestingServer server = new ServoyTestingServer() {
 				@Override
 				protected IDeveloperServoyModel getServoyModel() {
@@ -1785,7 +1845,7 @@ public class ServoyTestingServerTest {
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			when(gen.specExists("orders", "sol")).thenReturn(false);
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenReturn("Created spec");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Created spec");
 			when(runner.runFormCypressTests("orders", false)).thenReturn("2 passing");
 			ServoyTestingServer server = new ServoyTestingServer() {
 				@Override
@@ -1798,7 +1858,7 @@ public class ServoyTestingServerTest {
 			setField(server, "specModelBuilder", builder);
 
 			assertEquals("2 passing", server.showAndTest("orders"));
-			verify(gen).generateSpec("orders", null);
+			verify(gen).generateSpec("orders", null, java.util.List.of());
 			verify(runner).runFormCypressTests("orders", false);
 		}
 
@@ -1810,7 +1870,7 @@ public class ServoyTestingServerTest {
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			when(gen.specExists("orders", "sol")).thenReturn(false);
 			when(builder.build("orders")).thenReturn(null);
-			when(gen.generateSpec("orders", null)).thenReturn("Error: cannot generate");
+			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Error: cannot generate");
 			ServoyTestingServer server = new ServoyTestingServer() {
 				@Override
 				protected IDeveloperServoyModel getServoyModel() {

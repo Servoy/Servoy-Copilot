@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,7 +25,6 @@ import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
 import com.servoy.j2db.FlattenedSolution;
-import org.json.JSONObject;
 
 @DisplayName("FormNavigationGraphService")
 public class FormNavigationGraphServiceTest {
@@ -833,6 +833,46 @@ public class FormNavigationGraphServiceTest {
 
 			assertTrue(content.contains("cy.get(") && content.contains(".click();"),
 					"Expected click command for tabless edge");
+		}
+
+		// --- SVY-21619: always-on + opt-in viewport measurement in the E2E nav template ---
+
+		@Test
+		@DisplayName("the 6-arg overload emits the always-on default-viewport measureContainer and no responsive block")
+		void sixArgOverload_hasAlwaysOnMeasureOnly() {
+			String content = service.generateCypressTestContent("sol", "http://host", "main_form", "target_form",
+					"scenario", java.util.List.of());
+
+			assertEquals(1, content.lines().filter(l -> l.trim().equals("cy.measureContainer('.svy-form');")).count(),
+					"the 6-arg overload must still emit exactly one always-on measureContainer: " + content);
+			assertFalse(content.contains("cy.measureAtViewport"), "no responsive block from the 6-arg overload");
+		}
+
+		@Test
+		@DisplayName("empty widths emit the always-on measure line and no per-width block")
+		void emptyWidths_alwaysOnOnly() {
+			String content = service.generateCypressTestContent("sol", "http://host", "main_form", "target_form",
+					"scenario", java.util.List.of(), java.util.List.of());
+
+			assertEquals(1, content.lines().filter(l -> l.trim().equals("cy.measureContainer('.svy-form');")).count(),
+					"always-on measureContainer must be present exactly once");
+			assertFalse(content.contains("cy.measureAtViewport"), "no responsive block without widths");
+			assertFalse(content.contains("responds at"), "no responsive it(...) without widths");
+		}
+
+		@Test
+		@DisplayName("[375, 1024] emits one measureAtViewport block per width, in order, alongside the always-on line")
+		void twoWidths_oneBlockPerWidthInOrder() {
+			String content = service.generateCypressTestContent("sol", "http://host", "main_form", "target_form",
+					"scenario", java.util.List.of(), java.util.List.of(375, 1024));
+
+			assertTrue(content.contains("cy.measureAtViewport('.svy-form', 375, 1080);"), "375 measureAtViewport present");
+			assertTrue(content.contains("cy.measureAtViewport('.svy-form', 1024, 1080);"), "1024 measureAtViewport present");
+			assertTrue(content.indexOf("375, 1080") < content.indexOf("1024, 1080"), "375 must be emitted before 1024");
+			assertTrue(content.contains("responds at 375px") && content.contains("responds at 1024px"),
+					"one responsive it(...) per width");
+			assertEquals(1, content.lines().filter(l -> l.trim().equals("cy.measureContainer('.svy-form');")).count(),
+					"the always-on measureContainer is still present alongside the responsive blocks");
 		}
 	}
 

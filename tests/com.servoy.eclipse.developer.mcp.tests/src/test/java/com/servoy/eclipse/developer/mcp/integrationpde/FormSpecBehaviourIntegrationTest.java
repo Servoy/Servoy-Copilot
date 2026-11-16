@@ -134,7 +134,7 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 	}
 
 	private String generateAndRead(String formName) throws Exception {
-		String result = testingServer.generateFormSpec(formName);
+		String result = testingServer.generateFormSpec(formName, null);
 		assertNotNull(result);
 		assertFalse(result.startsWith("Error"), "Should not start with Error: " + result);
 		Path cySpec = specGenerator.getSpecFilePath(formName, TEST_SOLUTION);
@@ -181,7 +181,7 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 
 	@Test
 	public void testGenerateFormSpec_resultReportsModelCounts() throws Exception {
-		String result = testingServer.generateFormSpec(BEHAVIOUR_FORM);
+		String result = testingServer.generateFormSpec(BEHAVIOUR_FORM, null);
 
 		String firstLine = result.lines().findFirst().orElse("");
 		assertTrue(firstLine.matches("Created: .*" + TEST_SOLUTION + "\\." + BEHAVIOUR_FORM + "\\.spec\\.cy\\.js \\(1 element visibility assertions, 2 handler cases\\)"),
@@ -229,7 +229,7 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 	public void testGenerateFormSpec_secondCallDoesNotOverwrite() throws Exception {
 		String first = generateAndRead(BEHAVIOUR_FORM);
 
-		String second = testingServer.generateFormSpec(BEHAVIOUR_FORM);
+		String second = testingServer.generateFormSpec(BEHAVIOUR_FORM, null);
 
 		assertTrue(second.startsWith("Spec files already exist"), "Second call must not regenerate: " + second);
 		assertEquals(first, Files.readString(specGenerator.getSpecFilePath(BEHAVIOUR_FORM, TEST_SOLUTION), StandardCharsets.UTF_8));
@@ -237,7 +237,7 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 
 	@Test
 	public void testGenerateFormSpec_unknownFormFallsBackToLegacyPath() {
-		String result = testingServer.generateFormSpec(UNKNOWN_FORM);
+		String result = testingServer.generateFormSpec(UNKNOWN_FORM, null);
 
 		assertEquals("Error: Form not found: " + UNKNOWN_FORM, result);
 	}

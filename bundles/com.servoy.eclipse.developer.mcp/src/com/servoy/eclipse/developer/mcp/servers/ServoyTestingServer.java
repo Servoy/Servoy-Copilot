@@ -23,6 +23,7 @@ import com.servoy.eclipse.cypress.services.CypressLoginSupport;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.cypress.services.FormSpecModel;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
+import com.servoy.eclipse.cypress.services.ViewportWidths;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
@@ -214,7 +215,7 @@ public class ServoyTestingServer
 			if (!result.startsWith("Error") && !specGenerator.specExists(formName,
 				getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String specResult = generateSpecWithModel(formName);
+				String specResult = generateSpecWithModel(formName, java.util.List.of());
 				if (!specResult.startsWith("Error"))
 				{
 					result += "\n" + specResult;
@@ -281,7 +282,7 @@ public class ServoyTestingServer
 			if (!specGenerator.specExists(formName,
 				getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String genResult = generateSpecWithModel(formName);
+				String genResult = generateSpecWithModel(formName, java.util.List.of());
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
@@ -307,7 +308,7 @@ public class ServoyTestingServer
 			if (!specGenerator.specExists(formName,
 				getServoyModel().getActiveProject().getSolution().getName()))
 			{
-				String genResult = generateSpecWithModel(formName);
+				String genResult = generateSpecWithModel(formName, java.util.List.of());
 				if (genResult.startsWith("Error"))
 					return genResult;
 			}
@@ -420,7 +421,7 @@ public class ServoyTestingServer
 	/**
 	 * Generates the form spec from the handler model of the form; falls back to the legacy .frm based spec when no model can be built.
 	 */
-	private String generateSpecWithModel(String formName)
+	private String generateSpecWithModel(String formName, java.util.List<Integer> viewportWidths)
 	{
 		FormSpecModel model = null;
 		try
@@ -431,7 +432,7 @@ public class ServoyTestingServer
 		{
 			ServoyLog.logError("Could not build the form spec model for form " + formName + ", using the basic spec", e);
 		}
-		return specGenerator.generateSpec(formName, model);
+		return specGenerator.generateSpec(formName, model, viewportWidths);
 	}
 
 	@Tool(name = "generateFormSpec", description = "Creates a FORM TEST for a single Servoy form. " +
@@ -446,13 +447,29 @@ public class ServoyTestingServer
 		"'// BRANCHING' for handlers with conditional code. Events without a known trigger and unresolved handlers become skipped cases. " +
 		"Elements hidden in the form (visible=false on the element or on a container around it) are left out of the visibility check and their handlers become skipped cases. " +
 		"If the form cannot be analysed (no active solution), it falls back to a basic render and visibility spec. Never overwrites an existing spec. " +
-		"Requires servoy.ngclient.testingMode=true in servoy.properties for data-cy attributes.", type = "object")
+		"Requires servoy.ngclient.testingMode=true in servoy.properties for data-cy attributes. " +
+		"Always-on: every generated spec reports the measured window.innerWidth and the rendered root-container width after layout settles, so the width " +
+		"a run actually ran at is visible in the output (an unapplied viewport is no longer mistaken for a platform bug). " +
+		"Optional 'viewportWidths' (comma-separated pixel widths, e.g. '375,1024') adds one responsive cross-check block per width that sets the viewport, " +
+		"asserts window.innerWidth equals the requested width (failing loudly with both numbers if not), waits for layout to settle, and logs the container width.", type = "object")
 	public String generateFormSpec(
-		@ToolParam(name = "formName", description = "The name of the form to generate a spec for (e.g. 'mainForm', 'orderDetails')") String formName)
+		@ToolParam(name = "formName", description = "The name of the form to generate a spec for (e.g. 'mainForm', 'orderDetails')") String formName,
+		@ToolParam(name = "viewportWidths", description = "Comma-separated pixel widths for a responsive cross-check (e.g. '375,1024'). Each width " +
+			"adds a block that sets the viewport, asserts window.innerWidth equals it, and logs the measured container width. Leave empty for the always-on " +
+			"default-viewport reporting only.", required = false) String viewportWidths)
 	{
 		try
 		{
-			return generateSpecWithModel(formName);
+			java.util.List<Integer> widths;
+			try
+			{
+				widths = ViewportWidths.parse(viewportWidths);
+			}
+			catch (IllegalArgumentException e)
+			{
+				return "Error: " + e.getMessage();
+			}
+			return generateSpecWithModel(formName, widths);
 		}
 		catch (Exception e)
 		{
@@ -965,6 +982,9 @@ public class ServoyTestingServer
 		"If the solution requires authentication and login credentials are not provided, " +
 		"returns a message asking for loginUrl, testUsername, testPassword, and loginSuccessSelector. " +
 		"When credentials are provided, generates a reusable cy.login() command and stores credentials in a gitignored cypress.env.json. " +
+		"Always-on: the generated spec reports the measured window.innerWidth and the rendered root-container width after layout settles. " +
+		"Optional 'viewportWidths' (comma-separated pixel widths, e.g. '375,1024') adds one responsive cross-check block per width that sets the viewport, " +
+		"asserts window.innerWidth equals the requested width (failing loudly with both numbers if not), waits for layout to settle, and logs the container width. " +
 		"Use getNavigationPath first to understand the path, then call this tool to scaffold the test file.", type = "object")
 	public String generateCypressE2ETest(
 		@ToolParam(name = "targetForm", description = "The target form to reach and test (e.g. 'dialogform1').") String targetForm,
@@ -975,10 +995,22 @@ public class ServoyTestingServer
 		@ToolParam(name = "loginUrl", description = "URL where the login form is located. Required when the solution needs authentication.", required = false) String loginUrl,
 		@ToolParam(name = "testUsername", description = "Test user username for login. Required when the solution needs authentication.", required = false) String testUsername,
 		@ToolParam(name = "testPassword", description = "Test user password for login. Required when the solution needs authentication. Never echoed in output.", required = false) String testPassword,
-		@ToolParam(name = "loginSuccessSelector", description = "CSS selector that proves login succeeded (e.g. '#main-menu'). Required when the solution needs authentication.", required = false) String loginSuccessSelector)
+		@ToolParam(name = "loginSuccessSelector", description = "CSS selector that proves login succeeded (e.g. '#main-menu'). Required when the solution needs authentication.", required = false) String loginSuccessSelector,
+		@ToolParam(name = "viewportWidths", description = "Comma-separated pixel widths for a responsive cross-check (e.g. '375,1024'). Each width " +
+			"adds a block that sets the viewport, asserts window.innerWidth equals it, and logs the measured container width. Leave empty for the always-on " +
+			"default-viewport reporting only.", required = false) String viewportWidths)
 	{
 		try
 		{
+			java.util.List<Integer> widths;
+			try
+			{
+				widths = ViewportWidths.parse(viewportWidths);
+			}
+			catch (IllegalArgumentException e)
+			{
+				return "Error: " + e.getMessage();
+			}
 			com.servoy.eclipse.model.nature.ServoyProject servoyProject = getServoyModel().getActiveProject();
 			if (servoyProject == null || servoyProject.getEditingSolution() == null)
 			{
@@ -1023,7 +1055,7 @@ public class ServoyTestingServer
 			NavigationGraph graph = navigationService.buildFullGraph();
 			java.util.List<NavigationEdge> path = graph.findPath(startForm, targetForm);
 			String content = navigationService.generateCypressTestContent(solutionName, resolvedBaseUrl, startForm,
-				targetForm, scenario, path);
+				targetForm, scenario, path, widths);
 
 			// if auth required, inject cy.login() into beforeEach
 			if (authReq.required() && hasLoginCreds)
@@ -1042,35 +1074,39 @@ public class ServoyTestingServer
 			java.nio.file.Path testFilePath = e2eDir.resolve(fileName);
 			java.nio.file.Files.writeString(testFilePath, content, java.nio.charset.StandardCharsets.UTF_8);
 
-			// scaffold cypress.config.js if it does not exist
+			// scaffold cypress.config.js when it does not exist OR is stale (SVY-21619). The setupNodeEvents block
+			// MUST register the svyMeasure task so the browser-side cy.task('svyMeasure', ...) reaches a Node
+			// handler whose console.log is printed by `cypress run` and captured by the Java runner (cy.log is
+			// not). A config left by an earlier session without that task would silently drop the SVY_MEASURE
+			// markers from stdout, so rewrite it then; it is generated output under jenkins-custom, safe to overwrite.
 			java.nio.file.Path scriptsDir = workspaceRoot.resolve("jenkins-custom").resolve("e2e-test-scripts");
 			java.nio.file.Path configFile = scriptsDir.resolve("cypress.config.js");
-			if (!java.nio.file.Files.exists(configFile))
+			boolean configStale = false;
+			if (java.nio.file.Files.exists(configFile))
+			{
+				try
+				{
+					configStale = !java.nio.file.Files.readString(configFile, java.nio.charset.StandardCharsets.UTF_8)
+						.contains(com.servoy.eclipse.cypress.services.CypressSupportScaffold.SVY_MEASURE_TASK_NAME);
+				}
+				catch (java.io.IOException ignore)
+				{
+					configStale = true; // unreadable -> regenerate to be safe
+				}
+			}
+			if (!java.nio.file.Files.exists(configFile) || configStale)
 			{
 				String configContent = "module.exports = {\n" + "  video: true,\n" + "  screenshotOnRunFailure: true,\n" +
 					"  screenshotsFolder: 'cypress/screenshots',\n" + "  videosFolder: 'cypress/videos',\n" + "  fixturesFolder: 'cypress/fixtures',\n" +
 					"  viewportWidth: 1920,\n" + "  viewportHeight: 1080,\n" + "  chromeWebSecurity: false,\n" + "  e2e: {\n" + "    baseUrl: '" +
-					resolvedBaseUrl + "',\n" + "    specPattern: '" + CYPRESS_E2E_SPEC_PATTERN + "',\n" + "    setupNodeEvents(on, config) {\n" +
-					"      // implement node event listeners here\n" + "    },\n" + "  },\n" + "};\n";
+					resolvedBaseUrl + "',\n" + "    specPattern: '" + CYPRESS_E2E_SPEC_PATTERN + "',\n" +
+					com.servoy.eclipse.cypress.services.CypressSupportScaffold.setupNodeEventsDeclaration() + "  },\n" + "};\n";
 				java.nio.file.Files.writeString(configFile, configContent, java.nio.charset.StandardCharsets.UTF_8);
 			}
 
 			// scaffold cypress/support files if missing
 			java.nio.file.Path supportDir = scriptsDir.resolve("cypress").resolve("support");
 			java.nio.file.Files.createDirectories(supportDir);
-			java.nio.file.Path commandsFile = supportDir.resolve("commands.js");
-			if (!java.nio.file.Files.exists(commandsFile))
-			{
-				java.nio.file.Files.writeString(commandsFile,
-					"// Add custom Cypress commands here.\n// See: https://docs.cypress.io/api/cypress-api/custom-commands\n",
-					java.nio.charset.StandardCharsets.UTF_8);
-			}
-			java.nio.file.Path e2eJsFile = supportDir.resolve("e2e.js");
-			if (!java.nio.file.Files.exists(e2eJsFile))
-			{
-				java.nio.file.Files.writeString(e2eJsFile, "import './commands';\n",
-					java.nio.charset.StandardCharsets.UTF_8);
-			}
 
 			// generate login helper, env file, and .gitignore entry when auth is required
 			if (authReq.required() && hasLoginCreds)
@@ -1084,6 +1120,10 @@ public class ServoyTestingServer
 					resolvedSelector);
 				loginSupport.ensureGitignoreEntry(scriptsDir);
 			}
+
+			// Scaffold/merge the shared measureAtViewport/measureContainer commands and e2e.js (SVY-21619).
+			// Runs after any cy.login() write so the merge appends idempotently and never clobbers it.
+			com.servoy.eclipse.cypress.services.CypressSupportScaffold.ensureMeasurementSupport(scriptsDir);
 
 			String relativePath = workspaceRoot.relativize(testFilePath).toString().replace('\\', '/');
 			ServoyLog.logInfo("[ServoyTestingServer] Generated Cypress E2E test: " + testFilePath);

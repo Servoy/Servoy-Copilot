@@ -176,7 +176,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 		deleteSpecFiles(TEST_FORM);
 
-		String result = testingServer.generateFormSpec(TEST_FORM);
+		String result = testingServer.generateFormSpec(TEST_FORM, null);
 
 		assertNotNull(result);
 		assertFalse(result.startsWith("Error"), "Should not start with Error: " + result);
@@ -185,7 +185,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 	@Test
 	public void testGenerateFormSpec_nonExistentForm_returnsError() {
-		String result = testingServer.generateFormSpec("totally_fake_form_xyz");
+		String result = testingServer.generateFormSpec("totally_fake_form_xyz", null);
 
 		assertNotNull(result);
 		assertTrue(result.contains("Error") || result.contains("not found"),
@@ -374,6 +374,320 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 		assertFalse(result.startsWith("Error"), "Should not start with Error: " + result);
 		assertTrue(result.contains("passed") || result.contains("failed") || result.contains("timed out"),
 				"runFormCypressTests should return pass/fail or timed out");
+	}
+
+	// -----------------------------------------------------------------------
+	// SVY-21619: always-on viewport-measurement reporting, end to end (N1)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Proves the anti-false-negative core of SVY-21619 against the real NG client: a form spec generated WITH
+	 * {@code viewportWidths="375,1024"} and run through the real Cypress runner must surface the measured
+	 * {@code window.innerWidth} and the rendered container width in the returned output. This is the end-to-end
+	 * proof that the spec's {@code cy.task('svyMeasure', 'SVY_MEASURE ...')} reaches Cypress stdout (via the task's
+	 * Node handler {@code console.log}, which {@code cypress run} prints and the Java runner captures - unlike
+	 * {@code cy.log}) and that the runner's {@code hoistMeasurementMarkers} lifts it into the returned
+	 * "Measured layout" summary.
+	 * <p>
+	 * Skips only on a genuine environment gap (no NG client / no browser / Cypress not installed), following the
+	 * same discipline as the sibling Cypress integration tests - never to dodge an assertion. No {@code Thread.sleep}.
+	 */
+	@Test
+	public void testGeneratedSpecWithViewportWidths_surfacesMeasuredLayout() throws Exception {
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		// Remove any stale cypress.config.js from an earlier Developer session: an old config may still carry
+		// supportFile: false or lack the svyMeasure setupNodeEvents registration (pre-SVY-21619), which would drop
+		// the SVY_MEASURE markers from stdout and make this an environment-staleness failure rather than a real
+		// task->Node->stdout check. The runner regenerates the correct config (supportFile: 'cypress/support/e2e.js'
+		// plus the svyMeasure task) when it is missing or stale, but delete it here to exercise the fresh-write path.
+		Path scriptsRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath()
+				.resolve("jenkins-custom").resolve("e2e-test-scripts");
+		Files.deleteIfExists(scriptsRoot.resolve("cypress.config.js"));
+		Files.deleteIfExists(scriptsRoot.resolve("cypress.config.ts"));
+
+		// Generate the spec WITH responsive widths so it emits both the always-on measureContainer and the
+		// per-width measureAtViewport blocks that log SVY_MEASURE lines.
+		String genResult = specGenerator.generateSpec(TEST_FORM, null, java.util.List.of(375, 1024));
+		assertNotNull(genResult, "generateSpec(form, null, widths) result should not be null");
+		assertFalse(genResult.startsWith("Error"), "spec generation should not error: " + genResult);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM, TEST_SOLUTION);
+		assertNotNull(cySpec);
+		assertTrue(Files.exists(cySpec), "the generated spec file must exist");
+		String specContent = Files.readString(cySpec);
+		assertTrue(specContent.contains("cy.measureContainer('.svy-form');"),
+				"the generated spec must carry the always-on measureContainer call: " + specContent);
+		assertTrue(specContent.contains("cy.measureAtViewport('.svy-form', 375, 1080);"),
+				"the generated spec must carry the 375px responsive block");
+		assertTrue(specContent.contains("cy.measureAtViewport('.svy-form', 1024, 1080);"),
+				"the generated spec must carry the 1024px responsive block");
+
+		String result = specRunner.runFormCypressTests(TEST_FORM, true);
+		assertNotNull(result, "runFormCypressTests result should not be null");
+
+		// Genuine environment gap -> skip via Assumptions.abort (never to dodge the assertion below), the same
+		// render-prerequisite skip discipline the sibling getFormLayout integration tests use. Cypress/NG
+		// client/browser not being available on this agent is an acceptable reason to not prove N1 here.
+		boolean ran = result.contains("passed") || result.contains("failed");
+		if (!ran || result.contains("timed out")) {
+			org.junit.jupiter.api.Assumptions.abort("Cypress render prerequisite not met (NG client / browser / Cypress "
+					+ "not available on this agent), skipping: " + result.substring(0, Math.min(result.length(), 400)));
+		}
+
+		// N1: the returned output must surface the measured innerWidth and container width (the hoisted
+		// "Measured layout" summary built from the SVY_MEASURE lines the svyMeasure task console.logs to stdout).
+		assertTrue(result.contains("Measured layout") || result.contains("SVY_MEASURE") || result.contains("innerWidth="),
+				"runner output must surface the hoisted measurement summary (cy.task svyMeasure -> Node console.log -> stdout -> hoistMeasurementMarkers): " + result);
+		assertTrue(result.contains("innerWidth=") && result.contains("containerWidth="),
+				"runner output must report both the measured window.innerWidth and the container width: " + result);
+	}
+
+	// -----------------------------------------------------------------------
+	// SVY-21619: viewportWidths through the real MCP tool methods
+	// -----------------------------------------------------------------------
+
+	private Path e2eScriptsRoot() {
+		return ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom")
+				.resolve("e2e-test-scripts");
+	}
+
+	@Test
+	public void testGenerateFormSpec_withViewportWidths_emitsOneBlockPerWidthAndScaffoldsCommands() throws Exception {
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		// padded input with a trailing comma and a duplicate: the tool must normalise it, not reject it
+		String result = testingServer.generateFormSpec(TEST_FORM, " 375 , 1024 ,375");
+
+		assertNotNull(result);
+		assertFalse(result.startsWith("Error"), "valid widths must not produce an error: " + result);
+		assertTrue(result.contains("Created"), "the spec must be created: " + result);
+
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM, TEST_SOLUTION);
+		String spec = Files.readString(cySpec);
+		assertTrue(spec.contains("cy.measureContainer('.svy-form');"), "the always-on measurement must be emitted: " + spec);
+		int at375 = spec.indexOf("cy.measureAtViewport('.svy-form', 375, 1080);");
+		int at1024 = spec.indexOf("cy.measureAtViewport('.svy-form', 1024, 1080);");
+		assertTrue(at375 >= 0 && at1024 > at375, "one block per width, in the order given: " + spec);
+		assertEquals(at375, spec.lastIndexOf("cy.measureAtViewport('.svy-form', 375, 1080);"), "the duplicate 375 must be dropped: " + spec);
+
+		// the tool path must also have scaffolded the shared commands the spec calls
+		String commands = Files.readString(e2eScriptsRoot().resolve("cypress").resolve("support").resolve("commands.js"));
+		assertTrue(commands.contains("Cypress.Commands.add('measureAtViewport'"), commands);
+		assertTrue(commands.contains("Cypress.Commands.add('measureContainer'"), commands);
+	}
+
+	@Test
+	public void testGenerateFormSpec_existingSpec_isNeverOverwrittenSoNewWidthsAreNotApplied() throws Exception {
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		String first = testingServer.generateFormSpec(TEST_FORM, null);
+		assertTrue(first.contains("Created"), first);
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM, TEST_SOLUTION);
+		String before = Files.readString(cySpec);
+
+		String second = testingServer.generateFormSpec(TEST_FORM, "375,1024");
+
+		assertTrue(second.startsWith("Spec files already exist"), "an existing spec must be reported, not rewritten: " + second);
+		assertEquals(before, Files.readString(cySpec), "the existing spec must be left byte-for-byte unchanged");
+		assertFalse(Files.readString(cySpec).contains("cy.measureAtViewport"),
+				"widths supplied for an existing spec are not applied: the caller has to delete the spec first");
+	}
+
+	@Test
+	public void testGenerateFormSpec_invalidViewportWidths_returnsErrorAndWritesNothing() throws Exception {
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		String result = testingServer.generateFormSpec(TEST_FORM, "375,abc");
+
+		assertTrue(result.startsWith("Error:") && result.contains("abc"), "the offending token must be named: " + result);
+		Path cySpec = specGenerator.getSpecFilePath(TEST_FORM, TEST_SOLUTION);
+		assertTrue(cySpec == null || !Files.exists(cySpec), "an invalid width must not leave a spec behind");
+	}
+
+	@Test
+	public void testGenerateFormSpec_withViewportWidths_unknownForm_returnsFormNotFound() {
+		String result = testingServer.generateFormSpec("totally_fake_form_xyz", "375");
+
+		assertTrue(result.startsWith("Error: Form not found"), "the form lookup must still run with widths supplied: " + result);
+	}
+
+	@Test
+	public void testGenerateCypressE2ETest_withViewportWidths_writesSpecWithBlocksAndFreshConfig() throws Exception {
+		ensureForm(TEST_FORM);
+		String solutionName = activeProject.getProject().getName();
+		Path scriptsRoot = e2eScriptsRoot();
+		Path spec = scriptsRoot.resolve("cypress").resolve("e2e").resolve(solutionName).resolve("svy21619_widths.cy.ts");
+		Path config = scriptsRoot.resolve("cypress.config.js");
+		Files.createDirectories(scriptsRoot);
+		// a STALE config (no svyMeasure task) must be rewritten so the markers can reach stdout
+		Files.writeString(config, "module.exports = { e2e: { baseUrl: 'http://stale' } };\n");
+		try {
+			String result = testingServer.generateCypressE2ETest(TEST_FORM, "svy-21619 widths", null, "svy21619_widths",
+					"http://localhost:8183/", null, null, null, null, "375,1024");
+
+			assertFalse(result.startsWith("Error"), "valid widths must not produce an error: " + result);
+			assertTrue(result.startsWith("Created:") && result.contains("svy21619_widths.cy.ts"), "the file name must be normalised to .cy.ts: " + result);
+			assertTrue(Files.exists(spec), "the E2E spec must be written under e2e/<solution>/");
+
+			String content = Files.readString(spec);
+			assertTrue(content.contains("cy.measureContainer('.svy-form');"), "the always-on measurement must be emitted: " + content);
+			int at375 = content.indexOf("cy.measureAtViewport('.svy-form', 375, 1080);");
+			int at1024 = content.indexOf("cy.measureAtViewport('.svy-form', 1024, 1080);");
+			assertTrue(at375 >= 0 && at1024 > at375, "one block per width, in the order given: " + content);
+
+			String configContent = Files.readString(config);
+			assertTrue(configContent.contains("svyMeasure"), "the stale config must be rewritten with the svyMeasure task: " + configContent);
+			assertTrue(configContent.contains("baseUrl: 'http://localhost:8183'"), "the trailing slash of the base URL must be trimmed: " + configContent);
+
+			String commands = Files.readString(scriptsRoot.resolve("cypress").resolve("support").resolve("commands.js"));
+			assertTrue(commands.contains("Cypress.Commands.add('measureAtViewport'"), commands);
+		} finally {
+			Files.deleteIfExists(spec);
+		}
+	}
+
+	@Test
+	public void testGenerateSpec_modelOverloadWithoutWidths_stillEmitsTheAlwaysOnMeasurement() throws Exception {
+		ensureForm(TEST_FORM);
+		deleteSpecFiles(TEST_FORM);
+
+		// the two-argument overload (form, model) predates viewportWidths and must keep delegating to the widths-aware one
+		String result = specGenerator.generateSpec(TEST_FORM, (com.servoy.eclipse.cypress.services.FormSpecModel) null);
+
+		assertFalse(result.startsWith("Error"), result);
+		String spec = Files.readString(specGenerator.getSpecFilePath(TEST_FORM, TEST_SOLUTION));
+		assertTrue(spec.contains("cy.measureContainer('.svy-form');"), "reporting is always on, even through the old overload: " + spec);
+		assertFalse(spec.contains("cy.measureAtViewport"), "no responsive block without widths: " + spec);
+	}
+
+	@Test
+	public void testGenerateCypressE2ETest_unreadableConfig_isTreatedAsStaleAndTheFailureIsReported() throws Exception {
+		ensureForm(TEST_FORM);
+		String solutionName = activeProject.getProject().getName();
+		Path scriptsRoot = e2eScriptsRoot();
+		Path spec = scriptsRoot.resolve("cypress").resolve("e2e").resolve(solutionName).resolve("svy21619_unreadable.cy.ts");
+		Path config = scriptsRoot.resolve("cypress.config.js");
+		Files.deleteIfExists(config);
+		// a directory where the config file should be: it exists but cannot be read as a file, so it is "stale" and
+		// cannot be rewritten either - the tool must report an error instead of claiming success
+		Files.createDirectories(config);
+		try {
+			String result = testingServer.generateCypressE2ETest(TEST_FORM, "svy-21619 unreadable", null, "svy21619_unreadable", null, null,
+					null, null, null, "375");
+
+			assertTrue(result.startsWith("Error:"), "an unwritable config must surface as an error, not a silent success: " + result);
+		} finally {
+			Files.deleteIfExists(config);
+			Files.deleteIfExists(spec);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// SVY-21619: the E2E runner (testE2E -> FormSpecRunner.runE2ECypressTests), pass AND fail branch, on the real NG client
+	// -----------------------------------------------------------------------
+
+	private Path seedE2eSpec(String specName, String body) throws Exception {
+		String solutionName = activeProject.getProject().getName();
+		Path dir = e2eScriptsRoot().resolve("cypress").resolve("e2e").resolve(solutionName);
+		Files.createDirectories(dir);
+		Path spec = dir.resolve(specName + ".cy.js");
+		String url = "solution/" + TEST_SOLUTION + "/index.html?formpreview=" + TEST_FORM + "&svy_testmode=true";
+		Files.writeString(spec, "describe('" + specName + "', () => {\n  it('" + specName + "', () => {\n    cy.visit('" + url + "');\n"
+				+ "    cy.get('.svy-form', { timeout: 30000 }).should('exist');\n" + body + "  });\n});\n");
+		return spec;
+	}
+
+	@Test
+	public void testTestE2E_passingSpec_hoistsTheMeasuredLayoutAndRewritesAMissingConfig() throws Exception {
+		ensureForm(TEST_FORM);
+		Path config = e2eScriptsRoot().resolve("cypress.config.js");
+		Files.deleteIfExists(config);
+		Files.deleteIfExists(e2eScriptsRoot().resolve("cypress.config.ts"));
+		Path spec = seedE2eSpec("svy21619_e2e_pass",
+				"    cy.measureContainer('.svy-form');\n    cy.measureAtViewport('.svy-form', 375, 1080);\n");
+		try {
+			String result = testingServer.testE2E("svy21619_e2e_pass");
+
+			assertTrue(result.startsWith("**E2E Spec Results: svy21619_e2e_pass**"), "the run must produce a results envelope: " + result);
+			assertTrue(result.contains("All tests passed!"), "the seeded spec must pass: " + result);
+			assertTrue(result.contains("**Measured layout:**"), "the measurement summary must be hoisted on a PASS: " + result);
+			assertTrue(result.contains("requested=375") && result.contains("innerWidth=375"),
+					"the per-width measurement must report the applied width: " + result);
+			assertTrue(Files.exists(config) && Files.readString(config).contains("svyMeasure"),
+					"a missing cypress.config.js must be written with the svyMeasure task before the run");
+		} finally {
+			Files.deleteIfExists(spec);
+		}
+	}
+
+	@Test
+	public void testTestE2E_failingSpec_stillHoistsTheMeasuredLayoutAndRewritesAStaleConfig() throws Exception {
+		ensureForm(TEST_FORM);
+		Path config = e2eScriptsRoot().resolve("cypress.config.js");
+		Files.deleteIfExists(e2eScriptsRoot().resolve("cypress.config.ts"));
+		Files.createDirectories(config.getParent());
+		// supportFile:false and no svyMeasure task: exactly the stale shape that would swallow the markers
+		Files.writeString(config, "module.exports = { e2e: { supportFile: false, specPattern: '**/*.cy.{js,ts}' } };\n");
+		Path spec = seedE2eSpec("svy21619_e2e_fail",
+				"    cy.measureContainer('.svy-form');\n    cy.then(() => { throw new Error('deliberate SVY-21619 failure'); });\n");
+		try {
+			String result = testingServer.testE2E("svy21619_e2e_fail");
+
+			assertTrue(result.startsWith("**E2E Spec Results: svy21619_e2e_fail**"), "the run must produce a results envelope: " + result);
+			assertTrue(result.contains("Some tests failed:"), "the seeded spec must fail: " + result);
+			assertTrue(result.contains("**Measured layout:**") && result.contains("innerWidth="),
+					"the measurement summary must be hoisted on a FAIL too, that is the whole point: " + result);
+			assertTrue(Files.readString(config).contains("svyMeasure") && !Files.readString(config).contains("supportFile: false"),
+					"a stale cypress.config.js must be rewritten before the run");
+		} finally {
+			Files.deleteIfExists(spec);
+		}
+	}
+
+	@Test
+	public void testTestE2E_unknownSpec_returnsNotFound() throws Exception {
+		ensureForm(TEST_FORM);
+
+		String result = testingServer.testE2E("svy21619_does_not_exist");
+
+		assertTrue(result.startsWith("Error: E2E spec file not found for 'svy21619_does_not_exist'"), result);
+	}
+
+	@Test
+	public void testGenerateCypressE2ETest_withoutViewportWidths_stillReportsAtTheDefaultViewport() throws Exception {
+		ensureForm(TEST_FORM);
+		String solutionName = activeProject.getProject().getName();
+		Path spec = e2eScriptsRoot().resolve("cypress").resolve("e2e").resolve(solutionName).resolve("svy21619_default.cy.ts");
+		try {
+			String result = testingServer.generateCypressE2ETest(TEST_FORM, "svy-21619 default", null, "svy21619_default.cy.ts", null,
+					null, null, null, null, null);
+
+			assertFalse(result.startsWith("Error"), result);
+			String content = Files.readString(spec);
+			assertTrue(content.contains("cy.measureContainer('.svy-form');"), "reporting is always on: " + content);
+			assertFalse(content.contains("cy.measureAtViewport"), "no responsive block without widths: " + content);
+		} finally {
+			Files.deleteIfExists(spec);
+		}
+	}
+
+	@Test
+	public void testGenerateCypressE2ETest_invalidViewportWidths_returnsErrorAndWritesNothing() throws Exception {
+		ensureForm(TEST_FORM);
+		String solutionName = activeProject.getProject().getName();
+		Path spec = e2eScriptsRoot().resolve("cypress").resolve("e2e").resolve(solutionName).resolve("svy21619_invalid.cy.ts");
+		Files.deleteIfExists(spec);
+
+		String result = testingServer.generateCypressE2ETest(TEST_FORM, "svy-21619 invalid", null, "svy21619_invalid", null, null, null,
+				null, null, "0");
+
+		assertTrue(result.startsWith("Error:") && result.contains("'0'"), "the offending token must be named: " + result);
+		assertFalse(Files.exists(spec), "an invalid width must not leave a spec behind");
 	}
 
 	// -----------------------------------------------------------------------
@@ -888,7 +1202,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 		ensureForm(formName);
 		deleteSpecFiles(formName);
 
-		String result = testingServer.generateFormSpec(formName);
+		String result = testingServer.generateFormSpec(formName, null);
 		assertNotNull(result);
 		assertTrue(result.contains("Created") || result.contains("already exist"),
 				"Should create spec files: " + result);

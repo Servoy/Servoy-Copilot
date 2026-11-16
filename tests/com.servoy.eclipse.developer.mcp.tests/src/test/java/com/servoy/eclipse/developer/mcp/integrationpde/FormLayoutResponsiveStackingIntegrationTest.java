@@ -260,9 +260,12 @@ public class FormLayoutResponsiveStackingIntegrationTest extends AbstractTitaniu
 		int w1 = cardOne.path("box").path("w").asInt();
 		int w2 = cardTwo.path("box").path("w").asInt();
 
-		// stacked == the second card is clearly BELOW the first (different rows)
-		assertTrue(y2 > y1 + h1 / 2,
-				"SVY-21619: at " + NARROW_VIEWPORT + "px the second card must be below the first (stacked): y1=" + y1
+		// stacked == the two cards are on clearly different rows. The assertion is deliberately
+		// independent of WHICH card is on top: the DOM order of the two sibling layout containers is
+		// not stable across runs (card one is sometimes rendered after card two), and which card is
+		// first says nothing about whether the grid collapsed to one column.
+		assertTrue(Math.abs(y2 - y1) > h1 / 2,
+				"SVY-21619: at " + NARROW_VIEWPORT + "px the two cards must be stacked on different rows: y1=" + y1
 						+ ", h1=" + h1 + ", y2=" + y2 + " - run 007 wrongly reported this was impossible");
 
 		// one column == each card is close to the container content width
@@ -442,11 +445,15 @@ public class FormLayoutResponsiveStackingIntegrationTest extends AbstractTitaniu
 			Assumptions.abort("getFormLayout render prerequisite not met, skipping: " + skipReason
 					+ " | tool returned: " + toolResult);
 		}
-		JsonNode envelope = mapper.readTree(toolResult);
-		JsonNode resultFile = envelope.path("resultFile");
-		if (!resultFile.isMissingNode() && !resultFile.isNull()) {
-			return mapper.readTree(Files.readString(Paths.get(resultFile.asText()), StandardCharsets.UTF_8));
-		}
+		com.fasterxml.jackson.databind.node.ObjectNode envelope = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+				.readTree(toolResult);
+		// SVY-21577 follow-up / SVY-21767: html and appearance are always externalised. This test only
+		// needs the appearance map, so read it back from appearanceFile and fold it under "appearance".
+		JsonNode appearanceFile = envelope.path("appearanceFile");
+		assertTrue(!appearanceFile.isMissingNode() && !appearanceFile.isNull(),
+				"the envelope must carry an appearanceFile path: " + toolResult);
+		envelope.set("appearance",
+				mapper.readTree(Files.readString(Paths.get(appearanceFile.asText()), StandardCharsets.UTF_8)));
 		return envelope;
 	}
 

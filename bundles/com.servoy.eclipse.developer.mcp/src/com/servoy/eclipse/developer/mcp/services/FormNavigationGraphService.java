@@ -570,6 +570,29 @@ public class FormNavigationGraphService {
 	 */
 	public String generateCypressTestContent(String solutionName, String baseUrl, String startForm,
 			String targetForm, String scenario, java.util.List<NavigationEdge> path) {
+		return generateCypressTestContent(solutionName, baseUrl, startForm, targetForm, scenario, path,
+				java.util.List.of());
+	}
+
+	/**
+	 * Generates the E2E navigation spec, adding the SVY-21619 viewport measurement (overload of the 6-arg form, which delegates here with an empty
+	 * widths list). After the navigation it(...) block it emits the always-on default-viewport measure-only line against the form's root container,
+	 * and, when {@code viewportWidths} is non-empty, one measurement block per width calling {@code cy.measureAtViewport}.
+	 *
+	 * @param viewportWidths ordered, deduped widths to cross-check; empty for default behaviour (always-on reporting only)
+	 */
+	public String generateCypressTestContent(String solutionName, String baseUrl, String startForm,
+			String targetForm, String scenario, java.util.List<NavigationEdge> path,
+			java.util.List<Integer> viewportWidths) {
+		java.util.List<Integer> widths = viewportWidths == null ? java.util.List.of() : viewportWidths;
+		// The SVY_MEASURE marker itself is not emitted here - it lives only in the custom commands
+		// (CypressSupportScaffold.measureCommandsJs()/SVY_MEASURE_MARKER in com.servoy.eclipse.cypress),
+		// which this spec invokes via cy.measureContainer/cy.measureAtViewport. The root-container
+		// selector below mirrors CypressSupportScaffold.ROOT_CONTAINER_SELECTOR (different bundle, so the
+		// literal is defined locally).
+		final String rootContainer = ".svy-form";
+		// Default viewport height for a width-only entry: matches the viewportHeight written into cypress.config.js.
+		final int defaultHeight = 1080;
 		StringBuilder sb = new StringBuilder();
 		// Relative URL: baseUrl is defined in cypress.config.js, so cy.visit uses a relative path
 		// Include ?svy_testmode=true to ensure data-cy attributes are rendered
@@ -629,6 +652,23 @@ public class FormNavigationGraphService {
 		sb.append("    // TODO: add assertions for the scenario:\n");
 		sb.append("    // ").append(scenario != null ? scenario : "").append("\n");
 		sb.append("  });\n");
+
+		// Always-on (SVY-21619): report innerWidth + root-container width at the default viewport after layout settles.
+		sb.append("\n");
+		sb.append("  it('measures layout at the default viewport', () => {\n");
+		sb.append("    cy.measureContainer('").append(rootContainer).append("');\n");
+		sb.append("  });\n");
+
+		// Opt-in responsive cross-check: one it(...) per requested width, in the given order.
+		for (Integer width : widths) {
+			int w = width.intValue();
+			sb.append("\n");
+			sb.append("  it('responds at ").append(w).append("px', () => {\n");
+			sb.append("    cy.measureAtViewport('").append(rootContainer).append("', ").append(w).append(", ")
+					.append(defaultHeight).append(");\n");
+			sb.append("  });\n");
+		}
+
 		sb.append("});\n");
 
 		return sb.toString();
