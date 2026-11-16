@@ -81,7 +81,7 @@ public class PersistDuplicateService {
 		if (resolvedName.startsWith("Error:"))
 			return resolvedName;
 
-		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		IValidateName validator = getServoyModel().getNameValidator();
 		IPersist duplicate = PersistCloner.intelligentClonePersist(form, resolvedName, destProject, validator, true);
 		if (duplicate == null)
 			return "Error: Failed to duplicate form '" + name + "'.";
@@ -106,7 +106,7 @@ public class PersistDuplicateService {
 		if (resolvedName.startsWith("Error:"))
 			return resolvedName;
 
-		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		IValidateName validator = getServoyModel().getNameValidator();
 		IPersist duplicate = PersistCloner.intelligentClonePersist(relation, resolvedName, destProject, validator,
 				true);
 		if (duplicate == null)
@@ -130,7 +130,7 @@ public class PersistDuplicateService {
 		if (resolvedName.startsWith("Error:"))
 			return resolvedName;
 
-		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		IValidateName validator = getServoyModel().getNameValidator();
 		IPersist duplicate = PersistCloner.intelligentClonePersist(vl, resolvedName, destProject, validator, true);
 		if (duplicate == null)
 			return "Error: Failed to duplicate valuelist '" + name + "'.";
@@ -152,7 +152,7 @@ public class PersistDuplicateService {
 		if (resolvedName.startsWith("Error:"))
 			return resolvedName;
 
-		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		IValidateName validator = getServoyModel().getNameValidator();
 		IPersist duplicate = PersistCloner.intelligentClonePersist(media, resolvedName, destProject, validator, true);
 		if (duplicate == null)
 			return "Error: Failed to duplicate media '" + name + "'.";
@@ -247,8 +247,17 @@ public class PersistDuplicateService {
 		return null;
 	}
 
+	/**
+	 * Seam over the static {@link ServoyModelManager} model lookup so tests can
+	 * substitute a mocked {@link IDeveloperServoyModel}. Mirrors the
+	 * {@code getServoyModel()} seam on {@code ServoyDevServer}/{@code CodeAnalysisService}.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	private ServoyProject resolveProject(String solutionName) {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		if (solutionName != null && !solutionName.isBlank()) {
 			return model.getServoyProject(solutionName);
 		}

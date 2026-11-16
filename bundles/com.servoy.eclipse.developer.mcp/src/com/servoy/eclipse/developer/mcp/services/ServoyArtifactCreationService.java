@@ -60,6 +60,17 @@ public class ServoyArtifactCreationService
 		"onBeforeHide", "onRecordSelection", "onBeforeRecordSelection", "onRecordEditStart", "onRecordEditStop",
 		"onElementDataChange", "onElementFocusGained", "onElementFocusLost", "onResize", "onSort");
 
+	/**
+	 * Seam over the static model lookup so plain-JUnit tests can supply a mocked
+	 * {@link IDeveloperServoyModel}. Mirrors the seam on {@code ServoyDevServer}.
+	 * The default implementation returns the real active model, so runtime and
+	 * the integration tests are unaffected.
+	 */
+	protected IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	// -------------------------------------------------------------------------
 	// Form creation
 	// -------------------------------------------------------------------------
@@ -67,7 +78,7 @@ public class ServoyArtifactCreationService
 	public String createForm(String name, String style, int width, int height, String dataSource,
 		String extendsForm, Map<String, String> events) throws RepositoryException
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject project = servoyModel.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			throw new RepositoryException("No active Servoy solution project found");
@@ -148,7 +159,7 @@ public class ServoyArtifactCreationService
 	public String createRelation(String name, String primaryDataSource, String foreignDataSource,
 		String primaryColumn, String foreignColumn, String joinType) throws RepositoryException
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject project = servoyModel.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			throw new RepositoryException("No active Servoy solution project found");
@@ -238,7 +249,7 @@ public class ServoyArtifactCreationService
 	public String createValueList(String name, String type, String customValues, String dataSource,
 		String relationName, String displayColumn, String returnColumn) throws RepositoryException
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject project = servoyModel.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			throw new RepositoryException("No active Servoy solution project found");
@@ -294,7 +305,7 @@ public class ServoyArtifactCreationService
 
 	public String createFormWithFields(String name, String dataSource, String style, List<String> columns) throws RepositoryException
 	{
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject project = servoyModel.getActiveProject();
 		if (project == null || project.getEditingSolution() == null)
 			throw new RepositoryException("No active Servoy solution project found");
@@ -603,7 +614,7 @@ public class ServoyArtifactCreationService
 	{
 		if (events == null || events.isEmpty()) return "";
 
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject project = servoyModel.getActiveProject();
 		if (project == null) throw new RepositoryException("No active Servoy solution project found");
 

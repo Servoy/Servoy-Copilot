@@ -31,6 +31,15 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
  * persist type.
  */
 public class PersistRenameService {
+	/**
+	 * Seam over the static {@code ServoyModelManager.getServoyModelManager().getServoyModel()}
+	 * grab so unit tests can supply a mocked {@link IDeveloperServoyModel} without a live
+	 * workbench. Behaviour-preserving: the default returns the real active model.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	public String renameForm(String oldName, String newName, ServoyProject project) throws RepositoryException {
 		Solution solution = project.getEditingSolution();
 		if (solution == null)
@@ -231,7 +240,7 @@ public class PersistRenameService {
 
 	public String renameSolution(String oldName, String newName) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject servoyProject = model.getServoyProject(oldName);
 			if (servoyProject == null)
 				return "Error: Solution '" + oldName + "' not found.";
@@ -356,7 +365,7 @@ public class PersistRenameService {
 		if (!(persist instanceof ISupportUpdateableName))
 			return "Error: " + typeName + " does not support renaming.";
 
-		IValidateName validator = ServoyModelManager.getServoyModelManager().getServoyModel().getNameValidator();
+		IValidateName validator = getServoyModel().getNameValidator();
 		String oldName = ((com.servoy.j2db.persistence.ISupportName) persist).getName();
 		((ISupportUpdateableName) persist).updateName(validator, newName);
 		project.saveEditingSolutionNodes(new IPersist[] { persist }, true);
@@ -429,7 +438,7 @@ public class PersistRenameService {
 
 		// 3. Project-relative path against active project
 		if (file == null) {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject active = model.getActiveProject();
 			if (active != null) {
 				// Try exact path first
@@ -470,7 +479,7 @@ public class PersistRenameService {
 		// If the project is not a Servoy project at all, skip the Servoy security check
 		// and treat it as a raw file rename (same behaviour as the old
 		// ServoyCoderServer.renameFile).
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		String fileProjectName = file.getProject().getName();
 		ServoyProject fileServoyProject = model.getServoyProject(fileProjectName);
 
@@ -526,7 +535,7 @@ public class PersistRenameService {
 	}
 
 	private String renameBySimpleName(String oldName, String newName) {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject activeProject = model.getActiveProject();
 		if (activeProject == null) {
 			return "Error: No active solution found.";
