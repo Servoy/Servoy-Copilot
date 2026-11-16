@@ -132,18 +132,15 @@ class RunMetricsTest {
 		}
 
 		@Test
-		@DisplayName("noCaching() is true for a large uncached input, false when cache is present")
-		void noCaching() {
-			// Large input, ~0 cache-read ratio -> the expensive full-context-resend.
-			RequestTokens uncached = new RequestTokens(0, new TokenUsage(474_000, 10, 0, 0, 0), List.of(), null);
-			// Large input but well cached -> not flagged.
-			RequestTokens wellCached = new RequestTokens(1, new TokenUsage(474_000, 10, 0, 470_000, 0), List.of(),
-					null);
-			// Trivial input -> not flagged even with no cache.
-			RequestTokens trivial = new RequestTokens(2, new TokenUsage(10, 5, 0, 0, 0), List.of(), null);
-			assertAll(() -> assertTrue(uncached.noCaching(), "large uncached input is flagged"),
-					() -> assertFalse(wellCached.noCaching(), "a well-cached request is not flagged"),
-					() -> assertFalse(trivial.noCaching(), "a trivial input is not flagged"));
+		@DisplayName("cacheReadRatio() reflects only what the provider reports; a 0 is 'not reported', not 'not cached'")
+		void cacheReadRatioReportedOnly() {
+			// Kiro does prompt caching but does NOT report cache.read, so a large input
+			// with cacheRead=0 yields a 0 ratio - that must NOT be read as 'no caching'.
+			// We only assert the ratio is a faithful cacheRead/input, nothing more.
+			RequestTokens unreported = new RequestTokens(0, new TokenUsage(474_000, 10, 0, 0, 0), List.of(), null);
+			RequestTokens reported = new RequestTokens(1, new TokenUsage(474_000, 10, 0, 237_000, 0), List.of(), null);
+			assertAll(() -> assertEquals(0d, unreported.cacheReadRatio(), 0.0001d, "0 reported cache-read"),
+					() -> assertEquals(0.5d, reported.cacheReadRatio(), 0.0001d, "237000/474000 when reported"));
 		}
 	}
 
@@ -199,7 +196,6 @@ class RunMetricsTest {
 					() -> assertTrue(label.contains("base input 1000"), "base input shown"),
 					() -> assertTrue(label.contains("request #1"), "the largest-input request is highlighted"),
 					() -> assertTrue(label.contains("input 474000"), "its input shown"),
-					() -> assertTrue(label.contains("no caching"), "the no-caching note when the ratio is ~0"),
 					() -> assertTrue(label.contains("execute"), "its tools shown"),
 					() -> assertTrue(label.contains("skill=sdd"), "its skill shown"));
 		}

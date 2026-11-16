@@ -344,9 +344,21 @@ public final class SessionTranscript {
 		return new SessionTranscript(promptHolder[0], calls, duration, agent, model, directory, tokens, requestTokens);
 	}
 
-	/** The {@code server.tool} identity of a call, for the per-request table. */
+	/**
+	 * The {@code server.tool} identity of a call, for the per-request table. The
+	 * built-in {@code skill} tool is rendered as {@code skill:<id>} so the loaded
+	 * skill is named rather than appearing as a bare, repeated {@code skill}; the
+	 * id is read from the call's {@code id} argument (opencode's skill-tool input).
+	 */
 	private static String identity(McpToolCall call) {
-		return (call.server() != null ? call.server() + "." : "") + call.tool(); //$NON-NLS-1$ //$NON-NLS-2$
+		String base = (call.server() != null ? call.server() + "." : "") + call.tool(); //$NON-NLS-1$ //$NON-NLS-2$
+		if ("skill".equals(call.tool()) && call.server() == null) { //$NON-NLS-1$
+			Object id = call.arguments().get("id"); //$NON-NLS-1$
+			if (id != null && !id.toString().isBlank()) {
+				return base + ":" + id; //$NON-NLS-1$
+			}
+		}
+		return base;
 	}
 
 	/**

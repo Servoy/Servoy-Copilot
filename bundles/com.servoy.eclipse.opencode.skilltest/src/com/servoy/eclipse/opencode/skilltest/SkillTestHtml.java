@@ -208,8 +208,7 @@ public final class SkillTestHtml {
 					.append(esc(budgetWarning)).append("</div>"); //$NON-NLS-1$
 		}
 		// Per-request token table (SVY-21660 C): ranked by input, the most inefficient
-		// request highlighted, with cache-read ratio + base input + the "no caching"
-		// note when the ratio is ~0. Per-tool cost is an attribution estimate.
+		// request highlighted, with base input. Per-tool cost is an attribution estimate.
 		if (m != null && !m.requestTokens().isEmpty()) {
 			sb.append(requestTokenTable(m));
 		}
@@ -218,10 +217,9 @@ public final class SkillTestHtml {
 
 	/**
 	 * Renders the per-request token table (SVY-21660 C): one row per request, with
-	 * input/output/cache and the cache-read ratio, sorted by input descending so
-	 * the most inefficient step is at the top (and highlighted). A caveat line
-	 * states that opencode meters per request, so a per-tool figure is an
-	 * attribution estimate.
+	 * input/output, sorted by input descending so the most inefficient step is at
+	 * the top (and highlighted). A caveat line states that opencode meters per
+	 * request, so a per-tool figure is an attribution estimate.
 	 */
 	private static String requestTokenTable(RunMetrics m) {
 		java.util.List<RunMetrics.RequestTokens> reqs = new java.util.ArrayList<>(m.requestTokens());
@@ -236,7 +234,7 @@ public final class SkillTestHtml {
 				.append(". opencode meters per request - when a request makes several tool calls they share " //$NON-NLS-1$
 						+ "that request's token figure, so a per-tool cost is an attribution estimate.</div>"); //$NON-NLS-1$
 		sb.append("<table class=\"oc-props\"><tr><th>#</th><th>Input</th><th>Output</th>" //$NON-NLS-1$
-				+ "<th>Cache read</th><th>Cache-read %</th><th>Tools / skill</th></tr>"); //$NON-NLS-1$
+				+ "<th>Tools / skill</th></tr>"); //$NON-NLS-1$
 		for (RunMetrics.RequestTokens rt : reqs) {
 			boolean isWorst = worst != null && rt.index() == worst.index();
 			RunMetrics.TokenUsage t = rt.tokens();
@@ -244,9 +242,6 @@ public final class SkillTestHtml {
 			sb.append("<td class=\"k\">").append(rt.index()).append(isWorst ? " \u26a0" : "").append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 			sb.append("<td class=\"v\">").append(t != null ? t.input() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
 			sb.append("<td class=\"v\">").append(t != null ? t.output() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("<td class=\"v\">").append(t != null ? t.cacheRead() : 0).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
-			sb.append("<td class=\"v\">").append(String.format("%.1f%%", rt.cacheReadRatio() * 100d)) //$NON-NLS-1$ //$NON-NLS-2$
-					.append(rt.noCaching() ? " (no caching - full context re-sent)" : "").append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			StringBuilder ts = new StringBuilder(String.join(", ", rt.toolNames())); //$NON-NLS-1$
 			if (rt.skill() != null && !rt.skill().isBlank()) {
 				ts.append(ts.length() > 0 ? " / " : "").append(rt.skill()); //$NON-NLS-1$ //$NON-NLS-2$

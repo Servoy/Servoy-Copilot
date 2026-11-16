@@ -198,27 +198,22 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 
 		/**
 		 * The cache-read ratio {@code cacheRead / input} - the fraction of this
-		 * request's input that was served from cache. {@code 0} when input is {@code 0}
-		 * or tokens are absent. A value near {@code 0} with a large input is the
-		 * signature of the expensive "no caching, full context re-sent" request.
+		 * request's input the provider reported as served from cache. {@code 0} when
+		 * input is {@code 0} or tokens are absent.
+		 * <p>
+		 * <b>Caveat (Kiro):</b> the Kiro provider does prompt caching but does NOT
+		 * report {@code cache.read} back in its token usage, so this ratio is typically
+		 * {@code 0} even when caching is in effect. A {@code 0} here means "not
+		 * reported", NOT "not cached" - do not read it as an absence of caching.
 		 *
-		 * @return the cache-read ratio in {@code [0, 1+]}, or {@code 0} when undefined
+		 * @return the reported cache-read ratio in {@code [0, 1+]}, or {@code 0} when
+		 *         undefined / not reported
 		 */
 		public double cacheReadRatio() {
 			if (tokens == null || tokens.input() <= 0L) {
 				return 0d;
 			}
 			return (double) tokens.cacheRead() / (double) tokens.input();
-		}
-
-		/**
-		 * Whether this request shows effectively no caching: a non-trivial input with a
-		 * cache-read ratio near zero (the full context was re-sent uncached).
-		 *
-		 * @return {@code true} when the request re-sent a large uncached input
-		 */
-		public boolean noCaching() {
-			return tokens != null && tokens.input() > 1000L && cacheReadRatio() < 0.01d;
 		}
 	}
 
@@ -293,7 +288,7 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 	 * A compact per-request ranking label (SVY-21660 expansion C/D), rendered
 	 * identically by the view, HTML and JUnit surfaces: "unknown" when there is no
 	 * per-request data, otherwise the request count plus the most inefficient
-	 * request (its index, input, cache-read ratio and tools/skill).
+	 * request (its index, input and tools/skill).
 	 *
 	 * @return the per-request ranking label (never {@code null})
 	 */
@@ -310,11 +305,7 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 		}
 		if (worst != null && worst.tokens() != null) {
 			sb.append("; most inefficient: request #").append(worst.index()) //$NON-NLS-1$
-					.append(" input ").append(worst.tokens().input()) //$NON-NLS-1$
-					.append(String.format(", cache-read %.1f%%", worst.cacheReadRatio() * 100d)); //$NON-NLS-1$
-			if (worst.noCaching()) {
-				sb.append(" (no caching - full context re-sent every turn)"); //$NON-NLS-1$
-			}
+					.append(" input ").append(worst.tokens().input()); //$NON-NLS-1$
 			if (!worst.toolNames().isEmpty()) {
 				sb.append(" tools=").append(String.join(",", worst.toolNames())); //$NON-NLS-1$ //$NON-NLS-2$
 			}
