@@ -23,9 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
-import java.util.Collections;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +46,7 @@ import org.eclipse.egit.core.project.RepositoryMapping;
 import org.eclipse.jgit.api.CherryPickResult;
 import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.MergeCommand;
 import org.eclipse.jgit.api.MergeResult;
 import org.eclipse.jgit.api.PullCommand;
@@ -54,27 +55,24 @@ import org.eclipse.jgit.api.PushCommand;
 import org.eclipse.jgit.api.RebaseCommand;
 import org.eclipse.jgit.api.RebaseResult;
 import org.eclipse.jgit.api.RevertCommand;
-import org.eclipse.jgit.api.ListBranchCommand;
-import org.eclipse.jgit.dircache.DirCache;
-import org.eclipse.jgit.dircache.DirCacheEditor;
-import org.eclipse.jgit.dircache.DirCacheEntry;
-import org.eclipse.jgit.lib.ConfigConstants;
-import org.eclipse.jgit.lib.BranchTrackingStatus;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectInserter;
-import org.eclipse.jgit.lib.RefUpdate;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.StoredConfig;
-import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.treewalk.AbstractTreeIterator;
-import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.RawTextComparator;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheEditor;
+import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.lib.BranchTrackingStatus;
+import org.eclipse.jgit.lib.ConfigConstants;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.FetchResult;
 import org.eclipse.jgit.transport.PushResult;
@@ -83,12 +81,14 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.TrackingRefUpdate;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.AbstractTreeIterator;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.FileTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
-import org.eclipse.jgit.treewalk.filter.PathFilterGroup;
 
 /**
  * Provides Git operations via EGit/JGit for MCP tools.
@@ -485,7 +485,7 @@ public class GitService
 	public String getLog(String projectName, String repo, int maxCount, String revision, String pathFilter)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		List<String> repositoryPaths = resolveProjectPaths(projectName, pathFilter);
+		List<String> repositoryPaths = resolveReadPaths(projectName, pathFilter);
 		try (Git git = new Git(repository))
 		{
 			var logCommand = git.log().setMaxCount(maxCount);
@@ -529,7 +529,7 @@ public class GitService
 	 * Stages project-relative files or folders. {@code filePattern} is comma-separated, and
 	 * {@code "."} means the whole project.
 	 * <p>
-	 * The pattern is resolved through {@link #resolveProjectPaths(String, String)} rather than handed
+	 * The pattern is resolved through {@link #resolveWritePaths(String, String)} rather than handed
 	 * to JGit as given: JGit reads a pathspec from the repository root, so for a project under
 	 * {@code bundles/} a path copied out of {@code gitStatus} used to match nothing and still report
 	 * success (SVY-21303, upstream {@code aca70c0}).
@@ -540,7 +540,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = stageIn(repository, resolveProjectPaths(projectName, filePattern), filePattern);
+		String result = stageIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -548,7 +548,7 @@ public class GitService
 	/**
 	 * {@link #addFiles} on an already-resolved repository with already-resolved pathspecs, so a plain
 	 * test can drive it. The pathspecs are REPOSITORY-relative - that translation is the whole point
-	 * of {@link #resolveProjectPaths(String, String)} - and an empty list means the whole tree.
+	 * of {@link #resolveWritePaths(String, String)} - and an empty list means the whole tree.
 	 */
 	public static String stageIn(Repository repository, List<String> pathspecs, String reportedPattern)
 	{
@@ -675,7 +675,7 @@ public class GitService
 	public String getDiff(String projectName, String repo, boolean staged, String pathFilter, boolean ignoreWhitespace)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderDiff(repository, staged, resolveProjectPaths(projectName, pathFilter), ignoreWhitespace);
+		return renderDiff(repository, staged, resolveReadPaths(projectName, pathFilter), ignoreWhitespace);
 	}
 
 	/**
@@ -690,7 +690,7 @@ public class GitService
 		String pathFilter, boolean ignoreWhitespace)
 	{
 		return renderRevisionDiff(resolveRepository(projectName, repo), fromRevision, toRevision,
-			resolveProjectPaths(projectName, pathFilter), ignoreWhitespace);
+			resolveReadPaths(projectName, pathFilter), ignoreWhitespace);
 	}
 
 	/** {@link #getRevisionDiff} on an already-resolved repository, so a plain test can drive it. */
@@ -786,15 +786,50 @@ public class GitService
 	}
 
 	/**
-	 * Translates a comma-separated list of project-relative paths into repository-relative pathspecs.
+	 * Translates a comma-separated list of paths into repository-relative pathspecs, for a tool that
+	 * <b>reads</b> ({@code gitDiff}, {@code gitLog}, {@code gitShow}).
 	 * <p>
-	 * Every tool in this service takes project-relative paths and {@code gitStatus} reports them that
-	 * way, but JGit reads a pathspec from the REPOSITORY root. For a project that does not sit at the
-	 * repository root - which is every project here, since they live under {@code bundles/} and
-	 * {@code tests/} - the two differ, and Git does not fail on a pathspec that matches nothing. So a
-	 * path copied out of {@code gitStatus} and handed straight to JGit silently matches nothing and
-	 * reports success. Upstream AssistAI hit the same thing and named it in commit {@code aca70c0}
-	 * (SVY-21303); this helper is the single place that resolution happens.
+	 * A blank filter means <b>the whole repository</b>, not the project: a filter that stands for
+	 * everything is not a filter, and narrowing a read to the project would silently change what
+	 * {@code gitDiff(projectName)} answers compared with plain {@code git diff}. Upstream AssistAI
+	 * draws the same distinction - {@code resolveDiffPaths} for reads, {@code resolvePathspecs} for
+	 * writes - and collapses a pathspec standing for the whole repository back to "no filter" for the
+	 * same reason (SVY-21303).
+	 * </p>
+	 * <p>
+	 * {@code "."} still means "this project", so a caller that wants the narrowing can ask for it.
+	 * </p>
+	 */
+	private List<String> resolveReadPaths(String projectName, String pathFilter)
+	{
+		if (pathFilter == null || pathFilter.isBlank())
+		{
+			return List.of();
+		}
+		List<String> pathspecs = resolveWritePaths(projectName, pathFilter);
+		// A pathspec standing for the whole repository makes the filter pointless - drop it, so the
+		// read covers everything rather than being filtered by "".
+		return pathspecs.contains("") ? List.of() : pathspecs;
+	}
+
+	/**
+	 * Translates a comma-separated list of paths into repository-relative pathspecs, for a tool that
+	 * <b>writes</b> ({@code gitAdd}, {@code gitReset}, {@code gitRemove}, {@code gitDiscardChanges}).
+	 * <p>
+	 * JGit reads a pathspec from the REPOSITORY root, but these tools are documented as taking
+	 * project-relative paths. For a project that does not sit at the repository root - which is every
+	 * project here, since they live under {@code bundles/} and {@code tests/} - the two differ, and
+	 * Git does not fail on a pathspec that matches nothing. So a project-relative path handed straight
+	 * to JGit silently matches nothing and the tool still reports success. Upstream AssistAI hit the
+	 * same thing and named it in commit {@code aca70c0} (SVY-21303).
+	 * </p>
+	 * <p>
+	 * <b>Both path forms are accepted</b>, because {@code gitStatus} prints repository-relative paths
+	 * and the obvious thing to do with one is to paste it into {@code gitAdd}. A path that already
+	 * starts with the project's prefix is taken as already resolved and is NOT prefixed again -
+	 * without that, the paste produced {@code bundles/x/bundles/x/...}, which matches nothing while
+	 * the tool answers "Added: ...": the very bug {@code aca70c0} fixed, re-created in the opposite
+	 * direction.
 	 * </p>
 	 * <p>
 	 * {@code "."} (or a blank filter) means "the whole project", which resolves to the project's own
@@ -803,22 +838,22 @@ public class GitService
 	 * rejected rather than silently resolved outside it.
 	 * </p>
 	 * <p>
-	 * On the repository-centric path (SVY-21524) {@code projectName} is {@code null}: the caller
-	 * named a {@code repo} instead, so there is no project to resolve a prefix from and the paths are
-	 * already repository-relative. They are then used as given - no prefix is prepended - rather than
-	 * handed to {@code getProject(null)}, which throws a NullPointerException inside
-	 * {@code WorkspaceRoot}.
+	 * On the repository-centric path (SVY-21524) {@code projectName} is {@code null}: the caller named
+	 * a {@code repo} instead, so there is no project to resolve a prefix from and the paths are
+	 * already repository-relative. They are then used as given - rather than handed to
+	 * {@code getProject(null)}, which throws a NullPointerException inside {@code WorkspaceRoot}.
 	 * </p>
 	 */
-	private List<String> resolveProjectPaths(String projectName, String pathFilter)
+	private List<String> resolveWritePaths(String projectName, String pathFilter)
 	{
 		String projectPrefix = projectPrefixOrNull(projectName);
+		String prefix = projectPrefix == null ? "" : projectPrefix;
 
 		if (pathFilter == null || pathFilter.isBlank() || ".".equals(pathFilter.trim()))
 		{
 			// "the whole project": its own prefix, never the repository root, so one project's "."
 			// cannot reach another project's files.
-			return projectPrefix == null || projectPrefix.isBlank() ? List.of() : List.of(projectPrefix);
+			return prefix.isBlank() ? List.of() : List.of(prefix);
 		}
 
 		return Arrays.stream(pathFilter.split(","))
@@ -826,17 +861,48 @@ public class GitService
 			.filter(path -> !path.isEmpty())
 			.map(path -> {
 				String input = path.replace('\\', '/');
+				if (".".equals(input) || "./".equals(input))
+				{
+					return prefix;
+				}
 				Path normalizedPath = Path.of(input).normalize();
 				String normalized = normalizedPath.toString().replace('\\', '/');
 				if (normalizedPath.isAbsolute() || normalized.equals("..") || normalized.startsWith("../") ||
 					input.matches("^[A-Za-z]:.*"))
 				{
-					throw new IllegalArgumentException("Diff path must be relative to the Eclipse project: " + path);
+					throw new IllegalArgumentException("Path must be relative to the Eclipse project: " + path);
 				}
-				return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
+				if (normalized.isEmpty())
+				{
+					return prefix;
+				}
+				return prefix.isBlank() ? normalized : prefixOnce(prefix, normalized);
 			})
 			.toList();
 	}
+
+	/**
+	 * Prepends {@code prefix} to {@code path} unless the path is already inside it.
+	 * <p>
+	 * {@code gitStatus} prints repository-relative paths, so a caller pasting one into a write tool
+	 * hands over a path that is already prefixed. Prefixing again yields
+	 * {@code bundles/x/bundles/x/...}, which matches nothing - and Git does not fail on a pathspec
+	 * that matches nothing, so the tool reported success having staged nothing (SVY-21303, second
+	 * review round).
+	 * </p>
+	 * <p>
+	 * The test is on a path <b>segment</b> boundary, so a sibling project whose name merely starts
+	 * with the same characters ({@code bundles/foo-tests} against prefix {@code bundles/foo}) is
+	 * still prefixed rather than mistaken for an already-resolved path.
+	 * </p>
+	 */
+	public static String prefixOnce(String prefix, String path)
+	{
+		if (prefix == null || prefix.isBlank()) return path;
+		if (path.equals(prefix) || path.startsWith(prefix + "/")) return path;
+		return prefix + "/" + path;
+	}
+
 	/**
 	 * The repository-relative prefix of an Eclipse project, or {@code null} when there is no project
 	 * to ask.
@@ -1071,8 +1137,10 @@ public class GitService
 			StringBuilder sb = new StringBuilder();
 			for (org.eclipse.jgit.transport.RemoteConfig config : configs)
 			{
-				String fetchUrl = config.getURIs().isEmpty() ? null : config.getURIs().get(0).toString();
-				String pushUrl = config.getPushURIs().isEmpty() ? fetchUrl : config.getPushURIs().get(0).toString();
+				// Redacted: a remote URL may carry an embedded token, and this output goes to a model.
+				String fetchUrl = config.getURIs().isEmpty() ? null : redactUserInfo(config.getURIs().get(0).toString());
+				String pushUrl = config.getPushURIs().isEmpty() ? fetchUrl
+					: redactUserInfo(config.getPushURIs().get(0).toString());
 				sb.append(config.getName()).append("\n")
 					.append("  fetch: ").append(fetchUrl == null ? "(none)" : fetchUrl).append("\n")
 					.append("  push:  ").append(pushUrl == null ? "(none)" : pushUrl).append("\n");
@@ -1102,7 +1170,7 @@ public class GitService
 	public String showCommit(String projectName, String repo, String revision, String pathFilter)
 	{
 		return renderCommit(resolveRepository(projectName, repo), revision,
-			resolveProjectPaths(projectName, pathFilter));
+			resolveReadPaths(projectName, pathFilter));
 	}
 
 	/** {@link #showCommit} on an already-resolved repository, so a plain test can drive it. */
@@ -1179,7 +1247,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = discardChangesIn(repository, resolveProjectPaths(projectName, filePattern), filePattern);
+		String result = discardChangesIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -1339,7 +1407,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		List<String> pathspecs = resolveProjectPaths(projectName, filePattern);
+		List<String> pathspecs = resolveWritePaths(projectName, filePattern);
 
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
@@ -1500,9 +1568,9 @@ public class GitService
 		}
 
 		// projectName is null on the repository-centric path, where the path is already
-		// repository-relative - see projectPrefixOrNull.
-		String projectPrefix = projectPrefixOrNull(projectName);
-		return projectPrefix == null || projectPrefix.isBlank() ? normalized : projectPrefix + "/" + normalized;
+		// repository-relative - see projectPrefixOrNull. prefixOnce also accepts a path that already
+		// carries the prefix, so one copied out of gitStatus works here too.
+		return prefixOnce(projectPrefixOrNull(projectName), normalized);
 	}
 
 	/** Size cap for {@link #readFileAtRevision}, so a huge blob cannot be pulled into a tool response. */
@@ -1650,7 +1718,7 @@ public class GitService
 	/**
 	 * Unstages project-relative files or folders. {@code filePattern} is comma-separated, and
 	 * {@code "."} means the whole project. Resolved through
-	 * {@link #resolveProjectPaths(String, String)} for the same reason as {@link #addFiles}: a
+	 * {@link #resolveWritePaths(String, String)} for the same reason as {@link #addFiles}: a
 	 * repository-root pathspec would silently match nothing for a nested project.
 	 */
 	public String resetFiles(String projectName, String repo, String filePattern)
@@ -1658,7 +1726,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = unstageIn(repository, resolveProjectPaths(projectName, filePattern), filePattern);
+		String result = unstageIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -2335,6 +2403,56 @@ public class GitService
 	 * drive {@link #fetchIn}/{@link #pullIn}/{@link #pushIn} against a local remote.
 	 * </p>
 	 */
+	/**
+	 * Seconds a remote operation may spend on the network before JGit gives up.
+	 * <p>
+	 * Every remote call is bounded, for two different reasons. {@code gitFetch} and {@code gitPush}
+	 * hold no repository lock, so an unbounded call only hangs the one tool call - but it hangs it
+	 * forever, and an MCP tool that never returns is worse than one that reports a timeout.
+	 * {@code gitPull} does hold the lock (it merges or rebases, which mutates the index and working
+	 * tree), so an unbounded call there would block <b>every other git tool on that repository</b>
+	 * for as long as the remote stays unreachable. Bounding the transport is what keeps that
+	 * lock-hold finite (SVY-21303, second review round).
+	 * </p>
+	 */
+	private static final int REMOTE_TIMEOUT_SECONDS = 60;
+
+	/**
+	 * Hides the userinfo of a remote URL, so a token embedded in it is not printed.
+	 * <p>
+	 * A remote URL may carry credentials ({@code https://x-access-token:ghp_...@github.com/o/r}).
+	 * {@code gitRemoteList}'s output goes to a model and into session transcripts, so the secret is
+	 * replaced with {@code ***} rather than echoed. The host, path and scheme are kept, since those
+	 * are what the caller actually needs in order to pick a remote.
+	 * </p>
+	 */
+	public static String redactUserInfo(String url)
+	{
+		if (url == null || url.isBlank()) return url;
+
+		// Deliberately NOT done through URIish. It does not report an empty user, so the
+		// "https://:token@host/path" form (no user, password only) came back with user and pass both
+		// null and the URL was returned untouched - the secret printed. The authority is parsed here
+		// instead, which treats every "<userinfo>@<host>" the same whatever shape the userinfo has.
+		int schemeEnd = url.indexOf("://");
+		if (schemeEnd < 0)
+		{
+			// No scheme: a local path, or an scp-style address (git@host:path). The user in an
+			// scp-style address is never a secret - it is nearly always literally "git" - and
+			// stripping it would make the printed remote unusable, so it is left as it is.
+			return url;
+		}
+
+		int authorityStart = schemeEnd + 3;
+		int authorityEnd = url.indexOf('/', authorityStart);
+		if (authorityEnd < 0) authorityEnd = url.length();
+
+		int at = url.lastIndexOf('@', authorityEnd - 1);
+		if (at < authorityStart) return url;   // no userinfo in the authority
+
+		return url.substring(0, authorityStart) + "***" + url.substring(at);
+	}
+
 	private static CredentialsProvider credentialsFor(Repository repository, String remoteName)
 	{
 		try
@@ -2437,6 +2555,7 @@ public class GitService
 		try (Git git = new Git(repository))
 		{
 			FetchCommand command = git.fetch().setRemote(remoteName).setRemoveDeletedRefs(prune);
+			command.setTimeout(REMOTE_TIMEOUT_SECONDS);
 			CredentialsProvider credentials = credentialsFor(repository, remoteName);
 			if (credentials != null)
 			{
@@ -2521,6 +2640,9 @@ public class GitService
 		try (Git git = new Git(repository))
 		{
 			PullCommand command = git.pull().setRemote(remoteName).setRebase(rebase);
+			// Bounded, because this call runs while the repository lock is held - see
+			// REMOTE_TIMEOUT_SECONDS.
+			command.setTimeout(REMOTE_TIMEOUT_SECONDS);
 			if (remoteBranchName != null)
 			{
 				command.setRemoteBranchName(remoteBranchName);
@@ -2702,6 +2824,7 @@ public class GitService
 
 			PushCommand command = git.push().setRemote(remoteName).setForce(force)
 				.add(Constants.R_HEADS + localBranch);
+			command.setTimeout(REMOTE_TIMEOUT_SECONDS);
 			CredentialsProvider credentials = credentialsFor(repository, remoteName);
 			if (credentials != null)
 			{
@@ -2828,11 +2951,18 @@ public class GitService
 		// it throws, so a failed patch otherwise leaves the index claiming changes that never happened
 		// (a phantom staged deletion, in the case that surfaced this). Snapshotting the index FILE is
 		// the faithful way to undo that: restoring those bytes restores every entry at once.
-		java.io.File indexFile = repository.getIndexFile();
-		byte[] savedIndex = readIndexFileOrNull(indexFile);
+		//
+		// Both of these are declared before the try but ASSIGNED inside it: getIndexFile() and
+		// getWorkTree() throw NoWorkTreeException on a bare repository, and doing that between
+		// lock.lock() and the try would leak the lock for the lifetime of the JVM - every later git
+		// call on this repository would then block forever (SVY-21303, second review round).
+		java.io.File indexFile = null;
+		byte[] savedIndex = null;
 		boolean stagedSuccessfully = false;
 		try (Git gitCmd = new Git(repository))
 		{
+			indexFile = repository.getIndexFile();
+			savedIndex = readIndexFileOrNull(indexFile);
 			java.io.File workTree = repository.getWorkTree();
 
 			org.eclipse.jgit.patch.Patch parsedPatch = new org.eclipse.jgit.patch.Patch();
@@ -2904,7 +3034,7 @@ public class GitService
 		{
 			// Roll the index back when the patch did not make it all the way through, so a failure
 			// cannot leave entries that describe changes which never happened.
-			if (!stagedSuccessfully && savedIndex != null)
+			if (!stagedSuccessfully && savedIndex != null && indexFile != null)
 			{
 				try
 				{

@@ -67,7 +67,7 @@ public class ServoyGitServer
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
 		@ToolParam(name = "revision", description = "Branch, tag or commit sha to show. Default: HEAD", required = false) String revision,
-		@ToolParam(name = "pathFilter", description = "Comma-separated file or directory paths relative to the Eclipse project; when given, only those appear in the diff", required = false) String pathFilter)
+		@ToolParam(name = "pathFilter", description = "Comma-separated paths; when given, only those appear in the diff. Each is either project-relative or repository-relative (a path copied from gitStatus works). Omit it and the commit's WHOLE diff is shown, not just the project's part; pass '.' for the project only.", required = false) String pathFilter)
 	{
 		return gitService.showCommit(projectName, repo, revision, pathFilter);
 	}
@@ -112,7 +112,7 @@ public class ServoyGitServer
 	public String gitDiscardChanges(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "filePattern", description = "Comma-separated files or folders relative to the Eclipse project, or '.' for the whole project", required = true) String filePattern)
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders to discard, or '.' for the whole project. Each path is either project-relative ('src/Foo.java') or repository-relative as gitStatus prints it ('bundles/my.project/src/Foo.java') - both work, a path is never prefixed twice.", required = true) String filePattern)
 	{
 		return gitService.discardChanges(projectName, repo, filePattern);
 	}
@@ -133,7 +133,7 @@ public class ServoyGitServer
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
 		@ToolParam(name = "maxCount", description = "Maximum number of commits to show (default: 20)", required = false) String maxCount,
 		@ToolParam(name = "revision", description = "Branch, tag or commit to walk back from. Default: the current branch", required = false) String revision,
-		@ToolParam(name = "pathFilter", description = "Comma-separated files or folders relative to the Eclipse project; when given, only commits touching them are listed", required = false) String pathFilter)
+		@ToolParam(name = "pathFilter", description = "Comma-separated paths; when given, only commits touching them are listed. Each is either project-relative or repository-relative (a path copied from gitStatus works). Omit it and the WHOLE repository's history is listed, not just the project's; pass '.' for the project only.", required = false) String pathFilter)
 	{
 		int count = Optional.ofNullable(maxCount).map(Integer::parseInt).orElse(20);
 		return gitService.getLog(projectName, repo, count, revision, pathFilter);
@@ -143,7 +143,7 @@ public class ServoyGitServer
 	public String gitAdd(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "filePattern", description = "File pattern to add (e.g., '.' for all, 'src/com/example/MyClass.java' for a specific file)", required = true) String filePattern)
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders to stage, or '.' for the whole project. Each path is either project-relative ('src/Foo.java') or repository-relative as gitStatus prints it ('bundles/my.project/src/Foo.java') - both work, a path is never prefixed twice.", required = true) String filePattern)
 	{
 		return gitService.addFiles(projectName, repo, filePattern);
 	}
@@ -166,7 +166,7 @@ public class ServoyGitServer
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
 		@ToolParam(name = "staged", description = "If 'true', shows staged (cached) changes instead of unstaged. Ignored when a revision is given. Default: false", required = false) String staged,
-		@ToolParam(name = "pathFilter", description = "Comma-separated file or directory paths relative to the Eclipse project; when given, only those are diffed", required = false) String pathFilter,
+		@ToolParam(name = "pathFilter", description = "Comma-separated paths to limit the diff to, each either project-relative or repository-relative (a path copied from gitStatus works). Omit it and the WHOLE repository is diffed, not just the project; pass '.' for the project only.", required = false) String pathFilter,
 		@ToolParam(name = "ignoreWhitespace", description = "If 'true', ignores whitespace-only differences, so a reindented line is not reported as changed. Default: false", required = false) String ignoreWhitespace,
 		@ToolParam(name = "fromRevision", description = "Older side of the comparison: branch, tag or commit (e.g. 'main', 'HEAD~3')", required = false) String fromRevision,
 		@ToolParam(name = "toRevision", description = "Newer side of the comparison; the working tree when omitted", required = false) String toRevision)
@@ -224,7 +224,7 @@ public class ServoyGitServer
 	public String gitReset(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "filePattern", description = "File pattern to unstage (e.g., '.' for all, or a specific file path)", required = true) String filePattern)
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders to unstage, or '.' for the whole project. Each path is either project-relative ('src/Foo.java') or repository-relative as gitStatus prints it ('bundles/my.project/src/Foo.java') - both work, a path is never prefixed twice.", required = true) String filePattern)
 	{
 		return gitService.resetFiles(projectName, repo, filePattern);
 	}
@@ -283,7 +283,7 @@ public class ServoyGitServer
 	public String gitRemove(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
-		@ToolParam(name = "filePattern", description = "Comma-separated files or folders relative to the Eclipse project, or '.' for every tracked file", required = true) String filePattern)
+		@ToolParam(name = "filePattern", description = "Comma-separated files or folders, or '.' for every tracked file under the project. Each path is either project-relative or repository-relative as gitStatus prints it - both work, a path is never prefixed twice.", required = true) String filePattern)
 	{
 		return gitService.removeFromIndex(projectName, repo, filePattern);
 	}

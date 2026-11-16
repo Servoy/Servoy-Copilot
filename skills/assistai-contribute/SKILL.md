@@ -280,14 +280,20 @@ Per fix that passed the gate, **with user confirmation before each remote step**
    # NEVER inline it as --body "..." : the text describes code and will contain
    # backticked identifiers, $ and quotes, which the shell would execute or mangle
    # inside double quotes (command substitution). --body-file avoids all of it.
+   #
+   # The TITLE needs the same care. It is short, so it looks safe - but it names
+   # the method or class being fixed, and a backticked identifier in it is
+   # command substitution just as surely as in the body. Put it in a shell
+   # variable with single quotes and pass the variable.
    cat > /tmp/opencode/assistai-pr-body.md <<'EOF'
    <what the fix does, why it's general, that it was first made in Servoy's port
    (SVY-xxxxx), and that upstream mvn verify passes>
    EOF
+   PR_TITLE='<concise title, single-quoted so nothing in it is evaluated>'
    gh pr create --repo gradusnikov/eclipse-chatgpt-plugin \
      --base main --head Servoy:contrib/SVY-xxxxx-<slug> \
      --draft \
-     --title "<concise title>" \
+     --title "$PR_TITLE" \
      --body-file /tmp/opencode/assistai-pr-body.md
    ```
    The quoted heredoc (`<<'EOF'`) keeps the body literal too. Use the same

@@ -567,6 +567,247 @@ public class GitServiceToolsTest
 				() -> assertNull(GitService.projectPrefixOrNull("")),
 				() -> assertNull(GitService.projectPrefixOrNull("   ")));
 		}
+
+	/**
+	 * {@code prefixOnce} is the fix for the second-round review finding: {@code gitStatus} prints
+	 * repository-relative paths, so pasting one into {@code gitAdd} used to get the project prefix
+	 * prepended a second time, producing {@code bundles/x/bundles/x/...} - which matches nothing,
+	 * and Git does not fail on a pathspec that matches nothing, so the tool answered "Added: ..."
+	 * having staged nothing. That is the bug upstream's {@code aca70c0} fixed, re-created in the
+	 * opposite direction.
+	 */
+	@Nested
+	@DisplayName("both path forms are accepted (prefixOnce)")
+	class PrefixOnce
+	{
+		@Test
+		@DisplayName("a project-relative path gets the prefix")
+		void projectRelativeIsPrefixed()
+		{
+			assertEquals("bundles/my.project/src/Foo.java",
+				GitService.prefixOnce("bundles/my.project", "src/Foo.java"));
+		}
+
+		@Test
+		@DisplayName("an already-prefixed path is NOT prefixed again - the bug this fixes")
+		void repositoryRelativeIsLeftAlone()
+		{
+			assertEquals("bundles/my.project/src/Foo.java",
+				GitService.prefixOnce("bundles/my.project", "bundles/my.project/src/Foo.java"),
+				"A path copied out of gitStatus must not become bundles/x/bundles/x/...");
+		}
+
+		@Test
+		@DisplayName("the prefix itself is left alone")
+		void prefixItselfIsLeftAlone()
+		{
+			assertEquals("bundles/my.project", GitService.prefixOnce("bundles/my.project", "bundles/my.project"));
+		}
+
+		@Test
+		@DisplayName("a sibling project whose name merely starts the same IS still prefixed")
+		void siblingWithSharedPrefixIsStillPrefixed()
+		{
+			// The test is on a path-segment boundary, so "bundles/my.project-tests/..." is NOT inside
+			// "bundles/my.project" and must be treated as project-relative.
+			assertEquals("bundles/my.project/bundles/my.project-tests/x.txt",
+				GitService.prefixOnce("bundles/my.project", "bundles/my.project-tests/x.txt"),
+				"A segment-boundary check must not mistake a sibling for an already-resolved path");
+		}
+
+		@Test
+		@DisplayName("no prefix leaves the path as it is")
+		void noPrefix()
+		{
+			assertAll(
+				() -> assertEquals("src/Foo.java", GitService.prefixOnce(null, "src/Foo.java")),
+				() -> assertEquals("src/Foo.java", GitService.prefixOnce("", "src/Foo.java")),
+				() -> assertEquals("src/Foo.java", GitService.prefixOnce("   ", "src/Foo.java")));
+		}
+	}
+
+	/**
+	 * Staging and unstaging accept a path in EITHER form, driven through the real cores against a
+	 * repository laid out like this one (projects under {@code bundles/}).
+	 */
+	@Nested
+	@DisplayName("staging accepts a path copied from gitStatus")
+	class StagingAcceptsBothForms
+	{
+		@BeforeEach
+		void createNestedProject() throws Exception
+		{
+			commitFile("root.txt", "root\n", "initial commit");
+			Files.createDirectories(tempDir.resolve("bundles/project-a/src"));
+			Files.writeString(tempDir.resolve("bundles/project-a/src/Foo.java"), "class Foo {}\n");
+		}
+
+		@Test
+		@DisplayName("the repository-relative form, as gitStatus prints it, stages the file")
+		void repositoryRelativeFormStages() throws Exception
+		{
+			// Exactly what gitStatus would print, and what resolveWritePaths now produces for it.
+			GitService.stageIn(repository, List.of(
+				GitService.prefixOnce("bundles/project-a", "bundles/project-a/src/Foo.java")), "<pasted>");
+
+			assertTrue(git.status().call().getAdded().contains("bundles/project-a/src/Foo.java"),
+				"A path copied from gitStatus must stage the file it names");
+		}
+
+		@Test
+		@DisplayName("the project-relative form stages the same file")
+		void projectRelativeFormStages() throws Exception
+		{
+			GitService.stageIn(repository, List.of(
+				GitService.prefixOnce("bundles/project-a", "src/Foo.java")), "src/Foo.java");
+
+			assertTrue(git.status().call().getAdded().contains("bundles/project-a/src/Foo.java"),
+				"A project-relative path must stage the same file");
+		}
+
+		@Test
+		@DisplayName("a double-prefixed path matches nothing - what the bug produced")
+		void doublePrefixedMatchesNothing() throws Exception
+		{
+			// The pre-fix behaviour, asserted so the symptom is on record: the pathspec is well-formed
+			// and Git accepts it, it simply names a file that does not exist.
+			GitService.stageIn(repository, List.of("bundles/project-a/bundles/project-a/src/Foo.java"), ".");
+
+			assertTrue(git.status().call().getAdded().isEmpty(),
+				"A double-prefixed path stages nothing, which is why the old behaviour looked like success");
+		}
+	}
+
+	/**
+	 * A read tool's blank filter means the WHOLE REPOSITORY, not the project - the first
+	 * second-round review finding. Narrowing a read to the project silently changed what
+	 * {@code gitDiff(projectName)} answers compared with plain {@code git diff}, and upstream
+	 * AssistAI draws the same read/write distinction ({@code resolveDiffPaths} vs
+	 * {@code resolvePathspecs}).
+	 * <p>
+	 * The resolver itself needs a workbench for the prefix, so what is driven here is the rendering
+	 * layer: an empty pathspec list (what a blank filter now produces) must diff everything, while a
+	 * project prefix (what {@code "."} produces) must diff only that subtree.
+	 * </p>
+	 */
+	@Nested
+	@DisplayName("a read tool's blank filter covers the whole repository")
+	class ReadFilterScope
+	{
+		@BeforeEach
+		void twoNestedProjects() throws Exception
+		{
+			Files.createDirectories(tempDir.resolve("bundles/project-a"));
+			Files.createDirectories(tempDir.resolve("tests/project-a.tests"));
+			Files.writeString(tempDir.resolve("bundles/project-a/a.txt"), "one\n");
+			Files.writeString(tempDir.resolve("tests/project-a.tests/t.txt"), "one\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("initial commit").call();
+
+			Files.writeString(tempDir.resolve("bundles/project-a/a.txt"), "two\n");
+			Files.writeString(tempDir.resolve("tests/project-a.tests/t.txt"), "two\n");
+		}
+
+		@Test
+		@DisplayName("no filter diffs both projects")
+		void noFilterCoversEverything()
+		{
+			String diff = GitService.renderDiff(repository, false, List.of(), false);
+
+			assertAll(
+				() -> assertTrue(diff.contains("bundles/project-a/a.txt"),
+					"The main project's change must appear: " + diff),
+				() -> assertTrue(diff.contains("tests/project-a.tests/t.txt"),
+					"The sibling project's change must appear too - a blank filter is the whole repository"));
+		}
+
+		@Test
+		@DisplayName("a project prefix diffs only that project")
+		void prefixNarrowsToOneProject()
+		{
+			String diff = GitService.renderDiff(repository, false, List.of("bundles/project-a"), false);
+
+			assertAll(
+				() -> assertTrue(diff.contains("bundles/project-a/a.txt"), "The named project must appear"),
+				() -> assertFalse(diff.contains("tests/project-a.tests/t.txt"),
+					"The sibling must NOT appear when a prefix was given"));
+		}
+
+		@Test
+		@DisplayName("the same split holds for a commit's diff")
+		void showCommitHonoursTheSameSplit() throws Exception
+		{
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("touch both projects").call();
+
+			String all = GitService.renderCommit(repository, "HEAD", List.of());
+			String narrowed = GitService.renderCommit(repository, "HEAD", List.of("bundles/project-a"));
+
+			assertAll(
+				() -> assertTrue(all.contains("bundles/project-a/a.txt") &&
+					all.contains("tests/project-a.tests/t.txt"), "No filter shows the whole commit"),
+				() -> assertFalse(narrowed.contains("tests/project-a.tests/t.txt"),
+					"A prefix narrows the commit's diff"));
+		}
+	}
+
+	/**
+	 * {@code gitRemoteList}'s output goes to a model and into session transcripts, so a token
+	 * embedded in a remote URL must not be echoed (second-round review finding).
+	 */
+	@Nested
+	@DisplayName("remote URLs are redacted")
+	class RedactUserInfo
+	{
+		@Test
+		@DisplayName("an embedded token is replaced, host and path kept")
+		void tokenIsRedacted()
+		{
+			String redacted = GitService.redactUserInfo("https://x-access-token:ghp_secret123@github.com/o/r.git");
+
+			assertAll(
+				() -> assertFalse(redacted.contains("ghp_secret123"), "The token must be gone: " + redacted),
+				() -> assertFalse(redacted.contains("x-access-token"), "The user part must be gone too: " + redacted),
+				() -> assertTrue(redacted.contains("github.com/o/r.git"), "The host and path must remain"));
+		}
+
+		@Test
+		@DisplayName("a password without a user is removed")
+		void passwordOnly()
+		{
+			String redacted = GitService.redactUserInfo("https://:hunter2@example.com/r.git");
+			assertFalse(redacted.contains("hunter2"), "The password must be gone: " + redacted);
+		}
+
+		@Test
+		@DisplayName("a URL with no credentials is left untouched")
+		void cleanUrlUnchanged()
+		{
+			assertAll(
+				() -> assertEquals("https://github.com/o/r.git",
+					GitService.redactUserInfo("https://github.com/o/r.git")),
+				() -> assertEquals("/home/me/repos/r", GitService.redactUserInfo("/home/me/repos/r")));
+		}
+
+		@Test
+		@DisplayName("an scp-style address keeps its user - there is no secret in it")
+		void scpStyleKeepsUser()
+		{
+			// git@github.com:o/r.git carries a user but never a password; stripping it would make the
+			// remote unusable to read, and nothing is leaked by showing it.
+			String redacted = GitService.redactUserInfo("git@github.com:o/r.git");
+			assertTrue(redacted.contains("github.com:o/r.git"), "The address must stay usable: " + redacted);
+		}
+
+		@Test
+		@DisplayName("null and blank are returned as they are")
+		void nullAndBlank()
+		{
+			assertAll(
+				() -> assertNull(GitService.redactUserInfo(null)),
+				() -> assertEquals("", GitService.redactUserInfo("")));
+		}
+	}
 	}
 	}
 }
