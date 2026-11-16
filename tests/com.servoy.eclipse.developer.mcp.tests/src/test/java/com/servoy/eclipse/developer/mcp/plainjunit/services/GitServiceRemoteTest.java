@@ -125,6 +125,23 @@ public class GitServiceRemoteTest
 		}
 	}
 
+	/**
+	 * Configures a remote that <em>exists</em> but points at a {@code file://} path with no
+	 * repository there, so the transport fails locally - the no-network way to drive the
+	 * {@code TransportException} branch of the remote operations (as opposed to the
+	 * {@code InvalidRemoteException} branch an unknown remote name takes).
+	 */
+	private void addBrokenRemote(String remoteName) throws Exception
+	{
+		Path bogus = tempDir.resolve("does-not-exist.git");
+		StoredConfig config = repository.getConfig();
+		RemoteConfig broken = new RemoteConfig(config, remoteName);
+		broken.addURI(new URIish(bogus.toUri().toString()));
+		broken.addFetchRefSpec(new RefSpec("+refs/heads/*:refs/remotes/" + remoteName + "/*"));
+		broken.update(config);
+		config.save();
+	}
+
 	@Nested
 	@DisplayName("fetch")
 	class Fetch
@@ -189,6 +206,20 @@ public class GitServiceRemoteTest
 				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
 				() -> assertTrue(result.contains("nowhere"), "Should name the remote: " + result),
 				() -> assertTrue(result.contains("gitRemoteList"), "Should say how to find a valid one: " + result));
+		}
+
+		@Test
+		@DisplayName("a configured remote that points at a missing repository is reported as FAILED, not thrown")
+		void brokenRemoteTransportIsReported() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			addBrokenRemote("broken");
+
+			String result = GitService.fetchIn(repository, "broken", false);
+
+			assertAll(
+				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
+				() -> assertTrue(result.contains("broken"), "Should name the remote: " + result));
 		}
 	}
 
@@ -298,6 +329,37 @@ public class GitServiceRemoteTest
 				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
 				() -> assertTrue(result.contains("nowhere"), "Should name the remote: " + result));
 		}
+
+		@Test
+		@DisplayName("a configured remote that points at a missing repository is reported as FAILED, not thrown")
+		void brokenRemoteTransportIsReported() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			addBrokenRemote("broken");
+
+			String result = GitService.pushIn(repository, "broken", null, false, false);
+
+			assertAll(
+				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
+				() -> assertTrue(result.contains("broken"), "Should name the remote: " + result));
+		}
+
+		@Test
+		@DisplayName("setUpstream on a second push that has nothing new still records the upstream")
+		void setUpstreamOnUpToDatePush() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			GitService.pushIn(repository, null, null, false, false);
+
+			String result = GitService.pushIn(repository, null, null, true, false);
+
+			StoredConfig config = repository.getConfig();
+			assertAll(
+				() -> assertTrue(result.contains("UP_TO_DATE"), "Nothing new should be up to date: " + result),
+				() -> assertTrue(result.contains("upstream"), "Should still record the upstream: " + result),
+				() -> assertEquals("origin", config.getString(ConfigConstants.CONFIG_BRANCH_SECTION, branch,
+					ConfigConstants.CONFIG_KEY_REMOTE), "The remote must be recorded"));
+		}
 	}
 
 	@Nested
@@ -399,6 +461,103 @@ public class GitServiceRemoteTest
 			assertAll(
 				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
 				() -> assertTrue(result.contains("nowhere"), "Should name the remote: " + result));
+		}
+
+		@Test
+		@DisplayName("divergent histories with no overlapping change merge cleanly into a merge commit")
+		void divergentHistoriesMerge() throws Exception
+		{
+			commitFile("base.txt", "base\n", "base commit");
+			publishBranch();
+			commitOnRemote("remote-only.txt", "remote\n", "commit made on the remote");
+			RevCommit localOnly = commitFile("local-only.txt", "local\n", "local-only commit");
+
+			String result = GitService.pullIn(repository, null, null, false);
+
+			RevCommit head = repository.parseCommit(repository.resolve(Constants.HEAD));
+			assertAll(
+				() -> assertTrue(result.contains("MERGED"), "Divergent clean histories should merge: " + result),
+				() -> assertEquals(2, head.getParentCount(), "A merge commit has two parents"),
+				() -> assertEquals(localOnly.getName(), head.getParent(0).getName(),
+					"The first parent must be the local commit"),
+				() -> assertTrue(Files.exists(repository.getWorkTree().toPath().resolve("remote-only.txt")),
+					"The merged-in remote file must be present"));
+		}
+
+		@Test
+		@DisplayName("a rebase pull with nothing new reports it is already up to date")
+		void rebaseAlreadyUpToDate() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			publishBranch();
+
+			String result = GitService.pullIn(repository, null, null, true);
+
+			assertTrue(result.contains("ALREADY_UP_TO_DATE"), "Should report up to date: " + result);
+		}
+
+		@Test
+		@DisplayName("a rebase pull with only remote commits fast-forwards")
+		void rebaseFastForwards() throws Exception
+		{
+			commitFile("file.txt", "base\n", "base commit");
+			publishBranch();
+			RevCommit onRemote = commitOnRemote("remote.txt", "remote\n", "commit made on the remote");
+
+			String result = GitService.pullIn(repository, null, null, true);
+
+			assertAll(
+				() -> assertTrue(result.contains("FAST_FORWARD") || result.contains("REBASED"),
+					"Should advance onto the remote commit: " + result),
+				() -> assertEquals(onRemote.getName(), headSha(), "HEAD must be the remote commit"));
+		}
+
+		@Test
+		@DisplayName("a rebase pull that conflicts reports CONFLICTED and leaves the repository mid-rebase")
+		void rebaseConflictReportsFile() throws Exception
+		{
+			commitFile("shared.txt", "base\n", "base commit");
+			publishBranch();
+			commitOnRemote("shared.txt", "from the remote\n", "remote change to the shared line");
+			commitFile("shared.txt", "from the local\n", "local change to the shared line");
+
+			String result = GitService.pullIn(repository, null, null, true);
+
+			assertAll(
+				() -> assertTrue(result.contains("CONFLICTED"), "Should report the conflict: " + result),
+				() -> assertTrue(result.contains("shared.txt"), "Should name the conflicting file: " + result),
+				() -> assertTrue(result.contains("gitRebase") || result.contains("CONTINUE"),
+					"Should say how to continue the rebase: " + result));
+		}
+
+		@Test
+		@DisplayName("a configured upstream branch the remote does not have is reported with what to do next")
+		void upstreamBranchMissingOnRemote() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			publishBranch();
+
+			String result = GitService.pullIn(repository, null, "no-such-remote-branch", false);
+
+			assertAll(
+				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
+				() -> assertTrue(result.contains("no-such-remote-branch"), "Should name the missing branch: " + result),
+				() -> assertTrue(result.contains("setUpstream") || result.contains("remoteBranch"),
+					"Should say what to do next: " + result));
+		}
+
+		@Test
+		@DisplayName("a configured remote that points at a missing repository is reported as FAILED, not thrown")
+		void brokenRemoteTransportIsReported() throws Exception
+		{
+			commitFile("file.txt", "local\n", "local commit");
+			addBrokenRemote("broken");
+
+			String result = GitService.pullIn(repository, "broken", branch, false);
+
+			assertAll(
+				() -> assertTrue(result.contains("FAILED"), "Should report a failure: " + result),
+				() -> assertTrue(result.contains("broken"), "Should name the remote: " + result));
 		}
 	}
 }

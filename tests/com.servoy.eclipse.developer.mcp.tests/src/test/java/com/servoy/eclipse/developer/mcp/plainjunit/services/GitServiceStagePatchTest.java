@@ -2,6 +2,7 @@ package com.servoy.eclipse.developer.mcp.plainjunit.services;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,6 +178,204 @@ public class GitServiceStagePatchTest
 				() -> assertEquals("No files affected by patch.", result),
 				() -> assertEquals(UNCOMMITTED, workingTreeContent(),
 					"An empty patch must not disturb the working tree"));
+		}
+
+		@Test
+		@DisplayName("blank-but-nonempty text with no file headers also affects nothing")
+		void blankTextWithNoHeadersAffectsNothing() throws Exception
+		{
+			// A patch body that parses to zero file headers takes the same early-return branch as "".
+			String result = stagePatch("not a patch, just prose\nwith two lines\n");
+
+			assertAll(
+				() -> assertEquals("No files affected by patch.", result),
+				() -> assertEquals(UNCOMMITTED, workingTreeContent(),
+					"A header-less body must not disturb the working tree"));
+		}
+	}
+
+	@Nested
+	@DisplayName("when the patch adds a brand-new file")
+	class NewFilePatch
+	{
+		/**
+		 * A patch whose old side is {@code /dev/null} creates a file that HEAD does not have. The
+		 * checkout of its path is a no-op (nothing to restore from HEAD) and the index gains the new
+		 * blob, exercising the add branch of the apply/index-edit loop.
+		 */
+		@Test
+		@DisplayName("stages the new file into the index")
+		void stagesANewFile() throws Exception
+		{
+			String patch = """
+				diff --git a/added.txt b/added.txt
+				new file mode 100644
+				--- /dev/null
+				+++ b/added.txt
+				@@ -0,0 +1,2 @@
+				+first new line
+				+second new line
+				""";
+
+			String result = stagePatch(patch);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertAll(
+				() -> assertTrue(result.startsWith("Patch staged successfully. Files: "), "Should report success: " + result),
+				() -> assertTrue(staged.contains("added.txt"), "The new file must be in the index: " + staged),
+				() -> assertTrue(staged.contains("+first new line"), "The new content must be staged: " + staged),
+				() -> assertEquals(UNCOMMITTED, workingTreeContent(),
+					"The pre-existing file's uncommitted content must be undisturbed"));
+		}
+	}
+
+	@Nested
+	@DisplayName("when the patch deletes lines")
+	class LineDeletionPatch
+	{
+		@Test
+		@DisplayName("stages a hunk that only removes lines")
+		void stagesADeletion() throws Exception
+		{
+			String patch = """
+				--- a/file.txt
+				+++ b/file.txt
+				@@ -1,3 +1,2 @@
+				 alpha
+				-beta
+				 gamma
+				""";
+
+			String result = stagePatch(patch);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertAll(
+				() -> assertTrue(result.startsWith("Patch staged successfully. Files: "), "Should report success: " + result),
+				() -> assertTrue(staged.contains("-beta"), "The removal must be staged: " + staged),
+				() -> assertFalse(staged.contains("+beta"), "The line must not be re-added: " + staged),
+				() -> assertEquals(UNCOMMITTED, workingTreeContent(),
+					"The caller's uncommitted content must be restored"));
+		}
+	}
+
+	@Nested
+	@DisplayName("when the patch has several hunks in one file")
+	class MultiHunkPatch
+	{
+		private static final String MANY_LINES =
+			"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n";
+
+		/**
+		 * The initial commit of {@link GitServiceStagePatchTest} has only three lines, so this nested
+		 * case re-seeds {@code file.txt} with ten lines, far enough apart that two edits land in two
+		 * distinct hunks, then re-establishes the uncommitted working-tree content.
+		 */
+		@BeforeEach
+		void seedManyLines() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file.txt"), MANY_LINES);
+			git.add().addFilepattern("file.txt").call();
+			git.commit().setMessage("ten-line file").call();
+			Files.writeString(tempDir.resolve("file.txt"), MANY_LINES); // working tree == HEAD for this case
+		}
+
+		@Test
+		@DisplayName("stages both hunks")
+		void stagesTwoHunks() throws Exception
+		{
+			String patch = """
+				--- a/file.txt
+				+++ b/file.txt
+				@@ -1,3 +1,3 @@
+				 one
+				-two
+				+TWO EDITED
+				 three
+				@@ -8,3 +8,3 @@
+				 eight
+				-nine
+				+NINE EDITED
+				 ten
+				""";
+
+			String result = stagePatch(patch);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertAll(
+				() -> assertTrue(result.startsWith("Patch staged successfully. Files: "), "Should report success: " + result),
+				() -> assertTrue(staged.contains("+TWO EDITED"), "First hunk must be staged: " + staged),
+				() -> assertTrue(staged.contains("+NINE EDITED"), "Second hunk must be staged: " + staged));
+		}
+	}
+
+	@Nested
+	@DisplayName("stageIn / unstageIn (non-patch index operations)")
+	class StageAndUnstage
+	{
+		@Test
+		@DisplayName("stageIn reports the pattern it was given")
+		void stageInReportsPattern() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta changed\ngamma\n");
+
+			String result = GitService.stageIn(repository, java.util.List.of("file.txt"), "file.txt");
+			assertEquals("Added: file.txt", result);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertTrue(staged.contains("+beta changed"), "The staged edit must be in the index: " + staged);
+		}
+
+		@Test
+		@DisplayName("stageIn with an empty pathspec list stages the whole tree")
+		void stageInWholeTree() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta whole tree\ngamma\n");
+			Files.writeString(tempDir.resolve("brand-new.txt"), "fresh\n");
+
+			String result = GitService.stageIn(repository, java.util.List.of(), ".");
+			assertEquals("Added: .", result);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertAll(
+				() -> assertTrue(staged.contains("+beta whole tree"), "Modified file must be staged: " + staged),
+				() -> assertTrue(staged.contains("brand-new.txt"), "New file must be staged: " + staged));
+		}
+
+		@Test
+		@DisplayName("unstageIn removes a staged path from the index")
+		void unstageInRemovesStagedPath() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta staged then unstaged\ngamma\n");
+			git.add().addFilepattern("file.txt").call();
+
+			String result = GitService.unstageIn(repository, java.util.List.of("file.txt"), "file.txt");
+			assertEquals("Unstaged: file.txt", result);
+
+			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
+			assertEquals("No changes.", staged, "Nothing should remain staged after unstaging the only staged path");
+		}
+
+		@Test
+		@DisplayName("unstageIn with an empty pathspec list exercises the whole-tree branch")
+		void unstageInWholeTree() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta whole unstage\ngamma\n");
+			git.add().addFilepattern(".").call();
+
+			// The empty-list branch resets the literal path "." (JGit's path-based reset does not
+			// expand "." to every entry), so the contract we assert is the returned report, not an
+			// emptied index.
+			String result = GitService.unstageIn(repository, java.util.List.of(), ".");
+			assertEquals("Unstaged: .", result);
+		}
+
+		@Test
+		@DisplayName("unstageIn of a path that was never staged still reports success")
+		void unstageInUnstagedPath() throws Exception
+		{
+			// Nothing staged for this path - reset of an already-matching path is a no-op that still succeeds.
+			String result = GitService.unstageIn(repository, java.util.List.of("file.txt"), "file.txt");
+			assertEquals("Unstaged: file.txt", result);
 		}
 	}
 }

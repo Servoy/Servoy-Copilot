@@ -82,6 +82,14 @@ public class GitServiceDiffTest
 		return GitService.renderDiff(repository, staged, List.of(), true);
 	}
 
+	/** Commits the given content under the given file name, returning nothing. */
+	private void commitFile(String name, String content) throws Exception
+	{
+		Files.writeString(tempDir.resolve(name), content);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("commit " + name).call();
+	}
+
 	@Nested
 	@DisplayName("when repository has no commits")
 	class NoCommits
@@ -450,6 +458,289 @@ public class GitServiceDiffTest
 			assertAll(
 				() -> assertTrue(result.contains("code.txt"), "Should still report the file"),
 				() -> assertTrue(result.contains("+gamma"), "Should still show the real change"));
+		}
+	}
+
+	@Nested
+	@DisplayName("when a binary file changes")
+	class BinaryFile
+	{
+		@BeforeEach
+		void commitBinaryThenChangeIt() throws Exception
+		{
+			byte[] original = new byte[] { 0, 1, 2, 3, 0, 4, 5, 6, 0, 7 };
+			Files.write(tempDir.resolve("blob.bin"), original);
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("initial commit").call();
+
+			byte[] changed = new byte[] { 0, 9, 8, 7, 0, 6, 5, 4, 0, 3, 2, 1 };
+			Files.write(tempDir.resolve("blob.bin"), changed);
+		}
+
+		@Test
+		@DisplayName("reports the file as a binary difference, not line content")
+		void reportsBinaryDifference() throws Exception
+		{
+			String result = getDiff(false);
+			assertAll(
+				() -> assertTrue(result.contains("blob.bin"), "Should reference the binary file: " + result),
+				() -> assertTrue(result.contains("Binary files") || result.contains("GIT binary patch"),
+					"Should mark the change as binary rather than emitting text hunks: " + result));
+		}
+	}
+
+	@Nested
+	@DisplayName("when a staged diff has no changes but the working tree does")
+	class StagedIdenticalWhileWorkingTreeDiffers
+	{
+		@BeforeEach
+		void commitThenModifyWorkingTreeOnly() throws Exception
+		{
+			Path file = tempDir.resolve("hello.txt");
+			Files.writeString(file, "Hello World\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("initial commit").call();
+
+			// Working-tree-only edit; index still equals HEAD.
+			Files.writeString(file, "Hello Working Only\n");
+		}
+
+		@Test
+		@DisplayName("the staged diff is 'No changes.' even though the working tree differs")
+		void stagedIsNoChangesWhileWorkingTreeDiffers() throws Exception
+		{
+			assertEquals("No changes.", getDiff(true), "HEAD-vs-index must be clean when only the working tree changed");
+			assertTrue(getDiff(false).contains("+Hello Working Only"), "The working-tree diff must still show the edit");
+		}
+	}
+
+	@Nested
+	@DisplayName("renderRevisionDiff between two revisions")
+	class RevisionDiff
+	{
+		@BeforeEach
+		void buildThreeCommits() throws Exception
+		{
+			commitFile("file1.txt", "v1 line\n");
+			commitFile("file2.txt", "other v1\n");
+			// second commit edits file1 only
+			Files.writeString(tempDir.resolve("file1.txt"), "v2 line\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("edit file1").call();
+		}
+
+		@Test
+		@DisplayName("shows the change between HEAD~1 and HEAD")
+		void diffsTwoRevisions()
+		{
+			String result = GitService.renderRevisionDiff(repository, "HEAD~1", "HEAD", List.of(), false);
+			assertAll(
+				() -> assertTrue(result.contains("file1.txt"), "Should reference the changed file: " + result),
+				() -> assertTrue(result.contains("-v1 line"), "Should show the old line: " + result),
+				() -> assertTrue(result.contains("+v2 line"), "Should show the new line: " + result));
+		}
+
+		@Test
+		@DisplayName("a path filter limits the revision diff")
+		void revisionDiffWithPathFilter()
+		{
+			String result = GitService.renderRevisionDiff(repository, "HEAD~1", "HEAD", List.of("file2.txt"), false);
+			// file2.txt did not change between HEAD~1 and HEAD, so the filtered diff is empty.
+			assertEquals("No changes.", result, "A filter on an unchanged file must yield no diff: " + result);
+		}
+
+		@Test
+		@DisplayName("identical revisions produce no diff")
+		void identicalRevisionsNoDiff()
+		{
+			String result = GitService.renderRevisionDiff(repository, "HEAD", "HEAD", List.of(), false);
+			assertEquals("No changes.", result);
+		}
+
+		@Test
+		@DisplayName("a blank fromRevision defaults to HEAD and compares against the working tree")
+		void blankFromDefaultsToHead() throws Exception
+		{
+			Files.writeString(tempDir.resolve("file1.txt"), "working tree edit\n");
+			// null toRevision = working tree; blank fromRevision = HEAD.
+			String result = GitService.renderRevisionDiff(repository, "", null, List.of(), false);
+			assertTrue(result.contains("+working tree edit"), "HEAD-vs-working-tree should show the edit: " + result);
+		}
+	}
+
+	@Nested
+	@DisplayName("renderCommit")
+	class ShowCommit
+	{
+		@Test
+		@DisplayName("a root commit has no Parents line and shows the added content")
+		void rootCommit() throws Exception
+		{
+			commitFile("root.txt", "root content\n");
+
+			String result = GitService.renderCommit(repository, "HEAD", List.of());
+			assertAll(
+				() -> assertTrue(result.startsWith("commit "), "Should start with the commit header: " + result),
+				() -> assertTrue(result.contains("Author: "), "Should carry the author line"),
+				() -> assertTrue(result.contains("Date:   "), "Should carry the date line"),
+				() -> assertFalse(result.contains("Parents:"), "A root commit must have no Parents line: " + result),
+				() -> assertTrue(result.contains("commit root.txt"), "Should include the commit message"),
+				() -> assertTrue(result.contains("+root content"), "Should show the added content"));
+		}
+
+		@Test
+		@DisplayName("a merge commit lists both parents")
+		void mergeCommit() throws Exception
+		{
+			// base commit on the default branch
+			commitFile("base.txt", "base\n");
+			String mainBranch = repository.getBranch();
+
+			// a side branch that adds its own file
+			git.checkout().setCreateBranch(true).setName("side").call();
+			Files.writeString(tempDir.resolve("side.txt"), "side content\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("side commit").call();
+
+			// back to main, add a non-conflicting change, then merge side with a merge commit
+			git.checkout().setName(mainBranch).call();
+			Files.writeString(tempDir.resolve("main.txt"), "main content\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("main commit").call();
+
+			git.merge()
+				.include(repository.resolve("side"))
+				.setFastForward(org.eclipse.jgit.api.MergeCommand.FastForwardMode.NO_FF)
+				.setMessage("merge side into main")
+				.call();
+
+			String result = GitService.renderCommit(repository, "HEAD", List.of());
+			assertAll(
+				() -> assertTrue(result.startsWith("commit "), "Should start with the commit header: " + result),
+				() -> assertTrue(result.contains("Parents: "), "A merge commit must list its parents: " + result),
+				() -> assertTrue(result.indexOf(' ', result.indexOf("Parents: ") + "Parents: ".length()) > 0,
+					"Parents line should carry two space-separated shas: " + result),
+				() -> assertTrue(result.contains("merge side into main"), "Should include the merge message"));
+		}
+	}
+
+	@Nested
+	@DisplayName("discardChangesIn")
+	class DiscardChanges
+	{
+		@BeforeEach
+		void commitAndModify() throws Exception
+		{
+			commitFile("tracked.txt", "original\n");
+			Files.writeString(tempDir.resolve("tracked.txt"), "modified in working tree\n");
+		}
+
+		@Test
+		@DisplayName("restores a modified tracked file and reports it")
+		void restoresModifiedFile() throws Exception
+		{
+			String result = GitService.discardChangesIn(repository, List.of("tracked.txt"), "tracked.txt");
+			assertAll(
+				() -> assertTrue(result.startsWith("Discarded changes in 1 file(s):"), "Should report one discarded file: " + result),
+				() -> assertTrue(result.contains("tracked.txt"), "Should name the restored file: " + result),
+				() -> assertEquals("original\n", Files.readString(tempDir.resolve("tracked.txt")),
+					"The committed content must be back on disk"));
+		}
+
+		@Test
+		@DisplayName("an empty pathspec discards everything modified")
+		void discardsWholeTree() throws Exception
+		{
+			String result = GitService.discardChangesIn(repository, List.of(), ".");
+			assertAll(
+				() -> assertTrue(result.startsWith("Discarded changes in 1 file(s):"), "Should discard the one modified file: " + result),
+				() -> assertEquals("original\n", Files.readString(tempDir.resolve("tracked.txt")),
+					"The committed content must be back on disk"));
+		}
+
+		@Test
+		@DisplayName("a pattern matching nothing modified reports no match")
+		void patternMatchingNothing()
+		{
+			String result = GitService.discardChangesIn(repository, List.of("does-not-exist.txt"), "does-not-exist.txt");
+			assertEquals("No modified tracked files matched: does-not-exist.txt", result);
+		}
+	}
+
+	@Nested
+	@DisplayName("resetToRevisionIn")
+	class ResetToRevision
+	{
+		@BeforeEach
+		void buildTwoCommitsWithWorkingEdit() throws Exception
+		{
+			commitFile("reset.txt", "first\n");
+			Files.writeString(tempDir.resolve("reset.txt"), "second\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("second commit").call();
+		}
+
+		@Test
+		@DisplayName("SOFT reset moves HEAD and reports was/now shas")
+		void softReset() throws Exception
+		{
+			String result = GitService.resetToRevisionIn(repository, "HEAD~1", "SOFT");
+			assertAll(
+				() -> assertTrue(result.startsWith("Reset (SOFT) to HEAD~1."), "Should report the SOFT mode and target: " + result),
+				() -> assertTrue(result.contains("was: "), "Should report the previous head: " + result),
+				() -> assertTrue(result.contains("now: "), "Should report the new head: " + result),
+				// SOFT keeps index and working tree, so the second-commit content is still staged.
+				() -> assertTrue(GitService.renderDiff(repository, true, List.of(), false).contains("+second"),
+					"SOFT reset must leave the undone change staged"));
+		}
+
+		@Test
+		@DisplayName("MIXED reset keeps the working tree but unstages the change")
+		void mixedReset() throws Exception
+		{
+			String result = GitService.resetToRevisionIn(repository, "HEAD~1", "MIXED");
+			assertAll(
+				() -> assertTrue(result.startsWith("Reset (MIXED) to HEAD~1."), "Should report the MIXED mode and target: " + result),
+				() -> assertEquals("No changes.", GitService.renderDiff(repository, true, List.of(), false),
+					"MIXED reset must leave nothing staged"),
+				() -> assertTrue(GitService.renderDiff(repository, false, List.of(), false).contains("+second"),
+					"MIXED reset must keep the change in the working tree"),
+				() -> assertEquals("second\n", Files.readString(tempDir.resolve("reset.txt")),
+					"MIXED reset must not touch the working-tree file"));
+		}
+
+		@Test
+		@DisplayName("HARD reset rewrites the working tree back to the target")
+		void hardReset() throws Exception
+		{
+			String result = GitService.resetToRevisionIn(repository, "HEAD~1", "HARD");
+			assertAll(
+				() -> assertTrue(result.startsWith("Reset (HARD) to HEAD~1."), "Should report the HARD mode and target: " + result),
+				() -> assertEquals("first\n", Files.readString(tempDir.resolve("reset.txt")),
+					"HARD reset must restore the working-tree file to the target revision"),
+				() -> assertEquals("No changes.", GitService.renderDiff(repository, false, List.of(), false),
+					"HARD reset must leave a clean working tree"));
+		}
+
+		@Test
+		@DisplayName("a blank mode defaults to MIXED")
+		void blankModeDefaultsToMixed()
+		{
+			String result = GitService.resetToRevisionIn(repository, "HEAD", "");
+			assertTrue(result.startsWith("Reset (MIXED) to HEAD."), "A blank mode must default to MIXED: " + result);
+		}
+
+		@Test
+		@DisplayName("an unknown mode is rejected with a helpful message")
+		void unknownModeRejected()
+		{
+			IllegalArgumentException thrown = org.junit.jupiter.api.Assertions.assertThrows(
+				IllegalArgumentException.class,
+				() -> GitService.resetToRevisionIn(repository, "HEAD", "SIDEWAYS"));
+			assertTrue(thrown.getMessage().contains("Unknown reset mode 'SIDEWAYS'"),
+				"Should name the bad mode: " + thrown.getMessage());
+			assertTrue(thrown.getMessage().contains("SOFT, MIXED or HARD"),
+				"Should list the valid modes: " + thrown.getMessage());
 		}
 	}
 }

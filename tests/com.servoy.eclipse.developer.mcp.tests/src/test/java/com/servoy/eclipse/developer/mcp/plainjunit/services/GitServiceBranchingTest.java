@@ -198,6 +198,55 @@ public class GitServiceBranchingTest
 		}
 
 		@Test
+		@DisplayName("a merge is refused when a dirty tracked file would be overwritten, leaving HEAD and the file")
+		void blockedByDirtyTrackedFile() throws Exception
+		{
+			// base has the file; feature changes it on a different line so the merge must touch it.
+			commitFile("shared.txt", "line1\nline2\n", "base commit");
+			String main = repository.getBranch();
+			git.checkout().setCreateBranch(true).setName("feature").call();
+			commitFile("shared.txt", "line1\nchanged by feature\n", "feature edits shared.txt");
+			git.checkout().setName(main).call();
+			String before = headSha();
+
+			// a dirty, uncommitted local edit to the same file the merge needs. JGit refuses the
+			// checkout by throwing rather than returning a status, so the tool surfaces a RuntimeException.
+			Files.writeString(tempDir.resolve("shared.txt"), "local uncommitted work\nline2\n");
+
+			RuntimeException problem = assertThrows(RuntimeException.class,
+				() -> GitService.mergeIn(repository, "feature", null, false, null));
+
+			assertAll(
+				() -> assertTrue(problem.getMessage().contains("shared.txt") ||
+					problem.getMessage().toLowerCase().contains("checkout conflict"),
+					"Should name the blocking file: " + problem.getMessage()),
+				() -> assertEquals(before, headSha(), "Nothing must have been merged"),
+				() -> assertEquals("local uncommitted work\nline2\n", Files.readString(tempDir.resolve("shared.txt")),
+					"The local work must be left untouched"));
+		}
+
+		@Test
+		@DisplayName("a merge over an untracked file the checkout would clobber is refused (JGit throws)")
+		void untrackedFileOverwriteIsRefused() throws Exception
+		{
+			createCleanBranches("feature");
+			String before = headSha();
+			// feature adds other.txt; master has an untracked other.txt the checkout would clobber.
+			Files.writeString(tempDir.resolve("other.txt"), "untracked local work\n");
+
+			RuntimeException problem = assertThrows(RuntimeException.class,
+				() -> GitService.mergeIn(repository, "feature", null, false, null));
+
+			assertAll(
+				() -> assertTrue(problem.getMessage().contains("other.txt") ||
+					problem.getMessage().toLowerCase().contains("checkout conflict"),
+					"Should name the clobbered file: " + problem.getMessage()),
+				() -> assertEquals(before, headSha(), "Nothing must have been merged"),
+				() -> assertEquals("untracked local work\n", Files.readString(tempDir.resolve("other.txt")),
+					"The local file must be left untouched"));
+		}
+
+		@Test
 		@DisplayName("FF_ONLY refuses a merge that cannot fast-forward, leaving HEAD where it was")
 		void ffOnlyRefusesRealMerge() throws Exception
 		{
@@ -282,6 +331,61 @@ public class GitServiceBranchingTest
 			String result = GitService.rebaseIn(repository, "behind", "BEGIN");
 
 			assertTrue(result.contains("UP_TO_DATE"), "Should report up to date: " + result);
+		}
+
+		@Test
+		@DisplayName("a branch with no commits of its own fast-forwards onto the advanced upstream")
+		void behindBranchFastForwards() throws Exception
+		{
+			commitFile("shared.txt", "base\n", "base commit");
+			String main = repository.getBranch();
+			// feature branches off base and adds nothing of its own.
+			git.branchCreate().setName("feature").call();
+			commitFile("main.txt", "main\n", "main moves on");
+			git.checkout().setName("feature").call();
+
+			String result = GitService.rebaseIn(repository, main, "BEGIN");
+
+			assertAll(
+				() -> assertTrue(result.contains("FAST_FORWARD"), "Should report a fast-forward: " + result),
+				() -> assertTrue(Files.exists(tempDir.resolve("main.txt")),
+					"The upstream commit must now be in the branch"),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"A fast-forward must not leave the repository mid-operation"));
+		}
+
+		@Test
+		@DisplayName("replaying a commit whose change the upstream already has finishes cleanly rather than failing")
+		void replayedDuplicateChangeRebasesCleanly() throws Exception
+		{
+			commitFile("shared.txt", "base\n", "base commit");
+			String main = repository.getBranch();
+			git.checkout().setCreateBranch(true).setName("feature").call();
+			// feature introduces exactly the same change the upstream already contains.
+			commitFile("dup.txt", "identical\n", "feature adds dup.txt");
+
+			git.checkout().setName(main).call();
+			commitFile("dup.txt", "identical\n", "main adds the same dup.txt");
+			git.checkout().setName("feature").call();
+
+			String result = GitService.rebaseIn(repository, main, "BEGIN");
+
+			// JGit collapses the duplicate patch to an empty replay it handles itself, so the rebase
+			// completes (OK) rather than pausing with NOTHING_TO_COMMIT.
+			assertAll(
+				() -> assertTrue(result.contains("Rebase BEGIN OK") || result.contains("FAST_FORWARD") ||
+					result.contains("NOTHING_TO_COMMIT"),
+					"A duplicate replayed change must not fail the rebase: " + result),
+				() -> assertTrue(Files.exists(tempDir.resolve("dup.txt")),
+					"The file must be in the branch after the rebase"));
+
+			// if JGit did pause (older versions), drive it clean so teardown sees a SAFE repository.
+			if (repository.getRepositoryState() != RepositoryState.SAFE)
+			{
+				GitService.rebaseIn(repository, null, "SKIP");
+			}
+			assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+				"The rebase must end with the repository clean");
 		}
 
 		@Test
@@ -495,6 +599,54 @@ public class GitServiceBranchingTest
 		}
 
 		@Test
+		@DisplayName("a cherry-pick is BLOCKED when local changes to a needed file would be overwritten")
+		void blockedByLocalChangesReportsBlocked() throws Exception
+		{
+			commitFile("shared.txt", "base\n", "base commit");
+			String main = repository.getBranch();
+			git.checkout().setCreateBranch(true).setName("feature").call();
+			RevCommit pick = commitFile("shared.txt", "from feature\n", "feature edits shared.txt");
+
+			git.checkout().setName(main).call();
+			commitFile("main.txt", "main\n", "main moves on");
+			// dirty, unstaged local edit to the very file the cherry-pick needs to touch.
+			Files.writeString(tempDir.resolve("shared.txt"), "local uncommitted work\n");
+
+			String result = GitService.applyCommitsIn(repository, true, pick.getName());
+
+			assertAll(
+				() -> assertTrue(result.contains("Cherry-pick BLOCKED"), "Should report it was blocked: " + result),
+				() -> assertTrue(result.contains("shared.txt"), "Should name the blocking file: " + result),
+				() -> assertTrue(result.contains("stash") || result.contains("discard"),
+					"Should say what to do next: " + result),
+				() -> assertEquals("local uncommitted work\n", Files.readString(tempDir.resolve("shared.txt")),
+					"The local work must be left untouched"));
+		}
+
+		@Test
+		@DisplayName("a conflicting cherry-pick can be abandoned with a HARD reset to HEAD")
+		void conflictCanBeAbandonedWithHardReset() throws Exception
+		{
+			createDivergingBranches("feature");
+			String before = headSha();
+			ObjectId featureTip = repository.resolve("feature");
+
+			String conflict = GitService.applyCommitsIn(repository, true, featureTip.getName());
+			assertTrue(conflict.contains("CONFLICTED"), "Precondition: the cherry-pick must conflict: " + conflict);
+
+			// the message tells the caller to reset HARD to HEAD to abandon it - do exactly that.
+			String reset = GitService.resetToRevisionIn(repository, "HEAD", "HARD");
+
+			assertAll(
+				() -> assertTrue(reset.contains("HARD"), "Should report a HARD reset: " + reset),
+				() -> assertEquals(before, headSha(), "HEAD must be back where it started"),
+				() -> assertTrue(git.status().call().getConflicting().isEmpty(),
+					"The abandoned cherry-pick must leave no conflicting files"),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"The repository must be clean again"));
+		}
+
+		@Test
 		@DisplayName("an unresolvable commit is refused before anything is applied")
 		void refusesUnresolvableCommit() throws Exception
 		{
@@ -552,6 +704,49 @@ public class GitServiceBranchingTest
 			assertAll(
 				() -> assertTrue(result.contains("CONFLICTED"), "Should report a conflict: " + result),
 				() -> assertTrue(result.contains("shared.txt"), "Should name the conflicting file: " + result));
+		}
+
+		@Test
+		@DisplayName("several commits are reverted in the order given, each as its own new commit")
+		void revertsSeveralCommits() throws Exception
+		{
+			commitFile("shared.txt", "base\n", "base commit");
+			RevCommit first = commitFile("one.txt", "one\n", "the first to undo");
+			RevCommit second = commitFile("two.txt", "two\n", "the second to undo");
+
+			String result = GitService.applyCommitsIn(repository, false,
+				first.getName() + ", " + second.getName());
+
+			assertAll(
+				() -> assertTrue(result.contains("Revert APPLIED"), "Should report it applied: " + result),
+				() -> assertTrue(result.contains("Created 2 commit(s)"),
+					"Each reverted commit must become its own new commit: " + result),
+				() -> assertFalse(Files.exists(tempDir.resolve("one.txt")) ||
+					Files.exists(tempDir.resolve("two.txt")), "Both reverted files must be gone"));
+		}
+
+		@Test
+		@DisplayName("a conflicting revert can be abandoned with a HARD reset to HEAD")
+		void conflictCanBeAbandonedWithHardReset() throws Exception
+		{
+			commitFile("shared.txt", "one\n", "base commit");
+			RevCommit toUndo = commitFile("shared.txt", "two\n", "the commit to undo");
+			commitFile("shared.txt", "three\n", "a later change to the same line");
+			String before = headSha();
+
+			String conflict = GitService.applyCommitsIn(repository, false, toUndo.getName());
+			assertTrue(conflict.contains("CONFLICTED"), "Precondition: the revert must conflict: " + conflict);
+
+			String reset = GitService.resetToRevisionIn(repository, "HEAD", "HARD");
+
+			assertAll(
+				() -> assertEquals(before, headSha(), "HEAD must be back where it started"),
+				() -> assertTrue(git.status().call().getConflicting().isEmpty(),
+					"The abandoned revert must leave no conflicting files"),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"The repository must be clean again"),
+				() -> assertEquals("three\n", Files.readString(tempDir.resolve("shared.txt")),
+					"The latest content must be restored"));
 		}
 
 		@Test
