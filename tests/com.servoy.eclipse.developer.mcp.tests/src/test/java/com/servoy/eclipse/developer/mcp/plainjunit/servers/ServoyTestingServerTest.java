@@ -6,14 +6,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,10 +31,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
+import com.servoy.eclipse.cypress.services.FormSpecGenerator;
+import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
 import com.servoy.eclipse.developer.mcp.annotations.ToolParam;
 import com.servoy.eclipse.developer.mcp.servers.ServoyTestingServer;
+import com.servoy.eclipse.developer.mcp.services.FormInteractiveElementsService;
+import com.servoy.eclipse.developer.mcp.services.FormLocatorService;
+import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
+import com.servoy.eclipse.developer.mcp.services.FormPreviewService;
+import com.servoy.eclipse.developer.mcp.services.FormSpecModelBuilder;
+import com.servoy.eclipse.developer.mcp.services.JSUnitCoverageService;
+import com.servoy.eclipse.developer.mcp.services.JSUnitRunnerService;
+import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
+import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
+import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.Solution;
 
 public class ServoyTestingServerTest {
 	@Test
@@ -1345,6 +1366,785 @@ public class ServoyTestingServerTest {
 		@DisplayName("a bare name with no extension is normalized to .cy.ts")
 		void bareName() {
 			assertEquals("flow.cy.ts", ServoyTestingServer.resolveE2EFileName("flow", "ignored"));
+		}
+	}
+
+	// =======================================================================
+	// Delegate-collaborator pass-through / error marshalling.
+	//
+	// ServoyTestingServer is a thin @McpServer wrapper: each tool calls one of
+	// its private-final collaborator services inside a try/catch, returning the
+	// delegate's String on the happy path and "Error: " + message when it throws.
+	// These tests reflection-swap the collaborators with Mockito mocks (no
+	// production change, no visibility widening) and drive ONLY the server's own
+	// branches - the tool-argument -> delegate-call mapping, the pass-through of
+	// the delegate's result, and the exception -> "Error:" marshalling that must
+	// never let an exception escape a tool. The collaborators' real behaviour
+	// (the JSUnit run, the Cypress render, the DLTK/model work) needs the
+	// workbench / a running client and stays in the integrationpde suite.
+	//
+	// None of these tests touch ServoyModelManager or ResourcesPlugin: the tools
+	// that resolve the active solution themselves are reached through the
+	// overridable getServoyModel() seam, with a mocked project/solution.
+	// =======================================================================
+
+	/** Replaces one private field of the given server with the supplied value. */
+	private static void setField(ServoyTestingServer target, String name, Object value) {
+		try {
+			Field f = ServoyTestingServer.class.getDeclaredField(name);
+			f.setAccessible(true);
+			f.set(target, value);
+		} catch (ReflectiveOperationException e) {
+			throw new RuntimeException("failed to set field '" + name + "'", e);
+		}
+	}
+
+	/** A model whose active project -> solution -> name chain resolves to the given solution name. */
+	private static IDeveloperServoyModel modelWithSolution(String solutionName) {
+		IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+		ServoyProject project = mock(ServoyProject.class);
+		Solution solution = mock(Solution.class);
+		lenient().when(model.getActiveProject()).thenReturn(project);
+		lenient().when(project.getSolution()).thenReturn(solution);
+		lenient().when(solution.getName()).thenReturn(solutionName);
+		return model;
+	}
+
+	@Nested
+	@DisplayName("JSUnit runner pass-through")
+	class JsUnitRunnerDelegation {
+		@Test
+		@DisplayName("runJsUnitTests forwards scopeOrAll/timeout and returns the runner result")
+		void runJsUnitTestsPassesThrough() {
+			JSUnitRunnerService runner = mock(JSUnitRunnerService.class);
+			when(runner.runTests("test_utils", 60)).thenReturn("3 passed");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "jsunitRunner", runner);
+
+			assertEquals("3 passed", server.runJsUnitTests("test_utils", 60));
+			verify(runner).runTests("test_utils", 60);
+		}
+
+		@Test
+		@DisplayName("runJsUnitTests marshals a thrown exception into 'Error: <message>'")
+		void runJsUnitTestsWrapsException() {
+			JSUnitRunnerService runner = mock(JSUnitRunnerService.class);
+			when(runner.runTests(anyString(), anyInt())).thenThrow(new RuntimeException("no app server"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "jsunitRunner", runner);
+
+			assertEquals("Error: no app server", server.runJsUnitTests("ALL", 120));
+		}
+
+		@Test
+		@DisplayName("runTestMethod forwards method/scope/timeout and returns the runner result")
+		void runTestMethodPassesThrough() {
+			JSUnitRunnerService runner = mock(JSUnitRunnerService.class);
+			when(runner.runTestMethod("testCalc", "ALL", 30)).thenReturn("testCalc PASSED");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "jsunitRunner", runner);
+
+			assertEquals("testCalc PASSED", server.runTestMethod("testCalc", "ALL", 30));
+			verify(runner).runTestMethod("testCalc", "ALL", 30);
+		}
+
+		@Test
+		@DisplayName("runTestMethod marshals a thrown exception into 'Error: <message>'")
+		void runTestMethodWrapsException() {
+			JSUnitRunnerService runner = mock(JSUnitRunnerService.class);
+			when(runner.runTestMethod(anyString(), eq("ALL"), anyInt())).thenThrow(new RuntimeException("boom"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "jsunitRunner", runner);
+
+			assertEquals("Error: boom", server.runTestMethod("testCalc", "ALL", 30));
+		}
+	}
+
+	@Nested
+	@DisplayName("JSUnit coverage pass-through")
+	class CoverageDelegation {
+		@Test
+		@DisplayName("getJSUnitCoverageReport forwards the path and returns the service result")
+		void coverageReportPassesThrough() {
+			JSUnitCoverageService coverage = mock(JSUnitCoverageService.class);
+			when(coverage.getCoverageReport("/tmp/cov.json")).thenReturn("coverage: 80%");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "coverageService", coverage);
+
+			assertEquals("coverage: 80%", server.getJSUnitCoverageReport("/tmp/cov.json"));
+			verify(coverage).getCoverageReport("/tmp/cov.json");
+		}
+
+		@Test
+		@DisplayName("getJSUnitCoverageReport marshals a thrown exception into 'Error: <message>'")
+		void coverageReportWrapsException() {
+			JSUnitCoverageService coverage = mock(JSUnitCoverageService.class);
+			when(coverage.getCoverageReport(null)).thenThrow(new RuntimeException("no report"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "coverageService", coverage);
+
+			assertEquals("Error: no report", server.getJSUnitCoverageReport(null));
+		}
+
+		@Test
+		@DisplayName("suggestTestsFromCoverage forwards path/maxFunctions and returns the service result")
+		void suggestTestsPassesThrough() {
+			JSUnitCoverageService coverage = mock(JSUnitCoverageService.class);
+			when(coverage.suggestTests("/tmp/cov.json", 5)).thenReturn("suggestions...");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "coverageService", coverage);
+
+			assertEquals("suggestions...", server.suggestTestsFromCoverage("/tmp/cov.json", 5));
+			verify(coverage).suggestTests("/tmp/cov.json", 5);
+		}
+
+		@Test
+		@DisplayName("suggestTestsFromCoverage marshals a thrown exception into 'Error: <message>'")
+		void suggestTestsWrapsException() {
+			JSUnitCoverageService coverage = mock(JSUnitCoverageService.class);
+			when(coverage.suggestTests(anyString(), anyInt())).thenThrow(new RuntimeException("parse failed"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "coverageService", coverage);
+
+			assertEquals("Error: parse failed", server.suggestTestsFromCoverage("/tmp/cov.json", 20));
+		}
+	}
+
+	@Nested
+	@DisplayName("Form-preview pass-through")
+	class FormPreviewDelegation {
+		@Test
+		@DisplayName("screenshotForm forwards formName/waitSeconds and returns the service result")
+		void screenshotPassesThrough() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(preview.screenshotForm("orders", 5)).thenReturn("Screenshot saved: /x.png");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "formPreview", preview);
+
+			assertEquals("Screenshot saved: /x.png", server.screenshotForm("orders", 5));
+			verify(preview).screenshotForm("orders", 5);
+		}
+
+		@Test
+		@DisplayName("screenshotForm marshals a thrown exception into 'Error: <message>'")
+		void screenshotWrapsException() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(preview.screenshotForm(anyString(), anyInt())).thenThrow(new RuntimeException("no browser"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "formPreview", preview);
+
+			assertEquals("Error: no browser", server.screenshotForm("orders", 10));
+		}
+
+		@Test
+		@DisplayName("checkNGClientStatus returns the service result")
+		void checkStatusPassesThrough() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "formPreview", preview);
+
+			assertEquals("Servoy Developer is running.", server.checkNGClientStatus());
+			verify(preview).checkNGClientStatus();
+		}
+
+		@Test
+		@DisplayName("checkNGClientStatus marshals a thrown exception into 'Error: <message>'")
+		void checkStatusWrapsException() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(preview.checkNGClientStatus()).thenThrow(new RuntimeException("model gone"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "formPreview", preview);
+
+			assertEquals("Error: model gone", server.checkNGClientStatus());
+		}
+	}
+
+	@Nested
+	@DisplayName("showFormInBrowser branches (seamed model + mocked collaborators)")
+	class ShowFormInBrowserDelegation {
+		@Test
+		@DisplayName("when the spec already exists, the preview result is returned unchanged and no spec is generated")
+		void existingSpecReturnedUnchanged() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(preview.showFormInBrowser("orders", true)).thenReturn("Opened form 'orders'");
+			when(gen.specExists("orders", "sol")).thenReturn(true);
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "formPreview", preview);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("Opened form 'orders'", server.showFormInBrowser("orders"));
+			verify(gen, never()).generateSpec(anyString(), org.mockito.ArgumentMatchers.any());
+		}
+
+		@Test
+		@DisplayName("when no spec exists, a generated spec is appended to the preview result")
+		void missingSpecIsGeneratedAndAppended() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(preview.showFormInBrowser("orders", true)).thenReturn("Opened form 'orders'");
+			when(gen.specExists("orders", "sol")).thenReturn(false);
+			// FormSpecModel is final (not mockable); a null model drives the same append path.
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenReturn("Created spec");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "formPreview", preview);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			String result = server.showFormInBrowser("orders");
+			assertTrue(result.contains("Opened form 'orders'"), "keeps the preview result: " + result);
+			assertTrue(result.contains("Created spec"), "appends the generated spec: " + result);
+		}
+
+		@Test
+		@DisplayName("an Error result from the preview is returned without attempting spec generation")
+		void previewErrorNotAppended() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(preview.showFormInBrowser("orders", true)).thenReturn("Error: no project");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "formPreview", preview);
+			setField(server, "specGenerator", gen);
+
+			assertEquals("Error: no project", server.showFormInBrowser("orders"));
+			verify(gen, never()).specExists(anyString(), anyString());
+		}
+
+		@Test
+		@DisplayName("generateSpecWithModel falls back to a null model when the builder throws")
+		void specModelBuilderFailureFallsBack() {
+			FormPreviewService preview = mock(FormPreviewService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(preview.showFormInBrowser("orders", true)).thenReturn("Opened form 'orders'");
+			when(gen.specExists("orders", "sol")).thenReturn(false);
+			when(builder.build("orders")).thenThrow(new RuntimeException("cannot build model"));
+			when(gen.generateSpec("orders", null)).thenReturn("Basic spec");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "formPreview", preview);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			String result = server.showFormInBrowser("orders");
+			assertTrue(result.contains("Basic spec"), "uses the basic (null-model) spec: " + result);
+			verify(gen).generateSpec("orders", null);
+		}
+	}
+
+	@Nested
+	@DisplayName("generateFormSpec pass-through")
+	class GenerateFormSpecDelegation {
+		@Test
+		@DisplayName("generateFormSpec builds the model and returns the generated spec")
+		void generatesWithModel() {
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			// FormSpecModel is a final class (not mockable); the builder returns its real
+			// result, so a null model is enough to drive the build -> generateSpec hand-off.
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenReturn("Created spec for orders");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("Created spec for orders", server.generateFormSpec("orders"));
+			verify(builder).build("orders");
+			verify(gen).generateSpec("orders", null);
+		}
+
+		@Test
+		@DisplayName("generateFormSpec marshals a thrown exception into 'Error: <message>'")
+		void wrapsException() {
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenThrow(new RuntimeException("gen failed"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("Error: gen failed", server.generateFormSpec("orders"));
+		}
+	}
+
+	@Nested
+	@DisplayName("Cypress form/E2E test runs pass-through (specRunner mocked)")
+	class CypressRunDelegation {
+		@Test
+		@DisplayName("testForm runs the form Cypress spec when it already exists and returns the runner result")
+		void testFormExistingSpec() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(gen.specExists("orders", "sol")).thenReturn(true);
+			when(runner.runFormCypressTests("orders", true)).thenReturn("1 passing");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+
+			assertEquals("1 passing", server.testForm("orders"));
+			verify(runner).runFormCypressTests("orders", true);
+		}
+
+		@Test
+		@DisplayName("testForm returns the generation error and never runs the spec when generation fails")
+		void testFormGenerationErrorShortCircuits() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(gen.specExists("orders", "sol")).thenReturn(false);
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenReturn("Error: cannot generate");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("Error: cannot generate", server.testForm("orders"));
+			verify(runner, never()).runFormCypressTests(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("testForm marshals a thrown exception into 'Error: <message>'")
+		void testFormWrapsException() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(gen.specExists("orders", "sol")).thenReturn(true);
+			when(runner.runFormCypressTests("orders", true)).thenThrow(new RuntimeException("no client"));
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+
+			assertEquals("Error: no client", server.testForm("orders"));
+		}
+
+		@Test
+		@DisplayName("showAndTest runs the form Cypress spec in headed mode (openBrowser=false)")
+		void showAndTestRunsHeaded() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(gen.specExists("orders", "sol")).thenReturn(true);
+			when(runner.runFormCypressTests("orders", false)).thenReturn("2 passing");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+
+			assertEquals("2 passing", server.showAndTest("orders"));
+			verify(runner).runFormCypressTests("orders", false);
+		}
+
+		@Test
+		@DisplayName("showAndTest generates a missing spec then runs it headed")
+		void showAndTestGeneratesMissingSpec() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(gen.specExists("orders", "sol")).thenReturn(false);
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenReturn("Created spec");
+			when(runner.runFormCypressTests("orders", false)).thenReturn("2 passing");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("2 passing", server.showAndTest("orders"));
+			verify(gen).generateSpec("orders", null);
+			verify(runner).runFormCypressTests("orders", false);
+		}
+
+		@Test
+		@DisplayName("showAndTest returns the generation error and never runs the spec when generation fails")
+		void showAndTestGenerationErrorShortCircuits() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
+			when(gen.specExists("orders", "sol")).thenReturn(false);
+			when(builder.build("orders")).thenReturn(null);
+			when(gen.generateSpec("orders", null)).thenReturn("Error: cannot generate");
+			ServoyTestingServer server = new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return modelWithSolution("sol");
+				}
+			};
+			setField(server, "specRunner", runner);
+			setField(server, "specGenerator", gen);
+			setField(server, "specModelBuilder", builder);
+
+			assertEquals("Error: cannot generate", server.showAndTest("orders"));
+			verify(runner, never()).runFormCypressTests(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("showAndTestE2E marshals a thrown exception into 'Error: <message>'")
+		void showAndTestE2EWrapsException() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.runE2ECypressTests("order_detail", false)).thenThrow(new RuntimeException("cypress gone"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("Error: cypress gone", server.showAndTestE2E("order_detail"));
+		}
+
+		@Test
+		@DisplayName("testE2E forwards the target form to the E2E runner and returns its result")
+		void testE2EPassesThrough() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.runE2ECypressTests("order_detail", true)).thenReturn("E2E passed");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("E2E passed", server.testE2E("order_detail"));
+			verify(runner).runE2ECypressTests("order_detail", true);
+		}
+
+		@Test
+		@DisplayName("testE2E marshals a thrown exception into 'Error: <message>'")
+		void testE2EWrapsException() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.runE2ECypressTests(anyString(), org.mockito.ArgumentMatchers.anyBoolean()))
+					.thenThrow(new RuntimeException("cypress missing"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("Error: cypress missing", server.testE2E("order_detail"));
+		}
+
+		@Test
+		@DisplayName("showAndTestE2E runs the E2E spec in headed mode (headless=false)")
+		void showAndTestE2ERunsHeaded() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.runE2ECypressTests("order_detail", false)).thenReturn("E2E headed passed");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("E2E headed passed", server.showAndTestE2E("order_detail"));
+			verify(runner).runE2ECypressTests("order_detail", false);
+		}
+	}
+
+	@Nested
+	@DisplayName("executeTestSetup / executeTestTeardown pass-through (specRunner mocked)")
+	class DatabaseSetupDelegation {
+		@Test
+		@DisplayName("executeTestSetup parses the column-values JSON and forwards the map to the runner")
+		void setupParsesJsonAndDelegates() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.executeTestSetup(eq("db"), eq("orders"), org.mockito.ArgumentMatchers.anyMap()))
+					.thenReturn("1 row inserted");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("1 row inserted",
+					server.executeTestSetup("db", "orders", "{\"customerid\":\"CYPRS\",\"city\":\"TestCity\"}"));
+		}
+
+		@Test
+		@DisplayName("executeTestTeardown forwards server/table/column/value and returns the runner result")
+		void teardownPassesThrough() {
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			when(runner.executeTestTeardown("db", "orders", "city", "TestCity")).thenReturn("3 rows deleted");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "specRunner", runner);
+
+			assertEquals("3 rows deleted", server.executeTestTeardown("db", "orders", "city", "TestCity"));
+			verify(runner).executeTestTeardown("db", "orders", "city", "TestCity");
+		}
+	}
+
+	@Nested
+	@DisplayName("findForm / getFormInteractiveElements / locateForm pass-through")
+	class SolutionQueryDelegation {
+		@Test
+		@DisplayName("findForm forwards the query to the solution service and returns its result")
+		void findFormPassesThrough() {
+			ServoySolutionService solution = mock(ServoySolutionService.class);
+			when(solution.findForm("customer")).thenReturn("Found: customers");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "solutionService", solution);
+
+			assertEquals("Found: customers", server.findForm("customer"));
+			verify(solution).findForm("customer");
+		}
+
+		@Test
+		@DisplayName("findForm marshals a thrown exception into 'Error: <message>'")
+		void findFormWrapsException() {
+			ServoySolutionService solution = mock(ServoySolutionService.class);
+			when(solution.findForm(anyString())).thenThrow(new RuntimeException("no solution"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "solutionService", solution);
+
+			assertEquals("Error: no solution", server.findForm("customer"));
+		}
+
+		@Test
+		@DisplayName("getFormInteractiveElements forwards the trimmed form name and clamped maxElements")
+		void elementsPassesThrough() {
+			FormInteractiveElementsService elements = mock(FormInteractiveElementsService.class);
+			when(elements.getElements(eq("orders"), eq(true), anyInt())).thenReturn("elements...");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "elementsService", elements);
+
+			assertEquals("elements...", server.getFormInteractiveElements("  orders  ", true, 50));
+			verify(elements).getElements(eq("orders"), eq(true), anyInt());
+		}
+
+		@Test
+		@DisplayName("getFormInteractiveElements marshals a thrown exception into 'Error: <message>'")
+		void elementsWrapsException() {
+			FormInteractiveElementsService elements = mock(FormInteractiveElementsService.class);
+			when(elements.getElements(anyString(), org.mockito.ArgumentMatchers.anyBoolean(), anyInt()))
+					.thenThrow(new RuntimeException("no form"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "elementsService", elements);
+
+			assertEquals("Error: no form", server.getFormInteractiveElements("orders", false, 100));
+		}
+
+		@Test
+		@DisplayName("locateForm forwards the query and the includeElements flag to the locator service")
+		void locatePassesThrough() throws Exception {
+			FormLocatorService locator = mock(FormLocatorService.class);
+			when(locator.locate("query performance tab", true)).thenReturn("resolved");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "locatorService", locator);
+
+			assertEquals("resolved", server.locateForm("query performance tab", true));
+			verify(locator).locate("query performance tab", true);
+		}
+
+		@Test
+		@DisplayName("locateForm with a null includeElements defaults to true (the documented default)")
+		void locateNullIncludeElementsDefaultsTrue() throws Exception {
+			FormLocatorService locator = mock(FormLocatorService.class);
+			when(locator.locate("q", true)).thenReturn("resolved");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "locatorService", locator);
+
+			assertEquals("resolved", server.locateForm("q", null));
+			verify(locator).locate("q", true);
+		}
+
+		@Test
+		@DisplayName("locateForm with includeElements=false forwards false")
+		void locateFalseIncludeElements() throws Exception {
+			FormLocatorService locator = mock(FormLocatorService.class);
+			when(locator.locate("q", false)).thenReturn("resolved, no elements");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "locatorService", locator);
+
+			assertEquals("resolved, no elements", server.locateForm("q", false));
+			verify(locator).locate("q", false);
+		}
+
+		@Test
+		@DisplayName("locateForm marshals a thrown exception into 'Error: <message>'")
+		void locateWrapsException() throws Exception {
+			FormLocatorService locator = mock(FormLocatorService.class);
+			when(locator.locate(anyString(), org.mockito.ArgumentMatchers.anyBoolean()))
+					.thenThrow(new RuntimeException("locator blew up"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "locatorService", locator);
+
+			assertEquals("Error: locator blew up", server.locateForm("q", true));
+		}
+	}
+
+	@Nested
+	@DisplayName("Navigation-graph JSON building (navigationService mocked)")
+	class NavigationGraphDelegation {
+		private NavigationEdge edge(String from, String to) {
+			return new NavigationEdge.Builder().from(from).to(to).containerName("tabs").containerType("TabPanel")
+					.confidence("static").tabName("tab1").tabIndex(0).build();
+		}
+
+		@Test
+		@DisplayName("getFormNavigationGraph returns the full graph JSON with edgeCount/formCount and the serialized edges")
+		void fullGraphJson() throws Exception {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn("main");
+			when(graph.getAllEdges()).thenReturn(List.of(edge("main", "orders")));
+			when(graph.getAllFormNames()).thenReturn(java.util.Set.of("main", "orders"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String json = server.getFormNavigationGraph(null, false);
+			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(json);
+			assertEquals("main", root.get("mainForm").asText());
+			assertEquals(1, root.get("edgeCount").asInt());
+			assertEquals(2, root.get("formCount").asInt());
+			assertEquals("orders", root.get("graph").get(0).get("to").asText());
+		}
+
+		@Test
+		@DisplayName("getFormNavigationGraph summaryOnly returns a compact parent->children map")
+		void summaryOnlyGraph() throws Exception {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn("main");
+			when(graph.getAllEdges()).thenReturn(List.of(edge("main", "orders")));
+			when(graph.getAllFormNames()).thenReturn(java.util.Set.of("main", "orders"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String json = server.getFormNavigationGraph(null, true);
+			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(json);
+			assertEquals(1, root.get("edgeCount").asInt());
+			assertNotNull(root.get("graph").get("main"), "summary graph must map the parent form to its children");
+			assertEquals("orders", root.get("graph").get("main").get(0).asText());
+		}
+
+		@Test
+		@DisplayName("getFormNavigationGraph with a formName that has no edges reports targetFormExists and a reachability")
+		void subgraphWithReachability() throws Exception {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn("main");
+			when(graph.getSubgraphEdges("main", "orphan")).thenReturn(Collections.emptyList());
+			when(graph.getAllFormNames()).thenReturn(java.util.Set.of("main"));
+			when(graph.hasForm("orphan")).thenReturn(false);
+			lenient().when(graph.findPath(anyString(), anyString())).thenReturn(Collections.emptyList());
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String json = server.getFormNavigationGraph("orphan", false);
+			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(json);
+			assertEquals("orphan", root.get("targetForm").asText());
+			assertFalse(root.get("targetFormExists").asBoolean());
+			assertEquals("unknownForm", root.get("reachability").asText());
+		}
+
+		@Test
+		@DisplayName("getFormNavigationGraph marshals a thrown exception into 'Error: <message>'")
+		void graphWrapsException() {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			when(nav.buildFullGraph()).thenThrow(new RuntimeException("no solution"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			assertEquals("Error: no solution", server.getFormNavigationGraph(null, false));
+		}
+
+		@Test
+		@DisplayName("getNavigationPath returns the ordered steps JSON for a found path")
+		void navigationPathFound() throws Exception {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn("main");
+			when(graph.findPath("main", "orders")).thenReturn(List.of(edge("main", "orders")));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String json = server.getNavigationPath("orders", null);
+			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(json);
+			assertEquals("main", root.get("mainForm").asText());
+			assertEquals("orders", root.get("pathTo").asText());
+			assertEquals("orders", root.get("steps").get(0).get("to").asText());
+		}
+
+		@Test
+		@DisplayName("getNavigationPath reports an error when no path is found")
+		void navigationPathNotFound() {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn("main");
+			when(graph.findPath("main", "orphan")).thenReturn(Collections.emptyList());
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String result = server.getNavigationPath("orphan", null);
+			assertTrue(result.startsWith("Error: No navigation path found"), "got: " + result);
+		}
+
+		@Test
+		@DisplayName("getNavigationPath reports an error when no main form can be determined and fromForm is omitted")
+		void navigationPathNoMainForm() {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(nav.getMainFormName()).thenReturn(null);
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String result = server.getNavigationPath("orders", null);
+			assertTrue(result.contains("Could not determine the main form"), "got: " + result);
+		}
+
+		@Test
+		@DisplayName("getNavigationPath honours an explicit fromForm as the start")
+		void navigationPathExplicitFromForm() throws Exception {
+			FormNavigationGraphService nav = mock(FormNavigationGraphService.class);
+			NavigationGraph graph = mock(NavigationGraph.class);
+			when(nav.buildFullGraph()).thenReturn(graph);
+			when(graph.findPath("start", "orders")).thenReturn(List.of(edge("start", "orders")));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "navigationService", nav);
+
+			String json = server.getNavigationPath("orders", "start");
+			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+					.readTree(json);
+			assertEquals("start", root.get("mainForm").asText());
 		}
 	}
 }
