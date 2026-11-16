@@ -133,7 +133,13 @@ pipeline {
                     recordCoverage(
                         tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
                         id: 'jacoco-java',
-                        name: 'JaCoCo Coverage - Java (unit + integration)'
+                        name: 'JaCoCo Coverage - Java (unit + integration)',
+                        // Keep the checked-out Java sources per build so the Coverage view can
+                        // show the actual covered/missed LINES when you click a .java file, not
+                        // only the per-file percentages (default sourceCodeRetention is NEVER,
+                        // which is why Java had no line view while the webui Vitest entry - which
+                        // sets EVERY_BUILD below - does).
+                        sourceCodeRetention: 'EVERY_BUILD'
                     )
                     // Angular webui (Vitest / V8) coverage, Cobertura report produced by the
                     // 'webui vitest coverage' frontend-maven-plugin run in the build stage.
