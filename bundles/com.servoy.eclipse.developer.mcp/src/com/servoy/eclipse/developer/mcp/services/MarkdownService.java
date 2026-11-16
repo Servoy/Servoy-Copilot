@@ -44,7 +44,7 @@ public class MarkdownService
 
 	private record HeadingInfo(int level, String text, int lineNumber) {}
 
-	private List<String> readFileLines(String projectName, String resourcePath)
+	protected List<String> readFileLines(String projectName, String resourcePath)
 	{
 		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
 		if (project == null || !project.exists())
