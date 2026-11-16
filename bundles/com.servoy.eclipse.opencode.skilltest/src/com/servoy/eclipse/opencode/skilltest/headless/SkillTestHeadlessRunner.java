@@ -350,7 +350,7 @@ public class SkillTestHeadlessRunner implements IApplication {
 					.findFirst().orElse(null);
 			if (entry.baseline().hasBudget() && result != null && result.getMetrics() != null) {
 				com.servoy.eclipse.opencode.skilltest.BudgetEvaluator
-						.evaluate(entry.baseline().budget(), result.getMetrics())
+						.evaluateAll(entry.baseline().budgets(), result.getMetrics())
 						.ifPresent(w -> budgetWarnings.put(entry.baseline().id(), w));
 			}
 		}

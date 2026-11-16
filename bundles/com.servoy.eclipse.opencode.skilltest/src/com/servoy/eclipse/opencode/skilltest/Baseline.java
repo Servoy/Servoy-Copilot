@@ -270,19 +270,20 @@ public final class Baseline {
 	 * {@code budget} block of the sidecar. It flags a cost regression beyond a
 	 * configurable threshold as a <b>warning only</b> - it never changes the
 	 * PASS/FAIL verdict, the JUnit failure/error counts or a {@code <testcase>}
-	 * body. Shape:
+	 * body. A baseline may declare <b>several</b> budgets (one per metric), parsed
+	 * into {@link Baseline#budgets()}. Shape (single object or an array):
 	 *
 	 * <pre>
-	 * "budget": {
-	 *   "metric": "toolCalls",   // default; "tokens" allowed, honoured only when token data is present
-	 *   "max": 25,               // absolute ceiling; OR
-	 *   "baselineValue": 18,     // a recorded reference, with
-	 *   "tolerancePct": 25       // flag when current exceeds baselineValue * (1 + tolerancePct/100)
-	 * }
+	 * "budget": { "metric": "tokens", "baselineValue": 390111, "tolerancePct": 25 }
+	 * "budget": [
+	 *   { "metric": "tokens",    "baselineValue": 390111, "tolerancePct": 25 },
+	 *   { "metric": "toolCalls", "baselineValue": 9,      "tolerancePct": 100 },
+	 *   { "metric": "credits",   "baselineValue": 5,      "tolerancePct": 25 }
+	 * ]
 	 * </pre>
 	 *
-	 * @param metric        the budgeted metric: {@code "toolCalls"} (default) or
-	 *                      {@code "tokens"}
+	 * @param metric        the budgeted metric: {@code "toolCalls"} (default),
+	 *                      {@code "tokens"} or {@code "credits"}
 	 * @param max           an absolute ceiling, or {@code null} when not set
 	 * @param baselineValue a reference value, or {@code null} when not set
 	 * @param tolerancePct  the tolerance percentage applied to
@@ -299,6 +300,11 @@ public final class Baseline {
 		/** @return {@code true} when the budget targets token usage. */
 		public boolean isTokenMetric() {
 			return "tokens".equalsIgnoreCase(metric); //$NON-NLS-1$
+		}
+
+		/** @return {@code true} when the budget targets the Kiro credits estimate. */
+		public boolean isCreditMetric() {
+			return "credits".equalsIgnoreCase(metric); //$NON-NLS-1$
 		}
 	}
 
@@ -319,7 +325,7 @@ public final class Baseline {
 	private final List<OutcomeAssertion> expected;
 	private final JsUnitVerify jsUnitVerify;
 	private final AcceptanceVerify acceptanceVerify;
-	private final Budget budget;
+	private final List<Budget> budgets;;
 	private final SessionTranscript goldenTranscript;
 
 	/**
@@ -344,14 +350,35 @@ public final class Baseline {
 			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
 			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, SessionTranscript goldenTranscript) {
 		this(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution, source,
-				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, null,
-				goldenTranscript);
+				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify,
+				Collections.<Budget>emptyList(), goldenTranscript);
 	}
 
+	/**
+	 * Single-budget constructor (SVY-21660), kept for the call sites and the
+	 * persistence round-trip that predate multi-metric budgets; wraps the one
+	 * budget (or none) into the budget list.
+	 */
 	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
 			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
 			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
 			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, Budget budget,
+			SessionTranscript goldenTranscript) {
+		this(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution, source,
+				cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify,
+				budget == null ? Collections.emptyList() : List.of(budget), goldenTranscript);
+	}
+
+	/**
+	 * Full constructor with a <b>list</b> of soft budgets (SVY-21660 multi-metric
+	 * expansion): a baseline may budget several metrics at once (tokens, tool-calls
+	 * and credits), each evaluated independently and each able to emit its own
+	 * WARN-only line.
+	 */
+	public Baseline(String id, String title, boolean active, String promptOverride, String agent, String model,
+			int maxAttempts, int timeoutSeconds, String solution, Source source, List<String> cleanProjects,
+			List<Input> inputs, Fixture fixture, Compare compare, List<OutcomeAssertion> expected,
+			JsUnitVerify jsUnitVerify, AcceptanceVerify acceptanceVerify, List<Budget> budgets,
 			SessionTranscript goldenTranscript) {
 		this.id = id;
 		this.title = title;
@@ -370,7 +397,7 @@ public final class Baseline {
 		this.expected = expected == null ? Collections.emptyList() : List.copyOf(expected);
 		this.jsUnitVerify = jsUnitVerify;
 		this.acceptanceVerify = acceptanceVerify;
-		this.budget = budget;
+		this.budgets = budgets == null ? Collections.emptyList() : List.copyOf(budgets);
 		this.goldenTranscript = goldenTranscript;
 	}
 
@@ -502,16 +529,16 @@ public final class Baseline {
 	}
 
 	/**
-	 * @return the optional soft budget declared by this baseline (SVY-21660), or
-	 *         {@code null} when none is declared
+	 * @return the soft budgets declared by this baseline (SVY-21660), one per
+	 *         budgeted metric; never {@code null}, empty when none are declared
 	 */
-	public Budget budget() {
-		return budget;
+	public List<Budget> budgets() {
+		return budgets;
 	}
 
-	/** @return {@code true} if this baseline declares a soft budget. */
+	/** @return {@code true} if this baseline declares at least one soft budget. */
 	public boolean hasBudget() {
-		return budget != null;
+		return !budgets.isEmpty();
 	}
 
 	public SessionTranscript goldenTranscript() {

@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +42,16 @@ class BudgetEvaluatorTest {
 
 	private static RunMetrics metrics(int toolCalls, TokenUsage tokens) {
 		return new RunMetrics(toolCalls, tokens, null);
+	}
+
+	/**
+	 * Metrics carrying a per-session Kiro credits estimate ({@code kiro.estCredits}
+	 * - the figure the credits budget judges), or no Kiro reading when
+	 * {@code estCredits} is {@code null}.
+	 */
+	private static RunMetrics metrics(int toolCalls, TokenUsage tokens, Double estCredits) {
+		RunMetrics.KiroUsage kiro = estCredits == null ? null : new RunMetrics.KiroUsage(0, estCredits.doubleValue());
+		return new RunMetrics(toolCalls, tokens, kiro, null, List.of());
 	}
 
 	@Nested
@@ -169,6 +180,91 @@ class BudgetEvaluatorTest {
 		void nullMetrics() {
 			Baseline.Budget budget = new Baseline.Budget("toolCalls", Integer.valueOf(1), null, null);
 			assertTrue(BudgetEvaluator.evaluate(budget, null).isEmpty(), "no metrics, no warning");
+		}
+	}
+
+	@Nested
+	class Credits {
+
+		@Test
+		@DisplayName("credits over baselineValue+tolerance yields a warning naming 'credits'")
+		void creditsOverThreshold() {
+			Baseline.Budget budget = new Baseline.Budget("credits", null, Integer.valueOf(5), Integer.valueOf(25));
+			// threshold = 5 * 1.25 = 6.25; a ~7-credit delta is over.
+			Optional<String> warning = BudgetEvaluator.evaluate(budget, metrics(5, null, Double.valueOf(7.0d)));
+			assertTrue(warning.isPresent(), "7 credits over 5 +25%");
+			assertTrue(warning.get().contains("credits"), "names the metric: " + warning.get());
+		}
+
+		@Test
+		@DisplayName("credits within threshold is quiet")
+		void creditsWithinThreshold() {
+			Baseline.Budget budget = new Baseline.Budget("credits", null, Integer.valueOf(5), Integer.valueOf(25));
+			// 6.0 rounds to 6, within 6.25 threshold.
+			assertTrue(BudgetEvaluator.evaluate(budget, metrics(5, null, Double.valueOf(6.0d))).isEmpty(),
+					"6 within 6.25 threshold");
+		}
+
+		@Test
+		@DisplayName("a credits budget is skipped (no warning) when no per-session Kiro estimate was captured")
+		void creditsAbsentSkipped() {
+			Baseline.Budget budget = new Baseline.Budget("credits", Integer.valueOf(1), null, null);
+			assertTrue(BudgetEvaluator.evaluate(budget, metrics(99, null, null)).isEmpty(),
+					"no Kiro estimate -> skipped, never warned");
+		}
+	}
+
+	@Nested
+	class MultiMetric {
+
+		@Test
+		@DisplayName("evaluateAll warns per over-budget metric and joins them")
+		void evaluateAllCombines() {
+			List<Baseline.Budget> budgets = List.of(
+					new Baseline.Budget("tokens", null, Integer.valueOf(1000), Integer.valueOf(25)),
+					new Baseline.Budget("toolCalls", null, Integer.valueOf(10), Integer.valueOf(50)),
+					new Baseline.Budget("credits", null, Integer.valueOf(5), Integer.valueOf(25)));
+			// tokens 2000 > 1250, toolCalls 20 > 15, credits ~8 > 6.25 -> all three over.
+			Optional<String> warning = BudgetEvaluator.evaluateAll(budgets,
+					metrics(20, new TokenUsage(2000, 0, 0, 0, 0), Double.valueOf(8.0d)));
+			assertTrue(warning.isPresent(), "all three over");
+			assertAll(() -> assertTrue(warning.get().contains("tokens"), "names tokens"),
+					() -> assertTrue(warning.get().contains("tool-calls"), "names tool-calls"),
+					() -> assertTrue(warning.get().contains("credits"), "names credits"));
+		}
+
+		@Test
+		@DisplayName("evaluateAll is quiet when every metric is within budget")
+		void evaluateAllQuietWhenWithin() {
+			List<Baseline.Budget> budgets = List.of(
+					new Baseline.Budget("tokens", null, Integer.valueOf(1000), Integer.valueOf(25)),
+					new Baseline.Budget("toolCalls", null, Integer.valueOf(10), Integer.valueOf(50)));
+			assertTrue(BudgetEvaluator.evaluateAll(budgets, metrics(10, new TokenUsage(1000, 0, 0, 0, 0))).isEmpty(),
+					"all within -> quiet");
+		}
+
+		@Test
+		@DisplayName("evaluateAll only reports the metric that is over")
+		void evaluateAllPartial() {
+			List<Baseline.Budget> budgets = List.of(
+					new Baseline.Budget("tokens", null, Integer.valueOf(1000), Integer.valueOf(25)),
+					new Baseline.Budget("toolCalls", null, Integer.valueOf(10), Integer.valueOf(50)));
+			// tokens over, tool-calls within.
+			Optional<String> warning = BudgetEvaluator.evaluateAll(budgets,
+					metrics(5, new TokenUsage(2000, 0, 0, 0, 0)));
+			assertTrue(warning.isPresent(), "tokens over");
+			assertAll(() -> assertTrue(warning.get().contains("tokens"), "names tokens"),
+					() -> assertFalse(warning.get().contains("tool-calls"), "tool-calls within -> not named"));
+		}
+
+		@Test
+		@DisplayName("evaluateAll with an empty or null list yields no warning")
+		void evaluateAllEmpty() {
+			assertAll(
+					() -> assertTrue(BudgetEvaluator.evaluateAll(List.of(), metrics(100, null)).isEmpty(),
+							"empty list -> quiet"),
+					() -> assertTrue(BudgetEvaluator.evaluateAll(null, metrics(100, null)).isEmpty(),
+							"null list -> quiet"));
 		}
 	}
 }

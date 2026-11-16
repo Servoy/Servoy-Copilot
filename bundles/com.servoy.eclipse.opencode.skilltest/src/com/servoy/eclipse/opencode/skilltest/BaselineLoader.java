@@ -433,27 +433,60 @@ public final class BaselineLoader {
 		List<OutcomeAssertion> expected = OutcomeAssertions.parse(root.get("expect")); //$NON-NLS-1$
 		Baseline.JsUnitVerify jsUnitVerify = parseJsUnitVerify(root.get("verify")); //$NON-NLS-1$
 		Baseline.AcceptanceVerify acceptanceVerify = parseAcceptanceVerify(root.get("verify")); //$NON-NLS-1$
-		Baseline.Budget budget = parseBudget(root.get("budget")); //$NON-NLS-1$
+		List<Baseline.Budget> budgets = parseBudgets(root.get("budget")); //$NON-NLS-1$/$NON-NLS-1$
 
 		String exportName = text(root, "export", "export.json"); //$NON-NLS-1$ //$NON-NLS-2$
 		SessionTranscript golden = loadExport(new File(folder, exportName));
 
 		return new Baseline(id, title, active, promptOverride, agent, model, maxAttempts, timeoutSeconds, solution,
-				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, budget,
+				source, cleanProjects, inputs, fixture, compare, expected, jsUnitVerify, acceptanceVerify, budgets,
 				golden);
 	}
 
 	/**
 	 * Parses the optional {@code budget} block (SVY-21660): a WARN-only
-	 * per-baseline soft budget. Shape:
+	 * per-baseline soft budget, as either a single object or an array of objects
+	 * (one per budgeted metric). Shape:
 	 *
 	 * <pre>
 	 * "budget": { "metric": "toolCalls", "max": 25 }
-	 * "budget": { "metric": "toolCalls", "baselineValue": 18, "tolerancePct": 25 }
+	 * "budget": { "metric": "tokens", "baselineValue": 390111, "tolerancePct": 25 }
+	 * "budget": [
+	 *   { "metric": "tokens",    "baselineValue": 390111, "tolerancePct": 25 },
+	 *   { "metric": "toolCalls", "baselineValue": 9,      "tolerancePct": 100 },
+	 *   { "metric": "credits",   "baselineValue": 5,      "tolerancePct": 25 }
+	 * ]
 	 * </pre>
 	 *
 	 * @param budgetNode the {@code budget} JSON node (may be {@code null})
-	 * @return the parsed budget, or {@code null} when the block is absent
+	 * @return the parsed budgets (never {@code null}; empty when the block is absent)
+	 */
+	private static List<Baseline.Budget> parseBudgets(JsonNode budgetNode) {
+		if (budgetNode == null || budgetNode.isNull()) {
+			return java.util.Collections.emptyList();
+		}
+		List<Baseline.Budget> budgets = new java.util.ArrayList<>();
+		if (budgetNode.isArray()) {
+			for (JsonNode entry : budgetNode) {
+				Baseline.Budget b = parseBudget(entry);
+				if (b != null) {
+					budgets.add(b);
+				}
+			}
+		} else {
+			Baseline.Budget b = parseBudget(budgetNode);
+			if (b != null) {
+				budgets.add(b);
+			}
+		}
+		return budgets;
+	}
+
+	/**
+	 * Parses a single {@code budget} object into a {@link Baseline.Budget}.
+	 *
+	 * @param budgetNode one budget JSON object (may be {@code null})
+	 * @return the parsed budget, or {@code null} when the node is not an object
 	 */
 	private static Baseline.Budget parseBudget(JsonNode budgetNode) {
 		if (budgetNode == null || budgetNode.isNull() || !budgetNode.isObject()) {

@@ -17,8 +17,9 @@
 
 package com.servoy.eclipse.opencode.skilltest;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
-
 /**
  * Evaluates an optional per-baseline soft {@link Baseline.Budget} against a
  * run's representative {@link RunMetrics} (SVY-21660).
@@ -63,8 +64,46 @@ public final class BudgetEvaluator {
 			}
 			return evaluateValue(budget, metrics.tokens().total(), "tokens"); //$NON-NLS-1$
 		}
+		if (budget.isCreditMetric()) {
+			if (metrics.kiro() == null) {
+				// Credits are an estimate; skip (never warn) when no per-session Kiro
+				// figure was captured, same as tokens-when-absent.
+				return Optional.empty();
+			}
+			// Budget the PER-SESSION estimate (kiro.db session_usage.est_credits for
+			// this scenario's session), NOT the account-wide creditsDelta: on a shared
+			// account the before/after delta also captures other concurrent usage, so
+			// it over-reports a scenario's cost (SVY-21660). Round to a whole credit -
+			// the budget values are whole numbers and the estimate is fractional.
+			return evaluateValue(budget, Math.round(metrics.kiro().estCredits()), "credits"); //$NON-NLS-1$
+		}
 		// Default metric: tool calls (always present).
 		return evaluateValue(budget, metrics.toolCalls(), "tool-calls"); //$NON-NLS-1$
+	}
+
+	/**
+	 * Evaluates every budget in the list against the metrics and returns one
+	 * combined warning (one line per over-budget metric), or {@link Optional#empty()}
+	 * when none are over, the list is {@code null}/empty, or metrics are absent.
+	 * Each metric is judged independently; a metric whose data is absent is skipped,
+	 * never warned. Never signals a failure.
+	 *
+	 * @param budgets the soft budgets (may be {@code null}/empty)
+	 * @param metrics the run's representative metrics (may be {@code null})
+	 * @return the combined WARN text, or empty when within budget / nothing to judge
+	 */
+	public static Optional<String> evaluateAll(List<Baseline.Budget> budgets, RunMetrics metrics) {
+		if (budgets == null || budgets.isEmpty() || metrics == null) {
+			return Optional.empty();
+		}
+		List<String> warnings = new ArrayList<>();
+		for (Baseline.Budget budget : budgets) {
+			evaluate(budget, metrics).ifPresent(warnings::add);
+		}
+		if (warnings.isEmpty()) {
+			return Optional.empty();
+		}
+		return Optional.of(String.join("; ", warnings)); //$NON-NLS-1$
 	}
 
 	/**

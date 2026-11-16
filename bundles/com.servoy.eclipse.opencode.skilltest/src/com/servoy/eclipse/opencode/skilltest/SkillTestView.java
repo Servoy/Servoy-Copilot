@@ -164,7 +164,7 @@ public class SkillTestView extends ViewPart {
 		if (baseline == null || !baseline.hasBudget() || metrics == null) {
 			return null;
 		}
-		return BudgetEvaluator.evaluate(baseline.budget(), metrics).orElse(null);
+		return BudgetEvaluator.evaluateAll(baseline.budgets(), metrics).orElse(null);
 	}
 
 	private void createColumn(String title, int width,
