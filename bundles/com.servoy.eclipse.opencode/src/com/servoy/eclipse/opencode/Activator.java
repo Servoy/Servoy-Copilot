@@ -150,7 +150,7 @@ public class Activator extends Plugin {
 
 	@Override
 	public void stop(BundleContext context) throws Exception {
-		stopServer();
+		stopServer("OSGi Activator.stop (IDE/framework shutdown)");
 		instance = null;
 		super.stop(context);
 	}
@@ -270,7 +270,21 @@ public class Activator extends Plugin {
 	 * </p>
 	 */
 	public void stopServer() {
+		stopServer("unspecified");
+	}
+
+	/**
+	 * As {@link #stopServer()}, but {@code reason} names what triggered the stop
+	 * (e.g. {@code "OSGi Activator.stop (IDE/framework shutdown)"}, {@code "skill-test
+	 * runAndExit finally"}). The reason, the calling thread and a trimmed caller
+	 * stack are logged by {@link ShutdownDiagnostics} when
+	 * {@code -Dopencode.shutdown.debug=true}, so an unattended CI failure shows WHO
+	 * tore the server down - the first half of telling a leaked kill of ours apart
+	 * from an external host event (OOM / Jenkins restart). See SVY-21643.
+	 */
+	public void stopServer(String reason) {
 		ServoyLog.logInfo("OpenCode: stopServer() called");
+		ShutdownDiagnostics.logShutdownTrigger(reason);
 		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
 
 		// Cancel the outer job first so monitor.isCanceled() == true in
@@ -297,6 +311,10 @@ public class Activator extends Plugin {
 			// bounded Process.waitFor(timeout) so a prompt exit returns immediately and
 			// a hung process cannot stall IDE shutdown.
 			Process process = cmd.getProcess();
+			// Opt-in "before" snapshot: the full opencode descendant tree with each
+			// process's pgid/sid, so the per-signal logs below can be read against what
+			// actually existed and any non-opencode process stands out (SVY-21643).
+			ShutdownDiagnostics.logProcessTreeSnapshot(process);
 			boolean exitedGracefully = false;
 			try {
 				// The graceful hooks live only on RunExecutableCommand (this bundle), not
@@ -394,6 +412,7 @@ public class Activator extends Plugin {
 		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
 		if (isWindows) {
 			try {
+				ShutdownDiagnostics.logSweep("brute-force tree kill (Windows)", "taskkill /F /T /PID", String.valueOf(pid));
 				Process taskkill = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid))
 						.redirectErrorStream(true).start();
 				taskkill.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -403,9 +422,13 @@ public class Activator extends Plugin {
 			}
 		} else {
 			try {
+				// Both target a single pid: pkill -P kills the CHILDREN of pid, kill -9
+				// kills pid itself. Neither is a negative-pid group signal.
+				ShutdownDiagnostics.logSignal("brute-force kill children", "9", String.valueOf(pid) + " (via pkill -P)");
 				new ProcessBuilder("pkill", "-9", "-P", String.valueOf(pid)).redirectErrorStream(true).start()
 						.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
 				ServoyLog.logInfo("OpenCode: pkill -9 -P " + pid + " completed");
+				ShutdownDiagnostics.logSignal("brute-force kill root", "9", String.valueOf(pid));
 				new ProcessBuilder("kill", "-9", String.valueOf(pid)).redirectErrorStream(true).start().waitFor(5,
 						java.util.concurrent.TimeUnit.SECONDS);
 				ServoyLog.logInfo("OpenCode: kill -9 " + pid + " completed");
@@ -510,10 +533,15 @@ public class Activator extends Plugin {
 						+ escaped + "') };" + " if (-not $procs) { break }"
 						+ " foreach ($p in $procs) { & taskkill /F /T /PID $p.ProcessId 2>$null | Out-Null }"
 						+ " Start-Sleep -Milliseconds 300 }";
+				ShutdownDiagnostics.logSweep("orphan sweep (Windows)", "taskkill /F /T /PID per matching process", marker);
 				Process ps = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 						.redirectErrorStream(true).start();
 				ps.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
 			} else {
+				// -f matches the FULL command line against this bundle's absolute install
+				// dir, so it only ever hits our own opencode/node processes - never the
+				// workbench/Jenkins JVM, whose command line does not contain this path.
+				ShutdownDiagnostics.logSweep("orphan sweep (POSIX)", "pkill -9 -f", marker);
 				Process pkill = new ProcessBuilder("pkill", "-9", "-f", marker).redirectErrorStream(true).start();
 				pkill.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
 			}

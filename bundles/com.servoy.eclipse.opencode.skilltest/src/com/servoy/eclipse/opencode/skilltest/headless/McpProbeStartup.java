@@ -67,7 +67,7 @@ public class McpProbeStartup implements IStartup {
 			com.servoy.eclipse.opencode.Activator opencode = com.servoy.eclipse.opencode.Activator.getInstance();
 			if (opencode != null) {
 				System.out.println("[mcp-probe] stopping opencode server...");
-				opencode.stopServer();
+				opencode.stopServer("mcp-probe done, before halt");
 				Thread.sleep(2_000L);
 			}
 		} catch (Throwable t) {

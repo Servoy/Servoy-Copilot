@@ -167,6 +167,10 @@ public class RunExecutableCommand implements IRunNPMCommand {
 
 		process = builder.start();
 
+		// Opt-in: record the launch-time process topology (pid/pgid/sid of the child
+		// and of this JVM) so a later shutdown log can be read against it (SVY-21643).
+		ShutdownDiagnostics.logLaunchTopology(process, newProcessGroupLeader);
+
 		// Confirm the setsid child really leads its own process group (pgid == pid)
 		// before we ever allow a group-targeted kill. If setsid exec'd in place (it
 		// was not a group leader, e.g. under Jenkins), the child inherited the JVM's
@@ -340,6 +344,7 @@ public class RunExecutableCommand implements IRunNPMCommand {
 		}
 		try {
 			// Negative pid targets the whole process group whose pgid == pid.
+			ShutdownDiagnostics.logSignal("graceful group SIGTERM", "TERM", "-" + pid);
 			new ProcessBuilder("kill", "-TERM", "-" + pid).redirectErrorStream(true).start().waitFor(5,
 					java.util.concurrent.TimeUnit.SECONDS);
 			ServoyLog.logInfo("OpenCode: sent SIGTERM to process group -" + pid + " (graceful shutdown)");

@@ -106,7 +106,7 @@ public class SkillTestStartup implements IStartup {
 			com.servoy.eclipse.opencode.Activator opencode = com.servoy.eclipse.opencode.Activator.getInstance();
 			if (opencode != null) {
 				System.out.println("[skilltest] stopping opencode server...");
-				opencode.stopServer();
+				opencode.stopServer("skill-test runAndExit finally (headless run complete, before halt)");
 				Thread.sleep(2_000L);
 			}
 		} catch (Throwable t) {
