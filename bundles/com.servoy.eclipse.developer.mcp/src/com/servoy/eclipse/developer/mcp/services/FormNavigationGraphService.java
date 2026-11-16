@@ -69,8 +69,17 @@ public class FormNavigationGraphService {
 			.compile("JSForm\\.NAMES\\.(\\w+)", Pattern.MULTILINE);
 
 
+	/**
+	 * Seam over the active Servoy model, so unit tests can inject a mock instead of the
+	 * live {@code ServoyModelManager} singleton. The default implementation returns the
+	 * real active model; overriding it never changes runtime behaviour.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	public NavigationGraph buildFullGraph() {
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 		if (servoyProject == null || servoyProject.getEditingSolution() == null) {
 			return new NavigationGraph();
@@ -88,7 +97,7 @@ public class FormNavigationGraphService {
 	}
 
 	public String getMainFormName() {
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		ServoyProject servoyProject = servoyModel.getActiveProject();
 		if (servoyProject == null || servoyProject.getEditingSolution() == null) {
 			return null;

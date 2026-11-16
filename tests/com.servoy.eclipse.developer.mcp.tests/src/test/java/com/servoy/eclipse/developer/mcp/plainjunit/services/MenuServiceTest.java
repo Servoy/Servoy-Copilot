@@ -19,15 +19,17 @@ package com.servoy.eclipse.developer.mcp.plainjunit.services;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -39,8 +41,10 @@ import com.servoy.eclipse.developer.mcp.services.MenuService;
 import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.persistence.IPersist;
 import com.servoy.j2db.persistence.ISupportChilds;
+import com.servoy.j2db.persistence.IValidateName;
 import com.servoy.j2db.persistence.Menu;
 import com.servoy.j2db.persistence.MenuItem;
+import com.servoy.j2db.persistence.RepositoryException;
 import com.servoy.j2db.persistence.Solution;
 
 /**
@@ -489,6 +493,461 @@ class MenuServiceTest
 			assertTrue(out.contains("    - child\n"), "got:\n" + out);
 			assertFalse(out.contains("- child") && out.substring(out.indexOf("- child")).startsWith("- child [DISABLED]"),
 				"enabled child should not be marked disabled; got:\n" + out);
+		}
+	}
+
+	// ---- shared builders for the model-side create/update/delete/list/structure branches ----
+
+	/**
+	 * Holds the mocks of a single-solution, single-menu model so a test can both
+	 * drive the service and verify the service's decisions on the exact mocks.
+	 */
+	private static class Fixture
+	{
+		final IDeveloperServoyModel model;
+		final ServoyProject project;
+		final Solution solution;
+
+		Fixture(IDeveloperServoyModel model, ServoyProject project, Solution solution)
+		{
+			this.model = model;
+			this.project = project;
+			this.solution = solution;
+		}
+	}
+
+	/**
+	 * A model with an active project + editing solution named "mySolution" and no
+	 * modules, whose {@code getMenus(false)} yields the supplied menus (a fresh
+	 * iterator each call, since the service iterates several times). The name
+	 * validator and {@code saveEditingSolutionNodes} are stubbed to succeed.
+	 */
+	private static Fixture fixtureWithMenus(Menu... menus)
+	{
+		IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+		ServoyProject project = mock(ServoyProject.class);
+		Solution solution = mock(Solution.class);
+		when(model.getActiveProject()).thenReturn(project);
+		lenient().when(model.getModulesOfActiveProject()).thenReturn(new ServoyProject[0]);
+		lenient().when(model.getNameValidator()).thenReturn(mock(IValidateName.class));
+		when(project.getEditingSolution()).thenReturn(solution);
+		lenient().when(solution.getName()).thenReturn("mySolution");
+		final List<Menu> list = new ArrayList<>(Arrays.asList(menus));
+		lenient().when(solution.getMenus(false)).thenAnswer(inv -> list.iterator());
+		return new Fixture(model, project, solution);
+	}
+
+	/** A Menu mock named {@code name} with the given top-level children. */
+	private static Menu menuNamed(String name, IPersist... children)
+	{
+		Menu menu = mock(Menu.class);
+		final List<IPersist> list = new ArrayList<>(Arrays.asList(children));
+		lenient().when(menu.getName()).thenReturn(name);
+		lenient().when(menu.getAllObjects()).thenAnswer(inv -> list.iterator());
+		return menu;
+	}
+
+	/**
+	 * A MenuItem mock named {@code name} with the given children. The item is also
+	 * an {@link ISupportChilds} (its own declared supertype) so the service's
+	 * {@code (ISupportChilds) item.getParent()} chains never hit a ClassCastException;
+	 * {@code getParent()} returns the supplied parent.
+	 */
+	private static MenuItem itemNamed(String name, ISupportChilds parent, IPersist... children)
+	{
+		MenuItem item = mock(MenuItem.class);
+		final List<IPersist> list = new ArrayList<>(Arrays.asList(children));
+		lenient().when(item.getName()).thenReturn(name);
+		lenient().when(item.getAllObjects()).thenAnswer(inv -> list.iterator());
+		lenient().when(item.getParent()).thenReturn(parent);
+		return item;
+	}
+
+	@Nested
+	class CreateMenuModelSide
+	{
+		@Test
+		@DisplayName("createMenu refuses a name that already exists, before mutating anything")
+		void alreadyExists() throws Exception
+		{
+			Fixture f = fixtureWithMenus(menuNamed("dup"));
+			String result = serviceWith(f.model).createMenu("dup", null, null);
+			assertEquals("Error: Menu 'dup' already exists", result);
+			verify(f.solution, never()).createNewMenu(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+		}
+
+		@Test
+		@DisplayName("createMenu creates the menu, applies styleClass + module_private encapsulation and saves")
+		void createsWithEncapsulationAndStyle() throws Exception
+		{
+			Fixture f = fixtureWithMenus();
+			Menu created = mock(Menu.class);
+			when(f.solution.createNewMenu(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("m"))).thenReturn(created);
+
+			String result = serviceWith(f.model).createMenu("m", "nav", "module_private");
+			assertEquals("Menu 'm' created successfully.", result);
+			verify(created).setStyleClass("nav");
+			verify(created).setEncapsulation(2);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { created }, true);
+		}
+
+		@Test
+		@DisplayName("createMenu with a non-module encapsulation sets public (0) and no styleClass")
+		void createsPublicNoStyle() throws Exception
+		{
+			Fixture f = fixtureWithMenus();
+			Menu created = mock(Menu.class);
+			when(f.solution.createNewMenu(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("m"))).thenReturn(created);
+
+			String result = serviceWith(f.model).createMenu("m", "  ", "public");
+			assertEquals("Menu 'm' created successfully.", result);
+			verify(created, never()).setStyleClass(org.mockito.ArgumentMatchers.anyString());
+			verify(created).setEncapsulation(0);
+		}
+
+		@Test
+		@DisplayName("createMenu surfaces a RepositoryException from the model as an Error message")
+		void repositoryException() throws Exception
+		{
+			Fixture f = fixtureWithMenus();
+			when(f.solution.createNewMenu(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("m")))
+				.thenThrow(new RepositoryException("boom"));
+			String result = serviceWith(f.model).createMenu("m", null, null);
+			assertEquals("Error: boom", result);
+		}
+	}
+
+	@Nested
+	class CreateMenuItemModelSide
+	{
+		@Test
+		@DisplayName("createMenuItem on a top-level menu creates the item, applies properties and saves")
+		void topLevelWithProperties() throws Exception
+		{
+			Menu menu = menuNamed("mainMenu");
+			Fixture f = fixtureWithMenus(menu);
+			MenuItem created = mock(MenuItem.class);
+			when(menu.createNewMenuItem("it")).thenReturn(created);
+
+			String result = serviceWith(f.model).createMenuItem("mainMenu", "it", null, "Text", "Tip", "sc", "icon", "false");
+			assertEquals("MenuItem 'it' created in menu 'mainMenu'.", result);
+			verify(created).setText("Text");
+			verify(created).setToolTipText("Tip");
+			verify(created).setStyleClass("sc");
+			verify(created).setIconStyleClass("icon");
+			verify(created).setEnabled(false);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { menu }, true);
+		}
+
+		@Test
+		@DisplayName("createMenuItem under a named parent item creates it on the parent and notes the parent")
+		void underParent() throws Exception
+		{
+			MenuItem parentItem = itemNamed("file", null);
+			Menu menu = menuNamed("mainMenu", parentItem);
+			Fixture f = fixtureWithMenus(menu);
+			MenuItem created = mock(MenuItem.class);
+			when(parentItem.createNewMenuItem("child")).thenReturn(created);
+
+			String result = serviceWith(f.model).createMenuItem("mainMenu", "child", "file", null, null, null, null, null);
+			assertEquals("MenuItem 'child' created in menu 'mainMenu' under parent 'file'.", result);
+			verify(parentItem).createNewMenuItem("child");
+			verify(menu, never()).createNewMenuItem(org.mockito.ArgumentMatchers.anyString());
+		}
+
+		@Test
+		@DisplayName("createMenuItem reports a missing parent item without creating anything")
+		void parentNotFound() throws Exception
+		{
+			Menu menu = menuNamed("mainMenu");
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).createMenuItem("mainMenu", "child", "ghostParent", null, null, null, null, null);
+			assertEquals("Error: Parent menu item 'ghostParent' not found in menu 'mainMenu'", result);
+			verify(menu, never()).createNewMenuItem(org.mockito.ArgumentMatchers.anyString());
+		}
+
+		@Test
+		@DisplayName("createMenuItem surfaces a RepositoryException as an Error message")
+		void repositoryException() throws Exception
+		{
+			Menu menu = menuNamed("mainMenu");
+			Fixture f = fixtureWithMenus(menu);
+			when(menu.createNewMenuItem("it")).thenThrow(new RepositoryException("nope"));
+			String result = serviceWith(f.model).createMenuItem("mainMenu", "it", null, null, null, null, null, null);
+			assertEquals("Error: nope", result);
+		}
+	}
+
+	@Nested
+	class UpdateMenuModelSide
+	{
+		@Test
+		@DisplayName("updateMenu with no properties reports nothing to update and does not save")
+		void nothingToUpdate() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenu("m", null, null);
+			assertEquals("No properties to update. Provide styleClass or encapsulation.", result);
+			verify(f.project, never()).saveEditingSolutionNodes(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("updateMenu sets a blank styleClass to null and saves")
+		void blankStyleClassBecomesNull() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenu("m", "  ", null);
+			assertEquals("Menu 'm' updated successfully.", result);
+			verify(menu).setStyleClass(null);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { menu }, true);
+		}
+
+		@Test
+		@DisplayName("updateMenu applies styleClass + public encapsulation and saves")
+		void styleAndEncapsulation() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenu("m", "nav", "public");
+			assertEquals("Menu 'm' updated successfully.", result);
+			verify(menu).setStyleClass("nav");
+			verify(menu).setEncapsulation(0);
+		}
+
+		@Test
+		@DisplayName("updateMenu surfaces a RepositoryException on save as an Error message")
+		void repositoryException() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			doThrow(new RepositoryException("saveFail")).when(f.project)
+				.saveEditingSolutionNodes(new IPersist[] { menu }, true);
+			String result = serviceWith(f.model).updateMenu("m", "nav", null);
+			assertEquals("Error: saveFail", result);
+		}
+	}
+
+	@Nested
+	class UpdateMenuItemModelSide
+	{
+		@Test
+		@DisplayName("updateMenuItem with no properties reports nothing to update and does not save")
+		void nothingToUpdate() throws Exception
+		{
+			MenuItem item = itemNamed("it", null);
+			Menu menu = menuNamed("m", item);
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenuItem("m", "it", null, null, null, null, null);
+			assertEquals("No properties to update.", result);
+			verify(f.project, never()).saveEditingSolutionNodes(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("updateMenuItem applies all properties (blank text/tooltip become null) and saves")
+		void appliesProperties() throws Exception
+		{
+			MenuItem item = itemNamed("it", null);
+			Menu menu = menuNamed("m", item);
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenuItem("m", "it", "  ", "Tip", "sc", "icon", "true");
+			assertEquals("MenuItem 'it' in menu 'm' updated successfully.", result);
+			verify(item).setText(null);
+			verify(item).setToolTipText("Tip");
+			verify(item).setStyleClass("sc");
+			verify(item).setIconStyleClass("icon");
+			verify(item).setEnabled(true);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { menu }, true);
+		}
+
+		@Test
+		@DisplayName("updateMenuItem finds a nested item and updates it")
+		void updatesNestedItem() throws Exception
+		{
+			MenuItem deep = itemNamed("deep", null);
+			MenuItem top = itemNamed("top", null, deep);
+			Menu menu = menuNamed("m", top);
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).updateMenuItem("m", "deep", "Hi", null, null, null, null);
+			assertEquals("MenuItem 'deep' in menu 'm' updated successfully.", result);
+			verify(deep).setText("Hi");
+		}
+
+		@Test
+		@DisplayName("updateMenuItem surfaces a RepositoryException on save as an Error message")
+		void repositoryException() throws Exception
+		{
+			MenuItem item = itemNamed("it", null);
+			Menu menu = menuNamed("m", item);
+			Fixture f = fixtureWithMenus(menu);
+			doThrow(new RepositoryException("saveFail")).when(f.project)
+				.saveEditingSolutionNodes(new IPersist[] { menu }, true);
+			String result = serviceWith(f.model).updateMenuItem("m", "it", "Hi", null, null, null, null);
+			assertEquals("Error: saveFail", result);
+		}
+	}
+
+	@Nested
+	class DeleteMenuModelSide
+	{
+		@Test
+		@DisplayName("deleteMenu removes the menu from the solution and saves")
+		void deletes() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).deleteMenu("m");
+			assertEquals("Menu 'm' deleted successfully.", result);
+			verify(f.solution).removeChild(menu);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { menu }, false);
+		}
+
+		@Test
+		@DisplayName("deleteMenu reports a missing menu without removing anything")
+		void notFound() throws Exception
+		{
+			Fixture f = fixtureWithMenus(menuNamed("other"));
+			String result = serviceWith(f.model).deleteMenu("m");
+			assertEquals("Error: Menu 'm' not found", result);
+			verify(f.solution, never()).removeChild(org.mockito.ArgumentMatchers.any());
+		}
+
+		@Test
+		@DisplayName("deleteMenu surfaces a RepositoryException on save as an Error message")
+		void repositoryException() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			Fixture f = fixtureWithMenus(menu);
+			doThrow(new RepositoryException("saveFail")).when(f.project)
+				.saveEditingSolutionNodes(new IPersist[] { menu }, false);
+			String result = serviceWith(f.model).deleteMenu("m");
+			assertEquals("Error: saveFail", result);
+		}
+	}
+
+	@Nested
+	class DeleteMenuItemModelSide
+	{
+		@Test
+		@DisplayName("deleteMenuItem removes the item from its parent and saves")
+		void deletes() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			MenuItem item = itemNamed("it", menu);
+			// wire the menu to actually contain the item so findMenuItemRecursive locates it
+			final List<IPersist> list = new ArrayList<>(Arrays.asList((IPersist) item));
+			lenient().when(menu.getAllObjects()).thenAnswer(inv -> list.iterator());
+			Fixture f = fixtureWithMenus(menu);
+
+			String result = serviceWith(f.model).deleteMenuItem("m", "it");
+			assertEquals("MenuItem 'it' deleted from menu 'm' successfully.", result);
+			verify(menu).removeChild(item);
+			verify(f.project).saveEditingSolutionNodes(new IPersist[] { menu }, true);
+		}
+
+		@Test
+		@DisplayName("deleteMenuItem surfaces a RepositoryException on save as an Error message")
+		void repositoryException() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			MenuItem item = itemNamed("it", menu);
+			final List<IPersist> list = new ArrayList<>(Arrays.asList((IPersist) item));
+			lenient().when(menu.getAllObjects()).thenAnswer(inv -> list.iterator());
+			Fixture f = fixtureWithMenus(menu);
+			doThrow(new RepositoryException("saveFail")).when(f.project)
+				.saveEditingSolutionNodes(new IPersist[] { menu }, true);
+			String result = serviceWith(f.model).deleteMenuItem("m", "it");
+			assertEquals("Error: saveFail", result);
+		}
+	}
+
+	@Nested
+	class ListMenusAndStructureModelSide
+	{
+		@Test
+		@DisplayName("getMenuStructure renders the menu header, encapsulation and nested items")
+		void structureWithItems() throws Exception
+		{
+			MenuItem child = mock(MenuItem.class);
+			lenient().when(child.getName()).thenReturn("child");
+			lenient().when(child.getEnabled()).thenReturn(true);
+			lenient().when(child.getAllObjects()).thenReturn(Collections.<IPersist> emptyList().iterator());
+			MenuItem file = mock(MenuItem.class);
+			lenient().when(file.getName()).thenReturn("file");
+			lenient().when(file.getText()).thenReturn("File");
+			lenient().when(file.getEnabled()).thenReturn(true);
+			lenient().when(file.getAllObjects()).thenReturn(Arrays.<IPersist> asList((IPersist) child).iterator());
+
+			Menu menu = menuNamed("mainMenu", file);
+			lenient().when(menu.getStyleClass()).thenReturn("nav");
+			lenient().when(menu.getEncapsulation()).thenReturn(2);
+			Fixture f = fixtureWithMenus(menu);
+
+			String result = serviceWith(f.model).getMenuStructure("mainMenu");
+			assertTrue(result.startsWith("Menu: mainMenu\n"), "got:\n" + result);
+			assertTrue(result.contains("styleClass: nav"), "got:\n" + result);
+			assertTrue(result.contains("encapsulation: module_private"), "got:\n" + result);
+			assertTrue(result.contains("- file (text: \"File\")"), "got:\n" + result);
+			assertTrue(result.contains("- child"), "got:\n" + result);
+		}
+
+		@Test
+		@DisplayName("getMenuStructure reports public encapsulation for a 0-encapsulation menu")
+		void structurePublicEncapsulation() throws Exception
+		{
+			Menu menu = menuNamed("m");
+			lenient().when(menu.getEncapsulation()).thenReturn(0);
+			Fixture f = fixtureWithMenus(menu);
+			String result = serviceWith(f.model).getMenuStructure("m");
+			assertTrue(result.contains("encapsulation: public"), "got:\n" + result);
+		}
+
+		@Test
+		@DisplayName("listMenus across modules tags module menus and uses the solution-and-modules header")
+		void listsAcrossModules() throws Exception
+		{
+			// active solution with one menu
+			Menu mainMenu = menuNamed("mainMenu");
+			Fixture f = fixtureWithMenus(mainMenu);
+
+			// a module with its own solution and one menu
+			ServoyProject module = mock(ServoyProject.class);
+			Solution moduleSolution = mock(Solution.class);
+			lenient().when(module.getEditingSolution()).thenReturn(moduleSolution);
+			lenient().when(moduleSolution.getName()).thenReturn("myModule");
+			Menu moduleMenu = menuNamed("modMenu");
+			lenient().when(moduleSolution.getMenus(false)).thenAnswer(inv -> Arrays.asList(moduleMenu).iterator());
+			when(f.model.getModulesOfActiveProject()).thenReturn(new ServoyProject[] { module });
+
+			String result = serviceWith(f.model).listMenus(null);
+			assertTrue(result.startsWith("Menus in solution 'mySolution' and modules (2):"), "got:\n" + result);
+			assertTrue(result.contains("mainMenu"), "got:\n" + result);
+			assertTrue(result.contains("modMenu [myModule]"), "module menu is tagged with its solution; got:\n" + result);
+		}
+	}
+
+	@Nested
+	class FindMenuAcrossModules
+	{
+		@Test
+		@DisplayName("findMenu (via getMenuStructure) locates a menu that lives in a module, not the active solution")
+		void findsMenuInModule() throws Exception
+		{
+			// active solution has no matching menu
+			Fixture f = fixtureWithMenus();
+
+			ServoyProject module = mock(ServoyProject.class);
+			Solution moduleSolution = mock(Solution.class);
+			lenient().when(module.getEditingSolution()).thenReturn(moduleSolution);
+			lenient().when(moduleSolution.getName()).thenReturn("myModule");
+			Menu moduleMenu = menuNamed("modMenu");
+			lenient().when(moduleMenu.getEncapsulation()).thenReturn(0);
+			lenient().when(moduleSolution.getMenus(false)).thenAnswer(inv -> Arrays.asList(moduleMenu).iterator());
+			when(f.model.getModulesOfActiveProject()).thenReturn(new ServoyProject[] { module });
+
+			String result = serviceWith(f.model).getMenuStructure("modMenu");
+			assertTrue(result.startsWith("Menu: modMenu\n"), "got:\n" + result);
 		}
 	}
 }

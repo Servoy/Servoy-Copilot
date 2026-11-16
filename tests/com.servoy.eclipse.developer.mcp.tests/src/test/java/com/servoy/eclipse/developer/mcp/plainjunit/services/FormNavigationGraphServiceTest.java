@@ -21,10 +21,21 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.Collections;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.developer.mcp.services.FormNavigationGraphService;
 import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
+import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.j2db.FlattenedSolution;
+import com.servoy.j2db.persistence.Form;
+import com.servoy.j2db.persistence.Solution;
 
 @DisplayName("FormNavigationGraphService")
 public class FormNavigationGraphServiceTest {
@@ -938,6 +949,373 @@ public class FormNavigationGraphServiceTest {
 			json.put("otherKey", "otherFormName");
 			assertNull(invokeResolveFormReference(stub, json));
 			assertEquals("otherFormName", stub.lastLookupKey);
+		}
+	}
+	// ----------------------------------------------------------------------------------------
+	// Seam-driven model-walk tests: the service reaches the model via getServoyModel(), which
+	// these tests override to return a Mockito-mocked IDeveloperServoyModel. Servoy core
+	// (ServoyProject/Solution/FlattenedSolution/Form) is only stubbed at the boundary so the
+	// service's own branches run; the core's behaviour itself is NOT under test here.
+	// ----------------------------------------------------------------------------------------
+
+	/** A {@link FormNavigationGraphService} whose model seam returns the supplied mock. */
+	private static FormNavigationGraphService serviceWith(IDeveloperServoyModel model) {
+		return new FormNavigationGraphService() {
+			@Override
+			protected IDeveloperServoyModel getServoyModel() {
+				return model;
+			}
+		};
+	}
+
+	@Nested
+	@DisplayName("buildFullGraph model-walk guards")
+	class BuildFullGraphGuardTests {
+		@Test
+		@DisplayName("no active project yields an empty graph")
+		void noActiveProject() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenReturn(null);
+
+			NavigationGraph graph = serviceWith(model).buildFullGraph();
+			assertTrue(graph.getAllEdges().isEmpty());
+			assertTrue(graph.getAllFormNames().isEmpty());
+		}
+
+		@Test
+		@DisplayName("active project with no editing solution yields an empty graph")
+		void noEditingSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(null);
+
+			NavigationGraph graph = serviceWith(model).buildFullGraph();
+			assertTrue(graph.getAllEdges().isEmpty());
+		}
+
+		@Test
+		@DisplayName("null flattened solution yields an empty graph")
+		void nullFlattenedSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(null);
+
+			NavigationGraph graph = serviceWith(model).buildFullGraph();
+			assertTrue(graph.getAllEdges().isEmpty());
+		}
+
+		@Test
+		@DisplayName("empty flattened solution (no forms) builds an edgeless graph, not null")
+		void emptyFlattenedSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			FlattenedSolution fs = mock(FlattenedSolution.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(fs);
+			when(fs.getForms(false)).thenReturn(Collections.<Form> emptyList().iterator());
+			// augmentWithScriptAnalysis: active project present, no accessible IProject -> no scan
+			when(project.getProject()).thenReturn(null);
+			when(model.getModulesOfActiveProject()).thenReturn(new ServoyProject[0]);
+
+			NavigationGraph graph = serviceWith(model).buildFullGraph();
+			assertNotNull(graph);
+			assertTrue(graph.getAllEdges().isEmpty());
+		}
+
+		@Test
+		@DisplayName("static graph adds a navigator edge for a form with a valid navigatorID")
+		void navigatorEdgeFromStaticWalk() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			FlattenedSolution fs = mock(FlattenedSolution.class);
+
+			Form homeForm = mock(Form.class);
+			when(homeForm.getName()).thenReturn("home");
+			when(homeForm.getTabPanels()).thenReturn(Collections.emptyIterator());
+			when(homeForm.getWebComponents()).thenReturn(Collections.emptyIterator());
+			when(homeForm.getNavigatorID()).thenReturn("42");
+			when(homeForm.isResponsiveLayout()).thenReturn(false);
+
+			Form navForm = mock(Form.class);
+			when(navForm.getName()).thenReturn("sideNav");
+
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(fs);
+			when(fs.getForms(false)).thenReturn(java.util.List.of(homeForm).iterator());
+			when(fs.getForm("42")).thenReturn(navForm);
+			when(project.getProject()).thenReturn(null);
+			when(model.getModulesOfActiveProject()).thenReturn(new ServoyProject[0]);
+
+			NavigationGraph graph = serviceWith(model).buildFullGraph();
+			List<NavigationEdge> edges = graph.getEdgesFrom("home");
+			assertEquals(1, edges.size());
+			assertAll(() -> assertEquals("sideNav", edges.get(0).getTo()),
+					() -> assertEquals("navigator", edges.get(0).getContainerType()),
+					() -> assertEquals("navigatorID", edges.get(0).getPropertyName()),
+					() -> assertEquals("static", edges.get(0).getConfidence()));
+		}
+
+		@Test
+		@DisplayName("navigatorID of 0/-1/empty adds no navigator edge")
+		void navigatorNoneSkipped() {
+			for (String navId : new String[] { "0", "-1", "", null }) {
+				IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+				ServoyProject project = mock(ServoyProject.class);
+				Solution solution = mock(Solution.class);
+				FlattenedSolution fs = mock(FlattenedSolution.class);
+				Form form = mock(Form.class);
+				when(form.getName()).thenReturn("f");
+				when(form.getTabPanels()).thenReturn(Collections.emptyIterator());
+				when(form.getWebComponents()).thenReturn(Collections.emptyIterator());
+				when(form.getNavigatorID()).thenReturn(navId);
+				when(form.isResponsiveLayout()).thenReturn(false);
+				when(model.getActiveProject()).thenReturn(project);
+				when(project.getEditingSolution()).thenReturn(solution);
+				when(model.getEditingFlattenedSolution(solution)).thenReturn(fs);
+				when(fs.getForms(false)).thenReturn(java.util.List.of(form).iterator());
+				when(project.getProject()).thenReturn(null);
+				when(model.getModulesOfActiveProject()).thenReturn(new ServoyProject[0]);
+
+				NavigationGraph graph = serviceWith(model).buildFullGraph();
+				assertTrue(graph.getEdgesFrom("f").isEmpty(), "navId=" + navId + " must add no edge");
+			}
+		}
+	}
+
+	@Nested
+	@DisplayName("getMainFormName model-walk")
+	class GetMainFormNameTests {
+		@Test
+		@DisplayName("no active project returns null")
+		void noActiveProject() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenReturn(null);
+			assertNull(serviceWith(model).getMainFormName());
+		}
+
+		@Test
+		@DisplayName("no editing solution returns null")
+		void noEditingSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(null);
+			assertNull(serviceWith(model).getMainFormName());
+		}
+
+		@Test
+		@DisplayName("blank/empty firstFormID returns null without resolving a form")
+		void blankFirstFormId() {
+			for (String firstId : new String[] { null, "" }) {
+				IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+				ServoyProject project = mock(ServoyProject.class);
+				Solution solution = mock(Solution.class);
+				when(model.getActiveProject()).thenReturn(project);
+				when(project.getEditingSolution()).thenReturn(solution);
+				when(solution.getFirstFormID()).thenReturn(firstId);
+				assertNull(serviceWith(model).getMainFormName(), "firstId=" + firstId);
+			}
+		}
+
+		@Test
+		@DisplayName("null flattened solution returns null")
+		void nullFlattenedSolution() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(solution.getFirstFormID()).thenReturn("10");
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(null);
+			assertNull(serviceWith(model).getMainFormName());
+		}
+
+		@Test
+		@DisplayName("firstFormID that does not resolve to a form returns null")
+		void firstFormIdUnresolved() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			FlattenedSolution fs = mock(FlattenedSolution.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(solution.getFirstFormID()).thenReturn("10");
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(fs);
+			when(fs.getForm("10")).thenReturn(null);
+			assertNull(serviceWith(model).getMainFormName());
+		}
+
+		@Test
+		@DisplayName("resolved first form returns its name")
+		void firstFormResolved() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			FlattenedSolution fs = mock(FlattenedSolution.class);
+			Form firstForm = mock(Form.class);
+			when(firstForm.getName()).thenReturn("dashboard");
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getEditingSolution()).thenReturn(solution);
+			when(solution.getFirstFormID()).thenReturn("10");
+			when(model.getEditingFlattenedSolution(solution)).thenReturn(fs);
+			when(fs.getForm("10")).thenReturn(firstForm);
+			assertEquals("dashboard", serviceWith(model).getMainFormName());
+		}
+	}
+
+	@Nested
+	@DisplayName("describeReachability")
+	class DescribeReachabilityTests {
+		@Test
+		@DisplayName("null/blank form -> unknownForm")
+		void nullOrBlankForm() {
+			NavigationGraph graph = new NavigationGraph();
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNKNOWN_FORM,
+					FormNavigationGraphService.describeReachability(graph, "main", null));
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNKNOWN_FORM,
+					FormNavigationGraphService.describeReachability(graph, "main", "   "));
+		}
+
+		@Test
+		@DisplayName("form equal to main form -> isMainForm")
+		void isMainForm() {
+			NavigationGraph graph = new NavigationGraph();
+			assertEquals(FormNavigationGraphService.REACHABILITY_IS_MAIN_FORM,
+					FormNavigationGraphService.describeReachability(graph, "main", "main"));
+		}
+
+		@Test
+		@DisplayName("no main form -> noMainForm")
+		void noMainForm() {
+			NavigationGraph graph = new NavigationGraph();
+			assertEquals(FormNavigationGraphService.REACHABILITY_NO_MAIN_FORM,
+					FormNavigationGraphService.describeReachability(graph, null, "someForm"));
+		}
+
+		@Test
+		@DisplayName("path from main exists -> reachable")
+		void reachable() {
+			NavigationGraph graph = new NavigationGraph();
+			graph.addEdge(new NavigationEdge.Builder().from("main").to("child").confidence("static").build());
+			assertEquals(FormNavigationGraphService.REACHABILITY_REACHABLE,
+					FormNavigationGraphService.describeReachability(graph, "main", "child"));
+		}
+
+		@Test
+		@DisplayName("form in graph but no path from main -> unreachable")
+		void unreachable() {
+			NavigationGraph graph = new NavigationGraph();
+			graph.addEdge(new NavigationEdge.Builder().from("other").to("island").confidence("static").build());
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNREACHABLE,
+					FormNavigationGraphService.describeReachability(graph, "main", "island"));
+		}
+
+		@Test
+		@DisplayName("form never seen by the graph -> unknownForm")
+		void unknownForm() {
+			NavigationGraph graph = new NavigationGraph();
+			graph.addEdge(new NavigationEdge.Builder().from("main").to("child").confidence("static").build());
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNKNOWN_FORM,
+					FormNavigationGraphService.describeReachability(graph, "main", "ghost"));
+		}
+
+		@Test
+		@DisplayName("trims the target before matching")
+		void trimsTarget() {
+			NavigationGraph graph = new NavigationGraph();
+			assertEquals(FormNavigationGraphService.REACHABILITY_IS_MAIN_FORM,
+					FormNavigationGraphService.describeReachability(graph, "main", "  main  "));
+		}
+	}
+
+	@Nested
+	@DisplayName("describeSubgraphReachability")
+	class DescribeSubgraphReachabilityTests {
+		@Test
+		@DisplayName("no main form + form present -> unreachable (not noMainForm)")
+		void noMainFormButPresent() {
+			NavigationGraph graph = new NavigationGraph();
+			graph.addEdge(new NavigationEdge.Builder().from("other").to("present").confidence("static").build());
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNREACHABLE,
+					FormNavigationGraphService.describeSubgraphReachability(graph, null, "present"));
+		}
+
+		@Test
+		@DisplayName("no main form + form absent -> unknownForm")
+		void noMainFormAndAbsent() {
+			NavigationGraph graph = new NavigationGraph();
+			assertEquals(FormNavigationGraphService.REACHABILITY_UNKNOWN_FORM,
+					FormNavigationGraphService.describeSubgraphReachability(graph, null, "ghost"));
+		}
+
+		@Test
+		@DisplayName("with a main form it defers to describeReachability (reachable)")
+		void withMainFormDefers() {
+			NavigationGraph graph = new NavigationGraph();
+			graph.addEdge(new NavigationEdge.Builder().from("main").to("child").confidence("static").build());
+			assertEquals(FormNavigationGraphService.REACHABILITY_REACHABLE,
+					FormNavigationGraphService.describeSubgraphReachability(graph, "main", "child"));
+		}
+	}
+
+	@Nested
+	@DisplayName("edgeToJson serialization")
+	class EdgeToJsonTests {
+		private final ObjectMapper mapper = new ObjectMapper();
+
+		@Test
+		@DisplayName("emits only the required fields for a minimal edge")
+		void minimalEdge() {
+			NavigationEdge edge = new NavigationEdge.Builder().from("a").to("b").confidence("static").build();
+			ObjectNode node = FormNavigationGraphService.edgeToJson(mapper, edge);
+
+			assertAll(() -> assertEquals("a", node.get("from").asText()),
+					() -> assertEquals("b", node.get("to").asText()),
+					() -> assertEquals("static", node.get("confidence").asText()),
+					// optional fields left out when null / tabIndex < 0
+					() -> assertFalse(node.has("propertyName")),
+					() -> assertFalse(node.has("tabName")),
+					() -> assertFalse(node.has("tabIndex")),
+					() -> assertFalse(node.has("relationName")),
+					() -> assertFalse(node.has("trigger")));
+		}
+
+		@Test
+		@DisplayName("emits all optional fields when the edge carries them")
+		void fullEdge() {
+			NavigationEdge edge = new NavigationEdge.Builder().from("formA").to("formB").containerName("tabs_1")
+					.containerType("tabpanel").propertyName("containsFormID").tabName("Orders").tabIndex(2)
+					.relationName("orders_to_details").trigger("btn.onAction").confidence("static").build();
+			ObjectNode node = FormNavigationGraphService.edgeToJson(mapper, edge);
+
+			assertAll(() -> assertEquals("tabs_1", node.get("containerName").asText()),
+					() -> assertEquals("tabpanel", node.get("containerType").asText()),
+					() -> assertEquals("containsFormID", node.get("propertyName").asText()),
+					() -> assertEquals("Orders", node.get("tabName").asText()),
+					() -> assertEquals(2, node.get("tabIndex").asInt()),
+					() -> assertEquals("orders_to_details", node.get("relationName").asText()),
+					() -> assertEquals("btn.onAction", node.get("trigger").asText()));
+		}
+
+		@Test
+		@DisplayName("includes a cypressSelector when the edge produces one")
+		void cypressSelectorIncluded() {
+			NavigationEdge edge = new NavigationEdge.Builder().from("main").to("orders").containerName("tabs_1")
+					.containerType("tabpanel").tabName("Orders").tabIndex(0).confidence("static").build();
+			ObjectNode node = FormNavigationGraphService.edgeToJson(mapper, edge);
+			if (edge.getCypressSelector() != null) {
+				assertEquals(edge.getCypressSelector(), node.get("cypressSelector").asText());
+			} else {
+				assertFalse(node.has("cypressSelector"));
+			}
 		}
 	}
 }
