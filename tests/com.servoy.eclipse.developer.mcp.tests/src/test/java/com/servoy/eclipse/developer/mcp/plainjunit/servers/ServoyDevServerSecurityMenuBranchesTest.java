@@ -1000,4 +1000,408 @@ class ServoyDevServerSecurityMenuBranchesTest
 			verifyNoInteractions(menu);
 		}
 	}
+
+	// =======================================================================
+	// SECURITY SUCCESS / POST-CLIENT-ID BRANCHES (SVY-21114 seam follow-up)
+	//
+	// ServoyDevServer#getSecurityClientId() is now a protected seam. Overriding
+	// it (to a constant dummy id) together with the already-used getServoyModel()
+	// + mocked EclipseUserManager unlocks the user-manager MUTATION calls
+	// (createUser/getUserUID/changeUserName/setPassword/createGroup/
+	// setFormSecurityAccess) that previously blocked on
+	// ApplicationServerRegistry.get().getClientId(). The tests below drive the
+	// SUCCESS and manager-returned-failure branches of createUser/changeUserName/
+	// setUserPassword/createPermission, and the setFormSecurityAccess-reaching
+	// paths of setFormElementAccess/setFormSecurityBulk. They assert ONLY the
+	// server's own logic - the mapped args handed to the manager (verify/captor)
+	// and the result/error strings it formats - never that the manager actually
+	// mutated anything (the manager is a mock).
+	// =======================================================================
+
+	/** Dummy client id handed to every user-manager mutation call. */
+	private static final String CLIENT = "testClient";
+
+	/**
+	 * Subclass that both returns the given mocked model AND overrides the
+	 * security client-id seam, so the user-manager mutation calls are reachable
+	 * without a running app server.
+	 */
+	private static final class SecurityServer extends ServoyDevServer
+	{
+		private final IDeveloperServoyModel model;
+
+		SecurityServer(IDeveloperServoyModel model)
+		{
+			this.model = model;
+		}
+
+		@Override
+		protected IDeveloperServoyModel getServoyModel()
+		{
+			return model;
+		}
+
+		@Override
+		protected String getSecurityClientId()
+		{
+			return CLIENT;
+		}
+	}
+
+	@Nested
+	class CreateUserSuccess
+	{
+		@Test
+		@DisplayName("createUser maps clientId/userName/password/userUID onto manager.createUser, writes security info and reports the resolved UID on success")
+		void success() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(0).when(um).createUser(CLIENT, "bob", "pw", "uid-1", false);
+			doReturn("uid-1").when(um).getUserUID(CLIENT, "bob");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("User 'bob' created successfully.\n  UID: uid-1", server.createUser("bob", "pw", "uid-1"));
+			verify(um).createUser(CLIENT, "bob", "pw", "uid-1", false);
+			verify(um).getUserUID(CLIENT, "bob");
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("createUser forwards a null userUID unchanged (auto-generate branch) and still resolves the UID back")
+		void nullUserUIDForwarded() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(0).when(um).createUser(CLIENT, "bob", "pw", null, false);
+			doReturn("auto-uid").when(um).getUserUID(CLIENT, "bob");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("User 'bob' created successfully.\n  UID: auto-uid", server.createUser("bob", "pw", null));
+			verify(um).createUser(CLIENT, "bob", "pw", null, false);
+		}
+
+		@Test
+		@DisplayName("createUser reports the 'already exists' error when the manager returns -2 (no security write, no UID lookup)")
+		void duplicate() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(-2).when(um).createUser(CLIENT, "bob", "pw", null, false);
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: User 'bob' already exists", server.createUser("bob", "pw", null));
+			verify(um, org.mockito.Mockito.never()).writeAllSecurityInformation(org.mockito.ArgumentMatchers.anyBoolean());
+			verify(um, org.mockito.Mockito.never()).getUserUID(org.mockito.ArgumentMatchers.anyString(),
+				org.mockito.ArgumentMatchers.anyString());
+		}
+
+		@Test
+		@DisplayName("createUser reports the generic failure error with the manager's negative code (other than -2)")
+		void otherFailureCode() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(-5).when(um).createUser(CLIENT, "bob", "pw", null, false);
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: Failed to create user (code: -5)", server.createUser("bob", "pw", null));
+		}
+	}
+
+	@Nested
+	class ChangeUserNameSuccess
+	{
+		@Test
+		@DisplayName("changeUserName resolves the UID then maps clientId/uid/newName onto manager.changeUserName and reports success")
+		void success() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn("uid-7").when(um).getUserUID(CLIENT, "old");
+			doReturn(Boolean.TRUE).when(um).changeUserName(CLIENT, "uid-7", "new");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("User renamed from 'old' to 'new' successfully.", server.changeUserName("old", "new"));
+			verify(um).getUserUID(CLIENT, "old");
+			verify(um).changeUserName(CLIENT, "uid-7", "new");
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("changeUserName reports 'not found' when the UID does not resolve (manager not asked to rename)")
+		void userNotFound() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(null).when(um).getUserUID(CLIENT, "old");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: User 'old' not found", server.changeUserName("old", "new"));
+			verify(um, org.mockito.Mockito.never()).changeUserName(org.mockito.ArgumentMatchers.anyString(),
+				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+		}
+
+		@Test
+		@DisplayName("changeUserName reports the name-in-use error when the manager returns false, and does not write security info")
+		void renameRejected() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn("uid-7").when(um).getUserUID(CLIENT, "old");
+			doReturn(Boolean.FALSE).when(um).changeUserName(CLIENT, "uid-7", "new");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: Failed to rename user. Name 'new' may already be in use.",
+				server.changeUserName("old", "new"));
+			verify(um, org.mockito.Mockito.never()).writeAllSecurityInformation(org.mockito.ArgumentMatchers.anyBoolean());
+		}
+	}
+
+	@Nested
+	class SetUserPasswordSuccess
+	{
+		@Test
+		@DisplayName("setUserPassword resolves the UID then maps clientId/uid/newPassword/true onto manager.setPassword and reports success")
+		void success() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn("uid-9").when(um).getUserUID(CLIENT, "bob");
+			doReturn(Boolean.TRUE).when(um).setPassword(CLIENT, "uid-9", "pw", true);
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Password updated for user 'bob' successfully.", server.setUserPassword("bob", "pw"));
+			verify(um).getUserUID(CLIENT, "bob");
+			verify(um).setPassword(CLIENT, "uid-9", "pw", true);
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("setUserPassword reports 'not found' when the UID does not resolve (manager not asked to set the password)")
+		void userNotFound() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(null).when(um).getUserUID(CLIENT, "bob");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: User 'bob' not found", server.setUserPassword("bob", "pw"));
+			verify(um, org.mockito.Mockito.never()).setPassword(org.mockito.ArgumentMatchers.anyString(),
+				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+				org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("setUserPassword reports the set-failure error when the manager returns false, and does not write security info")
+		void setRejected() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn("uid-9").when(um).getUserUID(CLIENT, "bob");
+			doReturn(Boolean.FALSE).when(um).setPassword(CLIENT, "uid-9", "pw", true);
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: Failed to set password for user 'bob'", server.setUserPassword("bob", "pw"));
+			verify(um, org.mockito.Mockito.never()).writeAllSecurityInformation(org.mockito.ArgumentMatchers.anyBoolean());
+		}
+	}
+
+	@Nested
+	class CreatePermissionSuccess
+	{
+		@Test
+		@DisplayName("createPermission maps clientId/permissionName onto manager.createGroup, writes security info and reports success on a non-negative code")
+		void success() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(0).when(um).createGroup(CLIENT, "admins");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Permission 'admins' created successfully.", server.createPermission("admins"));
+			verify(um).createGroup(CLIENT, "admins");
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("createPermission reports the exists/failed error when the manager returns -1, and does not write security info")
+		void existsOrFailed() throws Exception
+		{
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			doReturn(-1).when(um).createGroup(CLIENT, "admins");
+			ServoyDevServer server = new SecurityServer(modelWith(um));
+
+			assertEquals("Error: Permission 'admins' already exists or could not be created",
+				server.createPermission("admins"));
+			verify(um, org.mockito.Mockito.never()).writeAllSecurityInformation(org.mockito.ArgumentMatchers.anyBoolean());
+		}
+	}
+
+	@Nested
+	class SetFormElementAccessSuccess
+	{
+		@Test
+		@DisplayName("setFormElementAccess on the form itself (no elementName) passes the form UUID and accessMask VIEWABLE|ACCESSIBLE (3), reporting viewable=true accessible=true")
+		void formLevelViewableAndAccessible() throws Exception
+		{
+			Form form = formNamed("orders", Collections.emptyList());
+			String formUid = form.getUUID().toString();
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			org.mockito.ArgumentCaptor<Integer> mask = org.mockito.ArgumentCaptor.forClass(Integer.class);
+			String result = server.setFormElementAccess("perm", "orders", null, "true", "true", "sol");
+
+			assertEquals("Access set on form 'orders' for permission 'perm': viewable=true, accessible=true", result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), mask.capture(),
+				org.mockito.ArgumentMatchers.eq(formUid), org.mockito.ArgumentMatchers.eq("sol"));
+			assertEquals(3, mask.getValue().intValue());
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("setFormElementAccess viewable-only computes accessMask VIEWABLE (1) and reports accessible=false")
+		void viewableOnly() throws Exception
+		{
+			Form form = formNamed("orders", Collections.emptyList());
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			org.mockito.ArgumentCaptor<Integer> mask = org.mockito.ArgumentCaptor.forClass(Integer.class);
+			String result = server.setFormElementAccess("perm", "orders", null, "true", "false", "sol");
+
+			assertEquals("Access set on form 'orders' for permission 'perm': viewable=true, accessible=false", result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), mask.capture(),
+				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("sol"));
+			assertEquals(1, mask.getValue().intValue());
+		}
+
+		@Test
+		@DisplayName("setFormElementAccess neither-flag computes accessMask 0 and reports viewable=false accessible=false")
+		void neither() throws Exception
+		{
+			Form form = formNamed("orders", Collections.emptyList());
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			org.mockito.ArgumentCaptor<Integer> mask = org.mockito.ArgumentCaptor.forClass(Integer.class);
+			String result = server.setFormElementAccess("perm", "orders", null, "false", "false", "sol");
+
+			assertEquals("Access set on form 'orders' for permission 'perm': viewable=false, accessible=false", result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), mask.capture(),
+				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("sol"));
+			assertEquals(0, mask.getValue().intValue());
+		}
+
+		@Test
+		@DisplayName("setFormElementAccess on a named element resolves its UUID, passes it to the manager and reports the element-targeted success message")
+		void namedElement() throws Exception
+		{
+			com.servoy.j2db.persistence.ISupportName namedChild = mock(
+				com.servoy.j2db.persistence.ISupportName.class, org.mockito.Mockito.withSettings()
+					.extraInterfaces(IPersist.class));
+			doReturn("btn1").when(namedChild).getName();
+			UUID childUid = UUID.randomUUID();
+			doReturn(childUid).when(((IPersist)namedChild)).getUUID();
+			Form form = formNamed("orders", List.of((IPersist)namedChild));
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			String result = server.setFormElementAccess("perm", "orders", "btn1", "true", "true", "sol");
+
+			assertEquals("Access set on element 'btn1' in form 'orders' for permission 'perm': viewable=true, accessible=true",
+				result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), org.mockito.ArgumentMatchers.eq(Integer.valueOf(3)),
+				org.mockito.ArgumentMatchers.eq(childUid.toString()), org.mockito.ArgumentMatchers.eq("sol"));
+		}
+	}
+
+	@Nested
+	class SetFormSecurityBulkSuccess
+	{
+		@Test
+		@DisplayName("setFormSecurityBulk applies a single form-level entry: passes the form UUID + accessMask VIEWABLE|ACCESSIBLE (3) and reports 1/1 applied")
+		void singleFormLevelEntry() throws Exception
+		{
+			Form form = formNamed("orders", Collections.emptyList());
+			String formUid = form.getUUID().toString();
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			// elementName omitted -> the form itself; viewable+accessible -> mask 3
+			String entries = "[{\"viewable\":true,\"accessible\":true}]";
+			org.mockito.ArgumentCaptor<Integer> mask = org.mockito.ArgumentCaptor.forClass(Integer.class);
+			String result = server.setFormSecurityBulk("perm", "orders", entries, "sol");
+
+			assertTrue(result.startsWith("Bulk access update on form 'orders' for permission 'perm':"), "got: " + result);
+			assertTrue(result.contains("1/1 entries applied successfully."), "got: " + result);
+			assertTrue(!result.contains("Errors:"), "got: " + result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), mask.capture(),
+				org.mockito.ArgumentMatchers.eq(formUid), org.mockito.ArgumentMatchers.eq("sol"));
+			assertEquals(3, mask.getValue().intValue());
+			verify(um).writeAllSecurityInformation(false);
+		}
+
+		@Test
+		@DisplayName("setFormSecurityBulk applies a named-element entry: resolves its UUID, passes accessMask VIEWABLE (1) for viewable-only and reports 1/1 applied")
+		void singleNamedElementViewableOnly() throws Exception
+		{
+			com.servoy.j2db.persistence.ISupportName namedChild = mock(
+				com.servoy.j2db.persistence.ISupportName.class, org.mockito.Mockito.withSettings()
+					.extraInterfaces(IPersist.class));
+			doReturn("btn1").when(namedChild).getName();
+			UUID childUid = UUID.randomUUID();
+			doReturn(childUid).when(((IPersist)namedChild)).getUUID();
+			Form form = formNamed("orders", List.of((IPersist)namedChild));
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			String entries = "[{\"elementName\":\"btn1\",\"viewable\":true,\"accessible\":false}]";
+			String result = server.setFormSecurityBulk("perm", "orders", entries, "sol");
+
+			assertTrue(result.contains("1/1 entries applied successfully."), "got: " + result);
+			verify(um).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), org.mockito.ArgumentMatchers.eq(Integer.valueOf(1)),
+				org.mockito.ArgumentMatchers.eq(childUid.toString()), org.mockito.ArgumentMatchers.eq("sol"));
+		}
+
+		@Test
+		@DisplayName("setFormSecurityBulk applies the valid entry and skips the invalid one: reports 1/2 with the per-entry error and calls the manager exactly once")
+		void mixedValidAndSkipped() throws Exception
+		{
+			Form form = formNamed("orders", Collections.emptyList());
+			String formUid = form.getUUID().toString();
+			EclipseUserManager um = mock(EclipseUserManager.class);
+			IDeveloperServoyModel model = modelWith(um);
+			ServoyProject project = activeProjectResolving("orders", form);
+			doReturn(project).when(model).getServoyProject("sol");
+			ServoyDevServer server = new SecurityServer(model);
+
+			// first entry: form-level neither-flag (valid, mask 0); second: invalid combination (skipped)
+			String entries = "[" +
+				"{\"viewable\":false,\"accessible\":false}," +
+				"{\"elementName\":\"btn1\",\"viewable\":false,\"accessible\":true}]";
+			String result = server.setFormSecurityBulk("perm", "orders", entries, "sol");
+
+			assertTrue(result.contains("1/2 entries applied successfully."), "got: " + result);
+			assertTrue(result.contains("Invalid combination for 'btn1'"), "got: " + result);
+			verify(um, org.mockito.Mockito.times(1)).setFormSecurityAccess(org.mockito.ArgumentMatchers.eq(CLIENT),
+				org.mockito.ArgumentMatchers.eq("perm"), org.mockito.ArgumentMatchers.eq(Integer.valueOf(0)),
+				org.mockito.ArgumentMatchers.eq(formUid), org.mockito.ArgumentMatchers.eq("sol"));
+			verify(um).writeAllSecurityInformation(false);
+		}
+	}
 }

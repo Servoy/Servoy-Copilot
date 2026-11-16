@@ -135,6 +135,19 @@ public class ServoyDevServer {
 		return ServoyModelManager.getServoyModelManager().getServoyModel();
 	}
 
+	/**
+	 * Seam over the application server registry's server manager. The database tool bodies
+	 * (createTable/addColumn database path, createServer, listTables, getTableInfo, executeSQL,
+	 * syncDbiWithDatabase) and the relation server lookups reach it through this method instead
+	 * of the static {@code ApplicationServerRegistry.get().getServerManager()}, so a plain-JUnit
+	 * test can override it with a Mockito-mocked {@code IServerManagerInternal} (whose
+	 * {@code getServer(...)} returns a mocked {@code IServerInternal}) and drive those branches
+	 * without a running application server. Behaviour-preserving default.
+	 */
+	protected com.servoy.j2db.persistence.IServerManagerInternal getServerManager() {
+		return ApplicationServerRegistry.get().getServerManager();
+	}
+
 	@Tool(name = "ping", description = "Returns a simple pong response to verify the servoy-dev endpoint is alive.", type = "object")
 	public String ping() {
 		return "pong";
@@ -350,7 +363,7 @@ public class ServoyDevServer {
 		}
 		String filterTableName = (tableName != null && !tableName.isBlank()) ? tableName : null;
 
-		IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+		IServerInternal server = (IServerInternal) getServerManager()
 				.getServer(serverName, false, false);
 		if (server == null) {
 			return "{\"errors\":[\"Server not found: " + escapeJson(serverName) + "\"]}";
@@ -1418,7 +1431,7 @@ public class ServoyDevServer {
 			if (dataSource != null) {
 				String[] dbServerTable = com.servoy.j2db.util.DataSourceUtils.getDBServernameTablename(dataSource);
 				if (dbServerTable != null && dbServerTable.length == 2) {
-					IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+					IServerInternal server = (IServerInternal) getServerManager()
 							.getServer(dbServerTable[0], false, false);
 					if (server != null) {
 						formTable = server.getTable(dbServerTable[1]);
@@ -1571,7 +1584,7 @@ public class ServoyDevServer {
 		if (dbServerTable == null || dbServerTable.length != 2) return null;
 
 		try {
-			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+			IServerInternal server = (IServerInternal) getServerManager()
 					.getServer(dbServerTable[0], false, false);
 			if (server == null) return null;
 			ITable table = server.getTable(dbServerTable[1]);
@@ -1728,9 +1741,9 @@ public class ServoyDevServer {
 			String[] foreignParts = foreignDs.replace("db:/", "").split("/");
 			if (primaryParts.length < 2 || foreignParts.length < 2) return null;
 
-			IServerInternal primaryServer = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+			IServerInternal primaryServer = (IServerInternal) getServerManager()
 					.getServer(primaryParts[0], false, false);
-			IServerInternal foreignServer = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+			IServerInternal foreignServer = (IServerInternal) getServerManager()
 					.getServer(foreignParts[0], false, false);
 			if (primaryServer == null || foreignServer == null) return null;
 
@@ -1825,7 +1838,7 @@ public class ServoyDevServer {
 			return "Error: serverName parameter is required";
 
 		try {
-			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+			IServerInternal server = (IServerInternal) getServerManager()
 					.getServer(serverName, false, false);
 			if (server == null)
 				return "Error: Database server '" + serverName + "' not found";
@@ -1855,7 +1868,7 @@ public class ServoyDevServer {
 			return "Error: tableName parameter is required";
 
 		try {
-			IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+			IServerInternal server = (IServerInternal) getServerManager()
 					.getServer(serverName, false, false);
 			if (server == null)
 				return "Error: Database server '" + serverName + "' not found";
@@ -1907,7 +1920,7 @@ public class ServoyDevServer {
 		if (sql == null || sql.isBlank())
 			return "Error: sql is required";
 
-		IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+		IServerInternal server = (IServerInternal) getServerManager()
 				.getServer(serverName, false, false);
 		if (server == null)
 			return "Error: Database server '" + serverName + "' not found";
@@ -2039,7 +2052,7 @@ public class ServoyDevServer {
 
 				return "Column '" + columnName + "' (" + resolvedType + ") added to in-memory table '" + tableName + "'.";
 			} else {
-				IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+				IServerInternal server = (IServerInternal) getServerManager()
 						.getServer(serverName, false, false);
 				if (server == null)
 					return "Error: Database server '" + serverName + "' not found";
@@ -2133,7 +2146,7 @@ public class ServoyDevServer {
 				String colResult = addColumnsFromSpec(table, columns, validator);
 				return "In-memory table '" + tableName + "' created in project '" + project.getProject().getName() + "' with PK column '" + pkName + "'." + colResult;
 			} else {
-				IServerInternal server = (IServerInternal) ApplicationServerRegistry.get().getServerManager()
+				IServerInternal server = (IServerInternal) getServerManager()
 						.getServer(serverName, false, false);
 				if (server == null)
 					return "Error: Database server '" + serverName + "' not found";
@@ -2248,7 +2261,7 @@ public class ServoyDevServer {
 
 		String resolvedDbName = (databaseName != null && !databaseName.isBlank()) ? databaseName : serverName;
 
-		com.servoy.j2db.persistence.IServerManagerInternal serverManager = ApplicationServerRegistry.get().getServerManager();
+		com.servoy.j2db.persistence.IServerManagerInternal serverManager = getServerManager();
 
 		IServerInternal serverPrototype = null;
 		com.servoy.j2db.persistence.ServerConfig origConfig = null;
@@ -2592,7 +2605,13 @@ public class ServoyDevServer {
 		return (com.servoy.eclipse.model.repository.WorkspaceUserManager) getServoyModel().getUserManager();
 	}
 
-	private String getSecurityClientId() {
+	/**
+	 * Seam over the security client id. Overridable so a plain-JUnit test can return a dummy id
+	 * and drive the user-manager mutation paths (createUser/changeUserName/setUserPassword/
+	 * createPermission/setFormSecurityAccess) with a mocked user manager, without a running
+	 * application server. Behaviour-preserving default.
+	 */
+	protected String getSecurityClientId() {
 		return ApplicationServerRegistry.get().getClientId();
 	}
 

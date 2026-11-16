@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,6 +44,10 @@ import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.developer.mcp.servers.ServoyDevServer;
 import com.servoy.eclipse.developer.mcp.services.ServoyArtifactCreationService;
 import com.servoy.eclipse.model.nature.ServoyProject;
+import com.servoy.j2db.persistence.Column;
+import com.servoy.j2db.persistence.IServerInternal;
+import com.servoy.j2db.persistence.IServerManagerInternal;
+import com.servoy.j2db.persistence.ITable;
 import com.servoy.j2db.persistence.Relation;
 import com.servoy.j2db.persistence.Solution;
 import com.servoy.j2db.persistence.ValueList;
@@ -83,13 +88,21 @@ import com.servoy.j2db.persistence.ValueList;
  * live inside the collaborator {@code ServoyArtifactCreationService}, not in
  * these two tool bodies - the bodies pass the raw {@code joinType}/{@code type}
  * strings straight through - so those are the collaborator's own tests, not
- * this server's. The full auto-detect-by-column path inside
- * {@code autoDetectRelationColumns} reaches the static
- * {@code ApplicationServerRegistry} server manager; in a plainjunit fork that
- * throws and the private helper's own try/catch returns {@code null}, so here
- * the auto-detect <em>trigger</em> is exercised (columns omitted -> helper
- * invoked -> null -> columns stay unresolved) but the real FK discovery against
- * live tables stays in {@code integrationpde}.
+ * this server's.
+ * </p>
+ * <p>
+ * <b>The server-manager seam.</b> {@code autoDetectRelationColumns} used to
+ * reach the static {@code ApplicationServerRegistry.get().getServerManager()},
+ * which a plainjunit fork cannot satisfy. That grab now goes through the second
+ * overridable seam {@code protected IServerManagerInternal getServerManager()},
+ * which {@link ModelSeamServer} overrides to return a Mockito-mocked
+ * {@link com.servoy.j2db.persistence.IServerManagerInternal}. That unlocks the
+ * full FK auto-detect path as plain-JUnit tests (see
+ * {@code CreateRelationAutoDetectBranches}): the omitted-/blank-column trigger,
+ * the server/table lookups, and the three auto-detect outcomes (found by
+ * {@code <table>_id}, found by the primary PK column name, and not found ->
+ * helper returns {@code null} so the column stays unresolved). The real persist
+ * of the resulting relation stays in {@code integrationpde}.
  * </p>
  *
  * @since 2026.11
@@ -137,16 +150,29 @@ class ServoyDevServerArtifactBranchesTest
 	private static final class ModelSeamServer extends ServoyDevServer
 	{
 		private final IDeveloperServoyModel model;
+		private final IServerManagerInternal serverManager;
 
 		ModelSeamServer(IDeveloperServoyModel model)
 		{
+			this(model, null);
+		}
+
+		ModelSeamServer(IDeveloperServoyModel model, IServerManagerInternal serverManager)
+		{
 			this.model = model;
+			this.serverManager = serverManager;
 		}
 
 		@Override
 		protected IDeveloperServoyModel getServoyModel()
 		{
 			return model;
+		}
+
+		@Override
+		protected IServerManagerInternal getServerManager()
+		{
+			return serverManager;
 		}
 	}
 
@@ -159,6 +185,21 @@ class ServoyDevServerArtifactBranchesTest
 	private static ModelSeamServer modelServer(IDeveloperServoyModel model, ServoyArtifactCreationService artifactService)
 	{
 		ModelSeamServer server = new ModelSeamServer(model);
+		setField(server, "artifactService", artifactService);
+		return server;
+	}
+
+	/**
+	 * Builds a {@link ModelSeamServer} with both seams overridden: the
+	 * {@code artifactService} mock swapped in, a mocked model, and a mocked
+	 * {@link IServerManagerInternal} returned by {@code getServerManager()} so
+	 * the FK auto-detect path in {@code autoDetectRelationColumns} runs without
+	 * a live app server.
+	 */
+	private static ModelSeamServer modelServer(IDeveloperServoyModel model, IServerManagerInternal serverManager,
+		ServoyArtifactCreationService artifactService)
+	{
+		ModelSeamServer server = new ModelSeamServer(model, serverManager);
 		setField(server, "artifactService", artifactService);
 		return server;
 	}
@@ -455,19 +496,6 @@ class ServoyDevServerArtifactBranchesTest
 			verify(svc).createRelation("r", "db:/s/p", "db:/s/f", "pk", "fk", "inner");
 		}
 
-		// ----------------------------------------------------------------
-		// NOTE: the omitted-/blank-column branches that trigger
-		// autoDetectRelationColumns are LEFT FOR INTEGRATION. When both columns
-		// are given the body never calls that helper (as bothColumnsGivenDelegates
-		// proves), but the moment a column is blank/omitted the helper runs and
-		// reaches the static ApplicationServerRegistry.get().getServerManager(),
-		// which in a plainjunit fork blocks on app-server registry init rather
-		// than returning cleanly - so the auto-detect path (and its own
-		// try/catch -> null fallback) is only exercisable in the integrationpde
-		// suite with a live app server. The getServoyModel() seam cannot mock
-		// that second static, so these two branches stay there.
-		// ----------------------------------------------------------------
-
 		@Test
 		@DisplayName("createRelation with a null active project skips the duplicate guard and still delegates")
 		void nullActiveProjectDelegates() throws Exception
@@ -514,6 +542,279 @@ class ServoyDevServerArtifactBranchesTest
 			String result = modelServer(model, svc).createRelation("r", "db:/s/p", "db:/s/f", "pk", "fk", "inner");
 
 			assertTrue(result.startsWith("Error:") && result.contains("boom"), "got: " + result);
+		}
+	}
+
+	// =======================================================================
+	// createRelation - FK auto-detect via the getServerManager() seam
+	//
+	// When primaryColumn/foreignColumn are omitted/blank, createRelation calls
+	// the private autoDetectRelationColumns(primary, foreign) helper, which:
+	//   - prefixes "db:/" if missing, splits the datasource on '/',
+	//     needs >= 2 parts each (server, table) else returns null;
+	//   - looks the primary + foreign servers up via getServerManager()
+	//     .getServer(name, false, false), null-guards both;
+	//   - getTable(tableName) on each, null-guards both;
+	//   - takes the primary table's first row-ident (PK) column name;
+	//   - tries candidates { "<primaryTable>_id", "<primaryTable>id", pkName }
+	//     in order and returns "<pkName>:<candidate>" for the first that the
+	//     foreign table has a column for, else null.
+	// The result is split on ':' into [primaryCol, foreignCol] and the resolved
+	// pair is forwarded to the collaborator; a null (any failure branch) leaves
+	// the omitted column(s) unresolved (still null) when forwarded.
+	// =======================================================================
+
+	@Nested
+	class CreateRelationAutoDetectBranches
+	{
+		/** A project whose editing solution reports the relation absent. */
+		private ServoyProject projectNoRelation()
+		{
+			Solution solution = mock(Solution.class);
+			doReturn(null).when(solution).getRelation(anyString());
+			ServoyProject project = mock(ServoyProject.class);
+			doReturn(solution).when(project).getEditingSolution();
+			return project;
+		}
+
+		/** A model whose active project is the given (no-duplicate) project. */
+		private IDeveloperServoyModel modelWith(ServoyProject project)
+		{
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			doReturn(project).when(model).getActiveProject();
+			return model;
+		}
+
+		/**
+		 * A mocked {@link ITable} whose first row-ident column reports the given
+		 * PK name, and whose {@code getColumn(name)} returns a non-null mocked
+		 * {@link Column} exactly for the names in {@code presentColumns}.
+		 */
+		private ITable tableWithPkAndColumns(String pkName, String... presentColumns) throws Exception
+		{
+			ITable table = mock(ITable.class);
+			if (pkName != null)
+			{
+				Column pk = mock(Column.class);
+				doReturn(pkName).when(pk).getName();
+				doReturn(List.of(pk)).when(table).getRowIdentColumns();
+			}
+			// default: unknown columns resolve to null
+			doReturn(null).when(table).getColumn(anyString());
+			for (String c : presentColumns)
+			{
+				doReturn(mock(Column.class)).when(table).getColumn(c);
+			}
+			return table;
+		}
+
+		/** A mocked server returning {@code table} for {@code tableName}. */
+		private IServerInternal serverWithTable(String tableName, ITable table) throws Exception
+		{
+			IServerInternal server = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(table).when(server).getTable(tableName);
+			return server;
+		}
+
+		/**
+		 * A server manager whose three-arg {@code getServer(name, false, false)}
+		 * returns the primary/foreign servers for their names and {@code null}
+		 * otherwise.
+		 */
+		private IServerManagerInternal serverManager(String primaryServerName, IServerInternal primaryServer,
+			String foreignServerName, IServerInternal foreignServer)
+		{
+			IServerManagerInternal sm = mock(IServerManagerInternal.class);
+			doReturn(null).when(sm).getServer(anyString(), eq(false), eq(false));
+			if (primaryServer != null) doReturn(primaryServer).when(sm).getServer(primaryServerName, false, false);
+			if (foreignServer != null) doReturn(foreignServer).when(sm).getServer(foreignServerName, false, false);
+			return sm;
+		}
+
+		@Test
+		@DisplayName("auto-detect: the foreign table having '<primaryTable>_id' picks that FK column (pk:'<table>_id')")
+		void foreignHasTableIdColumn() throws Exception
+		{
+			// primary db:/srv/customers (PK 'customer_id'); foreign db:/srv/orders has 'customers_id'
+			ITable primaryTable = tableWithPkAndColumns("customer_id");
+			ITable foreignTable = tableWithPkAndColumns(null, "customers_id");
+			IServerInternal srv = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(primaryTable).when(srv).getTable("customers");
+			doReturn(foreignTable).when(srv).getTable("orders");
+			IServerManagerInternal sm = serverManager("srv", srv, "srv", srv);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation("r", "db:/srv/customers", "db:/srv/orders", "customer_id", "customers_id", "left outer"))
+				.thenReturn("RELATION CREATED");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, "left outer");
+
+			assertEquals("RELATION CREATED", result);
+			// pkName ':' '<primaryTable>_id' -> customer_id (primary), customers_id (foreign)
+			verify(svc).createRelation("r", "db:/srv/customers", "db:/srv/orders", "customer_id", "customers_id",
+				"left outer");
+		}
+
+		@Test
+		@DisplayName("auto-detect: with no '<table>_id' column, the foreign table having the primary PK column name picks it")
+		void foreignHasPkColumnName() throws Exception
+		{
+			// foreign has NEITHER 'customers_id' NOR 'customersid', but HAS 'customer_id' (the PK name)
+			ITable primaryTable = tableWithPkAndColumns("customer_id");
+			ITable foreignTable = tableWithPkAndColumns(null, "customer_id");
+			IServerInternal srv = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(primaryTable).when(srv).getTable("customers");
+			doReturn(foreignTable).when(srv).getTable("orders");
+			IServerManagerInternal sm = serverManager("srv", srv, "srv", srv);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation("r", "db:/srv/customers", "db:/srv/orders", "customer_id", "customer_id", null))
+				.thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, null);
+
+			assertEquals("OK", result);
+			// both the primary and foreign resolve to the PK name 'customer_id'
+			verify(svc).createRelation("r", "db:/srv/customers", "db:/srv/orders", "customer_id", "customer_id", null);
+		}
+
+		@Test
+		@DisplayName("auto-detect: a supplied primaryColumn is kept; only the blank foreignColumn is auto-detected")
+		void onlyBlankForeignIsAutoDetected() throws Exception
+		{
+			ITable primaryTable = tableWithPkAndColumns("customer_id");
+			ITable foreignTable = tableWithPkAndColumns(null, "customers_id");
+			IServerInternal srv = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(primaryTable).when(srv).getTable("customers");
+			doReturn(foreignTable).when(srv).getTable("orders");
+			IServerManagerInternal sm = serverManager("srv", srv, "srv", srv);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			// supplied primary "pk_given" survives; foreign auto-detected to 'customers_id'
+			when(svc.createRelation("r", "db:/srv/customers", "db:/srv/orders", "pk_given", "customers_id", null))
+				.thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/srv/customers", "db:/srv/orders", "pk_given", "   ", null);
+
+			assertEquals("OK", result);
+			verify(svc).createRelation("r", "db:/srv/customers", "db:/srv/orders", "pk_given", "customers_id", null);
+		}
+
+		@Test
+		@DisplayName("auto-detect: no matching column -> helper returns null -> the omitted columns stay null when forwarded")
+		void noMatchingColumnLeavesColumnsNull() throws Exception
+		{
+			// foreign table has none of the three candidates
+			ITable primaryTable = tableWithPkAndColumns("customer_id");
+			ITable foreignTable = tableWithPkAndColumns(null); // no present columns
+			IServerInternal srv = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(primaryTable).when(srv).getTable("customers");
+			doReturn(foreignTable).when(srv).getTable("orders");
+			IServerManagerInternal sm = serverManager("srv", srv, "srv", srv);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation(eq("r"), eq("db:/srv/customers"), eq("db:/srv/orders"), isNull(), isNull(), isNull()))
+				.thenReturn("DELEGATED NULL COLS");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, null);
+
+			assertEquals("DELEGATED NULL COLS", result);
+			// null auto-result -> both omitted columns remain null (unresolved) at the collaborator
+			verify(svc).createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, null);
+		}
+
+		@Test
+		@DisplayName("auto-detect: the primary server not found -> helper returns null -> omitted columns stay null")
+		void primaryServerNotFound() throws Exception
+		{
+			// manager returns a foreign server but null for the primary server name
+			ITable foreignTable = tableWithPkAndColumns(null, "customers_id");
+			IServerInternal foreignServer = serverWithTable("orders", foreignTable);
+			IServerManagerInternal sm = serverManager("primarySrv", null, "foreignSrv", foreignServer);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation(eq("r"), eq("db:/primarySrv/customers"), eq("db:/foreignSrv/orders"), isNull(),
+				isNull(), isNull())).thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/primarySrv/customers", "db:/foreignSrv/orders", null, null, null);
+
+			assertEquals("OK", result);
+			verify(svc).createRelation("r", "db:/primarySrv/customers", "db:/foreignSrv/orders", null, null, null);
+		}
+
+		@Test
+		@DisplayName("auto-detect: the foreign server not found -> helper returns null -> omitted columns stay null")
+		void foreignServerNotFound() throws Exception
+		{
+			ITable primaryTable = tableWithPkAndColumns("customer_id");
+			IServerInternal primaryServer = serverWithTable("customers", primaryTable);
+			IServerManagerInternal sm = serverManager("primarySrv", primaryServer, "foreignSrv", null);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation(eq("r"), eq("db:/primarySrv/customers"), eq("db:/foreignSrv/orders"), isNull(),
+				isNull(), isNull())).thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/primarySrv/customers", "db:/foreignSrv/orders", null, null, null);
+
+			assertEquals("OK", result);
+			verify(svc).createRelation("r", "db:/primarySrv/customers", "db:/foreignSrv/orders", null, null, null);
+		}
+
+		@Test
+		@DisplayName("auto-detect: an invalid datasource (< 2 '/'-parts) -> helper returns null -> omitted columns stay null, no server lookup")
+		void invalidDatasourceFormat() throws Exception
+		{
+			// 'db:/onlyserver' has a single part after 'db:/' -> primaryParts.length < 2 -> null
+			IServerManagerInternal sm = mock(IServerManagerInternal.class);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation(eq("r"), eq("db:/onlyserver"), eq("db:/srv/orders"), isNull(), isNull(), isNull()))
+				.thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/onlyserver", "db:/srv/orders", null, null, null);
+
+			assertEquals("OK", result);
+			verify(svc).createRelation("r", "db:/onlyserver", "db:/srv/orders", null, null, null);
+			// the length guard fires before any server is looked up
+			verify(sm, never()).getServer(anyString(), anyBoolean(), anyBoolean());
+		}
+
+		@Test
+		@DisplayName("auto-detect: the primary table has no row-ident (PK) columns -> helper returns null -> omitted columns stay null")
+		void primaryTableHasNoPkColumns() throws Exception
+		{
+			ITable primaryTable = mock(ITable.class);
+			doReturn(List.of()).when(primaryTable).getRowIdentColumns();
+			ITable foreignTable = tableWithPkAndColumns(null, "customers_id");
+			IServerInternal srv = mock(IServerInternal.class, org.mockito.Mockito.withSettings().extraInterfaces(com.servoy.j2db.persistence.IServer.class));
+			doReturn(primaryTable).when(srv).getTable("customers");
+			doReturn(foreignTable).when(srv).getTable("orders");
+			IServerManagerInternal sm = serverManager("srv", srv, "srv", srv);
+
+			ServoyProject project = projectNoRelation();
+			ServoyArtifactCreationService svc = mock(ServoyArtifactCreationService.class);
+			when(svc.createRelation(eq("r"), eq("db:/srv/customers"), eq("db:/srv/orders"), isNull(), isNull(), isNull()))
+				.thenReturn("OK");
+
+			String result = modelServer(modelWith(project), sm, svc)
+				.createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, null);
+
+			assertEquals("OK", result);
+			verify(svc).createRelation("r", "db:/srv/customers", "db:/srv/orders", null, null, null);
 		}
 	}
 
