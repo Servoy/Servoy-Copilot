@@ -122,6 +122,19 @@ public class ServoyDevServer {
 	public ServoyDevServer() {
 	}
 
+	/**
+	 * Seam over the active Servoy developer model. Every tool body reaches the model through
+	 * this method instead of the static {@code ServoyModelManager.getServoyModelManager().getServoyModel()},
+	 * so a plain-JUnit test can subclass this server and override it to return a Mockito-mocked
+	 * {@link IDeveloperServoyModel} - driving the model-side tool branches (createRelation,
+	 * createValueList, security and menu model walks, ...) without a running workbench. The
+	 * default implementation is behaviour-preserving (it returns the real active model), so the
+	 * integration tests and runtime are unaffected.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	@Tool(name = "ping", description = "Returns a simple pong response to verify the servoy-dev endpoint is alive.", type = "object")
 	public String ping() {
 		return "pong";
@@ -137,7 +150,7 @@ public class ServoyDevServer {
 		// 2. Find existing project named "resources"
 		// 3. Create a new one with name "resources" (or "resources1", "resources2",
 		// ...)
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		IProject resourcesProject = resolveOrCreateResourcesProject(model);
 
 		ResourcesPlugin.getWorkspace().run((IWorkspaceRunnable) monitor -> {
@@ -224,7 +237,7 @@ public class ServoyDevServer {
 	// -------------------------------------------------------------------------
 
 	private String doActivateSolution(String solutionName, boolean refreshAndWait) throws InterruptedException {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 
 		if (refreshAndWait) {
 			model.refreshServoyProjects();
@@ -343,7 +356,7 @@ public class ServoyDevServer {
 			return "{\"errors\":[\"Server not found: " + escapeJson(serverName) + "\"]}";
 		}
 
-		DataModelManager dmm = ServoyModelManager.getServoyModelManager().getServoyModel().getDataModelManager();
+		DataModelManager dmm = getServoyModel().getDataModelManager();
 		if (dmm == null) {
 			return "{\"errors\":[\"DataModelManager not available\"]}";
 		}
@@ -645,7 +658,7 @@ public class ServoyDevServer {
 	@Tool(name = "getTarget", description = "Returns the currently active Servoy solution (target) in the Developer IDE. "
 			+ "Also lists all available solutions in the workspace.", type = "object")
 	public String getTarget() {
-		IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel model = getServoyModel();
 		ServoyProject activeProject = model.getActiveProject();
 
 		StringBuilder sb = new StringBuilder();
@@ -800,7 +813,7 @@ public class ServoyDevServer {
 			String parentSolution = addToSolution;
 			boolean isModule = (type == SolutionMetaData.MODULE || type == SolutionMetaData.NG_MODULE);
 			if (isModule && (parentSolution == null || parentSolution.isBlank())) {
-				ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
+				ServoyProject activeProject = getServoyModel()
 						.getActiveProject();
 				if (activeProject != null) {
 					parentSolution = activeProject.getProject().getName();
@@ -833,7 +846,7 @@ public class ServoyDevServer {
 
 	private String addModuleToSolution(String moduleName, String parentSolutionName) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			model.refreshServoyProjects();
 			ServoyProject parentProject = model.getServoyProject(parentSolutionName);
 			if (parentProject == null) {
@@ -881,7 +894,7 @@ public class ServoyDevServer {
 		repository.updateRootObject(solution);
 
 		if (addDefaultTheme) {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			model.refreshServoyProjects();
 			ServoyProject servoyProject = model.getServoyProject(solutionName);
 			if (servoyProject != null) {
@@ -1517,10 +1530,10 @@ public class ServoyDevServer {
 
 	private Solution resolveFormSolution(Form form, String solutionName) {
 		if (solutionName != null && !solutionName.trim().isEmpty()) {
-			ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			ServoyProject project = getServoyModel().getServoyProject(solutionName);
 			if (project != null) return project.getEditingSolution();
 		}
-		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		ServoyProject activeProject = getServoyModel().getActiveProject();
 		if (activeProject != null) return activeProject.getEditingSolution();
 		return null;
 	}
@@ -1678,7 +1691,7 @@ public class ServoyDevServer {
 			@ToolParam(name = "foreignColumn", description = "Foreign key column name for the join condition. If omitted, auto-detects by looking for '<primaryTable>_id' or the PK column name in the foreign table.", required = false) String foreignColumn,
 			@ToolParam(name = "joinType", description = "Join type: 'left outer' (default) or 'inner'", required = false) String joinType) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject activeProject = model.getActiveProject();
 			if (activeProject != null && activeProject.getEditingSolution() != null
 					&& activeProject.getEditingSolution().getRelation(name) != null) {
@@ -1756,7 +1769,7 @@ public class ServoyDevServer {
 			@ToolParam(name = "displayColumn", description = "Column to display", required = false) String displayColumn,
 			@ToolParam(name = "returnColumn", description = "Column to return as value", required = false) String returnColumn) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject activeProject = model.getActiveProject();
 			if (activeProject != null && activeProject.getEditingSolution() != null
 					&& activeProject.getEditingSolution().getValueList(name) != null) {
@@ -1998,7 +2011,7 @@ public class ServoyDevServer {
 		boolean resolvedAllowNull = Optional.ofNullable(allowNull).map(Boolean::parseBoolean).orElse(true);
 		boolean isInMemory = Optional.ofNullable(inMemory).map(Boolean::parseBoolean).orElse(false);
 
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		IValidateName validator = servoyModel.getNameValidator();
 
 		try {
@@ -2088,7 +2101,7 @@ public class ServoyDevServer {
 		if (!createInMemory && (serverName == null || serverName.isBlank()))
 			return "Error: serverName is required for database tables";
 
-		IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager().getServoyModel();
+		IDeveloperServoyModel servoyModel = getServoyModel();
 		IValidateName validator = servoyModel.getNameValidator();
 
 		try {
@@ -2576,7 +2589,7 @@ public class ServoyDevServer {
 	}
 
 	private com.servoy.eclipse.model.repository.WorkspaceUserManager getUserManager() {
-		return (com.servoy.eclipse.model.repository.WorkspaceUserManager) ServoyModelManager.getServoyModelManager().getServoyModel().getUserManager();
+		return (com.servoy.eclipse.model.repository.WorkspaceUserManager) getServoyModel().getUserManager();
 	}
 
 	private String getSecurityClientId() {
@@ -2585,7 +2598,7 @@ public class ServoyDevServer {
 
 	private String resolveSecuritySolutionName(String solutionName) {
 		if (solutionName != null && !solutionName.trim().isEmpty()) return solutionName;
-		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		ServoyProject activeProject = getServoyModel().getActiveProject();
 		if (activeProject != null && activeProject.getEditingSolution() != null) {
 			return activeProject.getEditingSolution().getName();
 		}
@@ -2594,17 +2607,17 @@ public class ServoyDevServer {
 
 	private Form resolveFormForSecurity(String formName, String solutionName) {
 		if (solutionName != null && !solutionName.trim().isEmpty()) {
-			ServoyProject project = ServoyModelManager.getServoyModelManager().getServoyModel().getServoyProject(solutionName);
+			ServoyProject project = getServoyModel().getServoyProject(solutionName);
 			if (project != null && project.getEditingSolution() != null) {
 				return project.getEditingSolution().getForm(formName);
 			}
 			return null;
 		}
-		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+		ServoyProject activeProject = getServoyModel().getActiveProject();
 		if (activeProject != null && activeProject.getEditingSolution() != null) {
 			Form form = activeProject.getEditingSolution().getForm(formName);
 			if (form != null) return form;
-			ServoyProject[] modules = ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
+			ServoyProject[] modules = getServoyModel().getModulesOfActiveProject();
 			for (ServoyProject module : modules) {
 				if (module != null && module.getEditingSolution() != null) {
 					form = module.getEditingSolution().getForm(formName);

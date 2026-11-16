@@ -420,6 +420,44 @@ The test subclasses the service, overrides `getServoyModel()` to return a Mockit
 
 Roll this out per service/server as its own reviewed change (production seam + unit tests), not in one sweep — each needs the seam + a mock and a check that the integration test still covers the real path.
 
+#### The governing principle: here we test Copilot, not Servoy core
+
+This repository's tests exist to test **Copilot's own code** — the MCP service/server layer: parameter parsing, dispatch/routing, validation and guards, result/JSON/markdown formatting, error and "not found" messages, and pure helpers. **Servoy core is a mocked dependency, not a thing we test here.** The persistence model, DLTK, the renderer, JSUnit, the workspace, the spec providers — their real behaviour is tested in **servoy-eclipse**. A call this repo makes against Servoy core inside an integration test is, conceptually, a test that *should live in servoy-eclipse*, not here: if you find yourself asserting what the core did (the column really got the right type, the relation really resolved), that assertion belongs in core's own suite.
+
+So the balance is deliberate and lopsided: **the large majority of tests are plain-JUnit unit tests with Servoy core mocked at the boundary, and only a small, hand-picked set of happy-flow `integrationpde` tests exercise the genuinely-unmockable end-to-end paths** (one real render, one real solution activation, one real table create, one real git working tree, one JSUnit launch — enough to prove the wiring, not to re-test core). When you add coverage, the default question is "can I reach this branch by mocking core?", and the answer is usually yes.
+
+#### The seam is the default, not a special case
+
+Every place Copilot code reaches into Servoy core through a **static** — `ServoyModelManager.getServoyModelManager().getServoyModel()`, `ApplicationServerRegistry.get...()`, `ResourcesPlugin.getWorkspace()` — is a wall between the tool body and a unit test. The default fix is to put that static behind a tiny overridable `protected` seam that returns the core interface, and call the seam everywhere instead:
+
+```java
+protected IDeveloperServoyModel getServoyModel() {
+    return ServoyModelManager.getServoyModelManager().getServoyModel();
+}
+```
+
+**Canonical example: `ServoyDevServer`** — its 18 `ServoyModelManager.getServoyModelManager().getServoyModel()` grabs were replaced by one `getServoyModel()` seam (behaviour-preserving; the default impl returns the real active model, so runtime and the integration tests are unaffected). A plain-JUnit test then subclasses the server, overrides `getServoyModel()` to return a Mockito-mocked `IDeveloperServoyModel`, stubs the `ServoyProject`/`Solution`/`UserManager`/modules it hands back, and drives the **model-side** of every tool body (`createRelation` join-type/auto-detect, `createValueList` type variants, the security and menu model walks) without a workbench. Before the seam those branches were "integration only"; after it they are ordinary unit tests. Add the same kind of seam for the other core statics (`ApplicationServerRegistry`, `ResourcesPlugin`) whenever a tool body needs one; for a collaborator the server *news up* (e.g. `artifactService`, `menuService`), reflection-swap the `private final` field with a mock instead (as `ServoyCoderServerTest` does). Keep it a small, behaviour-preserving production change; never widen visibility for a test — use reflection for private/package-private members.
+
+#### Making Servoy core more mockable (raise a case, don't contort the test)
+
+Sometimes core can't be mocked cleanly: a `final` class (e.g. `FormSpecModel`), `final` getters (e.g. `DefaultProblem`), or an awkwardly-typed accessor (`PropertyDescription.getType()`). When that blocks a unit test, the right move is **not** to hack around it here (no bytecode tricks, no contorted real-instance construction just to satisfy a mock) — it is to **raise a Jira case against Servoy core** to make the type mockable (an interface, a non-final method, a factory seam). Until then, cover what you can with the mockable part and leave the rest to the thin integration happy-path, and note the limitation in the test. The goal is that core becomes progressively easier to mock, so this repo's tests stay fast and core-free.
+
+#### Running the `integrationpde` tests locally
+
+The full-workbench integration tests need a real Servoy **application server** (Tomcat + drivers + solution activation); on CI the Jenkinsfile extracts one from a tarball, but locally you must supply one. Point the integration profile's expected location at a real install with a junction, then run Maven (or the Eclipse PDE runner):
+
+```
+# one-time: junction the extract dir the integration profile expects at a real install
+mklink /J tests\com.servoy.eclipse.developer.mcp.tests\testresources\servoy_lts_extracted  D:\installs\<version>
+
+# mvn — MUST list the production bundle in -pl (not just -am) so the tests compile against the
+# reactor bundle, not the older published one; scope with -Dtest to one class while iterating
+mvn clean verify -Pintegration -pl bundles/com.servoy.eclipse.developer.mcp,tests/com.servoy.eclipse.developer.mcp.tests -am \
+    -Dtycho.localArtifacts=ignore -Dmaven.test.failure.ignore=true -Dtest=<SomeIntegrationTest>
+```
+
+The junction (`servoy_lts_extracted`) is a local build-artifact path — do **not** commit it (CI makes its own). The Eclipse PDE runner (`eclipse-pde_runJUnitPluginTests`, launcher `PDEIntegrationTestsBaseCopy-lts_2026`) is faster for a single class once warm, but the launcher must have `automaticValidate=false` (otherwise a modal validation dialog about optional OS-specific target fragments blocks every headless launch) and an empty `TESTNAME` (otherwise a stale single-method selector baked into the launcher makes the runner look for that method in whatever class you pass and find nothing). Both base launchers here (`-lts_2026`, `-release`) carry those two settings; keep the servoy-eclipse `PDEIntegrationTestsBase.launch` in sync.
+
 ---
 
 ## 1c. Resolving solution objects — ALWAYS use the flattened solution
