@@ -103,6 +103,28 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 
 		activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		assertNotNull(activeProject, "Active project required");
+
+		ensureNgClientBuilt();
+	}
+
+	/**
+	 * Cypress drives the real NG client, so the Titanium NG client of the test solution must actually be built. In a
+	 * fresh workspace (a new Jenkins workspace, or a deleted test workspace) the solution activation copies the
+	 * client sources but does not produce a build, so the app serves its "TiNG resources are not generated correctly
+	 * yet" page and every Cypress run reloads it until Cypress gives up. The base class only builds when the solution
+	 * was already active, so build it here once when the output is missing. This is cheap when it is already there.
+	 */
+	private void ensureNgClientBuilt() throws Exception {
+		java.io.File targetFolder = Activator.getInstance().getMainTargetFolder();
+		if (targetFolder == null) {
+			return;
+		}
+		java.io.File builtIndex = new java.io.File(targetFolder, TEST_SOLUTION + "/dist/app/browser/index.html");
+		if (!builtIndex.exists()) {
+			System.out.println("*** " + TEST_SOLUTION + " has no built NG client (" + builtIndex + "), building it");
+			buildTitaniumIfNeeded();
+			System.out.println("*** NG client built: " + builtIndex.exists());
+		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -430,6 +452,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 		// Genuine environment gap -> skip via Assumptions.abort (never to dodge the assertion below), the same
 		// render-prerequisite skip discipline the sibling getFormLayout integration tests use. Cypress/NG
 		// client/browser not being available on this agent is an acceptable reason to not prove N1 here.
+		abortIfNgClientNotBuilt(result);
 		boolean ran = result.contains("passed") || result.contains("failed");
 		if (!ran || result.contains("timed out")) {
 			org.junit.jupiter.api.Assumptions.abort("Cypress render prerequisite not met (NG client / browser / Cypress "
@@ -451,6 +474,22 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 	private Path e2eScriptsRoot() {
 		return ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath().resolve("jenkins-custom")
 				.resolve("e2e-test-scripts");
+	}
+
+	/**
+	 * Skips (never fails) a test whose Cypress run could not load the form at all. When the Titanium NG client has not
+	 * been built in the test workspace, the app serves a "TiNG resources are not generated correctly yet" page that
+	 * reloads itself, and Cypress gives up with "The application redirected to ... more than 20 times" on the very first
+	 * {@code cy.visit}. The viewport/measurement code never runs in that case, so the assertions about it cannot be
+	 * evaluated: that is an environment gap, the same kind {@code renderPrerequisiteSkipReason} skips on elsewhere.
+	 * The older Cypress tests in this class accept "failed" as a valid outcome and so do not notice it.
+	 */
+	private static void abortIfNgClientNotBuilt(String result) {
+		if (result != null && result.contains("redirected to") && result.contains("more than 20 times")) {
+			org.junit.jupiter.api.Assumptions.abort("Cypress could not load the form: the Titanium NG client is not built in this "
+					+ "test workspace (the app keeps reloading its 'TiNG resources are not generated' page), so the "
+					+ "measurement assertions cannot be evaluated here");
+		}
 	}
 
 	@Test
@@ -612,6 +651,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 				"    cy.measureContainer('.svy-form');\n    cy.measureAtViewport('.svy-form', 375, 1080);\n");
 		try {
 			String result = testingServer.testE2E("svy21619_e2e_pass");
+			abortIfNgClientNotBuilt(result);
 
 			assertTrue(result.startsWith("**E2E Spec Results: svy21619_e2e_pass**"), "the run must produce a results envelope: " + result);
 			assertTrue(result.contains("All tests passed!"), "the seeded spec must pass: " + result);
@@ -637,6 +677,7 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 				"    cy.measureContainer('.svy-form');\n    cy.then(() => { throw new Error('deliberate SVY-21619 failure'); });\n");
 		try {
 			String result = testingServer.testE2E("svy21619_e2e_fail");
+			abortIfNgClientNotBuilt(result);
 
 			assertTrue(result.startsWith("**E2E Spec Results: svy21619_e2e_fail**"), "the run must produce a results envelope: " + result);
 			assertTrue(result.contains("Some tests failed:"), "the seeded spec must fail: " + result);
