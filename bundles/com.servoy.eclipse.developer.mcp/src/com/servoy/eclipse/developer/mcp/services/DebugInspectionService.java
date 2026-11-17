@@ -339,7 +339,7 @@ public class DebugInspectionService
 	 */
 	private IThread waitForStepLanding(IThread previous)
 	{
-		long deadline = System.currentTimeMillis() + TRANSITION_TIMEOUT_MS;
+		long deadline = System.currentTimeMillis() + transitionTimeoutMs();
 		long notSuspendedSince = -1;
 		while (System.currentTimeMillis() < deadline)
 		{
@@ -363,7 +363,7 @@ public class DebugInspectionService
 				{
 					notSuspendedSince = now;
 				}
-				else if (now - notSuspendedSince >= STEP_RETURN_GRACE_MS)
+				else if (now - notSuspendedSince >= stepReturnGraceMs())
 				{
 					return null;
 				}
@@ -376,7 +376,7 @@ public class DebugInspectionService
 
 	private IThread waitForTransition(IThread previous)
 	{
-		long deadline = System.currentTimeMillis() + TRANSITION_TIMEOUT_MS;
+		long deadline = System.currentTimeMillis() + transitionTimeoutMs();
 		IThread last = findFirstSuspendedThread();
 		while (System.currentTimeMillis() < deadline)
 		{
@@ -420,7 +420,11 @@ public class DebugInspectionService
 		}
 	}
 
-	private static void sleep(long ms)
+	/**
+	 * Sleeps {@code ms} milliseconds. Isolated as a {@code protected} seam so unit tests driving the resume/step re-observation loops can
+	 * override it to a no-op and never block on real time; production delegates to {@link Thread#sleep(long)}.
+	 */
+	protected void sleep(long ms)
 	{
 		try
 		{
@@ -430,6 +434,26 @@ public class DebugInspectionService
 		{
 			Thread.currentThread().interrupt();
 		}
+	}
+
+	/**
+	 * The resume/step transition deadline window, in milliseconds. Isolated as a {@code protected} seam so a unit test can shrink it to
+	 * zero and let the re-observation loops exit immediately when they would otherwise spin to the deadline (the "ran on / returned"
+	 * paths); production returns {@link #TRANSITION_TIMEOUT_MS}.
+	 */
+	protected long transitionTimeoutMs()
+	{
+		return TRANSITION_TIMEOUT_MS;
+	}
+
+	/**
+	 * The grace window a step must stay not-suspended before it is treated as a return/resume, in milliseconds. Isolated as a
+	 * {@code protected} seam so a unit test can shrink it to zero and resolve the "stepped out / returned" path without real waiting;
+	 * production returns {@link #STEP_RETURN_GRACE_MS}.
+	 */
+	protected long stepReturnGraceMs()
+	{
+		return STEP_RETURN_GRACE_MS;
 	}
 
 	/**
@@ -1184,7 +1208,13 @@ public class DebugInspectionService
 		return any;
 	}
 
-	private IThread findFirstSuspendedThread()
+	/**
+	 * Walks every launch's debug targets and returns the first thread that reports {@link IThread#isSuspended()}, or {@code null} when
+	 * nothing is suspended. Isolated as a {@code protected} seam so unit tests can override it to hand back a crafted suspended
+	 * {@link IScriptThread} (and, for resume/step re-observation, a sequence of return values) and exercise the success paths of
+	 * resume/step/eval/setVariable without a live debug session; production walks the real launches via the {@link #getLaunches()} seam.
+	 */
+	protected IThread findFirstSuspendedThread()
 	{
 		try
 		{

@@ -23,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Method;
 
@@ -34,6 +36,10 @@ import org.eclipse.debug.core.model.IStackFrame;
 import org.eclipse.debug.core.model.IThread;
 import org.eclipse.debug.core.model.IValue;
 import org.eclipse.debug.core.model.IVariable;
+import org.eclipse.dltk.debug.core.eval.IScriptEvaluationEngine;
+import org.eclipse.dltk.debug.core.eval.IScriptEvaluationResult;
+import org.eclipse.dltk.debug.core.model.IScriptStackFrame;
+import org.eclipse.dltk.debug.core.model.IScriptThread;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -679,5 +685,402 @@ class DebugInspectionServiceTest {
 			assertEquals(Boolean.TRUE, invoke(serviceWith(launch(target(running))), "hasAnyDebugTarget", new Class<?>[] {}), "one target");
 		}
 
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// SUCCESS-path support: a service whose findFirstSuspendedThread() seam is driven directly, so
+	// resume/step/eval/setVariable run their full bodies against mocked threads without a live debug
+	// session. The sleep()/deadline seams are overridden so no observation loop ever blocks on real
+	// time; findFirstSuspendedThread() returns a programmable sequence so re-observation can land at
+	// a new location, re-hit the same location, or run on (null).
+	// ---------------------------------------------------------------------------------------------
+
+	/**
+	 * A {@link DebugInspectionService} whose suspended-thread seam returns successive values from a
+	 * supplied sequence (the last entry sticks once exhausted), and whose timing seams are zeroed so
+	 * the resume/step re-observation loops resolve on the first poll and never block on real time.
+	 */
+	private static final class SequencedService extends DebugInspectionService {
+		private final IThread[] sequence;
+		private int call = 0;
+
+		private SequencedService(IThread... sequence) {
+			this.sequence = sequence;
+		}
+
+		@Override
+		protected IThread findFirstSuspendedThread() {
+			int i = call < sequence.length ? call : sequence.length - 1;
+			call++;
+			return i >= 0 ? sequence[i] : null;
+		}
+
+		@Override
+		protected void sleep(long ms) {
+			// never block on real time in a unit test
+		}
+
+		@Override
+		protected long transitionTimeoutMs() {
+			return 0; // let the observation loop exit immediately when it would otherwise spin to the deadline
+		}
+
+		@Override
+		protected long stepReturnGraceMs() {
+			return 0; // conclude "returned/resumed" on the first not-suspended reading
+		}
+	}
+
+	/** A suspended script thread with the given frames; frame[0] is the top. Mocks the concrete {@link IScriptThread}. */
+	private static IScriptThread suspendedScriptThread(IStackFrame... frames) throws Exception {
+		IScriptThread t = mock(IScriptThread.class);
+		doReturn(true).when(t).isSuspended();
+		doReturn(frames).when(t).getStackFrames();
+		doReturn(frames != null && frames.length > 0 ? frames[0] : null).when(t).getTopStackFrame();
+		doReturn(new IBreakpoint[0]).when(t).getBreakpoints();
+		return t;
+	}
+
+	/** A script stack frame with a name and line, exposing the given variables. Mocks the concrete {@link IScriptStackFrame}. */
+	private static IScriptStackFrame scriptFrame(String name, int line, IVariable... vars) throws Exception {
+		IScriptStackFrame f = mock(IScriptStackFrame.class);
+		doReturn(name).when(f).getName();
+		doReturn(line).when(f).getLineNumber();
+		doReturn(vars).when(f).getVariables();
+		return f;
+	}
+
+	/**
+	 * A script value leaf with the given value string. The engine's result exposes an {@link IScriptValue}
+	 * (not a plain {@link IValue}), which production renders through its {@code instanceof IValue} branch.
+	 */
+	private static org.eclipse.dltk.debug.core.model.IScriptValue scriptLeafValue(String valueString) throws Exception {
+		org.eclipse.dltk.debug.core.model.IScriptValue value = mock(org.eclipse.dltk.debug.core.model.IScriptValue.class);
+		doReturn(valueString).when(value).getValueString();
+		return value;
+	}
+
+	/** An evaluation result that succeeds, exposing the given script value (or null). */
+	private static IScriptEvaluationResult okResult(org.eclipse.dltk.debug.core.model.IScriptValue value) throws Exception {
+		IScriptEvaluationResult r = mock(IScriptEvaluationResult.class);
+		doReturn(false).when(r).hasErrors();
+		doReturn(value).when(r).getValue();
+		return r;
+	}
+
+	/** An evaluation result that fails with the given messages. */
+	private static IScriptEvaluationResult errorResult(String... messages) throws Exception {
+		IScriptEvaluationResult r = mock(IScriptEvaluationResult.class);
+		doReturn(true).when(r).hasErrors();
+		doReturn(messages).when(r).getErrorMessages();
+		return r;
+	}
+
+	// =============================================================================================
+	// resume() success paths - the thread genuinely resumes, then is re-observed
+	// =============================================================================================
+
+	@Nested
+	class ResumeSuccess {
+		@Test
+		@DisplayName("resume runs on when nothing is suspended afterwards")
+		void resumeRunsOn() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canResume();
+			// first observe the suspended thread, then the re-observation sees nothing suspended
+			SequencedService svc = new SequencedService(first, null);
+			String r = svc.resume();
+			verify(first).resume();
+			assertTrue(r.startsWith("Resumed (was at myForm.doIt line 42)"), r);
+			assertTrue(r.contains("execution is now running (no longer suspended)"), r);
+		}
+
+		@Test
+		@DisplayName("resume reports a fresh re-suspend at a different location")
+		void resumeReSuspendsElsewhere() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canResume();
+			IThread reSuspended = suspendedThread(frame("myForm.other", 99));
+			SequencedService svc = new SequencedService(first, reSuspended);
+			String r = svc.resume();
+			verify(first).resume();
+			assertTrue(r.contains("re-suspended at myForm.other line 99"), r);
+			assertTrue(r.contains("a different breakpoint"), r);
+		}
+
+		@Test
+		@DisplayName("resume reports a re-hit at the same location as a new call, not a failed resume")
+		void resumeReHitsSameSpot() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canResume();
+			// A fresh thread element at the SAME location (DLTK models each suspend as a new element).
+			IThread reHit = suspendedThread(frame("myForm.doIt", 42));
+			SequencedService svc = new SequencedService(first, reHit);
+			String r = svc.resume();
+			verify(first).resume();
+			assertTrue(r.contains("hit again at the same location"), r);
+			assertTrue(r.contains("NEW call"), r);
+		}
+	}
+
+	// =============================================================================================
+	// step() success paths - each mode calls the right stepX() and lands at the new location
+	// =============================================================================================
+
+	@Nested
+	class StepSuccess {
+		@Test
+		@DisplayName("step into calls stepInto and reports the landed location")
+		void stepIntoLands() throws Exception {
+			IThread first = suspendedScriptThread(scriptFrame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepInto();
+			IThread landed = suspendedThread(frame("myForm.inner", 7));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("into");
+			verify(first).stepInto();
+			assertTrue(r.startsWith("Stepped into, now at myForm.inner line 7"), r);
+		}
+
+		@Test
+		@DisplayName("step in (alias) calls stepInto and lands")
+		void stepInAliasLands() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepInto();
+			IThread landed = suspendedThread(frame("myForm.inner", 8));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("in");
+			verify(first).stepInto();
+			assertTrue(r.startsWith("Stepped in, now at myForm.inner line 8"), r);
+		}
+
+		@Test
+		@DisplayName("step over calls stepOver and reports the landed location")
+		void stepOverLands() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepOver();
+			IThread landed = suspendedThread(frame("myForm.doIt", 43));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("over");
+			verify(first).stepOver();
+			assertTrue(r.startsWith("Stepped over, now at myForm.doIt line 43"), r);
+		}
+
+		@Test
+		@DisplayName("a null mode defaults to step over")
+		void nullModeDefaultsToOver() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepOver();
+			IThread landed = suspendedThread(frame("myForm.doIt", 43));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step(null);
+			verify(first).stepOver();
+			assertTrue(r.startsWith("Stepped over, now at"), r);
+		}
+
+		@Test
+		@DisplayName("an unknown mode falls through to step over")
+		void unknownModeDefaultsToOver() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepOver();
+			IThread landed = suspendedThread(frame("myForm.doIt", 43));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("sideways");
+			verify(first).stepOver();
+			assertTrue(r.startsWith("Stepped sideways, now at"), r);
+		}
+
+		@Test
+		@DisplayName("step out calls stepReturn and reports the landed location")
+		void stepOutLands() throws Exception {
+			IThread first = suspendedThread(frame("myForm.inner", 7));
+			doReturn(true).when(first).canStepReturn();
+			IThread landed = suspendedThread(frame("myForm.doIt", 43));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("out");
+			verify(first).stepReturn();
+			assertTrue(r.startsWith("Stepped out, now at myForm.doIt line 43"), r);
+		}
+
+		@Test
+		@DisplayName("step return (alias) calls stepReturn and lands")
+		void stepReturnAliasLands() throws Exception {
+			IThread first = suspendedThread(frame("myForm.inner", 7));
+			doReturn(true).when(first).canStepReturn();
+			IThread landed = suspendedThread(frame("myForm.doIt", 44));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("return");
+			verify(first).stepReturn();
+			assertTrue(r.startsWith("Stepped return, now at myForm.doIt line 44"), r);
+		}
+
+		@Test
+		@DisplayName("step next (alias) calls stepOver and lands")
+		void stepNextAliasLands() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepOver();
+			IThread landed = suspendedThread(frame("myForm.doIt", 43));
+			SequencedService svc = new SequencedService(first, landed);
+			String r = svc.step("next");
+			verify(first).stepOver();
+			assertTrue(r.startsWith("Stepped next, now at myForm.doIt line 43"), r);
+		}
+
+		@Test
+		@DisplayName("a step that stays unsuspended reports the method returned")
+		void stepReturnsOutOfMethod() throws Exception {
+			IThread first = suspendedThread(frame("myForm.doIt", 42));
+			doReturn(true).when(first).canStepOver();
+			// re-observation stays null -> stayed not-suspended past the (zeroed) grace window
+			SequencedService svc = new SequencedService(first, null);
+			String r = svc.step("over");
+			verify(first).stepOver();
+			assertTrue(r.startsWith("Stepped over - the method returned / execution is no longer suspended."), r);
+		}
+	}
+
+	// =============================================================================================
+	// eval() success paths - a real script frame + evaluation engine
+	// =============================================================================================
+
+	@Nested
+	class EvalSuccess {
+		@Test
+		@DisplayName("eval renders the evaluated value string")
+		void evalRendersValue() throws Exception {
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42);
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(okResult(scriptLeafValue("17"))).when(engine).syncEvaluate("8 + 9", frame);
+			String r = new SequencedService(thread).eval("8 + 9", 0);
+			assertEquals("`8 + 9` = 17", r);
+		}
+
+		@Test
+		@DisplayName("eval reports the engine's error messages when the evaluation fails")
+		void evalReportsError() throws Exception {
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42);
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(errorResult("ReferenceError: x is not defined")).when(engine).syncEvaluate("x", frame);
+			String r = new SequencedService(thread).eval("x", 0);
+			assertEquals("Evaluation of `x` failed: ReferenceError: x is not defined", r);
+		}
+
+		@Test
+		@DisplayName("eval reports no evaluation engine when the thread has none")
+		void evalNoEngine() throws Exception {
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42);
+			IScriptThread thread = suspendedScriptThread(frame);
+			doReturn(null).when(thread).getEvaluationEngine();
+			String r = new SequencedService(thread).eval("1 + 1", 0);
+			assertEquals("The suspended thread has no evaluation engine available.", r);
+		}
+
+		@Test
+		@DisplayName("eval reports a non-script frame before touching the engine")
+		void evalNonScriptFrame() throws Exception {
+			// a script THREAD but a plain (non-script) frame at the top
+			IStackFrame plainFrame = frame("myForm.doIt", 42);
+			IScriptThread thread = mock(IScriptThread.class);
+			doReturn(true).when(thread).isSuspended();
+			doReturn(new IStackFrame[] { plainFrame }).when(thread).getStackFrames();
+			doReturn(plainFrame).when(thread).getTopStackFrame();
+			String r = new SequencedService(thread).eval("1 + 1", 0);
+			assertEquals("Frame [0] is not a script frame; cannot evaluate in it.", r);
+		}
+
+		@Test
+		@DisplayName("eval clamps an out-of-range frame index back to the top frame")
+		void evalClampsFrameIndex() throws Exception {
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42);
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(okResult(scriptLeafValue("1"))).when(engine).syncEvaluate("1", frame);
+			String r = new SequencedService(thread).eval("1", 99);
+			assertEquals("`1` = 1", r);
+		}
+
+		@Test
+		@DisplayName("eval renders a null value as (null)")
+		void evalNullValue() throws Exception {
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42);
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(okResult(null)).when(engine).syncEvaluate("undefinedThing", frame);
+			String r = new SequencedService(thread).eval("undefinedThing", 0);
+			assertEquals("`undefinedThing` = (null)", r);
+		}
+	}
+
+	// =============================================================================================
+	// setVariable() success paths - the in-frame assignment eval + readback
+	// =============================================================================================
+
+	@Nested
+	class SetVariableSuccess {
+		@Test
+		@DisplayName("setVariable assigns via an in-frame '<name> = <value>' eval and confirms the readback")
+		void setVariableAssignsAndConfirms() throws Exception {
+			// the frame first reports count=5, then (after assignment) count=0 on re-read
+			IVariable before = variable("count", leafValue("Number", "5"));
+			IVariable after = variable("count", leafValue("Number", "0"));
+			IScriptStackFrame frame = mock(IScriptStackFrame.class);
+			doReturn("myForm.doIt").when(frame).getName();
+			doReturn(42).when(frame).getLineNumber();
+			doReturn(new IVariable[] { before }).doReturn(new IVariable[] { after }).when(frame).getVariables();
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(okResult(scriptLeafValue("0"))).when(engine).syncEvaluate("count = 0", frame);
+
+			String r = new SequencedService(thread).setVariable("count", "0", 0);
+			verify(engine).syncEvaluate("count = 0", frame);
+			assertEquals("Set 'count' = 0 in frame [0] (typed via in-frame assignment).", r);
+		}
+
+		@Test
+		@DisplayName("setVariable reports no evaluation engine without attempting the assignment")
+		void setVariableNoEngine() throws Exception {
+			IVariable count = variable("count", leafValue("Number", "5"));
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42, count);
+			IScriptThread thread = suspendedScriptThread(frame);
+			doReturn(null).when(thread).getEvaluationEngine();
+			String r = new SequencedService(thread).setVariable("count", "0", 0);
+			assertEquals("Cannot set 'count': no evaluation engine is available on the suspended thread.", r);
+		}
+
+		@Test
+		@DisplayName("setVariable reports the assignment eval's error messages")
+		void setVariableAssignmentError() throws Exception {
+			IVariable count = variable("count", leafValue("Number", "5"));
+			IScriptStackFrame frame = scriptFrame("myForm.doIt", 42, count);
+			IScriptThread thread = suspendedScriptThread(frame);
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			doReturn(errorResult("SyntaxError: bad value")).when(engine).syncEvaluate("count = @@@", frame);
+			String r = new SequencedService(thread).setVariable("count", "@@@", 0);
+			assertEquals("Could not set 'count' = @@@: SyntaxError: bad value", r);
+		}
+
+		@Test
+		@DisplayName("setVariable reports a non-script frame and never evaluates")
+		void setVariableNonScriptFrame() throws Exception {
+			// a script THREAD whose top frame is a plain (non-script) frame carrying the variable
+			IVariable count = variable("count", leafValue("Number", "5"));
+			IStackFrame plainFrame = frame("myForm.doIt", 42, count);
+			IScriptThread thread = mock(IScriptThread.class);
+			doReturn(true).when(thread).isSuspended();
+			doReturn(new IStackFrame[] { plainFrame }).when(thread).getStackFrames();
+			doReturn(plainFrame).when(thread).getTopStackFrame();
+			IScriptEvaluationEngine engine = mock(IScriptEvaluationEngine.class);
+			doReturn(engine).when(thread).getEvaluationEngine();
+			String r = new SequencedService(thread).setVariable("count", "0", 0);
+			assertEquals("Cannot set 'count': the suspended frame is not a Servoy script frame.", r);
+			verify(engine, never()).syncEvaluate(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+		}
 	}
 }
