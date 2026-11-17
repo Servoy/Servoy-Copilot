@@ -71,6 +71,19 @@ public class ServoyMediaServer {
 	private record ImportEdit(String text, String outcome) {
 	}
 
+	/**
+	 * Seam over the active Servoy developer model. Every tool body reaches the model through
+	 * this method instead of the static {@code ServoyModelManager.getServoyModelManager().getServoyModel()},
+	 * so a plain-JUnit test can subclass this server and override it to return a Mockito-mocked
+	 * {@link IDeveloperServoyModel} - driving the model-side tool branches (media_rename resolution,
+	 * the media_install_tokens active-solution guard, ...) without a running workbench. The default
+	 * implementation is behaviour-preserving (it returns the real active model), so the integration
+	 * tests and runtime are unaffected.
+	 */
+	protected IDeveloperServoyModel getServoyModel() {
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	@Tool(name = "media_rename", description = "Renames a media file or folder in a Servoy solution, preserving the UUID. "
 			+ "For single file rename, provide the full media path name. "
 			+ "For folder rename (batch), append a trailing '/' to both mediaName and newName.", type = "object")
@@ -79,7 +92,7 @@ public class ServoyMediaServer {
 			@ToolParam(name = "mediaName", description = "Current media path name (e.g. 'css/old.css') or folder path ending with '/' (e.g. 'images/icons/').", required = true) String mediaName,
 			@ToolParam(name = "newName", description = "New media path name (e.g. 'css/new.css') or new folder prefix ending with '/' (e.g. 'images/new-icons/').", required = true) String newName) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject project = model.getServoyProject(solutionName);
 			if (project == null) {
 				List<String> available = new ArrayList<>();
@@ -119,7 +132,7 @@ public class ServoyMediaServer {
 			@ToolParam(name = "mediaFileName", description = "Media path/name for the tokens file (default 'tokens.css'). Same naming rules as media_rename.", required = false) String mediaFileName,
 			@ToolParam(name = "sourcePath", description = "Path of an existing .css tokens file to copy byte for byte: absolute, or relative to the workspace root. Must be inside the workspace, an open project or ~/.servoy/opencode. Preferred over tokensContent.", required = false) String sourcePath) {
 		try {
-			IDeveloperServoyModel model = ServoyModelManager.getServoyModelManager().getServoyModel();
+			IDeveloperServoyModel model = getServoyModel();
 			ServoyProject activeProject = model.getActiveProject();
 			if (activeProject == null) {
 				return "Error: No active Servoy solution. Activate a solution first.";
