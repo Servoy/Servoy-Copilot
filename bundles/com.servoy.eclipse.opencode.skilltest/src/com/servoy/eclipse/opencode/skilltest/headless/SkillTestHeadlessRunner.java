@@ -323,16 +323,23 @@ public class SkillTestHeadlessRunner implements IApplication {
 		// model) then replay.
 		SkillTestRunner runner = new SkillTestRunner(this::output);
 		SolutionSetup setup = new SolutionSetup(this::output, new McpToolClient(webPort, this::output));
+		Path outputDir = configuration.getOutputDir();
 		List<SkillTestResult> results = new ArrayList<>();
-		for (BaselineLoader.Entry entry : entries) {
-			Baseline baseline = entry.baseline();
+		for (int i = 0; i < entries.size(); i++) {
+			Baseline baseline = entries.get(i).baseline();
+			// Incremental report: before each baseline, rewrite TEST-skilltest.xml with the
+			// finished results, THIS baseline as an ERROR placeholder ("did not finish") and
+			// the rest as SKIPPED. If the run is killed mid-baseline (hang -> Maven/Jenkins
+			// timeout), CI still publishes everything that ran, and names the baseline that
+			// was running when it died. The next write replaces the placeholder.
+			writeInterimReport(outputDir, entries, results, i);
 			try {
 				setup.prepare(baseline);
 				// Pass the baseline's ACTUAL on-disk folder (entry.folder(), from the CI
 				// -Dservoy.skilltest.baselines dir) so JSUnit verify scripts resolve there.
 				// Without it the runner recomputes the folder from the workspace baselines
 				// root, which doesn't match in CI -> "verify script not found".
-				results.add(runner.runBaseline(baseline, entry.folder()));
+				results.add(runner.runBaseline(baseline, entries.get(i).folder()));
 			} catch (Exception setupEx) {
 				ServoyLog.logError("Setup failed for baseline " + baseline.id(), setupEx);
 				output("[skilltest] " + baseline.id() + " setup failed: " + setupEx.getMessage());
@@ -340,21 +347,9 @@ public class SkillTestHeadlessRunner implements IApplication {
 			}
 		}
 
-		// 6. Always write a report so the CI JUnit publisher finds a file. Carry any
-		// WARN-only budget warnings (SVY-21660) into <system-out>; they never change
-		// failure/error counts.
-		Path outputDir = configuration.getOutputDir();
-		java.util.Map<String, String> budgetWarnings = new java.util.HashMap<>();
-		for (BaselineLoader.Entry entry : entries) {
-			SkillTestResult result = results.stream().filter(res -> entry.baseline().id().equals(res.getBaselineId()))
-					.findFirst().orElse(null);
-			if (entry.baseline().hasBudget() && result != null && result.getMetrics() != null) {
-				com.servoy.eclipse.opencode.skilltest.BudgetEvaluator
-						.evaluateAll(entry.baseline().budgets(), result.getMetrics())
-						.ifPresent(w -> budgetWarnings.put(entry.baseline().id(), w));
-			}
-		}
-		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results, budgetWarnings); //$NON-NLS-1$
+		// 6. Final report (all baselines done). Carry any WARN-only budget warnings
+		// (SVY-21660) into <system-out>; they never change failure/error counts.
+		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results, budgetWarnings(entries, results)); //$NON-NLS-1$
 		output("JUnit XML report written to: " + reportFile.toAbsolutePath());
 		output(runner.formatResults(results));
 
@@ -385,6 +380,54 @@ public class SkillTestHeadlessRunner implements IApplication {
 			outputError("One or more baselines diverged from their golden.");
 			exitCode = EXIT_TESTS_FAILED;
 		}
+	}
+
+	/**
+	 * Rewrites {@code TEST-skilltest.xml} with the run's progress so far, so a run
+	 * killed mid-baseline (hang, Maven/Jenkins timeout) still leaves a report of
+	 * everything that ran. Finished baselines keep their real result and metrics;
+	 * the baseline at {@code runningIndex} is written as an ERROR ("did not
+	 * finish") and the ones after it as SKIPPED. Best-effort: a write failure is
+	 * logged and never stops the run.
+	 *
+	 * @param outputDir    the report directory
+	 * @param entries      all active baselines, in run order
+	 * @param finished     the results of the baselines that have completed
+	 * @param runningIndex the index in {@code entries} of the baseline about to run
+	 */
+	private void writeInterimReport(Path outputDir, List<BaselineLoader.Entry> entries,
+			List<SkillTestResult> finished, int runningIndex) {
+		List<SkillTestResult> interim = new ArrayList<>(finished);
+		for (int j = runningIndex; j < entries.size(); j++) {
+			String id = entries.get(j).baseline().id();
+			interim.add(j == runningIndex
+					? SkillTestResult.error(id, 0, "did not finish: the run was stopped while this baseline was running") //$NON-NLS-1$
+					: SkillTestResult.skipped(id, "not reached: the run was stopped before this baseline")); //$NON-NLS-1$
+		}
+		try {
+			JUnitXmlReporter.writeReport(outputDir, "skilltest", interim, budgetWarnings(entries, finished)); //$NON-NLS-1$
+		} catch (IOException | RuntimeException e) {
+			output("[skilltest] interim report write failed: " + e.getMessage()); //$NON-NLS-1$
+		}
+	}
+
+	/**
+	 * WARN-only budget warnings (SVY-21660) for the baselines that have a result
+	 * with metrics; never changes failure/error counts.
+	 */
+	private static java.util.Map<String, String> budgetWarnings(List<BaselineLoader.Entry> entries,
+			List<SkillTestResult> results) {
+		java.util.Map<String, String> warnings = new java.util.HashMap<>();
+		for (BaselineLoader.Entry entry : entries) {
+			SkillTestResult result = results.stream().filter(res -> entry.baseline().id().equals(res.getBaselineId()))
+					.findFirst().orElse(null);
+			if (entry.baseline().hasBudget() && result != null && result.getMetrics() != null) {
+				com.servoy.eclipse.opencode.skilltest.BudgetEvaluator
+						.evaluateAll(entry.baseline().budgets(), result.getMetrics())
+						.ifPresent(w -> warnings.put(entry.baseline().id(), w));
+			}
+		}
+		return warnings;
 	}
 
 	// --- embedded web server ---------------------------------------------------

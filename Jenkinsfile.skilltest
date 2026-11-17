@@ -183,6 +183,16 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                             // matched (set -o pipefail is kept for any future piping).
                             sh '''#!/bin/bash
                                 set -o pipefail
+                                # Start from an EMPTY report dir. skilltest-reports lives in
+                                # $WORKSPACE, outside target/, so `mvn clean` never wipes it and the
+                                # CI workspace is not cleaned between builds. If a run dies before
+                                # SkillTestHeadlessRunner writes its report (hang -> Maven timeout,
+                                # infra failure), the PREVIOUS build's TEST-skilltest.xml would still
+                                # be there and the junit step below would publish it as this build's
+                                # result - stale verdicts and metrics that contradict this build's
+                                # console. With the dir emptied, a run that wrote no report publishes
+                                # nothing from here and allowEmptyResults:false surfaces it.
+                                rm -rf "$WORKSPACE/skilltest-reports"
                                 mkdir -p "$WORKSPACE/skilltest-reports"
                                 # Tee the whole run to opencode-server.log so the opencode child
                                 # process output (model-call results, auth/quota errors, the reason
