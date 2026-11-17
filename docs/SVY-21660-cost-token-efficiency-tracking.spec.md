@@ -322,27 +322,57 @@ New nested record `Baseline.Budget` (mirrors the `JsUnitVerify`/`AcceptanceVerif
 record pattern), parsed by a new `BaselineLoader.parseBudget(JsonNode)` from a
 `budget` block in the sidecar `baseline.json`:
 
+The `budget` block is written as an **array** (one entry per budgeted metric), so a
+baseline can budget tokens, tool-calls and credits at once; the reader still accepts a
+single object for backward compatibility:
+
 ```jsonc
-"budget": {
-  "metric": "toolCalls",        // default; "tokens" allowed but only honoured when token data is present
-  "max": 25,                    // absolute ceiling; OR
-  "baselineValue": 18,          // a recorded reference, with
-  "tolerancePct": 25            // flag when current exceeds baselineValue * (1 + tolerancePct/100)
-}
+"budget": [
+  {
+    "metric": "toolCalls",      // "tokens" | "toolCalls" | "credits"
+    "max": 25,                  // absolute ceiling; OR
+    "baselineValue": 18,        // a recorded reference, with
+    "tolerancePct": 25          // flag when current exceeds baselineValue * (1 + tolerancePct/100)
+  }
+]
 ```
 
 - **Entirely optional.** No `budget` block → no budget evaluation, nothing changes.
-- Evaluated **after** the verdict is decided, by a small `BudgetEvaluator` that
-  compares the result's representative `RunMetrics` against the budget and returns an
-  optional **warning string** (e.g. `"tool-calls 31 exceeds budget 25 (+24%)"`).
+- Evaluated **after** the verdict is decided, by a small `BudgetEvaluator`.
+  `evaluate(Budget, RunMetrics)` judges one metric; `evaluateAll(List<Budget>,
+  RunMetrics)` judges each independently and joins the over-budget ones into one
+  warning string (e.g. `"tool-calls 31 exceeds budget 25 (+24%)"`).
 - **The warning NEVER touches:** the PASS/FAIL verdict, `SkillTestResult.Status`, the
   JUnit `failures`/`errors` counts, or the `<testcase>` body. It is surfaced only as:
   - a `<system-out>` line in `JUnitXmlReporter` (on any status), and
   - a view annotation (e.g. a "⚠ over budget" marker in the metrics column / detail).
-- Default budgeted metric is **`toolCalls`**. If `metric: "tokens"` is configured but
-  the run produced no token data (`metrics.tokens == null`), the budget is **skipped**
-  (not failed, not warned) with a note that tokens were unavailable — never warn on
-  absent data.
+- Default budgeted metric is **`toolCalls`** (always present). A metric whose data is
+  absent is **skipped** (not failed, not warned): `metric: "tokens"` with
+  `metrics.tokens == null`, or `metric: "credits"` with `metrics.kiro == null`.
+- **The `credits` metric budgets the PER-SESSION estimate** —
+  `metrics.kiro().estCredits()` (the `kiro.db session_usage.est_credits` for this
+  scenario's session), rounded to a whole credit — **not** the account-wide
+  `creditsDelta`. On a shared account the before/after account delta also captures
+  other concurrent usage, so it over-reports a scenario's cost (that is what produced
+  the false "credits 38 exceeds budget 9" and the Saturday "Δ145" that was really the
+  account hitting its limit). The per-session figure is the honest per-scenario cost.
+
+**Editing budgets from the view (SVY-21660).** Budgets are editable in the UI, not only
+by hand-editing `baseline.json`:
+
+- `BudgetEditorDialog` (a `TitleAreaDialog`) shows one row per metric (tokens,
+  tool-calls, credits), each with an enable checkbox, a `baselineValue` and a
+  `tolerancePct`. The `baselineValue` fields are **pre-filled from the baseline's
+  last-run metrics** (the tool-call count, token total and per-session Kiro credits the
+  report already shows), with a per-row "use last run" button to re-apply that figure.
+  Only the `baselineValue`+`tolerancePct` form is edited (not the absolute `max`); an
+  unchecked metric is written as no budget for it. The dialog returns the complete new
+  budget list.
+- `BaselineLoader.writeBudgets(File, List<Baseline.Budget>)` persists the list into
+  `baseline.json`, always as an array; an empty/`null` list removes the `budget` block.
+  The reader's single-object fallback keeps older sidecars loading.
+- `SkillTestView` adds an **"Edit budget…"** context-menu action on the selected
+  baseline that opens the dialog, persists via `writeBudgets` and refreshes.
 
 ### 3.6 Persistence — additive, backward-compatible
 
@@ -656,9 +686,14 @@ All paths are under project `com.servoy.eclipse.opencode.skilltest`,
    `null`/`hasBudget()==false`.
 
 8. **`BudgetEvaluator.java` (new)** — `Optional<String> evaluate(Baseline.Budget,
-   RunMetrics)` returning a human warning when over budget; skips (empty) when the
-   budgeted metric's data is absent (e.g. `metric:"tokens"` but `tokens==null`). Pure,
-   unit-testable, no side effects. **Returns a warning only — never a failure.**
+   RunMetrics)` returning a human warning when over budget, plus `Optional<String>
+   evaluateAll(List<Baseline.Budget>, RunMetrics)` that judges each budget independently
+   and joins the over-budget ones. Skips (empty) when the budgeted metric's data is
+   absent (`metric:"tokens"` but `tokens==null`; `metric:"credits"` but `kiro==null`).
+   **The `credits` metric judges `metrics.kiro().estCredits()` (per-session, rounded),
+   NOT `creditsDelta`** — the account delta over-reports on a shared account (decision
+   12). Pure, unit-testable, no side effects. **Returns a warning only — never a
+   failure.**
 
 9. **`SkillTestReporter.java`** — in `writeLastResults`, write the `metrics` object on
    each result node and each `trials[]` node (omit `tokens`/`kiro` when unknown; always
@@ -816,7 +851,18 @@ All paths are under project `com.servoy.eclipse.opencode.skilltest`,
 - [ ] An optional per-baseline **soft budget** flags a regression beyond its threshold
       as a **warning only**: it never changes PASS/FAIL, never changes the JUnit
       `failures`/`errors` counts, and never alters a `<testcase>` body. Default budgeted
-      metric is tool-call count; a `tokens` budget is skipped when token data is absent.
+      metric is tool-call count; a `tokens` budget is skipped when token data is absent,
+      a `credits` budget when `metrics.kiro` is absent. The `budget` block is an **array**
+      of per-metric entries (single-object form still read); `BudgetEvaluator.evaluateAll`
+      judges each independently.
+- [ ] The `credits` budget judges the **per-session** `metrics.kiro().estCredits()`
+      (rounded), **not** the account-wide `creditsDelta` — so a shared-account window
+      with other concurrent usage cannot over-report a scenario's cost into a false
+      over-budget warning (decision 12).
+- [ ] Budgets are **editable from the view**: an "Edit budget…" context action opens
+      `BudgetEditorDialog` (per-metric `baselineValue`+`tolerancePct`, pre-filled from the
+      last run, "use last run" per row); `BaselineLoader.writeBudgets` persists the list
+      into `baseline.json` as an array (empty clears the block) and the view refreshes.
 - [ ] `last-results.json` gains `metrics` **additively**: a file written by the current
       reporter (no `metrics`) still loads, with metrics reading "unknown". No version
       bump.
@@ -925,3 +971,5 @@ answers; they are not open.
 | 9 | Where does the account credit figure come from? | **REVISED (live data): the account `used`/`limit` figure lives in `kiro-usage.json`, NOT `kiro.db`.** `kiro.db` has **no account table** — only `session_usage(session_id, account_id, requests, est_credits, ...)`. The account's available-credit figure (`accounts[].used` / `.limit` / `.pct` / `.updatedAt`, plus top-level `writtenAt`) exists **only** in the JSON snapshot. So `KiroCreditReader.accountUsed()`/`accountLimit()`/`snapshotStamp()` read the JSON (parsed tolerantly), while the per-session `est_credits` fallback (`creditsForSession`) stays on `kiro.db` `session_usage`, opened read-only `immutable=1` (that part reflects the just-finished scenario and works today). Because the JSON is synced only periodically, the runner **bounded-waits** for the snapshot freshness stamp to advance before reading the end of the bracket (else Δ reads ~0 off a stale snapshot); a never-advancing snapshot ⇒ "sync pending / unknown". Never throws (absent/locked/malformed ⇒ "unknown"). No network, no token read. Separate from the iteration-1 `KiroUsageReader`. |
 | 10 | Which config dir? | **The single source of truth — `OpenCodeUtil.getServoyOpencodeConfigDir()`**, the same method the opencode bundle uses to decide where it writes `kiro-usage.json`/`kiro.db`/`opencode.db`. Reader and writer are the same bundle in the same JVM, so they agree by construction on whatever that method resolves — **including on Jenkins** (it is **not** a hardcoded `~/.servoy` literal; it follows `user.home`/any future override). A probe fallback (`$SERVOY_OPENCODE_CONFIG`, then `<user.home>/.servoy/opencode`, then `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode`, `%APPDATA%\opencode`) is only a safety net for a no-OSGi `plainjunit` context, which otherwise uses the injectable candidate-dir seam. Applied to both the new `KiroCreditReader` and the existing `KiroUsageReader`. (`opencode.db` is listed here only as one of the files that method's directory holds; nothing reads it — decision 8.) |
 | 11 | How is per-tool cost presented, given per-request metering? | **An attribution/estimate, stated honestly.** Tokens are surfaced **per request** with the tool calls/skill in that request; when a request has several tool calls they share its figure. The report ranks by request input and highlights the most inefficient step (the uncached ~474k-input re-send), with the derived cache-read ratio and base input. |
+| 12 | Which credit figure does the `credits` budget judge? | **REVISED (live data): the PER-SESSION estimate, not the account delta.** `BudgetEvaluator` budgets `metrics.kiro().estCredits()` (the scenario's own `kiro.db session_usage.est_credits`, rounded to a whole credit), not `creditsDelta`. On the shared CI account the before/after account window also captures other concurrent usage, so the delta over-reports — it produced a false "credits 38 exceeds budget 9 (+322%)" on a ~3-credit scenario, and a "Δ145" on a Saturday run that was really the account reaching its 5000/5000 limit (agent did 0 tool calls, no work). The account delta stays in the report as an informational, caveated figure; it is not what the budget judges. A `credits` budget is skipped (never warned) when `metrics.kiro == null`. |
+| 13 | Can budgets be edited from the view? | **Yes.** `BudgetEditorDialog` edits a baseline's `baselineValue`+`tolerancePct` per metric, pre-filled from the last run with a "use last run" button; `BaselineLoader.writeBudgets` persists the list as an array (empty clears it); `SkillTestView` adds an "Edit budget…" context-menu action. The `budget` block is an **array** of per-metric entries (single-object form still read for backward compatibility). See §3.5. |
