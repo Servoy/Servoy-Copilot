@@ -132,6 +132,13 @@ public class FormLayoutResponsiveStackingIntegrationTest extends AbstractTitaniu
 	private static final int BREAKPOINT = 640;
 	private static final int WIDE_VIEWPORT = 1024;
 	private static final int NARROW_VIEWPORT = 375;
+	/**
+	 * window.innerWidth can come back a pixel or two under the requested viewport: a reserved scrollbar gutter or
+	 * sub-pixel device-pixel-ratio rounding in the embedded browser. The point of SVY-21591/21619 is that the viewport
+	 * WAS applied and the window tracks it, not that it matches to the exact pixel, so compare with this tolerance (the
+	 * same slack the container-vs-window cross-check below already allows).
+	 */
+	private static final int VIEWPORT_WIDTH_TOLERANCE = 2;
 
 	/**
 	 * The solution stylesheet (plain CSS is valid LESS).
@@ -203,8 +210,9 @@ public class FormLayoutResponsiveStackingIntegrationTest extends AbstractTitaniu
 		JsonNode envelope = envelopeOf(tool.getFormLayout(FORM_RESPONSIVE, null, "false",
 				Long.toString(RENDER_TIMEOUT_SECONDS), "false", Integer.toString(WIDE_VIEWPORT), null));
 
-		assertTrue(envelope.path("window").path("width").asInt() == WIDE_VIEWPORT,
-				"SVY-21591: window.width must equal the applied wide viewport " + WIDE_VIEWPORT + ": " + envelope);
+		assertTrue(Math.abs(envelope.path("window").path("width").asInt() - WIDE_VIEWPORT) <= VIEWPORT_WIDTH_TOLERANCE,
+				"SVY-21591: window.width must match the applied wide viewport " + WIDE_VIEWPORT + " within "
+						+ VIEWPORT_WIDTH_TOLERANCE + "px: " + envelope);
 
 		JsonNode appearance = envelope.path("appearance");
 		JsonNode cardOne = findEntryByBackground(appearance, CARD_ONE_BG);
@@ -288,8 +296,10 @@ public class FormLayoutResponsiveStackingIntegrationTest extends AbstractTitaniu
 
 		int wideWindow = wide.path("window").path("width").asInt();
 		int narrowWindow = narrow.path("window").path("width").asInt();
-		assertTrue(wideWindow == WIDE_VIEWPORT, "the wide render applies " + WIDE_VIEWPORT + ": " + wide);
-		assertTrue(narrowWindow == NARROW_VIEWPORT, "the narrow render applies " + NARROW_VIEWPORT + ": " + narrow);
+		assertTrue(Math.abs(wideWindow - WIDE_VIEWPORT) <= VIEWPORT_WIDTH_TOLERANCE,
+				"the wide render applies " + WIDE_VIEWPORT + " (within " + VIEWPORT_WIDTH_TOLERANCE + "px): " + wide);
+		assertTrue(Math.abs(narrowWindow - NARROW_VIEWPORT) <= VIEWPORT_WIDTH_TOLERANCE,
+				"the narrow render applies " + NARROW_VIEWPORT + " (within " + VIEWPORT_WIDTH_TOLERANCE + "px): " + narrow);
 
 		int wideContainer = gridContainerWidth(wide.path("appearance"), wide);
 		int narrowContainer = gridContainerWidth(narrow.path("appearance"), narrow);
