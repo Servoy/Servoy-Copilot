@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -110,11 +111,11 @@ public class WorkspaceService
 	public String readProjectResource(String projectName, String resourcePath,
 		boolean showLineNumbers, int startLine, int endLine)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 		{
 			// Fallback: resolve as a workspace-root-level directory (e.g. jenkins-custom)
-			java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			java.nio.file.Path workspaceRoot = getWorkspaceRoot().getLocation().toFile().toPath();
 			java.nio.file.Path fallbackFile = workspaceRoot.resolve(projectName).resolve(resourcePath);
 			if (java.nio.file.Files.exists(fallbackFile) && java.nio.file.Files.isRegularFile(fallbackFile))
 			{
@@ -130,7 +131,7 @@ public class WorkspaceService
 		if (!file.exists())
 		{
 			// Fallback: try workspace-root-level resolution for paths like jenkins-custom/...
-			java.nio.file.Path workspaceRoot = ResourcesPlugin.getWorkspace().getRoot().getLocation().toFile().toPath();
+			java.nio.file.Path workspaceRoot = getWorkspaceRoot().getLocation().toFile().toPath();
 			java.nio.file.Path fallbackFile = workspaceRoot.resolve(projectName).resolve(resourcePath);
 			if (java.nio.file.Files.exists(fallbackFile) && java.nio.file.Files.isRegularFile(fallbackFile))
 			{
@@ -231,7 +232,7 @@ public class WorkspaceService
 
 	public FileInfo getFileInfo(String projectName, String resourcePath)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists() || !project.isOpen())
 			return new FileInfo("/" + projectName + "/" + resourcePath, projectName,
 				Path.of(resourcePath).getFileName().toString(), -1, -1, false);
@@ -267,7 +268,7 @@ public class WorkspaceService
 	 */
 	public List<RangeResult> readFileRanges(String projectName, String resourcePath, String ranges)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
@@ -434,7 +435,7 @@ public class WorkspaceService
 
 	public FileContextResult readFileContext(String projectName, String resourcePath, int centerLine, int windowSize)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
@@ -483,7 +484,7 @@ public class WorkspaceService
 	 */
 	public List<OutlineEntry> getFileOutline(String projectName, String resourcePath)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
@@ -555,7 +556,7 @@ public class WorkspaceService
 	 */
 	public FunctionResult readFunction(String projectName, String resourcePath, String functionName)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 			throw new ResourceNotFoundException("Error: Project '" + projectName + "' not found.");
 		if (!project.isOpen())
@@ -883,6 +884,16 @@ public class WorkspaceService
 				out.write(buf, 0, len);
 			return out.toString(file.getCharset());
 		}
+	}
+
+	/**
+	 * The workspace root used to resolve projects and files. Extracted as an overridable seam so unit
+	 * tests can supply a mocked {@link IWorkspaceRoot} and drive the file-reading/range/outline logic
+	 * without a running Eclipse workspace. The default implementation returns the live workspace root.
+	 */
+	protected IWorkspaceRoot getWorkspaceRoot()
+	{
+		return ResourcesPlugin.getWorkspace().getRoot();
 	}
 
 	private static IResource[] getOpenProjectsAsRoots()

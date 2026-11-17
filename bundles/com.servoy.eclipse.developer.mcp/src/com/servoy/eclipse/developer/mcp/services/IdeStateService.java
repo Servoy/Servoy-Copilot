@@ -65,7 +65,7 @@ public class IdeStateService
 
 		try
 		{
-			IConsoleManager manager = ConsolePlugin.getDefault().getConsoleManager();
+			IConsoleManager manager = getConsoleManager();
 			IConsole[] consoles = manager.getConsoles();
 
 			if (consoles.length == 0)
@@ -192,14 +192,7 @@ public class IdeStateService
 		if (waitForBuild)
 		{
 			long waitStart = System.currentTimeMillis();
-			try
-			{
-				Job.getJobManager().join(ResourcesPlugin.FAMILY_AUTO_BUILD, null);
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-			}
+			joinAutoBuild();
 			long waited = System.currentTimeMillis() - waitStart;
 			com.servoy.eclipse.developer.mcp.McpToolLog.logCall("getCompilationErrors.waitForBuild", waited);
 		}
@@ -219,7 +212,7 @@ public class IdeStateService
 			IResource scope;
 			if (projectName != null && !projectName.isBlank())
 			{
-				IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+				IProject project = getProject(projectName);
 				if (!project.exists())
 					return "Error: Project '" + projectName + "' not found.";
 				scope = project;
@@ -227,10 +220,10 @@ public class IdeStateService
 			}
 			else
 			{
-				scope = ResourcesPlugin.getWorkspace().getRoot();
+				scope = getWorkspaceRoot();
 			}
 
-			IMarker[] markers = scope.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
+			IMarker[] markers = findMarkers(scope);
 
 			// Compile glob pattern for file filtering if provided
 			java.util.regex.Pattern fileGlob = null;
@@ -292,13 +285,51 @@ public class IdeStateService
 		return result.toString();
 	}
 
-	// --- Private helpers ---
+	// --- Seams (overridable for unit testing; default impls reach the real Eclipse statics) ---
 
-	private static Optional<IEditorPart> getActiveEditor()
+	/** Console manager seam. Default returns the live {@link ConsolePlugin} console manager. */
+	protected IConsoleManager getConsoleManager()
+	{
+		return ConsolePlugin.getDefault().getConsoleManager();
+	}
+
+	/** Active editor seam. Default resolves the real active workbench editor. */
+	protected Optional<IEditorPart> getActiveEditor()
 	{
 		return Optional.ofNullable(PlatformUI.getWorkbench())
 			.map(IWorkbench::getActiveWorkbenchWindow)
 			.map(IWorkbenchWindow::getActivePage)
 			.map(IWorkbenchPage::getActiveEditor);
+	}
+
+	/** Workspace root seam. Default returns the live workspace root. */
+	protected IResource getWorkspaceRoot()
+	{
+		return ResourcesPlugin.getWorkspace().getRoot();
+	}
+
+	/** Project lookup seam. Default resolves the project from the live workspace root. */
+	protected IProject getProject(String projectName)
+	{
+		return ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+	}
+
+	/** Marker retrieval seam. Default delegates to {@link IResource#findMarkers}. */
+	protected IMarker[] findMarkers(IResource scope) throws CoreException
+	{
+		return scope.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
+	}
+
+	/** Auto-build join seam. Default blocks on the real auto-build job family. */
+	protected void joinAutoBuild()
+	{
+		try
+		{
+			Job.getJobManager().join(ResourcesPlugin.FAMILY_AUTO_BUILD, null);
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+		}
 	}
 }

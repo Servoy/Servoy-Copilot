@@ -27,6 +27,7 @@ import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -46,6 +47,17 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 @org.eclipse.e4.core.di.annotations.Creatable
 public class ProjectService
 {
+	/**
+	 * Seam over the workspace root grab, so unit tests can inject a mocked
+	 * {@link IWorkspaceRoot} (mirrors {@code ServoyDevServer.getServoyModel()}).
+	 * The default implementation returns the real running workspace root, so
+	 * runtime and the integration tests are unaffected.
+	 */
+	protected IWorkspaceRoot getWorkspaceRoot()
+	{
+		return ResourcesPlugin.getWorkspace().getRoot();
+	}
+
 	public String listProjects()
 	{
 		StringBuilder result = new StringBuilder();
@@ -53,7 +65,7 @@ public class ProjectService
 
 		try
 		{
-			IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+			IProject[] projects = getWorkspaceRoot().getProjects();
 			if (projects.length == 0)
 				return "No projects found in the workspace.";
 
@@ -133,7 +145,7 @@ public class ProjectService
 			}
 
 			String projectName = description.getName();
-			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+			IProject project = getWorkspaceRoot().getProject(projectName);
 
 			if (project.exists())
 			{
@@ -158,7 +170,7 @@ public class ProjectService
 
 	public String getProjectLayout(String projectName, String scopePath, int maxDepth)
 	{
-		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IProject project = getWorkspaceRoot().getProject(projectName);
 		if (project == null || !project.exists())
 			return "Project '" + projectName + "' not found.";
 
@@ -194,7 +206,7 @@ public class ProjectService
 	{
 		try
 		{
-			IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+			IProject project = getWorkspaceRoot().getProject(projectName);
 			if (project == null || !project.exists())
 				return "Error: Project '" + projectName + "' not found.";
 			if (!project.isOpen())
