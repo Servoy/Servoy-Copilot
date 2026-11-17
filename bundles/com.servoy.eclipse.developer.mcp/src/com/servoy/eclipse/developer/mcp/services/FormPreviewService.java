@@ -35,6 +35,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.swt.widgets.Display;
 
+import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -54,6 +55,20 @@ import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 public class FormPreviewService
 {
 
+	/**
+	 * Seam over the active Servoy developer model. The validation-side tool branches
+	 * ({@link #validateFormProperties}, {@link #checkFormMarkers}) reach the model through this
+	 * method instead of the static {@code ServoyModelManager.getServoyModelManager().getServoyModel()},
+	 * so a plain-JUnit test can subclass this service and override it to return a Mockito-mocked
+	 * {@link IDeveloperServoyModel} - driving the validation branches without a running workbench.
+	 * The default implementation is behaviour-preserving (it returns the real active model), so the
+	 * integration tests and runtime are unaffected.
+	 */
+	protected IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
+
 	public String showFormInBrowser(String formName)
 	{
 		return showFormInBrowser(formName, true);
@@ -68,8 +83,7 @@ public class FormPreviewService
 				return "Error: Form name must not be null or empty.";
 			}
 
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
-				.getActiveProject();
+			ServoyProject activeProject = getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "Error: No active Servoy project. Please open a solution.";
@@ -155,8 +169,7 @@ public class FormPreviewService
 				return "Error: Form name must not be null or empty.";
 			}
 
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
-				.getActiveProject();
+			ServoyProject activeProject = getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "Error: No active Servoy project. Please open a solution.";
@@ -411,8 +424,7 @@ public class FormPreviewService
 	{
 		try
 		{
-			ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel()
-				.getActiveProject();
+			ServoyProject activeProject = getServoyModel().getActiveProject();
 			if (activeProject == null)
 			{
 				return "NG client status unknown: No active Servoy project.";
@@ -459,7 +471,7 @@ public class FormPreviewService
 			ServoyProject owningProject = activeProject;
 			if (form.getRootObject() != null)
 			{
-				ServoyProject fromRoot = ServoyModelManager.getServoyModelManager().getServoyModel()
+				ServoyProject fromRoot = getServoyModel()
 					.getServoyProject(form.getRootObject().getName());
 				if (fromRoot != null)
 				{
@@ -542,8 +554,7 @@ public class FormPreviewService
 	{
 		try
 		{
-			com.servoy.eclipse.core.IDeveloperServoyModel servoyModel = ServoyModelManager.getServoyModelManager()
-				.getServoyModel();
+			IDeveloperServoyModel servoyModel = getServoyModel();
 			com.servoy.j2db.FlattenedSolution fs = servoyModel
 				.getEditingFlattenedSolution(activeProject.getEditingSolution());
 			if (fs == null)

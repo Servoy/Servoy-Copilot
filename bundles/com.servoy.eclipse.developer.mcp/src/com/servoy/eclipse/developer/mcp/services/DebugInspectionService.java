@@ -42,6 +42,7 @@ import org.eclipse.dltk.debug.core.model.IScriptStackFrame;
 import org.eclipse.dltk.debug.core.model.IScriptThread;
 import org.eclipse.dltk.internal.debug.core.model.ScriptLineBreakpoint;
 
+import com.servoy.eclipse.core.IDeveloperServoyModel;
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.debug.handlers.StartNGClientHandler;
 import com.servoy.eclipse.model.nature.ServoyProject;
@@ -105,6 +106,26 @@ public class DebugInspectionService
 	 * not-suspended gap in the middle of a normal step that re-suspends at the next line).
 	 */
 	private static final long STEP_RETURN_GRACE_MS = 250;
+
+	/**
+	 * Returns the launches to walk for debug targets/threads. Isolated as a seam so unit tests can inject a stub set of
+	 * {@link ILaunch} carrying mocked {@link IDebugTarget}/{@link IThread} trees and exercise this service's own rendering,
+	 * formatting and guard logic without a live debug session; production resolves the real launches from {@link DebugPlugin}.
+	 */
+	protected ILaunch[] getLaunches()
+	{
+		ILaunchManager mgr = DebugPlugin.getDefault() != null ? DebugPlugin.getDefault().getLaunchManager() : null;
+		return mgr != null ? mgr.getLaunches() : new ILaunch[0];
+	}
+
+	/**
+	 * Returns the active developer Servoy model. Isolated as a seam so unit tests can inject a stub/mock model and exercise this
+	 * service's own file-resolution logic without a live workbench; production resolves the real model from {@link ServoyModelManager}.
+	 */
+	protected IDeveloperServoyModel getServoyModel()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel();
+	}
 
 	/**
 	 * Reports whether any debug target has a suspended thread, and where it is suspended. Returns a human/agent-readable status line, never
@@ -585,7 +606,7 @@ public class DebugInspectionService
 		ServoyProject activeProject = null;
 		try
 		{
-			activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			activeProject = getServoyModel().getActiveProject();
 		}
 		catch (Exception e)
 		{
@@ -884,7 +905,7 @@ public class DebugInspectionService
 	{
 		try
 		{
-			ServoyProject active = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
+			ServoyProject active = getServoyModel().getActiveProject();
 			if (active == null)
 			{
 				return null;
@@ -894,7 +915,7 @@ public class DebugInspectionService
 			{
 				return inActive;
 			}
-			ServoyProject[] modules = ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
+			ServoyProject[] modules = getServoyModel().getModulesOfActiveProject();
 			if (modules != null)
 			{
 				for (ServoyProject mod : modules)
@@ -1044,14 +1065,9 @@ public class DebugInspectionService
 		}
 	}
 
-	private boolean hasAnyDebugTarget()
+	protected boolean hasAnyDebugTarget()
 	{
-		ILaunchManager mgr = DebugPlugin.getDefault() != null ? DebugPlugin.getDefault().getLaunchManager() : null;
-		if (mgr == null)
-		{
-			return false;
-		}
-		for (ILaunch launch : mgr.getLaunches())
+		for (ILaunch launch : getLaunches())
 		{
 			IDebugTarget[] targets = launch.getDebugTargets();
 			if (targets != null && targets.length > 0)
@@ -1172,12 +1188,7 @@ public class DebugInspectionService
 	{
 		try
 		{
-			ILaunchManager mgr = DebugPlugin.getDefault() != null ? DebugPlugin.getDefault().getLaunchManager() : null;
-			if (mgr == null)
-			{
-				return null;
-			}
-			for (ILaunch launch : mgr.getLaunches())
+			for (ILaunch launch : getLaunches())
 			{
 				for (IDebugTarget target : launch.getDebugTargets())
 				{
