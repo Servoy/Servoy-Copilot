@@ -30,6 +30,7 @@ import java.util.OptionalLong;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
  * Reads the <b>accurate</b> per-scenario Kiro credit figures written by the
@@ -327,10 +328,13 @@ public final class KiroCreditReader {
 	 */
 	public OptionalDouble creditsForSession(String sessionId) {
 		if (sessionId == null || sessionId.isBlank()) {
+			ServoyLog.logInfo("[skilltest] KiroCreditReader: no session id given - credits unknown."); //$NON-NLS-1$
 			return OptionalDouble.empty();
 		}
 		File db = resolveFile("kiro.db"); //$NON-NLS-1$
 		if (db == null) {
+			ServoyLog.logInfo("[skilltest] KiroCreditReader: kiro.db not found under any candidate dir " //$NON-NLS-1$
+					+ candidateDirs + " - credits unknown."); //$NON-NLS-1$
 			return OptionalDouble.empty();
 		}
 		String sql = "SELECT SUM(est_credits) FROM session_usage WHERE session_id = ?"; //$NON-NLS-1$
@@ -341,12 +345,19 @@ public final class KiroCreditReader {
 				if (rs.next()) {
 					double sum = rs.getDouble(1);
 					if (!rs.wasNull()) {
+						ServoyLog.logInfo("[skilltest] KiroCreditReader: " + db.getAbsolutePath() //$NON-NLS-1$
+								+ " session '" + sessionId + "' -> " + sum + " est_credits."); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 						return OptionalDouble.of(sum);
 					}
 				}
 			}
+			ServoyLog.logInfo("[skilltest] KiroCreditReader: " + db.getAbsolutePath() //$NON-NLS-1$
+					+ " has no session_usage rows for session '" + sessionId + "' - credits unknown."); //$NON-NLS-1$ //$NON-NLS-2$
 		} catch (SQLException | RuntimeException | LinkageError e) {
 			// Absent driver / locked / malformed: degrade to "unknown".
+			ServoyLog.logWarning("[skilltest] KiroCreditReader: reading " + db.getAbsolutePath() //$NON-NLS-1$
+					+ " failed (" + e.getClass().getSimpleName() + ": " + e.getMessage() //$NON-NLS-1$ //$NON-NLS-2$
+					+ ") - credits unknown.", e); //$NON-NLS-1$
 			return OptionalDouble.empty();
 		}
 		return OptionalDouble.empty();
