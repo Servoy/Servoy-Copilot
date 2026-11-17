@@ -701,20 +701,29 @@ public class FormNavigationGraphServiceTest {
 	class GenerateCypressTestContentTests {
 
 		@Test
-		@DisplayName("empty path produces WARNING comment")
-		void emptyPath_producesWarningComment() {
+		@DisplayName("empty path opens the target form directly via formpreview and notes no path was found")
+		void emptyPath_opensTargetViaFormpreview() {
 			String content = service.generateCypressTestContent("mySolution", "http://localhost:8080", "main_form",
 					"target_form", "my scenario", java.util.List.of());
-			assertTrue(content.contains("WARNING"), "Expected WARNING in output for empty path");
+			// SVY-21619: with no navigation path the target form is landed directly so the measurement its reach it.
+			assertTrue(content.contains("?formpreview=target_form&svy_testmode=true"),
+					"Expected the formpreview URL for the target form when no path was found: " + content);
+			assertTrue(content.contains("No navigation path was found"),
+					"Expected the no-path note in output for empty path: " + content);
 		}
 
 		@Test
-		@DisplayName("URL is correctly constructed as /solution/solutionName/index.html?svy_testmode=true")
+		@DisplayName("with a navigation path the URL is /solution/solutionName/index.html?svy_testmode=true (no formpreview)")
 		void urlIsCorrectlyConstructed() {
+			// A path exists, so the target is reached by the clicks in beforeEach, not by formpreview.
+			NavigationEdge edge = new NavigationEdge.Builder().from("main_form").to("target_form").containerName("tabs_1")
+					.containerType("tabpanel").tabName("Target").tabIndex(0).confidence("static").build();
 			String content = service.generateCypressTestContent("mySolution", "http://localhost:8080", "main_form",
-					"target_form", null, java.util.List.of());
-			assertTrue(content.contains("/solution/mySolution/index.html?svy_testmode=true"),
-					"Expected relative constructed URL with svy_testmode=true in output (baseUrl lives in cypress.config.js)");
+					"target_form", null, java.util.List.of(edge));
+			assertTrue(content.contains("cy.visit('/solution/mySolution/index.html?svy_testmode=true');"),
+					"Expected relative constructed URL with svy_testmode=true in output (baseUrl lives in cypress.config.js): "
+							+ content);
+			assertFalse(content.contains("formpreview="), "no formpreview when a navigation path exists: " + content);
 		}
 
 		@Test
@@ -884,6 +893,41 @@ public class FormNavigationGraphServiceTest {
 					"one responsive it(...) per width");
 			assertEquals(1, content.lines().filter(l -> l.trim().equals("cy.measureContainer('.svy-form');")).count(),
 					"the always-on measureContainer is still present alongside the responsive blocks");
+		}
+
+		@Test
+		@DisplayName("navigation runs in beforeEach, not in the scenario it(), so every measurement it() reaches the target")
+		void navigationRunsInBeforeEach() {
+			NavigationEdge edge = new NavigationEdge.Builder().from("main_form").to("orders").containerName("tabs_1")
+					.containerType("tabpanel").tabName("Orders").tabIndex(0).confidence("static").build();
+
+			String content = service.generateCypressTestContent("sol", "http://host", "main_form", "orders", "scenario",
+					java.util.List.of(edge), java.util.List.of(375));
+
+			int beforeEach = content.indexOf("beforeEach(");
+			// Match the START of an it(...) block; "it('" also occurs inside "cy.visit('", so anchor on the newline.
+			int firstIt = content.indexOf("\n  it('");
+			int click = content.indexOf(".click();");
+			assertTrue(beforeEach >= 0 && firstIt > beforeEach, "beforeEach must come before the first it(): " + content);
+			assertTrue(click > beforeEach && click < firstIt,
+					"the navigation click must sit inside beforeEach, before any it(): " + content);
+			// The root container is awaited inside beforeEach too, so each it() starts on a rendered target form.
+			int containerWait = content.indexOf("cy.get('.svy-form', { timeout: 30000 }).should('exist');");
+			assertTrue(containerWait > beforeEach && containerWait < firstIt,
+					"the root-container wait must be in beforeEach: " + content);
+		}
+
+		@Test
+		@DisplayName("with a path, each navigation click is emitted exactly once (in beforeEach, not duplicated into the scenario it())")
+		void withPath_clickEmittedOnce() {
+			NavigationEdge edge = new NavigationEdge.Builder().from("main_form").to("orders").containerName("tabs_1")
+					.containerType("tabpanel").tabName("Orders").tabIndex(0).confidence("static").build();
+
+			String content = service.generateCypressTestContent("sol", "http://host", "main_form", "orders", "scenario",
+					java.util.List.of(edge), java.util.List.of());
+
+			assertEquals(1, content.lines().filter(l -> l.trim().endsWith("').click();")).count(),
+					"the navigation click must be emitted exactly once, in beforeEach: " + content);
 		}
 	}
 
