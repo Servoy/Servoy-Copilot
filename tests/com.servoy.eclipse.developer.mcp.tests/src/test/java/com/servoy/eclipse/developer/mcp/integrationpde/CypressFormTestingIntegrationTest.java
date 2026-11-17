@@ -124,6 +124,50 @@ public class CypressFormTestingIntegrationTest extends AbstractTitaniumIntegrati
 			System.out.println("*** " + TEST_SOLUTION + " has no built NG client (" + builtIndex + "), building it");
 			buildTitaniumIfNeeded();
 			System.out.println("*** NG client built: " + builtIndex.exists());
+			if (!builtIndex.exists()) {
+				logNgClientBuildDiagnostics(targetFolder);
+			}
+		}
+	}
+
+	/**
+	 * The Titanium build writes to the Eclipse log and not to stdout, so when it leaves no output behind the CI console
+	 * says nothing about why. Print the state that decides whether a build can run at all.
+	 */
+	private void logNgClientBuildDiagnostics(java.io.File targetFolder) {
+		java.io.File solutionFolder = new java.io.File(targetFolder, TEST_SOLUTION);
+		System.out.println("*** NG client build diagnostics for " + TEST_SOLUTION + ":");
+		System.out.println("***   build disabled: " + Activator.isNodeExtractionAndTitaniumBuildDisabled());
+		System.out.println("***   solutionProjectFolder: " + Activator.getInstance().getSolutionProjectFolder());
+		System.out.println("***   node path: " + Activator.getInstance().getNodePath() + ", npm path: "
+				+ Activator.getInstance().getNpmPath());
+		System.out.println("***   solution folder exists: " + solutionFolder.isDirectory());
+		System.out.println("***   package.json: " + new java.io.File(solutionFolder, "package.json").exists());
+		System.out.println("***   node_modules: " + new java.io.File(solutionFolder, "node_modules").isDirectory()
+				+ ", main node_modules: " + new java.io.File(targetFolder, "node_modules").isDirectory());
+		System.out.println("***   dist folder: " + new java.io.File(solutionFolder, "dist").isDirectory());
+		System.out.println("***   src folder: " + new java.io.File(solutionFolder, "src").isDirectory());
+		System.out.println("***   running Titanium/copy jobs: "
+				+ org.eclipse.core.runtime.jobs.Job.getJobManager().find(
+						com.servoy.eclipse.ngclient.ui.CopySourceFolderAction.JOB_FAMILY).length);
+		System.out.println("***   WebPackagesListener state: " + webPackagesListenerState());
+	}
+
+	/**
+	 * WebPackagesListener.checkPackages only schedules a build when its private 'scheduled' counter is 0 and 'ignore'
+	 * is false; a counter left above 0 by an earlier cancelled run would block every later build. Both fields are
+	 * private, so read them reflectively; this is diagnostics only.
+	 */
+	private static String webPackagesListenerState() {
+		try {
+			Class<?> listener = com.servoy.eclipse.ngclient.ui.WebPackagesListener.class;
+			java.lang.reflect.Field scheduled = listener.getDeclaredField("scheduled");
+			java.lang.reflect.Field ignore = listener.getDeclaredField("ignore");
+			scheduled.setAccessible(true);
+			ignore.setAccessible(true);
+			return "scheduled=" + scheduled.get(null) + " (0 = a build can be scheduled), ignore=" + ignore.get(null);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return "unreadable: " + e;
 		}
 	}
 
