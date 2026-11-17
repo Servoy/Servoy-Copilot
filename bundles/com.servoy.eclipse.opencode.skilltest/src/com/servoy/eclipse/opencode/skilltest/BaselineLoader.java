@@ -221,6 +221,48 @@ public final class BaselineLoader {
 		ObjectMapper writer = MAPPER.copy().enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
 		Files.writeString(sidecar.toPath(), writer.writeValueAsString(obj), StandardCharsets.UTF_8);
 	}
+	/**
+	 * Writes the WARN-only soft budgets (SVY-21660) into a baseline's sidecar,
+	 * replacing whatever {@code budget} block was there. An empty / {@code null}
+	 * list removes the block entirely. The array form is always written (a single
+	 * budget is still written as a one-element array); the reader still accepts the
+	 * legacy single-object form.
+	 *
+	 * @param baselineFolder the baseline's folder (holds {@code baseline.json})
+	 * @param budgets        the budgets to write (may be {@code null}/empty to clear)
+	 * @throws IOException if the sidecar cannot be read or written
+	 */
+	public static void writeBudgets(File baselineFolder, List<Baseline.Budget> budgets) throws IOException {
+		File sidecar = new File(baselineFolder, "baseline.json"); //$NON-NLS-1$
+		JsonNode root = MAPPER.readTree(sidecar);
+		if (!(root instanceof com.fasterxml.jackson.databind.node.ObjectNode obj)) {
+			throw new IOException("baseline.json is not a JSON object: " + sidecar); //$NON-NLS-1$
+		}
+		if (budgets == null || budgets.isEmpty()) {
+			obj.remove("budget"); //$NON-NLS-1$
+		} else {
+			com.fasterxml.jackson.databind.node.ArrayNode arr = obj.putArray("budget"); //$NON-NLS-1$
+			for (Baseline.Budget budget : budgets) {
+				if (budget == null) {
+					continue;
+				}
+				com.fasterxml.jackson.databind.node.ObjectNode b = arr.addObject();
+				b.put("metric", budget.metric()); //$NON-NLS-1$
+				if (budget.max() != null) {
+					b.put("max", budget.max().intValue()); //$NON-NLS-1$
+				}
+				if (budget.baselineValue() != null) {
+					b.put("baselineValue", budget.baselineValue().intValue()); //$NON-NLS-1$
+				}
+				if (budget.tolerancePct() != null) {
+					b.put("tolerancePct", budget.tolerancePct().intValue()); //$NON-NLS-1$
+				}
+			}
+		}
+		ObjectMapper writer = MAPPER.copy().enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+		Files.writeString(sidecar.toPath(), writer.writeValueAsString(obj), StandardCharsets.UTF_8);
+	}
+
 
 	/**
 	 * Writes the baseline's JSUnit verification (SVY-21366 §3.4b): sets/replaces

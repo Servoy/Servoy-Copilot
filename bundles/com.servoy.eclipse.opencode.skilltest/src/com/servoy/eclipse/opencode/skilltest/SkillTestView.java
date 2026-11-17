@@ -643,6 +643,15 @@ public class SkillTestView extends ViewPart {
 			editJsUnit.setEnabled(entry != null);
 			manager.add(editJsUnit);
 
+			Action editBudget = new Action("Edit budget…") { //$NON-NLS-1$
+				@Override
+				public void run() {
+					editBudget();
+				}
+			};
+			editBudget.setEnabled(entry != null);
+			manager.add(editBudget);
+
 			manager.add(new org.eclipse.jface.action.Separator());
 
 			Action delete = new Action("Delete baseline…") { //$NON-NLS-1$
@@ -720,6 +729,31 @@ public class SkillTestView extends ViewPart {
 		} catch (IOException e) {
 			MessageDialog.openError(getSite().getShell(), "Edit failed", e.getMessage()); //$NON-NLS-1$
 			log("Edit JSUnit verification failed: " + e.getMessage()); //$NON-NLS-1$
+		}
+	}
+
+	private void editBudget() {
+		BaselineLoader.Entry entry = selectedEntry();
+		if (entry == null) {
+			MessageDialog.openInformation(getSite().getShell(), "Edit budget", //$NON-NLS-1$
+					"Select a baseline in the table first."); //$NON-NLS-1$
+			return;
+		}
+		SkillTestResult lastResult = lastResults.get(entry.baseline().id());
+		RunMetrics lastMetrics = lastResult != null ? lastResult.getMetrics() : null;
+		BudgetEditorDialog dialog = new BudgetEditorDialog(getSite().getShell(), entry.baseline().id(),
+				entry.baseline().budgets(), lastMetrics);
+		if (dialog.open() != Window.OK) {
+			return;
+		}
+		try {
+			BaselineLoader.writeBudgets(entry.folder(), dialog.getBudgets());
+			log("Updated budget for baseline '" + entry.baseline().id() + "' (" //$NON-NLS-1$ //$NON-NLS-2$
+					+ dialog.getBudgets().size() + " metric(s))"); //$NON-NLS-1$
+			refresh();
+		} catch (IOException e) {
+			MessageDialog.openError(getSite().getShell(), "Edit budget failed", e.getMessage()); //$NON-NLS-1$
+			log("Edit budget failed: " + e.getMessage()); //$NON-NLS-1$
 		}
 	}
 
