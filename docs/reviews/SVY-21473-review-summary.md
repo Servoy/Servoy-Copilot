@@ -1,9 +1,11 @@
 # Review Summary: SVY-21473 (MCP command console / evaluate against the running solution)
 
-**Risk: MODERATE.** The shipped tool (`servoy-debug/executeInRunningClient`) runs arbitrary JS in the live debug client. The ticket's "mutating, executeSQL-level approval" requirement was not found implemented, and a timed-out script cannot be cancelled.
+**Risk: LOW to MODERATE.** The shipped tool (`servoy-debug/executeInRunningClient`) runs arbitrary JS in the live debug client. A timed-out script cannot be cancelled, console output is uncapped, and the `@Tool` description misses two things the ticket asks for (see below).
 
 **Scope reviewed:** Servoy-Copilot, `origin/master`: `3881d60a`, `a912109d`, `6d9836c1`, `d5535284`.
 Note: `3881d60a` and `a912109d` (the `servoy-dev/evaluate` tool) are history. Commit `ec64d67a` (SVY-21443, outside the reviewed scope) removed `evaluate` and `ExpressionEvaluationService` and merged their features into `executeInRunningClient`.
+
+**Approval treatment (correction):** The ticket asks for the tool to get the same approval treatment as `executeSQL`. That is met as far as this repo can tell: `executeSQL` (`ServoyDevServer.java:1911`) has no server-side approval marker, the `@Tool` annotation only has `name`/`description`/`type`, and the spec (§3.8) says consent is handled by the client-side tool-approval layer in opencode, outside this bundle. Not verified: whether opencode actually prompts for this tool.
 
 **Release target:** Fix Version 2026.12, check MATCH (commits on master, servoy-client master is 2026.12.0 rc). Not verified on other branches.
 
@@ -24,10 +26,10 @@ Note: `3881d60a` and `a912109d` (the `servoy-dev/evaluate` tool) are history. Co
 3. Hit a breakpoint via the tool, then use `debugStatus` / `debugResume`.
 4. Trigger a UI action while a run is active. Check whether its output leaks into the result.
 5. Confirm `servoy-debug` appears in `opencode.json` and other MCP servers still work.
-6. Check that the user is asked for approval when the tool is called.
+6. Check in opencode whether the user is prompted when the tool is called, and that it behaves like `executeSQL`.
 
 ## Possible improvements / follow-ups
-- Approval treatment: where is the "mutating, same approval as `executeSQL`" requirement enforced for this tool?
+- The ticket says the tool must be "declared as" mutating (it can write records). The `@Tool` description does not say so. Add it, together with the JSUnit sentence below.
 - Internal-user (`@servoy.com`) bearer-token bypass in `BearerTokenAuthenticationFilter` now reaches a code-execution tool. Accept it or require the token for `servoy-debug`.
 - `DebugUtils.setOutputSink` is on servoy-client `master` and `release`, but not on `lts_latest`. Confirm which branch Copilot master builds against.
 - Timed-out scripts keep the client event thread; `timeoutSeconds` has no upper bound.
