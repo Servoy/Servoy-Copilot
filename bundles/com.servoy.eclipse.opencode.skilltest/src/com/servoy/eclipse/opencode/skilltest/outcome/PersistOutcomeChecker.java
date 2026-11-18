@@ -101,12 +101,26 @@ public final class PersistOutcomeChecker {
 	}
 
 	private final Solution solution;
+	private final com.servoy.j2db.FlattenedSolution flattened;
 
 	/**
 	 * @param solution the active editing solution to inspect (never {@code null})
 	 */
 	public PersistOutcomeChecker(Solution solution) {
+		this(solution, null);
+	}
+
+	/**
+	 * SVY-21659: root persists (forms, scope methods, ...) must be resolved against
+	 * the editing <b>flattened</b> solution so objects living in modules are found.
+	 *
+	 * @param solution  the active editing solution (never {@code null})
+	 * @param flattened the active project's editing flattened solution, or
+	 *                  {@code null} to inspect the active solution's children only
+	 */
+	public PersistOutcomeChecker(Solution solution, com.servoy.j2db.FlattenedSolution flattened) {
 		this.solution = solution;
+		this.flattened = flattened;
 	}
 
 	/**
@@ -159,6 +173,13 @@ public final class PersistOutcomeChecker {
 			// renders the node, not this diff) and the flat diff (text/CI report).
 			if (isLeafElementKind(assertion.kind())) {
 				MissingLeafDiag d = diagnoseMissingLeaf(assertion, pool);
+				for (String line : d.diffLines()) {
+					diff.append(indent).append("  ").append(line).append('\n'); //$NON-NLS-1$
+				}
+				return new Node(assertion.label(), false, false, d.message(), d.props(), List.of());
+			}
+			if (assertion.kind() == PersistKind.SCRIPTMETHOD || assertion.kind() == PersistKind.SCRIPTVARIABLE) {
+				MissingLeafDiag d = diagnoseMissingScopeMember(assertion, pool);
 				for (String line : d.diffLines()) {
 					diff.append(indent).append("  ").append(line).append('\n'); //$NON-NLS-1$
 				}
@@ -313,6 +334,100 @@ public final class PersistOutcomeChecker {
 			diffLines.add("(diag) dump failed: " + ex); //$NON-NLS-1$
 		}
 		return new MissingLeafDiag(message, props, diffLines);
+	}
+
+	/**
+	 * Diagnoses a missing scope method/variable (SVY-21659), so a failing run says
+	 * WHY rather than just "missing". It reports: same-name persists of that kind in
+	 * the pool and the scope each one carries (a scope mismatch), the members the
+	 * pool holds for the asserted scope, what the flattened solution resolves for
+	 * {@code scope.name}, and whether {@code <scope>.js} exists on disk in the
+	 * active solution project. A scope file on disk that holds the member while the
+	 * editing model has nothing is a model-not-yet-reloaded race, not a real absence.
+	 * Purely informational: reads only and swallows every error.
+	 */
+	private MissingLeafDiag diagnoseMissingScopeMember(OutcomeAssertion assertion, List<IPersist> pool) {
+		List<PropCheck> props = new ArrayList<>();
+		List<String> diffLines = new ArrayList<>();
+		String message;
+		try {
+			List<String> sameName = new ArrayList<>();
+			List<String> inScope = new ArrayList<>();
+			for (IPersist p : pool) {
+				if (!kindMatches(assertion.kind(), p)) {
+					continue;
+				}
+				String scope = p instanceof com.servoy.j2db.persistence.ISupportScope s ? s.getScopeName() : null;
+				String name = nameOf(p);
+				if (assertion.name() != null && name != null && name.equalsIgnoreCase(assertion.name())) {
+					sameName.add(scope + "." + name); //$NON-NLS-1$
+				}
+				if (assertion.scope() != null && assertion.scope().equalsIgnoreCase(scope)) {
+					inScope.add(name);
+				}
+			}
+			diffLines.add("(diag) scanned " + pool.size() + " root persist(s); same-name " + assertion.displayKind() //$NON-NLS-1$ //$NON-NLS-2$
+					+ "(s): " + sameName + "; members of scope '" + assertion.scope() + "': " + inScope); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			props.add(new PropCheck("same-name in model", assertion.scope() + "." + assertion.name(), //$NON-NLS-1$ //$NON-NLS-2$
+					sameName.isEmpty() ? "(none)" : sameName.toString(), false)); //$NON-NLS-1$
+
+			String flattenedHit = "(no flattened solution)"; //$NON-NLS-1$
+			if (flattened != null && assertion.name() != null) {
+				Object hit = assertion.kind() == PersistKind.SCRIPTMETHOD
+						? flattened.getScriptMethod(assertion.scope(), assertion.name())
+						: flattened.getScriptVariable(assertion.scope(), assertion.name());
+				flattenedHit = hit != null ? "found" : "not found"; //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			diffLines.add("(diag) flattened solution lookup: " + flattenedHit); //$NON-NLS-1$
+			props.add(new PropCheck("flattened lookup", "found", flattenedHit, "found".equals(flattenedHit))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+			String onDisk = scopeFileState(assertion);
+			diffLines.add("(diag) scope file on disk: " + onDisk); //$NON-NLS-1$
+			props.add(new PropCheck("scope file on disk", "present, contains member", onDisk, //$NON-NLS-1$ //$NON-NLS-2$
+					onDisk.startsWith("present, contains"))); //$NON-NLS-1$
+
+			if (!sameName.isEmpty()) {
+				message = "missing: a same-name " + assertion.displayKind() + " exists in another scope " + sameName; //$NON-NLS-1$ //$NON-NLS-2$
+			} else if (onDisk.startsWith("present, contains")) { //$NON-NLS-1$
+				message = "missing from the editing model, but " + assertion.scope() //$NON-NLS-1$
+						+ ".js on disk contains it (model not reloaded from disk yet?)"; //$NON-NLS-1$
+			} else {
+				message = "missing: not in the model and not in " + assertion.scope() + ".js on disk"; //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			diffLines.add("(diag) -> " + message); //$NON-NLS-1$
+		} catch (RuntimeException ex) {
+			message = "missing (diagnostic failed: " + ex + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+			diffLines.add("(diag) dump failed: " + ex); //$NON-NLS-1$
+		}
+		return new MissingLeafDiag(message, props, diffLines);
+	}
+
+	/**
+	 * Reads {@code <scope>.js} from the root of the active solution project and
+	 * reports whether it exists and declares the asserted member. Never throws.
+	 */
+	private String scopeFileState(OutcomeAssertion assertion) {
+		if (assertion.scope() == null || solution == null) {
+			return "(no scope)"; //$NON-NLS-1$
+		}
+		try {
+			org.eclipse.core.resources.IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot()
+					.getProject(solution.getName()).getFile(assertion.scope() + ".js"); //$NON-NLS-1$
+			java.io.File onDisk = file.getLocation() != null ? file.getLocation().toFile() : null;
+			if (onDisk == null || !onDisk.isFile()) {
+				return "absent (" + file.getFullPath() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			String text = java.nio.file.Files.readString(onDisk.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+			boolean contains = assertion.name() != null && java.util.regex.Pattern
+					.compile("(function\\s+" + java.util.regex.Pattern.quote(assertion.name()) + "\\b|\\bvar\\s+" //$NON-NLS-1$ //$NON-NLS-2$
+							+ java.util.regex.Pattern.quote(assertion.name()) + "\\b)") //$NON-NLS-1$
+					.matcher(text).find();
+			return (contains ? "present, contains member" : "present, member NOT declared") //$NON-NLS-1$ //$NON-NLS-2$
+					+ (file.isSynchronized(org.eclipse.core.resources.IResource.DEPTH_ZERO) ? "" //$NON-NLS-1$
+							: " (workspace out of sync)"); //$NON-NLS-1$
+		} catch (Exception e) {
+			return "unreadable (" + e.getMessage() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+		}
 	}
 
 	/**
@@ -595,6 +710,30 @@ public final class PersistOutcomeChecker {
 		return null;
 	}
 
+	/**
+	 * SVY-21659: resolves a named scope method/variable through the flattened
+	 * solution's own scope index ({@code getScriptMethod(scope, name)}), the same
+	 * lookup the runtime and designer use, instead of only a raw walk of
+	 * {@code Solution.getAllObjects()}. Returns {@code null} for other kinds, when
+	 * no flattened solution was supplied, or when nothing resolves.
+	 */
+	private IPersist findScopeMemberViaFlattened(OutcomeAssertion assertion) {
+		if (flattened == null || assertion.name() == null) {
+			return null;
+		}
+		try {
+			if (assertion.kind() == PersistKind.SCRIPTMETHOD) {
+				return flattened.getScriptMethod(assertion.scope(), assertion.name());
+			}
+			if (assertion.kind() == PersistKind.SCRIPTVARIABLE) {
+				return flattened.getScriptVariable(assertion.scope(), assertion.name());
+			}
+		} catch (RuntimeException ignore) {
+			// best effort - fall through to "missing"
+		}
+		return null;
+	}
+
 	private boolean propsMatch(OutcomeAssertion assertion, IPersist persist) {
 		for (Map.Entry<String, ArgMatcher> entry : assertion.props().entrySet()) {
 			if (!entry.getValue().matches(readProperty(persist, entry.getKey()))) {
@@ -622,7 +761,13 @@ public final class PersistOutcomeChecker {
 	 * persist carries one; persists without a scope concept always match.
 	 */
 	private boolean scopeMatches(String expectedScope, IPersist persist) {
-		Object scope = readProperty(persist, "scopeName"); //$NON-NLS-1$
+		// SVY-21659: prefer the typed accessor. For a scope method the raw property
+		// map / generic reader can miss the scope (it is defaulted to "globals" in
+		// getScopeName() for solution children), which made a method that plainly
+		// exists in scope 'orders' report as "missing".
+		Object scope = persist instanceof com.servoy.j2db.persistence.ISupportScope supportScope
+				? supportScope.getScopeName()
+				: readProperty(persist, "scopeName"); //$NON-NLS-1$
 		if (scope == null) {
 			return true;
 		}
@@ -747,8 +892,28 @@ public final class PersistOutcomeChecker {
 		return null;
 	}
 
+	/**
+	 * The root persists of the active solution plus those of every module
+	 * (SVY-21659). Scope methods in particular can live in a module's scope file,
+	 * which the active solution's own children never contain.
+	 */
 	private List<IPersist> allRootPersists() {
-		return childrenOf(solution);
+		List<IPersist> out = new ArrayList<>(childrenOf(solution));
+		if (flattened != null) {
+			try {
+				Solution[] modules = flattened.getModules();
+				if (modules != null) {
+					for (Solution module : modules) {
+						if (module != null && module != solution) {
+							out.addAll(childrenOf(module));
+						}
+					}
+				}
+			} catch (RuntimeException ignore) {
+				// best effort - fall back to the active solution's own children
+			}
+		}
+		return out;
 	}
 
 	/** Immediate children of a persist as a list (empty when it has none). */
