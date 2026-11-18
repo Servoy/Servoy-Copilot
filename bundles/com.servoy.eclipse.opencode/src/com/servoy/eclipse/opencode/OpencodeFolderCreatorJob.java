@@ -38,6 +38,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ngclient.ui.IConsole;
 import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 
 /**
@@ -161,7 +162,11 @@ public class OpencodeFolderCreatorJob extends Job {
 			// createNPMCommand internally waits for Node.js extraction (via
 			// waitForNodeExtraction)
 			IRunNPMCommand install = ngActivator.createNPMCommand(opencodeDir, List.of("install"));
-			install.setOutputStream(activator.getConsole().outputStream());
+			IConsole aiConsole = activator.getConsole();
+			if (aiConsole != null)
+			{
+				install.setOutputStream(aiConsole.outputStream());
+			}
 			try {
 				install.runCommand(monitor);
 			} catch (IOException | InterruptedException e) {

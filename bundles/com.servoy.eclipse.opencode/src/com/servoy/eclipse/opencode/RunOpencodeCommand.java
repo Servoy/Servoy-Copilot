@@ -34,6 +34,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 
 import com.servoy.eclipse.model.util.ServoyLog;
+import com.servoy.eclipse.ngclient.ui.IConsole;
 import com.servoy.eclipse.ngclient.ui.IRunNPMCommand;
 import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
 
@@ -179,7 +180,11 @@ public class RunOpencodeCommand extends Job {
 
 		serverCommand.setExtraEnvironment(Collections.unmodifiableMap(env));
 
-		serverCommand.setOutputStream(activator.getConsole().outputStream());
+		IConsole aiConsole = activator.getConsole();
+		if (aiConsole != null)
+		{
+			serverCommand.setOutputStream(aiConsole.outputStream());
+		}
 
 		// Register both the outer job (this) and the inner command so stopServer()
 		// can cancel this job's monitor (preventing spurious retry) AND kill the OS
