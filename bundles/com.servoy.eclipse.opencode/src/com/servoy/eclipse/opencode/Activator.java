@@ -252,14 +252,15 @@ public class Activator extends Plugin {
 	 * <ol>
 	 * <li><b>Graceful phase:</b> on Windows the command's stdin lease is closed
 	 * ({@code closeStdinLease()}), giving the {@code serve --stdio} server its
-	 * stdin EOF; on POSIX a group {@code SIGTERM} is sent
-	 * ({@code terminateGroupGracefully()}). Then we wait up to
-	 * {@link #WINDOWS_GRACE_MS} / {@link #POSIX_GRACE_MS} for a clean exit using a
-	 * bounded {@code waitFor(timeout)}.</li>
+	 * stdin EOF; on POSIX opencode and its descendants get a {@code SIGTERM}, per
+	 * exact pid via {@code ProcessHandle} ({@code terminateGracefully()}). Then we
+	 * wait up to {@link #WINDOWS_GRACE_MS} / {@link #POSIX_GRACE_MS} for a clean
+	 * exit using a bounded {@code waitFor(timeout)}.</li>
 	 * <li><b>Fallback phase (demoted):</b> only if the process is still alive after
-	 * the grace window do we run {@link #killProcessTree} ({@code taskkill /F /T} /
-	 * {@code kill -9} + the orphan sweep + the async stream-closer) - 6d66456's
-	 * safety net, kept but no longer exercised on the happy path.</li>
+	 * the grace window do we run {@link #killProcessTree} ({@code taskkill /F /T} on
+	 * Windows, {@code ProcessHandle.destroyForcibly()} on POSIX, + the orphan sweep +
+	 * the async stream-closer) - 6d66456's safety net, kept but no longer exercised
+	 * on the happy path.</li>
 	 * </ol>
 	 * <p>
 	 * We bypass {@code canceling()} in {@code RunNPMCommand} because during Eclipse
@@ -305,7 +306,8 @@ public class Activator extends Plugin {
 			//
 			// - Windows: close the child's stdin lease, which gives the
 			// `serve --stdio` server its stdin EOF (Windows has no real SIGTERM).
-			// - POSIX: send SIGTERM to opencode's whole process group.
+			// - POSIX: SIGTERM opencode's descendants and opencode itself, per exact pid
+			// via ProcessHandle (never a group signal / external kill - SVY-21643).
 			//
 			// Then wait up to the platform grace window for a clean exit, using a
 			// bounded Process.waitFor(timeout) so a prompt exit returns immediately and
@@ -327,8 +329,8 @@ public class Activator extends Plugin {
 						ServoyLog.logInfo("OpenCode: graceful shutdown - closing stdin lease (Windows)");
 						exec.closeStdinLease();
 					} else {
-						ServoyLog.logInfo("OpenCode: graceful shutdown - SIGTERM to process group (POSIX)");
-						exec.terminateGroupGracefully();
+						ServoyLog.logInfo("OpenCode: graceful shutdown - SIGTERM to opencode and its descendants (POSIX)");
+						exec.terminateGracefully();
 					}
 				}
 
@@ -354,7 +356,15 @@ public class Activator extends Plugin {
 			// without exercising it on the happy path.
 			if (!exitedGracefully) {
 				ServoyLog.logInfo("OpenCode: grace window elapsed, process still alive - brute-force fallback");
-				cmd.cancel();
+				// killProcessTree() does the forced kill. For the real server command only
+				// set its cancel flag here: RunExecutableCommand.cancel() would force-kill
+				// the same tree itself, sending every SIGKILL twice. The npm-exec fallback
+				// command has no such flag, so it keeps its own cancel() as before.
+				if (cmd instanceof RunExecutableCommand exec) {
+					exec.markCancelled();
+				} else {
+					cmd.cancel();
+				}
 				killProcessTree(cmd);
 			} else {
 				ServoyLog.logInfo("OpenCode: process exited gracefully - skipping brute-force kill");
@@ -420,28 +430,30 @@ public class Activator extends Plugin {
 			} catch (Exception e) {
 				ServoyLog.logInfo("OpenCode: taskkill failed: " + e.getMessage());
 			}
-		} else {
-			try {
-				// Both target a single pid: pkill -P kills the CHILDREN of pid, kill -9
-				// kills pid itself. Neither is a negative-pid group signal.
-				ShutdownDiagnostics.logSignal("brute-force kill children", "9", String.valueOf(pid) + " (via pkill -P)");
-				new ProcessBuilder("pkill", "-9", "-P", String.valueOf(pid)).redirectErrorStream(true).start()
-						.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-				ServoyLog.logInfo("OpenCode: pkill -9 -P " + pid + " completed");
-				ShutdownDiagnostics.logSignal("brute-force kill root", "9", String.valueOf(pid));
-				new ProcessBuilder("kill", "-9", String.valueOf(pid)).redirectErrorStream(true).start().waitFor(5,
-						java.util.concurrent.TimeUnit.SECONDS);
-				ServoyLog.logInfo("OpenCode: kill -9 " + pid + " completed");
-			} catch (Exception e) {
-				ServoyLog.logInfo("OpenCode: pkill/kill failed: " + e.getMessage());
+			// Fallback for when taskkill failed or did not finish: use the Java API.
+			// Only needed on Windows - on POSIX the primary path below already IS the
+			// Java API, so repeating it there would just send the same SIGKILL twice.
+			if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+				ServoyLog.logInfo("OpenCode: PID " + pid + " still alive after taskkill, using Java API fallback");
+				process.descendants().forEach(ProcessHandle::destroyForcibly);
+				process.destroyForcibly();
 			}
-		}
-
-		// Fallback: if the process is still alive, use Java API
-		if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
-			ServoyLog.logInfo("OpenCode: PID " + pid + " still alive after OS kill, using Java API fallback");
-			process.descendants().forEach(ProcessHandle::destroyForcibly);
+		} else {
+			// POSIX: SIGKILL the exact pids through ProcessHandle - descendants first, then
+			// the root. Never shell out to `kill`/`pkill` here: without a `--`, procps-ng's
+			// /usr/bin/kill parses a negative pid as options (kill -TERM -1993873 became
+			// kill(-1, SIGTERM)) and took down every process of the jenkins user, including
+			// the Jenkins controller (SVY-21643). destroyForcibly() is a direct per-pid
+			// syscall, no parsing.
+			ShutdownDiagnostics.logSignal("brute-force SIGKILL via ProcessHandle (descendants + root)", "9",
+					String.valueOf(pid));
+			try {
+				process.descendants().forEach(ProcessHandle::destroyForcibly);
+			} catch (RuntimeException ignored) {
+				// descendants() can race with exit; the root destroy below still runs.
+			}
 			process.destroyForcibly();
+			ServoyLog.logInfo("OpenCode: SIGKILL sent to pid " + pid + " and its descendants");
 		}
 
 		// taskkill /T (and the JDK's ProcessHandle.descendants()) only see processes
@@ -538,17 +550,46 @@ public class Activator extends Plugin {
 						.redirectErrorStream(true).start();
 				ps.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
 			} else {
-				// -f matches the FULL command line against this bundle's absolute install
-				// dir, so it only ever hits our own opencode/node processes - never the
-				// workbench/Jenkins JVM, whose command line does not contain this path.
-				ShutdownDiagnostics.logSweep("orphan sweep (POSIX)", "pkill -9 -f", marker);
-				Process pkill = new ProcessBuilder("pkill", "-9", "-f", marker).redirectErrorStream(true).start();
-				pkill.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+				// Same match as the old `pkill -9 -f <marker>` (full command line contains
+				// this bundle's absolute install dir), but done in-JVM with ProcessHandle so
+				// no external kill binary is involved (SVY-21643: /usr/bin/kill misparsed a
+				// negative pid into kill(-1) and killed the Jenkins controller). It also lets
+				// us explicitly skip this JVM and its ancestors, which an external pkill
+				// could not guarantee.
+				ShutdownDiagnostics.logSweep("orphan sweep (POSIX, ProcessHandle)", "destroyForcibly per matching pid",
+						marker);
+				java.util.Set<Long> protectedPids = protectedPids();
+				ProcessHandle.allProcesses()
+						.filter(h -> !protectedPids.contains(Long.valueOf(h.pid())))
+						.filter(h -> h.info().commandLine().map(cl -> cl.contains(marker)).orElse(Boolean.FALSE)
+								.booleanValue())
+						.forEach(h -> {
+							ShutdownDiagnostics.logSignal("orphan sweep SIGKILL", "9", String.valueOf(h.pid()));
+							h.destroyForcibly();
+						});
 			}
 			ServoyLog.logInfo("OpenCode: orphan sweep completed for dir: " + marker);
 		} catch (Exception e) {
 			ServoyLog.logInfo("OpenCode: orphan sweep failed: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * @return the pids the orphan sweep must never touch: this JVM and every
+	 *         ancestor of it (on CI that chain is mvn, the Jenkins build shell and
+	 *         the Jenkins controller itself). Defence in depth for SVY-21643 - the
+	 *         sweep matches by command line, so this guarantees it can never hit the
+	 *         process tree that launched us even if an ancestor's command line
+	 *         happened to contain the install dir.
+	 */
+	private static java.util.Set<Long> protectedPids() {
+		java.util.Set<Long> pids = new java.util.HashSet<>();
+		java.util.Optional<ProcessHandle> h = java.util.Optional.of(ProcessHandle.current());
+		while (h.isPresent()) {
+			pids.add(Long.valueOf(h.get().pid()));
+			h = h.get().parent();
+		}
+		return pids;
 	}
 
 	/**

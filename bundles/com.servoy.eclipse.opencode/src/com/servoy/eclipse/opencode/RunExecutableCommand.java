@@ -82,10 +82,10 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	private static final long PROCESS_EXIT_WAIT_MS = 5000L;
 
 	/**
-	 * On POSIX, set when the launch wrapped the executable in {@code setsid} so the
-	 * launched process is the leader of a new process group whose pgid equals its
-	 * pid. When {@code true}, {@link #terminateGroupGracefully()} can signal the
-	 * whole group via {@code kill -TERM -<pid>}.
+	 * On POSIX, set when the launch wrapped the executable in {@code setsid} and the
+	 * child was verified to lead its own process group. Only informational now:
+	 * {@link #terminateGracefully()} signals exact pids and no longer sends a group
+	 * signal, so nothing depends on this flag for safety (SVY-21643).
 	 */
 	private volatile boolean newProcessGroupLeader;
 
@@ -135,8 +135,13 @@ public class RunExecutableCommand implements IRunNPMCommand {
 			// the controller JVM (build #80: Jenkins exit 143 / Jetty shutdown ~0.5s
 			// after the JSUnit-verify teardown). So after launch we VERIFY the child's
 			// real pgid actually equals its pid (i.e. it leads its own group) before
-			// allowing any group-targeted kill; see verifyIsGroupLeader() /
-			// terminateGroupGracefully().
+			// allowing any group-targeted kill; see verifyIsGroupLeader().
+			//
+			// NOTE (SVY-21643): the reasoning above turned out to be wrong - the real
+			// cause was /usr/bin/kill parsing the negative pid as options (missing `--`),
+			// which became kill(-1). Shutdown now signals exact pids via ProcessHandle
+			// (terminateGracefully()), so no group signal is sent at all; the setsid
+			// launch stays only to give opencode its own session.
 			command.add("setsid");
 			command.add(executable.getAbsolutePath());
 			command.addAll(arguments);
@@ -235,12 +240,23 @@ public class RunExecutableCommand implements IRunNPMCommand {
 
 	@Override
 	public boolean cancel() {
-		cancelled = true;
+		markCancelled();
 		// Force-kill the whole tree and break the pipe the reader loop is blocked on,
 		// so the (non-daemon) server Job thread in runCommand() unwinds promptly
 		// instead of sitting in readLine()/waitFor() on a surviving child (SVY-21643).
 		forceKillTree();
 		return true;
+	}
+
+	/**
+	 * Flags this command as cancelled WITHOUT killing anything, so
+	 * {@link #runCommand} reports {@code CANCELLED} (no retry) and treats a torn-down
+	 * output stream as expected. Used by {@code Activator.stopServer()} when its own
+	 * {@code killProcessTree()} does the forced kill, so the tree is not SIGKILLed
+	 * twice. Idempotent.
+	 */
+	public void markCancelled() {
+		cancelled = true;
 	}
 
 	/**
@@ -305,54 +321,56 @@ public class RunExecutableCommand implements IRunNPMCommand {
 	}
 
 	/**
-	 * POSIX graceful group termination: sends {@code SIGTERM} to opencode's process
-	 * group so opencode and its children (bun, MCP servers) all receive it and can
-	 * dispose cleanly. Only effective when the launch put opencode in its own
-	 * process group (via {@code setsid}), in which case its pgid equals the tracked
-	 * pid and {@code kill -TERM -<pid>} reaches the whole group.
+	 * POSIX graceful termination: sends {@code SIGTERM} to opencode's descendants
+	 * (bun, MCP servers) and then to opencode itself, through
+	 * {@link ProcessHandle#destroy()} - one direct syscall per exact pid - so they
+	 * can dispose cleanly. The caller then waits a grace window before escalating to
+	 * a forced kill.
 	 * <p>
-	 * CRITICAL SAFETY (build #80): before issuing the negative-pid (whole-group)
-	 * signal, this re-verifies that the tracked child is genuinely its own group
-	 * leader ({@code pgid == pid}) and that its group is <b>not</b> this JVM's own
-	 * group. If {@code setsid} had exec'd in place (it was not itself a group leader,
-	 * as happens under Jenkins' no-job-control shell), the child would still sit in
-	 * the JVM's - and therefore Jenkins' - process group, and {@code kill -TERM
-	 * -<pid>} would then tear down the entire Jenkins controller tree (exit 143 /
-	 * Jetty shutdown). On any such doubt we refuse the group kill and return
-	 * {@code false}, so the caller falls back to the per-process brute-force path.
+	 * No external {@code kill} binary and no negative-pid (process-group) signal is
+	 * ever used: that is what took down the Jenkins controller (SVY-21643, see the
+	 * comment in the body).
 	 * </p>
 	 *
-	 * @return {@code true} if a SIGTERM was issued to the group, {@code false}
-	 *         otherwise. Never throws.
+	 * @return {@code true} if the SIGTERM to opencode itself was issued,
+	 *         {@code false} when no process was started or it was already gone.
+	 *         Never throws.
 	 */
-	public boolean terminateGroupGracefully() {
+	public boolean terminateGracefully() {
 		Process p = process;
-		if (p == null || !newProcessGroupLeader) {
+		if (p == null) {
 			return false;
 		}
 		long pid = p.pid();
-		// Final safety re-check before firing a negative-pid (whole-group) signal: the
-		// child must still lead its own group, and that group must NOT be the JVM's own
-		// group. This closes the build #80 regression where a group-targeted kill could
-		// reach Jenkins' controller JVM. Any doubt -> refuse the group kill (the caller
-		// falls back to the per-process brute-force path).
-		if (!isSafeOwnGroupLeader(pid)) {
-			ServoyLog.logInfo("OpenCode: refusing group SIGTERM to -" + pid
-					+ " - child is not a verified standalone group leader; using per-process kill instead");
-			newProcessGroupLeader = false;
-			return false;
-		}
+		// SVY-21643 root cause (builds #80/#81/#83): this used to run the external
+		// `kill -TERM -<pid>` binary to signal opencode's process group, WITHOUT the
+		// `--` that POSIX requires before a negative pid. procps-ng's /usr/bin/kill
+		// then parses the negative pid as options, and on the build server
+		// `kill -TERM -1993873` became kill(-1, SIGTERM) - "signal every process this
+		// user may signal" - which SIGTERM'd the Jenkins controller, the workbench and
+		// mvn all at once (confirmed with strace: `kill -TERM -2023865` issued
+		// kill(-2, SIGTERM)). Whether it hit -1 depended on the pid's digits, which is
+		// why earlier runs survived.
+		//
+		// So NEVER shell out to kill. Signal the exact pids through ProcessHandle
+		// instead: destroy() is a direct SIGTERM syscall to one pid, with no command
+		// line to parse and no group / -1 targeting possible. Descendants first, then
+		// opencode itself, so opencode still gets its graceful SIGTERM and its children
+		// (bun / MCP servers) are not orphaned. Not gated on the process-group check any
+		// more: no group signal is sent, so the SIGTERM must always go out.
+		//
+		// POSIX only: on Windows ProcessHandle.destroy() is a hard TerminateProcess, so
+		// the caller uses closeStdinLease() there instead.
+		ShutdownDiagnostics.logSignal("graceful SIGTERM via ProcessHandle (descendants + root)", "TERM",
+				String.valueOf(pid));
 		try {
-			// Negative pid targets the whole process group whose pgid == pid.
-			ShutdownDiagnostics.logSignal("graceful group SIGTERM", "TERM", "-" + pid);
-			new ProcessBuilder("kill", "-TERM", "-" + pid).redirectErrorStream(true).start().waitFor(5,
-					java.util.concurrent.TimeUnit.SECONDS);
-			ServoyLog.logInfo("OpenCode: sent SIGTERM to process group -" + pid + " (graceful shutdown)");
-			return true;
-		} catch (Exception e) {
-			ServoyLog.logInfo("OpenCode: kill -TERM -" + pid + " failed: " + e.getMessage());
-			return false;
+			p.descendants().forEach(ProcessHandle::destroy);
+		} catch (RuntimeException ignored) {
+			// descendants() can race with exit; the root destroy below still runs.
 		}
+		boolean sent = p.toHandle().destroy();
+		ServoyLog.logInfo("OpenCode: sent SIGTERM to opencode pid " + pid + " and its descendants (graceful shutdown)");
+		return sent;
 	}
 
 	/**

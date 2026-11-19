@@ -77,15 +77,16 @@ import com.servoy.eclipse.ngclient.ui.RunNPMCommand;
  * ({@code closeStdinLease()}) makes opencode's scoped server effect end on
  * stdin EOF - cancelling running turns and stopping its MCP child process trees
  * - since Windows has no real {@code SIGTERM}.</li>
- * <li><b>POSIX:</b> opencode is launched in its own process group (via
- * {@code setsid}, so its pgid equals the tracked pid) so a single group-wide
- * {@code SIGTERM} ({@code terminateGroupGracefully()}) reaches opencode and its
- * children; {@code --stdio} is not used there.</li>
+ * <li><b>POSIX:</b> opencode is launched in its own session (via
+ * {@code setsid}) and stopped with a {@code SIGTERM} to opencode and its
+ * descendants, sent per exact pid via {@code ProcessHandle}
+ * ({@code terminateGracefully()}) - never a group signal or an external
+ * {@code kill} (SVY-21643); {@code --stdio} is not used there.</li>
  * </ul>
  * <p>
  * In both cases {@code --port}/{@code --hostname 127.0.0.1} are kept so the
  * HTTP port is still bound for the watchdog and the BFF servlet, and the
- * existing brute-force kill ({@code taskkill}/{@code kill -9} + orphan sweep)
+ * existing brute-force kill ({@code taskkill}/{@code destroyForcibly()} + orphan sweep)
  * remains as a last-resort fallback in {@code Activator.stopServer()}.
  * </p>
  *
