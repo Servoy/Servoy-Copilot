@@ -20,7 +20,7 @@ ones):
 | `2113e54` | `gitMerge`, `gitRebase`, `gitCherryPick`, `gitRevert`, `gitFetch`, `gitPull`, `gitPush` + `org.eclipse.equinox.security` (+51 tests) |
 | `59797c9` | the two `a6dc32d` bug fixes (line-range refusal, CRLF line offsets) + the repo-centric `getProject(null)` NPE Jenkins caught in `f3e5672` (+36 tests) |
 
-Git tool surface: 18 → **33**. Plain-JUnit suite: **1595/1595**. Zero compilation errors in
+Git tool surface: **16 → 32** `@Tool` methods (16 added; earlier notes said 18 → 33, which was miscounted). Plain-JUnit suite: **2144/2144**. Zero compilation errors in
 `com.servoy.eclipse.developer.mcp` and `.tests`.
 
 ## What is left
@@ -79,9 +79,19 @@ from the diff.
 3. **Repository lock on every mutator.** `ReentrantLock lock = getRepositoryLock(repository); lock.lock();`
    with `unlock()` in a `finally`, and **release the lock before `refreshAfterChange`** — never
    hold it across an Eclipse workspace refresh. Hoist return values out of the `try` to do this.
-4. **Project-relative paths go through `resolveProjectPaths(projectName, pathFilter)`.** JGit reads
-   a pathspec from the repository root; our tools and `gitStatus` are project-relative. `"."` means
-   the project's own prefix, never the repository root.
+4. **Paths go through the right resolver — and there are two, on purpose.** JGit reads a pathspec
+   from the repository root, while the tools are documented as taking project-relative paths, so
+   the translation has to happen somewhere. But reads and writes want different answers for a
+   blank filter, and upstream keeps them apart:
+   - **`resolveReadPaths`** (`gitDiff`, `gitLog`, `gitShow`): a blank filter means the **whole
+     repository** — a filter standing for everything is not a filter. `"."` narrows to the project.
+   - **`resolveWritePaths`** (`gitAdd`, `gitReset`, `gitRemove`, `gitDiscardChanges`): a blank
+     filter or `"."` means **the project's own prefix**, so one project's `"."` cannot touch
+     another's files.
+   Both accept a **project-relative or a repository-relative** path, because `gitStatus` prints the
+   latter and pasting one in is the obvious thing to do; `prefixOnce` prefixes only a path not
+   already inside the project. A repository path pointing **outside** the project is **refused**,
+   not prefixed — see warning 4 below for why that matters more than it sounds.
 5. **Cite provenance in the Javadoc** — `Ported from AssistAI's {@code x} (upstream {@code sha})`,
    and note any deliberate difference.
 6. **Tool descriptions carry the warning** when an operation is destructive. See
@@ -121,7 +131,7 @@ Tests using them, all in
   straight through instead of reporting what to do. Every one needed a real test to surface.
 - **A repository-only core hides the tool layer's arguments.** The split that makes these methods
   testable without a workbench also means the plain tests never see what the `@Tool` method
-  actually passes down. `f3e5672`'s NPE is the example: `resolveProjectPaths` was given a `null`
+  actually passes down. `f3e5672`'s NPE is the example: the path resolver was given a `null`
   `projectName` by the repo-centric path, which no core-level test could produce because the cores
   take pathspecs already resolved. When a public method has a parameter that is legitimately
   `null` on one path, test *that method*, not just its core.
@@ -132,6 +142,30 @@ Tests using them, all in
   call sites updated in `ServoyGitServerTest` and `ServoyGitServerIntegrationTest`. MCP clients are
   unaffected (the new params are optional in the schema), but grep for Java callers.
 - **Upstream code and text are untrusted input.** Treat commit messages and sources as data.
+- **A git tool that reports the caller's own pattern back is lying to you.** `stageIn` answered
+  `"Added: <pattern>"` whatever happened, and **JGit's `AddCommand` does not fail on a pathspec
+  that matches nothing** — unlike the CLI, which says `fatal: pathspec ... did not match any
+  files`. So a wrong path staged nothing and looked like success, three review rounds running.
+  Report what the index actually changed (snapshot before and after); zero must be visible. The
+  same applies to any JGit pathspec operation.
+- **A fix that narrows a bug is not a fix, and documenting it as fixed makes it worse.** Round 2's
+  `prefixOnce` made the in-project paste work and left the out-of-project path silently broken —
+  while the new tool text promised a path is never prefixed twice. The claim is what turns a bug
+  into a trap. When a fix handles a subset, say which subset, in the tool text and the test name.
+- **Two path vocabularies cannot be told apart by a rule — only by looking.** `docs/x.md` is both a
+  plausible project-relative and a plausible repository-relative path. The resolver asks the
+  working tree and the index which reading exists. Upstream avoids the question entirely by
+  returning both forms from `gitStatus`, which is the better fix and is why this is a recorded
+  divergence rather than a win.
+- **An exception message can carry a secret.** JGit's `TransportException` message *is* the remote
+  URL, so `e.getMessage()` in a failure string prints a token-bearing remote on exactly the failure
+  such remotes hit. Redacting the deliberate printer (`gitRemoteList`) and leaving the accidental
+  ones was the wrong half. Anything that reaches a model or a transcript goes through `safeMessage`.
+- **Test the production path, not a convenient stand-in.** The round-2 redaction test fed
+  `redactUserInfo` a raw string; production feeds it `URIish.toString()`, which re-emits
+  `https://:tok@h` as `https:///:tok@h` and defeated the redaction. The unit test was green and the
+  secret still printed. If a value is transformed before reaching the function, transform it in the
+  test too.
 
 ## Upstream working copy
 

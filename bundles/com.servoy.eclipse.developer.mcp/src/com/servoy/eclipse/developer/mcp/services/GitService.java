@@ -526,13 +526,12 @@ public class GitService
 	}
 
 	/**
-	 * Stages project-relative files or folders. {@code filePattern} is comma-separated, and
-	 * {@code "."} means the whole project.
+	 * Stages files or folders. {@code filePattern} is comma-separated, and {@code "."} means the
+	 * whole project (or the whole repository on the repository-centric path).
 	 * <p>
-	 * The pattern is resolved through {@link #resolveWritePaths(String, String)} rather than handed
-	 * to JGit as given: JGit reads a pathspec from the repository root, so for a project under
-	 * {@code bundles/} a path copied out of {@code gitStatus} used to match nothing and still report
-	 * success (SVY-21303, upstream {@code aca70c0}).
+	 * Each path may be project-relative or repository-relative - {@code gitStatus} prints the latter,
+	 * so pasting one in works. A repository path that is NOT inside the named project is refused:
+	 * see {@link #resolveWritePaths(String, String)}.
 	 * </p>
 	 */
 	public String addFiles(String projectName, String repo, String filePattern)
@@ -540,7 +539,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = stageIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
+		String result = stageIn(repository, resolveWritePaths(repository, projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -549,13 +548,24 @@ public class GitService
 	 * {@link #addFiles} on an already-resolved repository with already-resolved pathspecs, so a plain
 	 * test can drive it. The pathspecs are REPOSITORY-relative - that translation is the whole point
 	 * of {@link #resolveWritePaths(String, String)} - and an empty list means the whole tree.
+	 * <p>
+	 * <b>Reports what it actually staged, not the pattern it was given.</b> JGit's {@code AddCommand}
+	 * does not fail on a pathspec that matches nothing - unlike the CLI, which says
+	 * {@code fatal: pathspec ... did not match any files} - so echoing the caller's pattern back as
+	 * {@code "Added: <pattern>"} reported success for an empty index. That is how an out-of-project
+	 * path looked like it had worked (SVY-21303, third review round). The index is compared before and
+	 * after instead, so zero is visible.
+	 * </p>
 	 */
 	public static String stageIn(Repository repository, List<String> pathspecs, String reportedPattern)
 	{
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
+		Set<String> staged;
 		try (Git git = new Git(repository))
 		{
+			Map<String, String> before = indexSnapshot(repository);
+
 			var add = git.add();
 			var addUpdate = git.add().setUpdate(true);
 			if (pathspecs.isEmpty())
@@ -574,6 +584,8 @@ public class GitService
 			}
 			add.call();
 			addUpdate.call();
+
+			staged = changedIndexPaths(before, indexSnapshot(repository));
 		}
 		catch (Exception e)
 		{
@@ -583,9 +595,59 @@ public class GitService
 		{
 			lock.unlock();
 		}
-		return "Added: " + reportedPattern;
+		return describeStagingOutcome("Added", "add", staged, pathspecs, reportedPattern);
 	}
 
+	/**
+	 * The index as a path-to-blob-sha map, so staging can be reported by what the index actually
+	 * gained rather than by the pattern the caller passed.
+	 */
+	private static Map<String, String> indexSnapshot(Repository repository) throws IOException
+	{
+		Map<String, String> entries = new HashMap<>();
+		DirCache dirCache = repository.readDirCache();
+		for (int i = 0; i < dirCache.getEntryCount(); i++)
+		{
+			DirCacheEntry entry = dirCache.getEntry(i);
+			entries.put(entry.getPathString(), entry.getObjectId().getName());
+		}
+		return entries;
+	}
+
+	/** Every path whose index entry appeared, vanished or changed blob between the two snapshots. */
+	private static Set<String> changedIndexPaths(Map<String, String> before, Map<String, String> after)
+	{
+		Set<String> changed = new TreeSet<>();
+		for (var entry : after.entrySet())
+		{
+			if (!entry.getValue().equals(before.get(entry.getKey()))) changed.add(entry.getKey());
+		}
+		for (String path : before.keySet())
+		{
+			if (!after.containsKey(path)) changed.add(path);
+		}
+		return changed;
+	}
+
+	/**
+	 * Reports a staging/unstaging outcome by what the index actually did. Zero is stated plainly, and
+	 * the pathspecs that were tried are named so the caller can see why - a pathspec matching nothing
+	 * is not an error in JGit, so without this the tool looked like it had worked.
+	 */
+	private static String describeStagingOutcome(String verb, String infinitive, Set<String> changed,
+		List<String> pathspecs, String reportedPattern)
+	{
+		if (changed.isEmpty())
+		{
+			return "Nothing to " + infinitive + ": no file matched " +
+				(pathspecs.isEmpty() ? "the whole tree" : String.join(", ", pathspecs)) +
+				" (requested: " + reportedPattern + ").\nNothing was changed in the index.";
+		}
+		StringBuilder sb = new StringBuilder();
+		sb.append(verb).append(" ").append(changed.size()).append(" file(s):\n");
+		appendPaths(sb, new ArrayList<>(changed));
+		return sb.toString();
+	}
 	public String commit(String projectName, String message)
 	{
 		return commit(projectName, null, message);
@@ -846,6 +908,16 @@ public class GitService
 	 */
 	private List<String> resolveWritePaths(String projectName, String pathFilter)
 	{
+		return resolveWritePaths(null, projectName, pathFilter);
+	}
+
+	/**
+	 * {@link #resolveWritePaths(String, String)} with the repository available, so an out-of-project
+	 * repository path can be recognised by looking at the working tree and refused instead of being
+	 * prefixed into a pathspec that matches nothing.
+	 */
+	private List<String> resolveWritePaths(Repository repository, String projectName, String pathFilter)
+	{
 		String projectPrefix = projectPrefixOrNull(projectName);
 		String prefix = projectPrefix == null ? "" : projectPrefix;
 
@@ -876,9 +948,82 @@ public class GitService
 				{
 					return prefix;
 				}
-				return prefix.isBlank() ? normalized : prefixOnce(prefix, normalized);
+				if (prefix.isBlank()) return normalized;
+				// A repository-relative path that is NOT inside this project is REFUSED rather than
+				// prefixed into something that matches nothing. prefixOnce alone turned
+				// ("bundles/x", "docs/spec.md") into "bundles/x/docs/spec.md" - a path that does not
+				// exist - and JGit's AddCommand does not fail on a pathspec that matches nothing, so
+				// the tool reported success having staged nothing (SVY-21303, third review round).
+				// Deciding it here means the caller is told which project it asked about and what to
+				// do instead, rather than being handed a silent no-op.
+				if (isOutsideProject(repository, prefix, normalized))
+				{
+					throw new IllegalArgumentException("Path '" + path + "' is outside the project '" + prefix +
+						"'. Either pass a path inside that project (project-relative, or repository-relative" +
+						" starting with '" + prefix + "/'), or target the whole repository instead by passing" +
+						" 'repo' and leaving 'projectName' empty.");
+				}
+				return prefixOnce(prefix, normalized);
 			})
 			.toList();
+	}
+
+	/**
+	 * Whether {@code path} is a repository-relative path pointing OUTSIDE {@code prefix}.
+	 * <p>
+	 * The two path vocabularies this service accepts are ambiguous in principle - {@code docs/x.md}
+	 * could be a project-relative path to a {@code docs} folder inside the project, or a
+	 * repository-relative path to one at the repository root. It is answered by LOOKING rather than
+	 * by a naming rule: the path is out-of-project when the project-relative reading does not exist
+	 * ({@code <prefix>/<path>} is in neither the working tree nor the index) while the
+	 * repository-relative one does. When the project-relative reading exists it always wins, since
+	 * that is the documented form.
+	 * </p>
+	 * <p>
+	 * A path that exists in neither reading is NOT refused here - it may be a glob, or a file the
+	 * caller is about to create - so the pathspec is built as before and the staging report then
+	 * shows plainly that nothing matched.
+	 * </p>
+	 */
+	private static boolean isOutsideProject(Repository repository, String prefix, String path)
+	{
+		if (repository == null || prefix == null || prefix.isBlank()) return false;
+		if (path.equals(prefix) || path.startsWith(prefix + "/")) return false;   // already inside
+		return !existsInRepository(repository, prefix + "/" + path) &&
+			existsInRepository(repository, path);
+	}
+
+	/** Whether a repository-relative path is present in the working tree or the index. */
+	private static boolean existsInRepository(Repository repository, String repoRelativePath)
+	{
+		try
+		{
+			if (!repository.isBare())
+			{
+				java.io.File workTree = repository.getWorkTree();
+				if (workTree != null && new java.io.File(workTree, repoRelativePath).exists()) return true;
+			}
+		}
+		catch (RuntimeException e)
+		{
+			// No work tree (bare): fall through to the index.
+		}
+		try
+		{
+			DirCache dirCache = repository.readDirCache();
+			if (dirCache.findEntry(repoRelativePath) >= 0) return true;
+			// A directory in the index has no entry of its own, so look for anything beneath it.
+			String asFolder = repoRelativePath.endsWith("/") ? repoRelativePath : repoRelativePath + "/";
+			for (int i = 0; i < dirCache.getEntryCount(); i++)
+			{
+				if (dirCache.getEntry(i).getPathString().startsWith(asFolder)) return true;
+			}
+		}
+		catch (IOException e)
+		{
+			// Unreadable index - treat as "cannot tell", which refuses nothing.
+		}
+		return false;
 	}
 
 	/**
@@ -1124,6 +1269,29 @@ public class GitService
 		return renderRemoteList(resolveRepository(projectName, repo));
 	}
 
+	/**
+	 * The remote URL exactly as {@code .git/config} holds it, falling back to JGit's parsed form.
+	 * <p>
+	 * {@code URIish.toString()} does not round-trip the password-only form - {@code https://:tok@h}
+	 * comes back as {@code https:///:tok@h} - so redacting the parsed form let the secret through.
+	 * Reading the configured string means the redactor sees what the user actually wrote.
+	 * </p>
+	 */
+	private static String rawUri(Repository repository, String remoteName, String key, URIish parsed)
+	{
+		try
+		{
+			String configured = repository.getConfig().getString(
+				ConfigConstants.CONFIG_REMOTE_SECTION, remoteName, key);
+			if (configured != null && !configured.isBlank()) return configured;
+		}
+		catch (RuntimeException e)
+		{
+			// Unreadable config - fall back to the parsed form, which is still redacted below.
+		}
+		return parsed == null ? null : parsed.toString();
+	}
+
 	/** {@link #listRemotes} on an already-resolved repository, so a plain test can drive it. */
 	public static String renderRemoteList(Repository repository)
 	{
@@ -1138,9 +1306,13 @@ public class GitService
 			for (org.eclipse.jgit.transport.RemoteConfig config : configs)
 			{
 				// Redacted: a remote URL may carry an embedded token, and this output goes to a model.
-				String fetchUrl = config.getURIs().isEmpty() ? null : redactUserInfo(config.getURIs().get(0).toString());
+				// The CONFIGURED raw string is redacted, not URIish.toString(): for the password-only
+				// form (https://:token@host) URIish re-emits "https:///:token@host", whose authority no
+				// longer parses, and the secret survived the redaction (SVY-21303, third review round).
+				String fetchUrl = config.getURIs().isEmpty() ? null
+					: redactUserInfo(rawUri(repository, config.getName(), "url", config.getURIs().get(0)));
 				String pushUrl = config.getPushURIs().isEmpty() ? fetchUrl
-					: redactUserInfo(config.getPushURIs().get(0).toString());
+					: redactUserInfo(rawUri(repository, config.getName(), "pushurl", config.getPushURIs().get(0)));
 				sb.append(config.getName()).append("\n")
 					.append("  fetch: ").append(fetchUrl == null ? "(none)" : fetchUrl).append("\n")
 					.append("  push:  ").append(pushUrl == null ? "(none)" : pushUrl).append("\n");
@@ -1149,7 +1321,7 @@ public class GitService
 		}
 		catch (Exception e)
 		{
-			throw new RuntimeException("Failed to list remotes: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to list remotes: " + safeMessage(e), e);
 		}
 	}
 
@@ -1247,7 +1419,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = discardChangesIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
+		String result = discardChangesIn(repository, resolveWritePaths(repository, projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -1407,7 +1579,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		List<String> pathspecs = resolveWritePaths(projectName, filePattern);
+		List<String> pathspecs = resolveWritePaths(repository, projectName, filePattern);
 
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
@@ -1726,7 +1898,7 @@ public class GitService
 		Objects.requireNonNull(filePattern, "filePattern is required");
 
 		Repository repository = resolveRepository(projectName, repo);
-		String result = unstageIn(repository, resolveWritePaths(projectName, filePattern), filePattern);
+		String result = unstageIn(repository, resolveWritePaths(repository, projectName, filePattern), filePattern);
 		refreshAfterChange(projectName, repository);
 		return result;
 	}
@@ -1740,8 +1912,11 @@ public class GitService
 	{
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
+		Set<String> unstaged;
 		try (Git git = new Git(repository))
 		{
+			Map<String, String> before = indexSnapshot(repository);
+
 			var reset = git.reset();
 			if (pathspecs.isEmpty())
 			{
@@ -1755,6 +1930,10 @@ public class GitService
 				}
 			}
 			reset.call();
+
+			// Reported by what the index actually did, for the same reason as stageIn: a pathspec
+			// matching nothing is not an error, so echoing the pattern claimed success for a no-op.
+			unstaged = changedIndexPaths(before, indexSnapshot(repository));
 		}
 		catch (Exception e)
 		{
@@ -1764,7 +1943,7 @@ public class GitService
 		{
 			lock.unlock();
 		}
-		return "Unstaged: " + reportedPattern;
+		return describeStagingOutcome("Unstaged", "unstage", unstaged, pathspecs, reportedPattern);
 	}
 
 	public String stash(String projectName, String message)
@@ -2426,14 +2605,57 @@ public class GitService
 	 * are what the caller actually needs in order to pick a remote.
 	 * </p>
 	 */
+	/**
+	 * An exception's message with any embedded credentials removed.
+	 * <p>
+	 * JGit's {@code TransportException} message is the REMOTE URL plus a reason
+	 * ({@code https://tok@host/r.git: connection failed}), so a tool that reports
+	 * {@code e.getMessage()} prints a token-bearing remote verbatim on exactly the failure that
+	 * token-bearing remotes hit. Redacting only {@code gitRemoteList} - which a caller has to ask
+	 * for - while leaving the accidental path open was the wrong half (SVY-21303, third review
+	 * round). Every URL-shaped run in the message is redacted, not just a leading one, since JGit
+	 * sometimes names the URI twice.
+	 * </p>
+	 */
+	public static String safeMessage(Throwable problem)
+	{
+		if (problem == null) return "(no message)";
+		String message = problem.getMessage();
+		if (message == null || message.isBlank()) return problem.getClass().getSimpleName();
+		return redactUrlsIn(message);
+	}
+
+	/** Every {@code <scheme>://<userinfo>@host...} run in free text, with the userinfo removed. */
+	public static String redactUrlsIn(String text)
+	{
+		if (text == null || text.isBlank()) return text;
+		// A URL-ish run: scheme://  then anything up to the first whitespace. Redaction is applied to
+		// each run through the same code gitRemoteList uses, so the two can never drift apart.
+		java.util.regex.Matcher matcher = URL_RUN.matcher(text);
+		StringBuilder out = new StringBuilder();
+		int last = 0;
+		while (matcher.find())
+		{
+			out.append(text, last, matcher.start()).append(redactUserInfo(matcher.group()));
+			last = matcher.end();
+		}
+		return last == 0 ? text : out.append(text.substring(last)).toString();
+	}
+
+	private static final java.util.regex.Pattern URL_RUN =
+		java.util.regex.Pattern.compile("[A-Za-z][A-Za-z0-9+.-]*://\\S*");
+
 	public static String redactUserInfo(String url)
 	{
 		if (url == null || url.isBlank()) return url;
 
 		// Deliberately NOT done through URIish. It does not report an empty user, so the
 		// "https://:token@host/path" form (no user, password only) came back with user and pass both
-		// null and the URL was returned untouched - the secret printed. The authority is parsed here
-		// instead, which treats every "<userinfo>@<host>" the same whatever shape the userinfo has.
+		// null and the URL was returned untouched - the secret printed. URIish.toString() also
+		// RE-EMITS that form malformed ("https:///:token@host"), which is why renderRemoteList now
+		// redacts the configured raw URI rather than a round-tripped one (SVY-21303, third review
+		// round). The authority is parsed here instead, which treats every "<userinfo>@<host>" the
+		// same whatever shape the userinfo has.
 		int schemeEnd = url.indexOf("://");
 		if (schemeEnd < 0)
 		{
@@ -2496,7 +2718,7 @@ public class GitService
 		catch (Exception e)
 		{
 			Platform.getLog(GitService.class).warn(
-				"Could not read the stored Git credentials for remote '" + remoteName + "': " + e.getMessage());
+				"Could not read the stored Git credentials for remote '" + remoteName + "': " + safeMessage(e));
 			return null;
 		}
 	}
@@ -2583,16 +2805,16 @@ public class GitService
 		}
 		catch (org.eclipse.jgit.api.errors.InvalidRemoteException e)
 		{
-			return "Fetch FAILED: no remote named '" + remoteName + "': " + e.getMessage() +
+			return "Fetch FAILED: no remote named '" + remoteName + "': " + safeMessage(e) +
 				"\nUse gitRemoteList to see the configured remotes.\n";
 		}
 		catch (org.eclipse.jgit.api.errors.TransportException e)
 		{
-			return "Fetch FAILED: the remote '" + remoteName + "' could not be fetched from: " + e.getMessage() + "\n";
+			return "Fetch FAILED: the remote '" + remoteName + "' could not be fetched from: " + safeMessage(e) + "\n";
 		}
 		catch (Exception e)
 		{
-			throw new RuntimeException("Failed to fetch: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to fetch: " + safeMessage(e), e);
 		}
 	}
 
@@ -2665,12 +2887,12 @@ public class GitService
 		}
 		catch (org.eclipse.jgit.api.errors.InvalidRemoteException | org.eclipse.jgit.api.errors.TransportException e)
 		{
-			failure = "Pull FAILED: the remote '" + remoteName + "' could not be pulled from: " + e.getMessage() + "\n";
+			failure = "Pull FAILED: the remote '" + remoteName + "' could not be pulled from: " + safeMessage(e) + "\n";
 		}
 		catch (org.eclipse.jgit.api.errors.InvalidConfigurationException e)
 		{
 			failure = "Pull FAILED: the branch '" + branch + "' has no upstream configured and no remoteBranch was" +
-				" given: " + e.getMessage() + "\nPass remoteBranch, or gitPush with setUpstream=true first.\n";
+				" given: " + safeMessage(e) + "\nPass remoteBranch, or gitPush with setUpstream=true first.\n";
 		}
 		catch (org.eclipse.jgit.api.errors.RefNotAdvertisedException e)
 		{
@@ -2678,16 +2900,16 @@ public class GitService
 			// not on the remote (yet)" case - a branch never pushed, or a stale configured upstream -
 			// so it is reported with what to do next instead.
 			failure = "Pull FAILED: the remote '" + remoteName + "' has no branch '" +
-				(remoteBranchName == null ? branch : remoteBranchName) + "': " + e.getMessage() +
+				(remoteBranchName == null ? branch : remoteBranchName) + "': " + safeMessage(e) +
 				"\nPass a remoteBranch that exists, or gitPush with setUpstream=true to create it.\n";
 		}
 		catch (org.eclipse.jgit.api.errors.WrongRepositoryStateException e)
 		{
-			failure = "Pull FAILED: the repository is mid-operation: " + e.getMessage() + "\n";
+			failure = "Pull FAILED: the repository is mid-operation: " + safeMessage(e) + "\n";
 		}
 		catch (Exception e)
 		{
-			throw new RuntimeException("Failed to pull: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to pull: " + safeMessage(e), e);
 		}
 		finally
 		{
@@ -2840,7 +3062,8 @@ public class GitService
 				for (RemoteRefUpdate update : result.getRemoteUpdates())
 				{
 					updates.add(update.getRemoteName() + " (" + update.getStatus().name() + ")" +
-						(update.getMessage() == null ? "" : ": " + update.getMessage()));
+						// The remote's own words, which can echo the URL it was given.
+						(update.getMessage() == null ? "" : ": " + redactUrlsIn(update.getMessage())));
 					switch (update.getStatus())
 					{
 						case OK -> pushed = true;
@@ -2886,12 +3109,12 @@ public class GitService
 		}
 		catch (org.eclipse.jgit.api.errors.InvalidRemoteException e)
 		{
-			return "Push FAILED: no remote named '" + remoteName + "': " + e.getMessage() +
+			return "Push FAILED: no remote named '" + remoteName + "': " + safeMessage(e) +
 				"\nUse gitRemoteList to see the configured remotes.\n";
 		}
 		catch (org.eclipse.jgit.api.errors.TransportException e)
 		{
-			return "Push FAILED: the remote '" + remoteName + "' could not be pushed to: " + e.getMessage() + "\n";
+			return "Push FAILED: the remote '" + remoteName + "' could not be pushed to: " + safeMessage(e) + "\n";
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -2899,7 +3122,7 @@ public class GitService
 		}
 		catch (Exception e)
 		{
-			throw new RuntimeException("Failed to push: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to push: " + safeMessage(e), e);
 		}
 	}
 
@@ -3034,16 +3257,15 @@ public class GitService
 		{
 			// Roll the index back when the patch did not make it all the way through, so a failure
 			// cannot leave entries that describe changes which never happened.
+			//
+			// Written through JGit's index LOCK (index.lock, then rename into place) rather than
+			// straight over index: a bare Files.write races anything else holding the DirCache - JGit
+			// in this JVM, or an external git - and a half-written index file is worse than the
+			// phantom entry this is undoing. The lock is the protocol every other writer respects
+			// (SVY-21303, third review round).
 			if (!stagedSuccessfully && savedIndex != null && indexFile != null)
 			{
-				try
-				{
-					Files.write(indexFile.toPath(), savedIndex);
-				}
-				catch (IOException indexProblem)
-				{
-					// Reported below with any working-tree problem, so it cannot mask the real failure.
-				}
+				restoreIndexThroughLock(indexFile, savedIndex);
 			}
 			// Put the caller's uncommitted content back whatever happened. A failure here must not mask
 			// the original one, so each file is attempted independently and any problem is collected.
@@ -3084,6 +3306,64 @@ public class GitService
 	 * The raw bytes of the index file, or {@code null} when there is no index yet (a repository with
 	 * nothing ever staged) or it cannot be read - in which case there is nothing to roll back to.
 	 */
+	/**
+	 * Restores saved index bytes through JGit's index lock, so no other writer can see a partially
+	 * written index.
+	 * <p>
+	 * The bytes go to {@code index.lock} and that file is then renamed over {@code index} - the same
+	 * protocol JGit and the git CLI use, which makes the replacement atomic for anyone else looking.
+	 * Writing {@code index} directly was a race: a concurrent reader could observe a truncated file,
+	 * which is a worse outcome than the phantom entry the rollback exists to remove (SVY-21303,
+	 * third review round).
+	 * </p>
+	 * <p>
+	 * An existing {@code index.lock} means another writer holds it, so the rollback is skipped
+	 * rather than forced - the caller is told about the failure either way, and stealing a lock to
+	 * undo our own change could corrupt theirs.
+	 * </p>
+	 */
+	private static void restoreIndexThroughLock(java.io.File indexFile, byte[] savedIndex)
+	{
+		java.io.File lockFile = new java.io.File(indexFile.getParentFile(), indexFile.getName() + ".lock");
+		try
+		{
+			if (lockFile.exists())
+			{
+				Platform.getLog(GitService.class).warn(
+					"Could not roll the git index back: " + lockFile + " is held by another writer.");
+				return;
+			}
+			Files.write(lockFile.toPath(), savedIndex);
+			try
+			{
+				Files.move(lockFile.toPath(), indexFile.toPath(),
+					java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+					java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+			}
+			catch (java.nio.file.AtomicMoveNotSupportedException e)
+			{
+				// Some filesystems cannot do it atomically; a plain replace is still better than
+				// writing the index in place, since the content is already complete in the lock file.
+				Files.move(lockFile.toPath(), indexFile.toPath(),
+					java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			}
+		}
+		catch (IOException indexProblem)
+		{
+			Platform.getLog(GitService.class).warn(
+				"Could not roll the git index back after a failed patch: " + indexProblem.getMessage());
+			try
+			{
+				Files.deleteIfExists(lockFile.toPath());
+			}
+			catch (IOException cleanupProblem)
+			{
+				// Nothing further to do - leaving the lock behind would block later writes, but the
+				// original failure is what the caller needs to hear about.
+			}
+		}
+	}
+
 	private static byte[] readIndexFileOrNull(java.io.File indexFile)
 	{
 		if (indexFile == null || !indexFile.isFile())

@@ -108,7 +108,7 @@ public class ServoyGitServer
 		return gitService.listRemotes(projectName, repo);
 	}
 
-	@Tool(name = "gitDiscardChanges", description = "DESTRUCTIVE AND IRREVERSIBLE: discards uncommitted modifications of tracked files by restoring their working-tree content from the index ('git checkout -- <path>'). The discarded content was never committed, so it is NOT in Local History and CANNOT be recovered - use gitStash instead when there is any doubt. Staged changes and untracked files are left alone. Paths are relative to the Eclipse project and may be comma-separated; '.' covers the whole project. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitDiscardChanges", description = "DESTRUCTIVE AND IRREVERSIBLE: discards uncommitted modifications of tracked files by restoring their working-tree content from the index ('git checkout -- <path>'). The discarded content was never committed, so it is NOT in Local History and CANNOT be recovered - use gitStash instead when there is any doubt. Staged changes and untracked files are left alone. Paths may be project-relative or repository-relative and may be comma-separated. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project; to reach a file outside any project, pass 'repo' and leave 'projectName' empty. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitDiscardChanges(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
@@ -139,7 +139,7 @@ public class ServoyGitServer
 		return gitService.getLog(projectName, repo, count, revision, pathFilter);
 	}
 
-	@Tool(name = "gitAdd", description = "Stages files for the next commit. Use '.' to stage all changes (new, modified, and deleted files). Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitAdd", description = "Stages files for the next commit. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project. To stage a file outside any project (a repo-root 'docs/' or 'handoff/' file), target the repository instead: pass 'repo' and leave 'projectName' empty, where '.' then means the whole repository. Reports the files it actually staged, so staging nothing is visible rather than reported as success.", type = "object")
 	public String gitAdd(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
@@ -220,7 +220,7 @@ public class ServoyGitServer
 		return gitService.checkoutBranch(projectName, repo, branchName);
 	}
 
-	@Tool(name = "gitReset", description = "Unstages files from the index (equivalent to 'git reset HEAD <file>'). Does not modify the working tree. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitReset", description = "Unstages files from the index (equivalent to 'git reset HEAD <file>'). Does not modify the working tree. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project. To unstage a file outside any project, target the repository instead: pass 'repo' and leave 'projectName' empty. Reports the files it actually unstaged.", type = "object")
 	public String gitReset(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,
@@ -279,7 +279,7 @@ public class ServoyGitServer
 		return gitService.readFileAtRevision(projectName, repo, filePath, revision);
 	}
 
-	@Tool(name = "gitRemove", description = "Removes files from the index only ('git rm --cached <file>'), so Git stops tracking them while the files stay on disk as untracked. The working tree is never touched. Paths are relative to the Eclipse project and may be comma-separated; '.' covers every tracked file under the project. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
+	@Tool(name = "gitRemove", description = "Removes files from the index only ('git rm --cached <file>'), so Git stops tracking them while the files stay on disk as untracked. The working tree is never touched. Paths may be project-relative or repository-relative and may be comma-separated; '.' covers every tracked file under the project. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project; to reach a file outside any project, pass 'repo' and leave 'projectName' empty. Target the repository with 'repo', or an Eclipse project with 'projectName'.", type = "object")
 	public String gitRemove(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,

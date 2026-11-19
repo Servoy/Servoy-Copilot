@@ -808,6 +808,225 @@ public class GitServiceToolsTest
 				() -> assertEquals("", GitService.redactUserInfo("")));
 		}
 	}
+
+	/**
+	 * Round 3's findings, each with the symptom asserted rather than only the fix.
+	 * <p>
+	 * The common thread: a tool that reports the caller's own pattern back cannot distinguish
+	 * "staged it" from "matched nothing", and JGit's {@code AddCommand} does not fail on a pathspec
+	 * that matches nothing - unlike the CLI, which says
+	 * {@code fatal: pathspec ... did not match any files}.
+	 * </p>
+	 */
+	@Nested
+	@DisplayName("a staging report says what the index actually did")
+	class StagingOutcome
+	{
+		@BeforeEach
+		void nestedLayout() throws Exception
+		{
+			commitFile("root.txt", "root\n", "initial commit");
+			Files.createDirectories(tempDir.resolve("bundles/project-a/src"));
+			Files.createDirectories(tempDir.resolve("docs"));
+			Files.writeString(tempDir.resolve("bundles/project-a/src/Foo.java"), "class Foo {}\n");
+			Files.writeString(tempDir.resolve("docs/spec.md"), "spec\n");
+		}
+
+		@Test
+		@DisplayName("a pathspec that matches nothing reports NOTHING staged, not success")
+		void nothingMatchedIsReported() throws Exception
+		{
+			// Exactly what round 2's prefixOnce produced for an out-of-project path: a well-formed
+			// pathspec naming a file that does not exist.
+			String result = GitService.stageIn(repository,
+				List.of("bundles/project-a/docs/spec.md"), "docs/spec.md");
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Nothing to"),
+					"Must not claim success for an empty index: " + result),
+				() -> assertTrue(result.contains("bundles/project-a/docs/spec.md"),
+					"Must name the pathspec that matched nothing, so the caller can see why: " + result),
+				() -> assertTrue(result.contains("docs/spec.md"),
+					"and the pattern that was requested: " + result),
+				() -> assertTrue(git.status().call().getAdded().isEmpty(), "and nothing is staged"));
+		}
+
+		@Test
+		@DisplayName("a successful stage names the files, counted from the index")
+		void stagedFilesAreNamed() throws Exception
+		{
+			String result = GitService.stageIn(repository, List.of("bundles/project-a"), ".");
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Added 1 file(s)"), "Should count what it staged: " + result),
+				() -> assertTrue(result.contains("bundles/project-a/src/Foo.java"),
+					"and name it: " + result));
+		}
+
+		@Test
+		@DisplayName("unstaging reports the same way")
+		void unstagingReportsTheSameWay() throws Exception
+		{
+			GitService.stageIn(repository, List.of(), ".");
+
+			String unstaged = GitService.unstageIn(repository, List.of("bundles/project-a"), ".");
+			String nothing = GitService.unstageIn(repository, List.of("bundles/project-a/nope.txt"), "nope.txt");
+
+			assertAll(
+				() -> assertTrue(unstaged.startsWith("Unstaged "), "Should report the unstaging: " + unstaged),
+				() -> assertTrue(unstaged.contains("bundles/project-a/src/Foo.java"), "and name the file"),
+				() -> assertTrue(nothing.startsWith("Nothing to"),
+					"A pathspec matching nothing must say so: " + nothing));
+		}
+
+		@Test
+		@DisplayName("a modification is reported, not only a new file")
+		void modificationIsReported() throws Exception
+		{
+			GitService.stageIn(repository, List.of(), ".");
+			git.commit().setMessage("add everything").call();
+			Files.writeString(tempDir.resolve("bundles/project-a/src/Foo.java"), "class Foo { int x; }\n");
+
+			String result = GitService.stageIn(repository, List.of("bundles/project-a"), ".");
+
+			assertTrue(result.contains("bundles/project-a/src/Foo.java"),
+				"A changed blob must count as staged, not just an added path: " + result);
+		}
+	}
+
+	/**
+	 * A failing remote operation must not print the remote URL, because JGit's
+	 * {@code TransportException} message IS the URL - so a token-bearing remote leaked on exactly
+	 * the failure such remotes hit.
+	 */
+	@Nested
+	@DisplayName("a failure message carries no credentials")
+	class SafeMessages
+	{
+		@Test
+		@DisplayName("a URL inside free text is redacted")
+		void urlInFreeTextIsRedacted()
+		{
+			String leaked = "https://tok_SECRET123@github.com/o/r.git: connection failed";
+
+			String safe = GitService.redactUrlsIn(leaked);
+
+			assertAll(
+				() -> assertFalse(safe.contains("tok_SECRET123"), "The token must be gone: " + safe),
+				() -> assertTrue(safe.contains("github.com/o/r.git"), "The host and path must remain"),
+				() -> assertTrue(safe.contains("connection failed"), "The reason must survive"));
+		}
+
+		@Test
+		@DisplayName("every URL in the message is redacted, not just the first")
+		void everyUrlIsRedacted()
+		{
+			String safe = GitService.redactUrlsIn(
+				"https://a_SECRET@h1/r failed, retrying https://b_SECRET@h2/r");
+
+			assertAll(
+				() -> assertFalse(safe.contains("a_SECRET"), "First must go: " + safe),
+				() -> assertFalse(safe.contains("b_SECRET"), "Second must go too: " + safe));
+		}
+
+		@Test
+		@DisplayName("safeMessage handles a null message and a null throwable")
+		void safeMessageDegrades()
+		{
+			assertAll(
+				() -> assertEquals("(no message)", GitService.safeMessage(null)),
+				() -> assertEquals("RuntimeException",
+					GitService.safeMessage(new RuntimeException((String)null))));
+		}
+
+		@Test
+		@DisplayName("text with no URL is untouched")
+		void plainTextUntouched()
+		{
+			assertEquals("the branch has no upstream", GitService.redactUrlsIn("the branch has no upstream"));
+		}
+	}
+
+	/**
+	 * The password-only remote form, through the REAL code path. Round 2's test fed
+	 * {@code redactUserInfo} a raw string and passed, while production fed it
+	 * {@code URIish.toString()} - which re-emits {@code https://:tok@h} as {@code https:///:tok@h},
+	 * whose authority no longer parses - and the secret printed.
+	 */
+	@Nested
+	@DisplayName("remote redaction through renderRemoteList")
+	class RedactionOnTheRealPath
+	{
+		@BeforeEach
+		void commitSomething() throws Exception
+		{
+			commitFile("file.txt", "one\n", "initial commit");
+		}
+
+		private void addRemote(String name, String url) throws Exception
+		{
+			StoredConfig config = repository.getConfig();
+			config.setString("remote", name, "url", url);
+			config.setString("remote", name, "fetch", "+refs/heads/*:refs/remotes/" + name + "/*");
+			config.save();
+		}
+
+		@Test
+		@DisplayName("a token as the user is redacted")
+		void tokenAsUser() throws Exception
+		{
+			addRemote("tokuser", "https://tok_SECRET123@github.com/o/r.git");
+
+			String listed = GitService.renderRemoteList(repository);
+
+			assertAll(
+				() -> assertFalse(listed.contains("tok_SECRET123"), "The token must be gone: " + listed),
+				() -> assertTrue(listed.contains("github.com/o/r.git"), "The host must remain"));
+		}
+
+		@Test
+		@DisplayName("the PASSWORD-ONLY form is redacted on the real path - round 2 leaked it here")
+		void passwordOnlyOnTheRealPath() throws Exception
+		{
+			addRemote("passonly", "https://:pw_SECRET456@example.com/r.git");
+
+			String listed = GitService.renderRemoteList(repository);
+
+			assertAll(
+				() -> assertFalse(listed.contains("pw_SECRET456"),
+					"The password must be gone even though URIish mangles this form: " + listed),
+				() -> assertTrue(listed.contains("example.com/r.git"), "The host must remain"));
+		}
+
+		@Test
+		@DisplayName("user and password together are redacted")
+		void userAndPassword() throws Exception
+		{
+			addRemote("both", "https://me:pw_SECRET789@example.com/r.git");
+
+			String listed = GitService.renderRemoteList(repository);
+
+			assertAll(
+				() -> assertFalse(listed.contains("pw_SECRET789"), "The password must be gone: " + listed),
+				() -> assertFalse(listed.contains("me:"), "The user must be gone too: " + listed));
+		}
+
+		@Test
+		@DisplayName("an scp-style and a clean URL are shown as they are")
+		void nothingToRedact() throws Exception
+		{
+			addRemote("scp", "git@github.com:o/r.git");
+			addRemote("clean", "https://github.com/o/r.git");
+
+			String listed = GitService.renderRemoteList(repository);
+
+			assertAll(
+				() -> assertTrue(listed.contains("git@github.com:o/r.git"),
+					"An scp-style address must stay usable: " + listed),
+				() -> assertTrue(listed.contains("https://github.com/o/r.git"),
+					"A clean URL must be untouched: " + listed));
+		}
+	}
 	}
 	}
 }

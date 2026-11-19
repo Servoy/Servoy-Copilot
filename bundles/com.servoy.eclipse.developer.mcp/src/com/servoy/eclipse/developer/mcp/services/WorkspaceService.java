@@ -838,6 +838,11 @@ public class WorkspaceService
 
 		String modified = original.replace(containingText, replacementText);
 		byte[] bytes = modified.getBytes(charset);
+		// searchAndReplace is a write path like any other, so it goes through the same guard: under a
+		// pessimistic VCS (Perforce, ClearCase, SVN needs-lock) a read-only file must be checked out
+		// before being written, or setContents fails opaquely. It was the one write this service does
+		// that WriteAccessValidator did not cover (SVY-21303, third review round).
+		WriteAccessValidator.requireWritable(file);
 		try (java.io.ByteArrayInputStream in = new java.io.ByteArrayInputStream(bytes))
 		{
 			file.setContents(in, IResource.FORCE, null);

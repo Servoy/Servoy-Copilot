@@ -289,11 +289,16 @@ Per fix that passed the gate, **with user confirmation before each remote step**
    <what the fix does, why it's general, that it was first made in Servoy's port
    (SVY-xxxxx), and that upstream mvn verify passes>
    EOF
-   PR_TITLE='<concise title, single-quoted so nothing in it is evaluated>'
+   # The TITLE goes to a file too. Single quotes are NOT enough: a title like
+   # "fix the service's path handling" closes the quote on the apostrophe, and a
+   # title is quite likely to contain one. A file has no quoting rules at all.
+   cat > /tmp/opencode/assistai-pr-title.txt <<'EOF'
+   <concise title>
+   EOF
    gh pr create --repo gradusnikov/eclipse-chatgpt-plugin \
      --base main --head Servoy:contrib/SVY-xxxxx-<slug> \
      --draft \
-     --title "$PR_TITLE" \
+     --title "$(cat /tmp/opencode/assistai-pr-title.txt)" \
      --body-file /tmp/opencode/assistai-pr-body.md
    ```
    The quoted heredoc (`<<'EOF'`) keeps the body literal too. Use the same

@@ -19,6 +19,7 @@ package com.servoy.eclipse.developer.mcp.integrationpde;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -291,6 +292,105 @@ public class GitNestedProjectIntegrationTest extends DialogGuardBaseCopy
 			() -> assertTrue(shown.contains("src/Foo.java"), "The project's part must appear: " + shown),
 			() -> assertTrue(shown.contains("root-level.txt"),
 				"The repository-root part must appear too when no filter was given"));
+	}
+
+	// --- round 3: an out-of-project repository path is refused, not silently prefixed --------
+
+	/**
+	 * The round-3 HIGH finding. {@code prefixOnce} turned {@code docs/spec.md} into
+	 * {@code bundles/<project>/docs/spec.md} - a path that does not exist - and JGit's
+	 * {@code AddCommand} does not fail on a pathspec that matches nothing, so the tool answered
+	 * {@code "Added: docs/spec.md"} with an empty index. Round 2's new tool text had promised that
+	 * could not happen, which made it a trap rather than a gap.
+	 */
+	@Test
+	@DisplayName("a repository path OUTSIDE the project is refused, naming the project")
+	public void outOfProjectPathIsRefused() throws Exception
+	{
+		Files.writeString(repoRoot.resolve("docs/notes.md"), "notes changed\n");
+
+		IllegalArgumentException problem = assertThrows(IllegalArgumentException.class,
+			() -> gitServer.gitAdd(PROJECT_NAME, null, "docs/notes.md"));
+
+		assertAll(
+			() -> assertTrue(problem.getMessage().contains("docs/notes.md"),
+				"Should name the path: " + problem.getMessage()),
+			() -> assertTrue(problem.getMessage().contains(PREFIX),
+				"and the project it is outside of: " + problem.getMessage()),
+			() -> assertTrue(problem.getMessage().contains("repo"),
+				"and point at the repo-centric call: " + problem.getMessage()));
+	}
+
+	@Test
+	@DisplayName("a sibling project's path is refused the same way")
+	public void siblingProjectPathIsRefused() throws Exception
+	{
+		Files.createDirectories(repoRoot.resolve("tests/other.tests"));
+		Files.writeString(repoRoot.resolve("tests/other.tests/t.txt"), "sibling\n");
+
+		assertThrows(IllegalArgumentException.class,
+			() -> gitServer.gitAdd(PROJECT_NAME, null, "tests/other.tests/t.txt"),
+			"A sibling project's file is outside this project and must be refused");
+	}
+
+	@Test
+	@DisplayName("gitReset refuses an out-of-project path too")
+	public void outOfProjectPathIsRefusedByReset() throws Exception
+	{
+		assertThrows(IllegalArgumentException.class,
+			() -> gitServer.gitReset(PROJECT_NAME, null, "docs/notes.md"));
+	}
+
+	/**
+	 * The refusal must not swallow a path that merely looks out-of-project: when the project itself
+	 * has a {@code docs/} folder, the project-relative reading exists and wins.
+	 */
+	@Test
+	@DisplayName("a project-relative path that shares a name with a repo-root folder still works")
+	public void projectRelativeWinsWhenItExists() throws Exception
+	{
+		Files.createDirectories(projectDir.resolve("docs"));
+		Files.writeString(projectDir.resolve("docs/inner.md"), "inner\n");
+		project.refreshLocal(IProject.DEPTH_INFINITE, new NullProgressMonitor());
+
+		String added = gitServer.gitAdd(PROJECT_NAME, null, "docs/inner.md");
+
+		String status = gitServer.gitStatus(PROJECT_NAME, null);
+		assertAll(
+			() -> assertTrue(added.startsWith("Added"), "Should stage it: " + added),
+			() -> assertTrue(status.contains(PREFIX + "/docs/inner.md"),
+				"The project's own docs/ must win over the repository root's: " + status));
+	}
+
+	/** A staging call that matches nothing must say so, not report success. */
+	@Test
+	@DisplayName("a path that matches nothing reports that nothing was staged")
+	public void nothingMatchedIsReported()
+	{
+		String result = gitServer.gitAdd(PROJECT_NAME, null, "src/DoesNotExist.java");
+
+		assertAll(
+			() -> assertTrue(result.startsWith("Nothing to add"),
+				"Must not claim success for an empty index: " + result),
+			() -> assertTrue(result.contains("src/DoesNotExist.java"),
+				"and must name what was tried: " + result));
+	}
+
+	/** The documented way to stage a repo-root file: target the repository, no projectName. */
+	@Test
+	@DisplayName("the repo-centric call is the way to stage a repo-root docs/ file")
+	public void repoCentricStagesRepoRootFile() throws Exception
+	{
+		Files.writeString(repoRoot.resolve("docs/notes.md"), "notes changed\n");
+		String repoName = repoRoot.getFileName().toString();
+
+		String added = gitServer.gitAdd(null, repoName, "docs/notes.md");
+
+		String status = gitServer.gitStatus(null, repoName);
+		assertAll(
+			() -> assertTrue(added.startsWith("Added"), "Should stage it: " + added),
+			() -> assertTrue(status.contains("docs/notes.md"),
+				"The repo-root file must be staged by the repo-centric call: " + status));
 	}
 
 	// --- the repo-centric path, which has no project to prefix from --------------------------

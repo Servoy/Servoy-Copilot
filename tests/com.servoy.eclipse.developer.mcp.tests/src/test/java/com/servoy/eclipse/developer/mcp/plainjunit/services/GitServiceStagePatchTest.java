@@ -313,13 +313,18 @@ public class GitServiceStagePatchTest
 	class StageAndUnstage
 	{
 		@Test
-		@DisplayName("stageIn reports the pattern it was given")
-		void stageInReportsPattern() throws Exception
+		@DisplayName("stageIn names the file it staged, counted from the index")
+		void stageInReportsWhatItStaged() throws Exception
 		{
 			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta changed\ngamma\n");
 
 			String result = GitService.stageIn(repository, java.util.List.of("file.txt"), "file.txt");
-			assertEquals("Added: file.txt", result);
+
+			// Reports the INDEX's outcome, not the caller's pattern: a pathspec matching nothing is not
+			// an error in JGit, so echoing the pattern claimed success for a no-op (SVY-21303, round 3).
+			assertAll(
+				() -> assertTrue(result.startsWith("Added 1 file(s)"), "Should count what it staged: " + result),
+				() -> assertTrue(result.contains("file.txt"), "and name it: " + result));
 
 			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
 			assertTrue(staged.contains("+beta changed"), "The staged edit must be in the index: " + staged);
@@ -333,7 +338,11 @@ public class GitServiceStagePatchTest
 			Files.writeString(tempDir.resolve("brand-new.txt"), "fresh\n");
 
 			String result = GitService.stageIn(repository, java.util.List.of(), ".");
-			assertEquals("Added: .", result);
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Added 2 file(s)"), "Both files must be counted: " + result),
+				() -> assertTrue(result.contains("file.txt") && result.contains("brand-new.txt"),
+					"and both named: " + result));
 
 			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
 			assertAll(
@@ -342,40 +351,50 @@ public class GitServiceStagePatchTest
 		}
 
 		@Test
-		@DisplayName("unstageIn removes a staged path from the index")
+		@DisplayName("unstageIn removes a staged path from the index and names it")
 		void unstageInRemovesStagedPath() throws Exception
 		{
 			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta staged then unstaged\ngamma\n");
 			git.add().addFilepattern("file.txt").call();
 
 			String result = GitService.unstageIn(repository, java.util.List.of("file.txt"), "file.txt");
-			assertEquals("Unstaged: file.txt", result);
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Unstaged 1 file(s)"), "Should count it: " + result),
+				() -> assertTrue(result.contains("file.txt"), "and name it: " + result));
 
 			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
 			assertEquals("No changes.", staged, "Nothing should remain staged after unstaging the only staged path");
 		}
 
 		@Test
-		@DisplayName("unstageIn with an empty pathspec list exercises the whole-tree branch")
+		@DisplayName("unstageIn with an empty pathspec list reports that nothing matched")
 		void unstageInWholeTree() throws Exception
 		{
 			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta whole unstage\ngamma\n");
 			git.add().addFilepattern(".").call();
 
-			// The empty-list branch resets the literal path "." (JGit's path-based reset does not
-			// expand "." to every entry), so the contract we assert is the returned report, not an
-			// emptied index.
+			// The empty-list branch resets the literal path ".", and JGit's path-based reset does not
+			// expand "." to every entry - so the index is untouched. That used to be reported as
+			// "Unstaged: .", which looked like it had worked; it now says plainly that nothing matched.
 			String result = GitService.unstageIn(repository, java.util.List.of(), ".");
-			assertEquals("Unstaged: .", result);
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Nothing to unstage"),
+					"A no-op must not look like success: " + result),
+				() -> assertTrue(result.contains("the whole tree"), "and must say what was tried: " + result));
 		}
 
 		@Test
-		@DisplayName("unstageIn of a path that was never staged still reports success")
+		@DisplayName("unstageIn of a path that was never staged reports that nothing changed")
 		void unstageInUnstagedPath() throws Exception
 		{
-			// Nothing staged for this path - reset of an already-matching path is a no-op that still succeeds.
+			// Nothing staged for this path, so resetting it is a no-op - and must be reported as one.
 			String result = GitService.unstageIn(repository, java.util.List.of("file.txt"), "file.txt");
-			assertEquals("Unstaged: file.txt", result);
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Nothing to unstage"), "Should report the no-op: " + result),
+				() -> assertTrue(result.contains("file.txt"), "and name the pathspec tried: " + result));
 		}
 	}
 }
