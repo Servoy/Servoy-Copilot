@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -105,5 +106,34 @@ public class OutcomeAssertionsTest {
 		assertEquals(parsed.get(0).children().size(), reparsed.get(0).children().size());
 		assertEquals("globals", reparsed.get(1).scope());
 		assertFalse(reparsed.get(2).exists());
+	}
+
+	@Test
+	@DisplayName("a 'scope' kind parses to SCOPE with its method children, and round-trips (SVY-21659)")
+	void parsesScopeKindWithMethodChildren() throws Exception {
+		String original = """
+				{ "persists": [
+				  { "kind": "scope", "name": "maintenance",
+				    "children": [ { "kind": "scriptmethod", "name": "archiveOldOrders" } ] }
+				] }
+				""";
+		List<OutcomeAssertion> parsed = OutcomeAssertions.parse(json(original));
+		assertEquals(1, parsed.size());
+		OutcomeAssertion scope = parsed.get(0);
+		assertEquals(PersistKind.SCOPE, scope.kind());
+		assertEquals("maintenance", scope.name());
+		assertEquals(PersistKind.SCRIPTMETHOD, scope.children().get(0).kind());
+		assertEquals("scope 'maintenance'", scope.label());
+		List<OutcomeAssertion> reparsed = OutcomeAssertions.parse(OutcomeAssertions.toJson(parsed));
+		assertEquals(PersistKind.SCOPE, reparsed.get(0).kind());
+		assertEquals("archiveOldOrders", reparsed.get(0).children().get(0).name());
+	}
+
+	@Test
+	@DisplayName("'scope' and 'globalscope' tokens map to SCOPE; its source hint names the root .js (SVY-21659)")
+	void scopeTokensAndSourceHint() {
+		assertEquals(PersistKind.SCOPE, PersistKind.fromToken("scope"));
+		assertEquals(PersistKind.SCOPE, PersistKind.fromToken("GlobalScope"));
+		assertEquals("`maintenance.js` at the solution root", PersistKind.SCOPE.sourceHint("maintenance"));
 	}
 }

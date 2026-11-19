@@ -71,6 +71,14 @@ public enum PersistKind {
 	GRAPHICALCOMPONENT(IRepositoryConstants.GRAPHICALCOMPONENTS, false),
 	/** A layout container in a responsive form. */
 	LAYOUTCONTAINER(IRepositoryConstants.LAYOUTCONTAINERS, false),
+	/**
+	 * A global scope (SVY-21659). A scope is NOT a persist of its own in Servoy: it
+	 * exists through the {@code scopeName} of the methods/variables in its
+	 * {@code <scope>.js} file. A {@code scope} assertion holds when the solution has
+	 * that scope, and its {@code scriptmethod}/{@code scriptvariable} children are
+	 * checked within it (their {@code scope} defaults to the parent scope's name).
+	 */
+	SCOPE(-1, false),
 	/** Any persist kind not modelled above - matched by type id only when known. */
 	OTHER(-1, false);
 
@@ -146,6 +154,9 @@ public enum PersistKind {
 		case "layoutcontainer": //$NON-NLS-1$
 		case "container": //$NON-NLS-1$
 			return LAYOUTCONTAINER;
+		case "scope": //$NON-NLS-1$
+		case "globalscope": //$NON-NLS-1$
+			return SCOPE;
 		default:
 			return OTHER;
 		}
@@ -193,6 +204,8 @@ public enum PersistKind {
 			return "`menus/" + name + ".men`"; //$NON-NLS-1$ //$NON-NLS-2$
 		case MEDIA:
 			return "`medias/" + name + "` (and the `medias.obj` index)"; //$NON-NLS-1$ //$NON-NLS-2$
+		case SCOPE:
+			return "`" + name + ".js` at the solution root"; //$NON-NLS-1$ //$NON-NLS-2$
 		default:
 			return null;
 		}

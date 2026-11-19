@@ -150,6 +150,14 @@ public final class PersistOutcomeChecker {
 	 * {@link Node} and appending any failures to {@code diff}.
 	 */
 	private Node checkOne(OutcomeAssertion assertion, List<IPersist> pool, StringBuilder diff, String indent) {
+		// SVY-21659: a global scope is not a persist of its own (it exists through the
+		// scopeName of its methods/variables), so it can never be found by a persist
+		// walk. Check it as a scope. An older baseline that recorded a scope as a
+		// generic "other" persist with scriptmethod/scriptvariable children is treated
+		// the same way when nothing else of that name exists but a scope does.
+		if (assertion.kind() == PersistKind.SCOPE || isOtherThatIsAScope(assertion, pool)) {
+			return checkScope(assertion, diff, indent);
+		}
 		IPersist match = findMatch(assertion, pool);
 
 		if (!assertion.exists()) {
@@ -334,6 +342,88 @@ public final class PersistOutcomeChecker {
 			diffLines.add("(diag) dump failed: " + ex); //$NON-NLS-1$
 		}
 		return new MissingLeafDiag(message, props, diffLines);
+	}
+
+	/**
+	 * @return {@code true} for a legacy {@code "other"} assertion that really means a
+	 *         global scope: it is named, has at least one child, every child is a
+	 *         {@code scriptmethod}/{@code scriptvariable}, and no root persist carries
+	 *         that name (so a real "other" persist match is never shadowed).
+	 */
+	private boolean isOtherThatIsAScope(OutcomeAssertion assertion, List<IPersist> pool) {
+		if (assertion.kind() != PersistKind.OTHER || assertion.name() == null || assertion.children().isEmpty()) {
+			return false;
+		}
+		for (OutcomeAssertion child : assertion.children()) {
+			if (child.kind() != PersistKind.SCRIPTMETHOD && child.kind() != PersistKind.SCRIPTVARIABLE) {
+				return false;
+			}
+		}
+		for (IPersist p : pool) {
+			String n = nameOf(p);
+			if (n != null && n.equalsIgnoreCase(assertion.name())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * @return the global scope names of the active solution (and, when a flattened
+	 *         solution is available, its modules), compared case-sensitively by Servoy
+	 */
+	private java.util.Collection<String> scopeNames() {
+		java.util.Set<String> names = new java.util.LinkedHashSet<>();
+		try {
+			if (flattened != null) {
+				names.addAll(flattened.getScopeNames());
+			}
+		} catch (RuntimeException ignore) {
+			// fall back to the solution's own scope names below
+		}
+		if (solution != null) {
+			names.addAll(solution.getScopeNames());
+		}
+		return names;
+	}
+
+	/**
+	 * Checks a global-scope assertion (SVY-21659): the scope exists (it is one of the
+	 * solution's scope names), and each child method/variable is resolved within it -
+	 * a child without its own {@code scope} inherits the parent scope's name.
+	 */
+	private Node checkScope(OutcomeAssertion assertion, StringBuilder diff, String indent) {
+		String scopeName = assertion.name();
+		String label = "scope '" + scopeName + "'"; //$NON-NLS-1$ //$NON-NLS-2$
+		java.util.Collection<String> scopes = scopeNames();
+		boolean found = scopeName != null && scopes.contains(scopeName);
+
+		if (!assertion.exists()) {
+			if (found) {
+				diff.append(indent).append("- ").append(label).append(" exists but should NOT\n"); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			return new Node(label, found, !found, found ? "exists but should NOT" : "correctly absent", //$NON-NLS-1$ //$NON-NLS-2$
+					List.of(), List.of());
+		}
+		if (!found) {
+			diff.append(indent).append("- missing expected ").append(label).append('\n'); //$NON-NLS-1$
+			return new Node(label, false, false, "missing (solution scopes: " + scopes + ")", //$NON-NLS-1$ //$NON-NLS-2$
+					List.of(new PropCheck("scope", scopeName, scopes.toString(), false)), List.of()); //$NON-NLS-1$
+		}
+
+		boolean ok = true;
+		List<Node> childNodes = new ArrayList<>();
+		List<IPersist> roots = allRootPersists();
+		for (OutcomeAssertion child : assertion.children()) {
+			OutcomeAssertion scoped = child.scope() == null || child.scope().isBlank()
+					? new OutcomeAssertion(child.kind(), child.name(), scopeName, child.exists(), child.props(),
+							child.children(), child.structure(), child.less())
+					: child;
+			Node childNode = checkOne(scoped, roots, diff, indent + "  "); //$NON-NLS-1$
+			childNodes.add(childNode);
+			ok &= childNode.pass();
+		}
+		return new Node(label, true, ok, "found", List.of(), childNodes); //$NON-NLS-1$
 	}
 
 	/**

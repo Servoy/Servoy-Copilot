@@ -237,10 +237,10 @@ public final class OutcomeInference {
 			return new OutcomeAssertion(PersistKind.MEDIA, base, null, true, Map.of(), List.of());
 		}
 		if (lower.contains("/scopes/") && lower.endsWith(".js")) { //$NON-NLS-1$ //$NON-NLS-2$
-			// a scope .js file holds global methods/variables; assert the scope exists as
-			// a script method container is too coarse - leave a generic OTHER skeleton the
-			// user can refine into specific method/variable assertions.
-			return new OutcomeAssertion(PersistKind.SCRIPTMETHOD, null, base, true, Map.of(), List.of());
+			// a scope .js file holds global methods/variables: assert the scope itself
+			// (SVY-21659 - a scope is not a persist, so it must use the SCOPE kind, never
+			// OTHER); the user refines it with scriptmethod/scriptvariable children.
+			return new OutcomeAssertion(PersistKind.SCOPE, base, null, true, Map.of(), List.of());
 		}
 		// companion .js/.less/.css/.obj for a form etc. are IDE-generated; skip - the
 		// .frm assertion already covers that outcome.
