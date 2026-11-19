@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -29,8 +28,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.servoy.eclipse.core.IDeveloperServoyModel;
+import com.servoy.eclipse.cypress.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
 import com.servoy.eclipse.developer.mcp.annotations.Tool;
@@ -147,10 +149,12 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testServoyTestingServer_generateFormSpecHasFormNameParam() {
-		// SVY-21619: generateFormSpec gained a second optional 'viewportWidths' parameter.
+		// SVY-21619: generateFormSpec gained a second optional 'viewportWidths'
+		// parameter.
 		Method method = findToolMethod("generateFormSpec");
 		assertNotNull(method);
-		assertEquals(2, method.getParameterCount(), "generateFormSpec must have 2 parameters (formName + viewportWidths)");
+		assertEquals(2, method.getParameterCount(),
+				"generateFormSpec must have 2 parameters (formName + viewportWidths)");
 		ToolParam formName = method.getParameters()[0].getAnnotation(ToolParam.class);
 		assertNotNull(formName, "generateFormSpec first parameter must have @ToolParam");
 		assertEquals("formName", formName.name(), "first parameter must be formName");
@@ -177,7 +181,8 @@ public class ServoyTestingServerTest {
 		assertNotNull(m);
 		String desc = m.getAnnotation(Tool.class).description();
 		assertTrue(desc.contains("viewportWidths"), "description must name the viewportWidths param: " + desc);
-		assertTrue(desc.contains("innerWidth"), "description must mention the always-on window.innerWidth reporting: " + desc);
+		assertTrue(desc.contains("innerWidth"),
+				"description must mention the always-on window.innerWidth reporting: " + desc);
 	}
 
 	@Test
@@ -635,7 +640,8 @@ public class ServoyTestingServerTest {
 
 	@Test
 	public void testGenerateCypressE2ETest_hasTenParams() {
-		// SVY-21619: a 10th optional 'viewportWidths' parameter was added after loginSuccessSelector.
+		// SVY-21619: a 10th optional 'viewportWidths' parameter was added after
+		// loginSuccessSelector.
 		Method m = findToolMethod("generateCypressE2ETest");
 		assertNotNull(m, "generateCypressE2ETest tool not found");
 		assertEquals(10, m.getParameterCount(), "Expected 10 parameters (9 original + viewportWidths)");
@@ -661,7 +667,8 @@ public class ServoyTestingServerTest {
 		assertNotNull(m);
 		String desc = m.getAnnotation(Tool.class).description();
 		assertTrue(desc.contains("viewportWidths"), "description must name the viewportWidths param: " + desc);
-		assertTrue(desc.contains("innerWidth"), "description must mention the always-on window.innerWidth reporting: " + desc);
+		assertTrue(desc.contains("innerWidth"),
+				"description must mention the always-on window.innerWidth reporting: " + desc);
 	}
 
 	@Test
@@ -1459,7 +1466,10 @@ public class ServoyTestingServerTest {
 		}
 	}
 
-	/** A model whose active project -> solution -> name chain resolves to the given solution name. */
+	/**
+	 * A model whose active project -> solution -> name chain resolves to the given
+	 * solution name.
+	 */
 	private static IDeveloperServoyModel modelWithSolution(String solutionName) {
 		IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
 		ServoyProject project = mock(ServoyProject.class);
@@ -1642,7 +1652,8 @@ public class ServoyTestingServerTest {
 			setField(server, "specModelBuilder", builder);
 
 			assertEquals("Opened form 'orders'", server.showFormInBrowser("orders"));
-			verify(gen, never()).generateSpec(anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList());
+			verify(gen, never()).generateSpec(anyString(), org.mockito.ArgumentMatchers.any(),
+					org.mockito.ArgumentMatchers.anyList());
 		}
 
 		@Test
@@ -1653,7 +1664,8 @@ public class ServoyTestingServerTest {
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			when(preview.showFormInBrowser("orders", true)).thenReturn("Opened form 'orders'");
 			when(gen.specExists("orders", "sol")).thenReturn(false);
-			// FormSpecModel is final (not mockable); a null model drives the same append path.
+			// FormSpecModel is final (not mockable); a null model drives the same append
+			// path.
 			when(builder.build("orders")).thenReturn(null);
 			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Created spec");
 			ServoyTestingServer server = new ServoyTestingServer() {
@@ -1725,7 +1737,8 @@ public class ServoyTestingServerTest {
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
 			FormSpecModelBuilder builder = mock(FormSpecModelBuilder.class);
 			// FormSpecModel is a final class (not mockable); the builder returns its real
-			// result, so a null model is enough to drive the build -> generateSpec hand-off.
+			// result, so a null model is enough to drive the build -> generateSpec
+			// hand-off.
 			when(builder.build("orders")).thenReturn(null);
 			when(gen.generateSpec("orders", null, java.util.List.of())).thenReturn("Created spec for orders");
 			ServoyTestingServer server = new ServoyTestingServer();
@@ -2205,6 +2218,453 @@ public class ServoyTestingServerTest {
 			com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
 					.readTree(json);
 			assertEquals("start", root.get("mainForm").asText());
+		}
+	}
+
+	// =======================================================================
+	// SVY-21663: listFormTests / runAllFormTests
+	//
+	// Two new tools surface CypressTestDiscoveryService.discoverAllTestForms()
+	// (the cy-form form-test listing) over MCP, plus a package-visible static
+	// toFormName(entry) helper mapping a discovered spec base name to the
+	// runner argument. These tests cover the tool presence, the @Tool
+	// description obligations (the folder split, the read-only note, the
+	// real-data-change / NG-client warnings, the listE2ETests cross-pointer),
+	// the toFormName contract, and the formatting / guard branches reachable
+	// by reflection-swapping the collaborators (testDiscovery, specGenerator,
+	// specRunner, formPreview) and seaming the model - no workbench. The real
+	// cy-form discovery path (ResourcesPlugin inside CypressTestDiscoveryService)
+	// stays to the integration suite / manual verification.
+	// =======================================================================
+
+	@Test
+	@DisplayName("listFormTests is registered")
+	void listFormTests_isRegistered() {
+		assertTrue(hasToolNamed("listFormTests"), "ServoyTestingServer must have a 'listFormTests' tool");
+	}
+
+	@Test
+	@DisplayName("runAllFormTests is registered")
+	void runAllFormTests_isRegistered() {
+		assertTrue(hasToolNamed("runAllFormTests"), "ServoyTestingServer must have a 'runAllFormTests' tool");
+	}
+
+	@Test
+	@DisplayName("listFormTests and runAllFormTests take no parameters")
+	void listAndRunFormTests_haveNoParams() {
+		Method list = findToolMethod("listFormTests");
+		Method run = findToolMethod("runAllFormTests");
+		assertNotNull(list, "listFormTests tool not found");
+		assertNotNull(run, "runAllFormTests tool not found");
+		org.junit.jupiter.api.Assertions.assertAll(
+				() -> assertEquals(0, list.getParameterCount(), "listFormTests must have 0 parameters"),
+				() -> assertEquals(0, run.getParameterCount(), "runAllFormTests must have 0 parameters"));
+	}
+
+	@Nested
+	@DisplayName("SVY-21663 @Tool description obligations")
+	class FormTestDescriptions {
+		@Test
+		@DisplayName("listFormTests description names the cy-form folder, is read-only and points to the run tools")
+		void listFormTests_description() {
+			String desc = findToolMethod("listFormTests").getAnnotation(Tool.class).description();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(desc.contains("cy-form"), "must name the cy-form folder: " + desc),
+					() -> assertTrue(desc.contains("cypress/cy-form"), "must name the cypress/cy-form path: " + desc),
+					() -> assertTrue(desc.contains("listE2ETests"), "must contrast with listE2ETests: " + desc),
+					() -> assertTrue(desc.contains("cypress/e2e"),
+							"must name the e2e folder to make the split explicit: " + desc),
+					() -> assertTrue(desc.contains("testForm") && desc.contains("showAndTest"),
+							"must point to the single-form run tools: " + desc),
+					() -> assertTrue(desc.contains("runAllFormTests"),
+							"must point to runAllFormTests for running all: " + desc));
+		}
+
+		@Test
+		@DisplayName("runAllFormTests description names cy-form and warns about real data changes and the NG client")
+		void runAllFormTests_description() {
+			String desc = findToolMethod("runAllFormTests").getAnnotation(Tool.class).description();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(desc.contains("cy-form"), "must name the cy-form folder: " + desc),
+					() -> assertTrue(desc.contains("CHANGE DATA") || desc.contains("change data"),
+							"must warn that handlers can change data: " + desc),
+					() -> assertTrue(desc.contains("handler"), "must warn that real event handlers execute: " + desc),
+					() -> assertTrue(desc.contains("NG client"), "must warn the NG client must be running: " + desc),
+					() -> assertTrue(desc.contains("checkNGClientStatus"),
+							"must point to checkNGClientStatus: " + desc));
+		}
+
+		@Test
+		@DisplayName("listE2ETests description cross-points to listFormTests and still reads only cypress/e2e")
+		void listE2ETests_crossPointer() {
+			String desc = findToolMethod("listE2ETests").getAnnotation(Tool.class).description();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(desc.contains("listFormTests"),
+							"listE2ETests must point to listFormTests for form tests: " + desc),
+					() -> assertTrue(desc.contains("cy-form"),
+							"listE2ETests must name the cy-form folder in the cross-pointer: " + desc),
+					() -> assertTrue(desc.contains("cypress/e2e"),
+							"listE2ETests must still state it reads cypress/e2e: " + desc));
+		}
+	}
+
+	@Nested
+	@DisplayName("SVY-21663 toFormName (package-visible static, via reflection)")
+	class ToFormName {
+		private String toFormName(String entry) throws Exception {
+			Method m = ServoyTestingServer.class.getDeclaredMethod("toFormName", String.class);
+			m.setAccessible(true);
+			return (String) m.invoke(null, entry);
+		}
+
+		@ParameterizedTest
+		@DisplayName("returns the discovered entry unchanged (base-name -> runner-arg contract)")
+		@ValueSource(strings = { "mysolution.myform", "mysolution.other", "someform", "sol.form.with.dots",
+				"test_webcomponents2.orders" })
+		void returnsEntryUnchanged(String entry) throws Exception {
+			assertEquals(entry, toFormName(entry),
+					"toFormName must pass the discovered entry through unchanged so runFormCypressTests "
+							+ "resolves the same spec discoverAllTestForms enumerated");
+		}
+
+		@Test
+		@DisplayName("a null entry is returned unchanged (null)")
+		void nullEntry() throws Exception {
+			org.junit.jupiter.api.Assertions.assertNull(toFormName(null));
+		}
+	}
+
+	@Nested
+	@DisplayName("SVY-21663 listFormTests formatting / empty (collaborators mocked)")
+	class ListFormTestsFormatting {
+		@Test
+		@DisplayName("empty discovery returns the 'no form tests' message naming the resolved cy-form folder")
+		void emptyNamesResolvedFolder(@TempDir Path tmp) {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			Path cyForm = tmp.resolve("cy-form");
+			when(gen.getFormSpecDir()).thenReturn(cyForm);
+			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			assertEquals("No form tests found in " + cyForm + ". Use generateFormSpec to create a form test.", result);
+		}
+
+		@Test
+		@DisplayName("empty discovery with an unresolvable folder still names cypress/cy-form in the message")
+		void emptyUnresolvedFolderNamesLiteralPath() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			when(gen.getFormSpecDir()).thenReturn(null);
+			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			assertTrue(result.startsWith("No form tests found in"), "must be the no-form-tests message: " + result);
+			assertTrue(result.contains("cypress/cy-form/"),
+					"must still name the cy-form folder when the path is unresolvable: " + result);
+		}
+
+		@Test
+		@DisplayName("populated discovery lists one line per form with its resolved spec file name")
+		void listsEntriesWithSpecFileNames(@TempDir Path tmp) {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			Path cyForm = tmp.resolve("cy-form");
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("mysolution.myform", "mysolution.other"));
+			when(gen.getFormSpecDir()).thenReturn(cyForm);
+			when(gen.findExistingSpecFile("mysolution.myform", "mysolution"))
+					.thenReturn(cyForm.resolve("mysolution.myform.spec.cy.js"));
+			when(gen.findExistingSpecFile("mysolution.other", "mysolution"))
+					.thenReturn(cyForm.resolve("mysolution.other.spec.cy.ts"));
+			ServoyTestingServer server = serverWith(modelWithSolution("mysolution"));
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (2 files)"), "must show the count: " + result),
+					() -> assertTrue(result.contains("Directory: " + cyForm),
+							"must show the resolved directory: " + result),
+					() -> assertTrue(result.contains("- **mysolution.myform** → `mysolution.myform.spec.cy.js`"),
+							"must list the first form with its .spec.cy.js file: " + result),
+					() -> assertTrue(result.contains("- **mysolution.other** → `mysolution.other.spec.cy.ts`"),
+							"must list the second form with its .spec.cy.ts file: " + result),
+					() -> assertTrue(result.contains("runAllFormTests"), "must point to the run tools: " + result));
+		}
+
+		@Test
+		@DisplayName("a single discovered form uses the singular 'file' and falls back to the raw base name when no file resolves")
+		void singularAndFallbackToBaseName(@TempDir Path tmp) {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.lonely"));
+			when(gen.getFormSpecDir()).thenReturn(tmp.resolve("cy-form"));
+			// no on-disk file resolves for this entry -> the raw base name is shown
+			when(gen.findExistingSpecFile("sol.lonely", "sol")).thenReturn(null);
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (1 file)"),
+							"must use the singular 'file' for one entry: " + result),
+					() -> assertTrue(result.contains("- **sol.lonely** → `sol.lonely`"),
+							"must fall back to the raw base name when no file resolves: " + result));
+		}
+
+		@Test
+		@DisplayName("listFormTests marshals a thrown exception into 'Error: <message>'")
+		void wrapsException() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			when(discovery.discoverAllTestForms()).thenThrow(new RuntimeException("discovery blew up"));
+			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
+			setField(server, "testDiscovery", discovery);
+
+			assertEquals("Error: discovery blew up", server.listFormTests());
+		}
+
+		@Test
+		@DisplayName("specs present but the cy-form folder cannot be resolved: still listed, no Directory line")
+		void listsEntriesWithoutDirectoryLineWhenFolderUnresolved() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(gen.getFormSpecDir()).thenReturn(null);
+			when(gen.findExistingSpecFile("sol.only", "sol")).thenReturn(Path.of("sol.only.spec.cy.js"));
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (1 file)"), "must still list the form: " + result),
+					() -> assertFalse(result.contains("Directory:"),
+							"must omit the Directory line when the folder is unresolved: " + result),
+					() -> assertTrue(result.contains("- **sol.only** → `sol.only.spec.cy.js`"),
+							"must still show the spec file name: " + result));
+		}
+
+		@Test
+		@DisplayName("no active project: spec files are resolved with a null solution name")
+		void resolvesSpecFileWithNullSolutionWhenNoActiveProject() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
+			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.ts"));
+			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			assertTrue(result.contains("- **sol.only** → `sol.only.spec.cy.ts`"),
+					"must resolve the spec with a null solution name: " + result);
+			verify(gen).findExistingSpecFile("sol.only", null);
+		}
+
+		@Test
+		@DisplayName("active project without a solution: spec files are resolved with a null solution name")
+		void resolvesSpecFileWithNullSolutionWhenProjectHasNoSolution() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			ServoyProject project = mock(ServoyProject.class);
+			when(model.getActiveProject()).thenReturn(project);
+			when(project.getSolution()).thenReturn(null);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
+			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.js"));
+			ServoyTestingServer server = serverWith(model);
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			assertTrue(result.contains("`sol.only.spec.cy.js`"), "must still resolve the spec file: " + result);
+			verify(gen).findExistingSpecFile("sol.only", null);
+		}
+
+		@Test
+		@DisplayName("the model throwing while resolving the active solution does not break the listing")
+		void listsEntriesWhenModelThrows() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenThrow(new RuntimeException("model unavailable"));
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
+			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.js"));
+			ServoyTestingServer server = serverWith(model);
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.startsWith("**Form Tests** (1 file)"),
+							"must not turn the model failure into an error: " + result),
+					() -> assertTrue(result.contains("`sol.only.spec.cy.js`"), "must still list the spec: " + result));
+		}
+
+		@Test
+		@DisplayName("a failure resolving one spec file falls back to the raw base name")
+		void fallsBackToBaseNameWhenSpecLookupThrows() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.one", "sol.two"));
+			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
+			when(gen.findExistingSpecFile("sol.one", "sol")).thenThrow(new RuntimeException("lookup failed"));
+			when(gen.findExistingSpecFile("sol.two", "sol")).thenReturn(Path.of("sol.two.spec.cy.js"));
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+
+			String result = server.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("- **sol.one** → `sol.one`"),
+							"must fall back to the raw base name for the failing lookup: " + result),
+					() -> assertTrue(result.contains("- **sol.two** → `sol.two.spec.cy.js`"),
+							"must keep resolving the other forms: " + result));
+		}
+	}
+
+	@Nested
+	@DisplayName("SVY-21663 runAllFormTests guards / aggregation (collaborators mocked)")
+	class RunAllFormTests {
+		@Test
+		@DisplayName("empty discovery returns the 'no form tests' message and never runs or checks the NG client")
+		void emptyReturnsNoFormTestsAndRunsNothing() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecGenerator gen = mock(FormSpecGenerator.class);
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			when(gen.getFormSpecDir()).thenReturn(null);
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specGenerator", gen);
+			setField(server, "specRunner", runner);
+			setField(server, "formPreview", preview);
+
+			String result = server.runAllFormTests();
+			assertTrue(result.startsWith("No form tests found in"), "must be the no-form-tests message: " + result);
+			verify(runner, never()).runFormCypressTests(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+			verify(preview, never()).checkNGClientStatus();
+		}
+
+		@Test
+		@DisplayName("with forms present but the NG client not running, it reports the NG-client guard and runs nothing")
+		void ngClientNotRunningShortCircuits() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.form1"));
+			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is NOT running.");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specRunner", runner);
+			setField(server, "formPreview", preview);
+
+			String result = server.runAllFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.startsWith("NG client not running:"),
+							"must report the NG-client guard: " + result),
+					() -> assertTrue(result.contains("Servoy Developer is NOT running."),
+							"must include the underlying status: " + result));
+			verify(runner, never()).runFormCypressTests(anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+		}
+
+		@Test
+		@DisplayName("with the NG client ready, every discovered form is run headless (entry passed unchanged) and aggregated")
+		void runsEveryFormHeadlessAndAggregates() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.form1", "sol.form2"));
+			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
+			when(runner.runFormCypressTests("sol.form1", true)).thenReturn("form1: 1 passing");
+			when(runner.runFormCypressTests("sol.form2", true)).thenReturn("form2: 2 passing");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specRunner", runner);
+			setField(server, "formPreview", preview);
+
+			String result = server.runAllFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Run All Form Tests** (2 forms)"),
+							"must show the form count header: " + result),
+					() -> assertTrue(result.contains("## sol.form1"), "must have a section per form: " + result),
+					() -> assertTrue(result.contains("## sol.form2"), "must have a section per form: " + result),
+					() -> assertTrue(result.contains("form1: 1 passing") && result.contains("form2: 2 passing"),
+							"must include each form's runner result: " + result));
+			// entry passed through unchanged (toFormName contract), headless (true)
+			verify(runner).runFormCypressTests("sol.form1", true);
+			verify(runner).runFormCypressTests("sol.form2", true);
+		}
+
+		@Test
+		@DisplayName("a failure running one form is captured in that form's section and the loop continues to the next")
+		void perFormFailureIsCapturedAndLoopContinues() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.bad", "sol.good"));
+			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
+			when(runner.runFormCypressTests("sol.bad", true)).thenThrow(new RuntimeException("run failed"));
+			when(runner.runFormCypressTests("sol.good", true)).thenReturn("good: 1 passing");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specRunner", runner);
+			setField(server, "formPreview", preview);
+
+			String result = server.runAllFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("## sol.bad"),
+							"must still have the failing form's section: " + result),
+					() -> assertTrue(result.contains("Error: run failed"),
+							"must capture the per-form failure in its section: " + result),
+					() -> assertTrue(result.contains("## sol.good") && result.contains("good: 1 passing"),
+							"must continue to the next form after a failure: " + result));
+			verify(runner).runFormCypressTests("sol.good", true);
+		}
+
+		@Test
+		@DisplayName("runAllFormTests marshals a top-level thrown exception into 'Error: <message>'")
+		void wrapsTopLevelException() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			when(discovery.discoverAllTestForms()).thenThrow(new RuntimeException("discovery exploded"));
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+
+			assertEquals("Error: discovery exploded", server.runAllFormTests());
+		}
+
+		@Test
+		@DisplayName("a single discovered form uses the singular 'form' in the report header")
+		void singularFormLabelForOneForm() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			FormSpecRunner runner = mock(FormSpecRunner.class);
+			FormPreviewService preview = mock(FormPreviewService.class);
+			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
+			when(runner.runFormCypressTests("sol.only", true)).thenReturn("only: 1 passing");
+			ServoyTestingServer server = new ServoyTestingServer();
+			setField(server, "testDiscovery", discovery);
+			setField(server, "specRunner", runner);
+			setField(server, "formPreview", preview);
+
+			String result = server.runAllFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Run All Form Tests** (1 form)"),
+							"must use the singular 'form' for one entry: " + result),
+					() -> assertFalse(result.contains("(1 forms)"), "must not pluralise a single form: " + result),
+					() -> assertTrue(result.contains("## sol.only") && result.contains("only: 1 passing"),
+							"must still run and report the form: " + result));
 		}
 	}
 }

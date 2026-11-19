@@ -20,6 +20,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.servoy.eclipse.core.ServoyModelManager;
 import com.servoy.eclipse.cypress.services.CypressLoginSupport;
+import com.servoy.eclipse.cypress.services.CypressTestDiscoveryService;
 import com.servoy.eclipse.cypress.services.FormSpecGenerator;
 import com.servoy.eclipse.cypress.services.FormSpecModel;
 import com.servoy.eclipse.cypress.services.FormSpecRunner;
@@ -39,6 +40,7 @@ import com.servoy.eclipse.developer.mcp.services.NavigationEdge;
 import com.servoy.eclipse.developer.mcp.services.NavigationGraph;
 import com.servoy.eclipse.developer.mcp.services.ServoySolutionService;
 import com.servoy.eclipse.developer.mcp.services.TestFileService;
+import com.servoy.eclipse.model.nature.ServoyProject;
 import com.servoy.eclipse.model.util.ServoyLog;
 
 /**
@@ -60,6 +62,7 @@ public class ServoyTestingServer
 	private final FormInteractiveElementsService elementsService = new FormInteractiveElementsService();
 	private final FormLocatorService locatorService = new FormLocatorService();
 	private final CypressLoginSupport loginSupport = new CypressLoginSupport();
+	private final CypressTestDiscoveryService testDiscovery = new CypressTestDiscoveryService();
 
 	public ServoyTestingServer()
 	{
@@ -298,7 +301,8 @@ public class ServoyTestingServer
 	}
 
 	@Tool(name = "showAndTest", description = "Opens a Servoy form in a visible browser AND runs Cypress spec tests against it. " +
-		"Combines showFormInBrowser + testForm: the form is shown in a real browser window " + "and assertions from the .spec.cy.js or .spec.cy.ts file are executed. " +
+		"Combines showFormInBrowser + testForm: the form is shown in a real browser window " +
+		"and assertions from the .spec.cy.js or .spec.cy.ts file are executed. " +
 		"Auto-generates the spec file if it doesn't exist. " + "Returns pass/fail results.", type = "object")
 	public String showAndTest(
 		@ToolParam(name = "formName", description = "The name of the form to show and test (e.g. 'mainForm', 'orderDetails')") String formName)
@@ -323,10 +327,168 @@ public class ServoyTestingServer
 		}
 	}
 
+	@Tool(name = "listFormTests", description = "Lists all Cypress FORM TESTS (single-form specs: .spec.cy.js / .spec.cy.ts) in jenkins-custom/e2e-test-scripts/cypress/cy-form/. " +
+		"These are single-form tests, NOT the multi-form E2E tests listed by listE2ETests in cypress/e2e/. " +
+		"Read-only: it only enumerates the specs; run one with testForm / showAndTest, or all of them with runAllFormTests. " +
+		"Returns the form name and the spec file name for each discovered form test.", type = "object")
+	public String listFormTests()
+	{
+		try
+		{
+			java.util.List<String> entries = testDiscovery.discoverAllTestForms();
+			if (entries.isEmpty())
+			{
+				return noFormTestsMessage();
+			}
+			String solutionName = resolveActiveSolutionName();
+			java.nio.file.Path dir = specGenerator.getFormSpecDir();
+			StringBuilder sb = new StringBuilder();
+			sb.append("**Form Tests** (").append(entries.size()).append(" file").append(entries.size() == 1 ? "" : "s")
+				.append(")\n\n");
+			if (dir != null)
+			{
+				sb.append("Directory: ").append(dir).append("\n\n");
+			}
+			for (String entry : entries)
+			{
+				String specFileName = resolveSpecFileName(entry, solutionName);
+				sb.append("- **").append(entry).append("** → `").append(specFileName).append("`\n");
+			}
+			sb.append("\nRun one with testForm / showAndTest, or all with runAllFormTests.");
+			return sb.toString();
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in listFormTests tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	@Tool(name = "runAllFormTests", description = "Runs EVERY Cypress FORM TEST found in jenkins-custom/e2e-test-scripts/cypress/cy-form/ headlessly and returns an aggregate pass/fail report (one section per form). " +
+		"These are single-form tests, NOT the multi-form E2E tests (use testE2E for those); the set is discovered automatically, no list of form names is needed. " +
+		"WARNING: the form specs trigger REAL event handlers, which execute for real and CAN CHANGE DATA. " +
+		"Requires the NG client to be running (use checkNGClientStatus first).", type = "object")
+	public String runAllFormTests()
+	{
+		try
+		{
+			java.util.List<String> entries = testDiscovery.discoverAllTestForms();
+			if (entries.isEmpty())
+			{
+				return noFormTestsMessage();
+			}
+			String ngStatus = formPreview.checkNGClientStatus();
+			if (!ngStatus.startsWith("Servoy Developer is running"))
+			{
+				return "NG client not running: " + ngStatus +
+					"\n\nThe NG client must be running before form tests can be run. Use checkNGClientStatus to verify the runtime is ready.";
+			}
+			StringBuilder sb = new StringBuilder();
+			sb.append("**Run All Form Tests** (").append(entries.size()).append(" form")
+				.append(entries.size() == 1 ? "" : "s").append(")\n\n");
+			for (String entry : entries)
+			{
+				String formArg = toFormName(entry);
+				sb.append("## ").append(entry).append("\n\n");
+				try
+				{
+					String result = specRunner.runFormCypressTests(formArg, true);
+					sb.append(result).append("\n\n");
+				}
+				catch (Exception e)
+				{
+					ServoyLog.logError("Error running form test for '" + entry + "'", e);
+					sb.append("Error: ").append(e.getMessage()).append("\n\n");
+				}
+			}
+			String aggregate = sb.toString();
+			writeToConsole(aggregate);
+			return aggregate;
+		}
+		catch (Exception e)
+		{
+			ServoyLog.logError("Error in runAllFormTests tool", e);
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * The "no form tests" message, naming the cy-form folder. Shared by
+	 * {@link #listFormTests()} and {@link #runAllFormTests()}.
+	 */
+	private String noFormTestsMessage()
+	{
+		java.nio.file.Path dir = specGenerator.getFormSpecDir();
+		String location = dir != null ? dir.toString() : "jenkins-custom/e2e-test-scripts/cypress/cy-form/";
+		return "No form tests found in " + location + ". Use generateFormSpec to create a form test.";
+	}
+
+	/**
+	 * Resolves the active solution name, or null when no active project/solution is
+	 * available. Used to resolve the on-disk spec file for a discovered entry.
+	 */
+	private String resolveActiveSolutionName()
+	{
+		try
+		{
+			ServoyProject activeProject = getServoyModel().getActiveProject();
+			if (activeProject != null && activeProject.getSolution() != null)
+			{
+				return activeProject.getSolution().getName();
+			}
+		}
+		catch (Exception e)
+		{
+			// fall through: no solution name available
+		}
+		return null;
+	}
+
+	/**
+	 * Maps a discovered spec base name (such as {@code <solution>.<form>}) to the form
+	 * name passed to {@link FormSpecRunner#runFormCypressTests(String, boolean)}.
+	 * <p>
+	 * {@code discoverAllTestForms()} returns the spec file base name, which includes the
+	 * solution prefix because specs are written as {@code <solution>.<form>.spec.cy.*}.
+	 * {@code runFormCypressTests} resolves the spec via
+	 * {@code findExistingSpecFile(formName, solutionName)}, which tries the
+	 * {@code <solution>.<form>} prefix first and then the bare name - so passing the raw
+	 * entry (the full base name) resolves the exact same file that was enumerated. We
+	 * therefore pass the entry unchanged.
+	 */
+	static String toFormName(String entry)
+	{
+		return entry;
+	}
+
+	/**
+	 * Resolves the display spec file name for a discovered entry. Uses the generator to
+	 * find the on-disk file (trying the {@code <solution>.<form>} prefix, then the bare
+	 * name); when no file can be resolved it falls back to the raw base name (the entry
+	 * is still listed - discovery already proved a spec file exists).
+	 */
+	private String resolveSpecFileName(String entry, String solutionName)
+	{
+		try
+		{
+			java.nio.file.Path specFile = specGenerator.findExistingSpecFile(entry, solutionName);
+			if (specFile != null)
+			{
+				return specFile.getFileName().toString();
+			}
+		}
+		catch (Exception e)
+		{
+			// fall through: show the raw base name
+		}
+		return entry;
+	}
+
 	@Tool(name = "listE2ETests", description = "Lists all Cypress E2E test files (.cy.js / .cy.ts) in jenkins-custom/e2e-test-scripts/cypress/e2e/. " +
 		"These are multi-form navigation/E2E tests, NOT single-form tests (form tests are in cypress/cy-form/). " +
 		"Use this to discover which E2E tests exist before calling testE2E or showAndTestE2E. " +
-		"Returns file names, the form name each file targets, and the full path.", type = "object")
+		"Returns file names, the form name each file targets, and the full path. " +
+		"For single-form FORM TESTS in cypress/cy-form/ use listFormTests instead (this tool reads only cypress/e2e/).", type = "object")
 	public String listE2ETests()
 	{
 		try
