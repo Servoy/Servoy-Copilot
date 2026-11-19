@@ -91,7 +91,12 @@ from the diff.
    Both accept a **project-relative or a repository-relative** path, because `gitStatus` prints the
    latter and pasting one in is the obvious thing to do; `prefixOnce` prefixes only a path not
    already inside the project. A repository path pointing **outside** the project is **refused**,
-   not prefixed — see warning 4 below for why that matters more than it sounds.
+   not prefixed — see warning 4 below for why that matters more than it sounds. Both resolvers
+   therefore **take the `Repository`** (there is no no-repository overload): the refusal is decided
+   by asking the working tree and the index which reading of the path exists, so it cannot be made
+   without one. A read needs that refusal as much as a write does — arguably more, since a write
+   that stages nothing is contradicted by the next `gitStatus`, while a `gitDiff` answering
+   "no changes" about a file that *has* changed is simply believed.
 5. **Cite provenance in the Javadoc** — `Ported from AssistAI's {@code x} (upstream {@code sha})`,
    and note any deliberate difference.
 6. **Tool descriptions carry the warning** when an operation is destructive. See

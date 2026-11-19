@@ -807,6 +807,44 @@ public class GitServiceToolsTest
 				() -> assertNull(GitService.redactUserInfo(null)),
 				() -> assertEquals("", GitService.redactUserInfo("")));
 		}
+
+		@Test
+		@DisplayName("a '/' before the '@' ends the authority, so there is no credential to redact")
+		void slashBeforeAtIsNotUserInfo()
+		{
+			// "https://tok/SECRET@host/r" has host "tok" and path "/SECRET@host/r" - per RFC 3986 a
+			// userinfo cannot hold an unencoded '/', and git reads it that way too. So this carries
+			// no credential, and is left alone DELIBERATELY: inventing one here would replace a
+			// legitimate host and path with "***". The pair of this test and the two below is the
+			// boundary - redact inside the authority, never outside it.
+			assertEquals("https://tok/SECRET@host/r.git",
+				GitService.redactUserInfo("https://tok/SECRET@host/r.git"),
+				"A '/' before the '@' means the path has started, so nothing is a credential");
+		}
+
+		@Test
+		@DisplayName("an '@' outside the authority is not mistaken for userinfo")
+		void atSignInPathOrQueryIsNotUserInfo()
+		{
+			assertAll(
+				() -> assertEquals("https://host/o/r@v1.git",
+					GitService.redactUserInfo("https://host/o/r@v1.git"),
+					"An '@' in the PATH is not a credential"),
+				() -> assertEquals("https://github.com/o/r.git?x=a@b",
+					GitService.redactUserInfo("https://github.com/o/r.git?x=a@b"),
+					"An '@' in the QUERY is not a credential either"));
+		}
+
+		@Test
+		@DisplayName("an ssh:// URL and an uppercase scheme are handled")
+		void otherSchemes()
+		{
+			assertAll(
+				() -> assertTrue(GitService.redactUserInfo("ssh://git@host:22/o/r.git").contains("***@host:22"),
+					"ssh:// carries its user in the authority, so it is redacted like any other"),
+				() -> assertFalse(GitService.redactUserInfo("HTTPS://tok_SECRET@h/r").contains("tok_SECRET"),
+					"The scheme comparison must not be case-sensitive"));
+		}
 	}
 
 	/**

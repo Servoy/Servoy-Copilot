@@ -342,6 +342,52 @@ public class GitNestedProjectIntegrationTest extends DialogGuardBaseCopy
 	}
 
 	/**
+	 * The READ tools need the same refusal, and a wrong answer hurts more here: a write that stages
+	 * nothing is at least contradicted by the next {@code gitStatus}, while a diff that says "no
+	 * changes" about a file that HAS changed is simply believed. {@code bundles/<project>/docs/x.md}
+	 * matched nothing, and a pathspec matching nothing is not an error - it is an empty diff.
+	 */
+	@Test
+	@DisplayName("gitDiff refuses an out-of-project path rather than answering 'no changes'")
+	public void outOfProjectPathIsRefusedByDiff() throws Exception
+	{
+		Files.writeString(repoRoot.resolve("docs/notes.md"), "notes changed\n");
+
+		IllegalArgumentException problem = assertThrows(IllegalArgumentException.class,
+			() -> gitServer.gitDiff(PROJECT_NAME, null, null, "docs/notes.md", null, null, null));
+
+		assertAll(
+			() -> assertTrue(problem.getMessage().contains("docs/notes.md"),
+				"Should name the path: " + problem.getMessage()),
+			() -> assertTrue(problem.getMessage().contains(PREFIX),
+				"and the project it is outside of: " + problem.getMessage()));
+	}
+
+	@Test
+	@DisplayName("gitLog and gitShow refuse one too")
+	public void outOfProjectPathIsRefusedByLogAndShow()
+	{
+		assertAll(
+			() -> assertThrows(IllegalArgumentException.class,
+				() -> gitServer.gitLog(PROJECT_NAME, null, null, null, "docs/notes.md")),
+			() -> assertThrows(IllegalArgumentException.class,
+				() -> gitServer.gitShow(PROJECT_NAME, null, null, "docs/notes.md")));
+	}
+
+	/** A project-relative read path still works - the refusal must not break the ordinary case. */
+	@Test
+	@DisplayName("gitDiff on a project-relative path still reports the change")
+	public void projectRelativeDiffStillWorks() throws Exception
+	{
+		Files.writeString(projectDir.resolve("src/Foo.java"), "class Foo { int y; }\n");
+		project.refreshLocal(IProject.DEPTH_INFINITE, new NullProgressMonitor());
+
+		String diff = gitServer.gitDiff(PROJECT_NAME, null, null, "src/Foo.java", null, null, null);
+
+		assertTrue(diff.contains("Foo.java"), "The project's own file must still diff: " + diff);
+	}
+
+	/**
 	 * The refusal must not swallow a path that merely looks out-of-project: when the project itself
 	 * has a {@code docs/} folder, the project-relative reading exists and wins.
 	 */

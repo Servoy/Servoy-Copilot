@@ -485,7 +485,7 @@ public class GitService
 	public String getLog(String projectName, String repo, int maxCount, String revision, String pathFilter)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		List<String> repositoryPaths = resolveReadPaths(projectName, pathFilter);
+		List<String> repositoryPaths = resolveReadPaths(repository, projectName, pathFilter);
 		try (Git git = new Git(repository))
 		{
 			var logCommand = git.log().setMaxCount(maxCount);
@@ -531,7 +531,7 @@ public class GitService
 	 * <p>
 	 * Each path may be project-relative or repository-relative - {@code gitStatus} prints the latter,
 	 * so pasting one in works. A repository path that is NOT inside the named project is refused:
-	 * see {@link #resolveWritePaths(String, String)}.
+	 * see {@link #resolveWritePaths(Repository, String, String)}.
 	 * </p>
 	 */
 	public String addFiles(String projectName, String repo, String filePattern)
@@ -547,7 +547,7 @@ public class GitService
 	/**
 	 * {@link #addFiles} on an already-resolved repository with already-resolved pathspecs, so a plain
 	 * test can drive it. The pathspecs are REPOSITORY-relative - that translation is the whole point
-	 * of {@link #resolveWritePaths(String, String)} - and an empty list means the whole tree.
+	 * of {@link #resolveWritePaths(Repository, String, String)} - and an empty list means the whole tree.
 	 * <p>
 	 * <b>Reports what it actually staged, not the pattern it was given.</b> JGit's {@code AddCommand}
 	 * does not fail on a pathspec that matches nothing - unlike the CLI, which says
@@ -737,7 +737,7 @@ public class GitService
 	public String getDiff(String projectName, String repo, boolean staged, String pathFilter, boolean ignoreWhitespace)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderDiff(repository, staged, resolveReadPaths(projectName, pathFilter), ignoreWhitespace);
+		return renderDiff(repository, staged, resolveReadPaths(repository, projectName, pathFilter), ignoreWhitespace);
 	}
 
 	/**
@@ -751,8 +751,9 @@ public class GitService
 	public String getRevisionDiff(String projectName, String repo, String fromRevision, String toRevision,
 		String pathFilter, boolean ignoreWhitespace)
 	{
-		return renderRevisionDiff(resolveRepository(projectName, repo), fromRevision, toRevision,
-			resolveReadPaths(projectName, pathFilter), ignoreWhitespace);
+		Repository repository = resolveRepository(projectName, repo);
+		return renderRevisionDiff(repository, fromRevision, toRevision,
+			resolveReadPaths(repository, projectName, pathFilter), ignoreWhitespace);
 	}
 
 	/** {@link #getRevisionDiff} on an already-resolved repository, so a plain test can drive it. */
@@ -861,14 +862,22 @@ public class GitService
 	 * <p>
 	 * {@code "."} still means "this project", so a caller that wants the narrowing can ask for it.
 	 * </p>
+	 * <p>
+	 * The {@code repository} is required so that an out-of-project repository path is refused here
+	 * too. A read needs that as much as a write does, and for the same reason: a pathspec matching
+	 * nothing does not fail, so {@code gitDiff(projectName = "x", pathFilter = "docs/spec.md")}
+	 * became {@code bundles/x/docs/spec.md} and answered "no changes" about a file that HAD changed.
+	 * A wrong answer is worse on a read than on a write, because nothing downstream contradicts it -
+	 * the caller simply believes the file is clean (SVY-21303, third review round).
+	 * </p>
 	 */
-	private List<String> resolveReadPaths(String projectName, String pathFilter)
+	private List<String> resolveReadPaths(Repository repository, String projectName, String pathFilter)
 	{
 		if (pathFilter == null || pathFilter.isBlank())
 		{
 			return List.of();
 		}
-		List<String> pathspecs = resolveWritePaths(projectName, pathFilter);
+		List<String> pathspecs = resolveWritePaths(repository, projectName, pathFilter);
 		// A pathspec standing for the whole repository makes the filter pointless - drop it, so the
 		// read covers everything rather than being filtered by "".
 		return pathspecs.contains("") ? List.of() : pathspecs;
@@ -905,16 +914,11 @@ public class GitService
 	 * already repository-relative. They are then used as given - rather than handed to
 	 * {@code getProject(null)}, which throws a NullPointerException inside {@code WorkspaceRoot}.
 	 * </p>
-	 */
-	private List<String> resolveWritePaths(String projectName, String pathFilter)
-	{
-		return resolveWritePaths(null, projectName, pathFilter);
-	}
-
-	/**
-	 * {@link #resolveWritePaths(String, String)} with the repository available, so an out-of-project
-	 * repository path can be recognised by looking at the working tree and refused instead of being
-	 * prefixed into a pathspec that matches nothing.
+	 * <p>
+	 * The {@code repository} is required so that an out-of-project repository path can be recognised
+	 * by looking at the working tree and the index, and refused, instead of being prefixed into a
+	 * pathspec that matches nothing.
+	 * </p>
 	 */
 	private List<String> resolveWritePaths(Repository repository, String projectName, String pathFilter)
 	{
@@ -1341,8 +1345,8 @@ public class GitService
 	 */
 	public String showCommit(String projectName, String repo, String revision, String pathFilter)
 	{
-		return renderCommit(resolveRepository(projectName, repo), revision,
-			resolveReadPaths(projectName, pathFilter));
+		Repository repository = resolveRepository(projectName, repo);
+		return renderCommit(repository, revision, resolveReadPaths(repository, projectName, pathFilter));
 	}
 
 	/** {@link #showCommit} on an already-resolved repository, so a plain test can drive it. */
@@ -1890,7 +1894,7 @@ public class GitService
 	/**
 	 * Unstages project-relative files or folders. {@code filePattern} is comma-separated, and
 	 * {@code "."} means the whole project. Resolved through
-	 * {@link #resolveWritePaths(String, String)} for the same reason as {@link #addFiles}: a
+	 * {@link #resolveWritePaths(Repository, String, String)} for the same reason as {@link #addFiles}: a
 	 * repository-root pathspec would silently match nothing for a nested project.
 	 */
 	public String resetFiles(String projectName, String repo, String filePattern)
@@ -2665,9 +2669,31 @@ public class GitService
 			return url;
 		}
 
+		// The authority runs from the scheme delimiter to the first '/', '?' or '#'; an '@' inside
+		// it separates userinfo from host (RFC 3986). Both bounds matter, and probing the redactor
+		// with adversarial URLs showed why (SVY-21303, round 3):
+		//
+		//  - An '@' AFTER the authority is not a credential. "https://host/o/r@v1.git" is a path
+		//    carrying a tag-ish ref, and "...?x=a@b" is a query. Redacting those would replace the
+		//    host and path with "***" - a redaction that eats the URL is as wrong as one that
+		//    leaks, since the caller then cannot tell which remote failed.
+		//  - A '/' BEFORE the '@' therefore ends the authority, which means the remaining
+		//    credential-looking text is in the path, not the userinfo. Per the RFC a userinfo
+		//    cannot hold an unencoded '/', and git reads such a URL the same way - host "tok",
+		//    path "/SECRET@host/r" - so "https://tok/SECRET@host/r" has no credential to redact.
+		//    It is left alone deliberately rather than guessed at: inventing a credential where the
+		//    spec says there is none would corrupt a legitimate URL.
 		int authorityStart = schemeEnd + 3;
-		int authorityEnd = url.indexOf('/', authorityStart);
-		if (authorityEnd < 0) authorityEnd = url.length();
+		int authorityEnd = url.length();
+		for (int i = authorityStart; i < url.length(); i++)
+		{
+			char c = url.charAt(i);
+			if (c == '/' || c == '?' || c == '#')
+			{
+				authorityEnd = i;
+				break;
+			}
+		}
 
 		int at = url.lastIndexOf('@', authorityEnd - 1);
 		if (at < authorityStart) return url;   // no userinfo in the authority
