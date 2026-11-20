@@ -139,7 +139,15 @@ pipeline {
                         // only the per-file percentages (default sourceCodeRetention is NEVER,
                         // which is why Java had no line view while the webui Vitest entry - which
                         // sets EVERY_BUILD below - does).
-                        sourceCodeRetention: 'EVERY_BUILD'
+                        sourceCodeRetention: 'EVERY_BUILD',
+                        // jacoco.xml only holds package-relative file names (com/servoy/...), and the
+                        // plugin otherwise only looks in src/main/java, which these Eclipse bundles do not
+                        // use (build 453: "found: 0, not found: 96", so no clickable sources). Point it at
+                        // the src folder of each reported bundle (same fix as servoy-eclipse).
+                        sourceDirectories: [
+                            [path: 'bundles/com.servoy.eclipse.developer.mcp/src'],
+                            [path: 'bundles/com.servoy.eclipse.opencode/src']
+                        ]
                     )
                     // Angular webui (Vitest / V8) coverage, Cobertura report produced by the
                     // 'webui vitest coverage' frontend-maven-plugin run in the build stage.
