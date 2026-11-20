@@ -154,13 +154,13 @@ pipeline {
                         ignoreParsingErrors: true,
                         sourceCodeRetention: 'EVERY_BUILD'
                     )
-                    // Archive the raw coverage data so it can be inspected per build. The three
-                    // JaCoCo exec files are kept separately on purpose so unit vs integration can
-                    // be split offline: jacoco.exec = plainjunit (unit only), jacoco-it.exec =
-                    // integrationpde (integration only), jacoco-merged.exec = both (what the
-                    // published number reflects). jacoco.xml is the merged report; the cobertura
-                    // file is the webui Vitest coverage.
-                    archiveArtifacts artifacts: '**/target/site/jacoco/jacoco.xml, **/target/jacoco.exec, **/target/jacoco-it.exec, **/target/jacoco-merged.exec, bundles/com.servoy.eclipse.opencode/target/coverage/cobertura-coverage.xml', allowEmptyArchive: true, fingerprint: false
+                    // Archive the coverage reports so they can be read per build (also via the Jenkins MCP).
+                    // jacoco.xml = the merged per-bundle JaCoCo report (per class/method/line/branch
+                    // counters, what the published number reflects); the cobertura file is the webui
+                    // Vitest coverage. The binary jacoco*.exec files are deliberately NOT archived: they
+                    // can only be turned into a report again together with the exact class files of this
+                    // build (which are not archived), and everything readable is already in jacoco.xml.
+                    archiveArtifacts artifacts: '**/target/site/jacoco/jacoco.xml, bundles/com.servoy.eclipse.opencode/target/coverage/cobertura-coverage.xml', allowEmptyArchive: true, fingerprint: false
                 }
             }
         }
