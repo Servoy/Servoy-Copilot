@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -2695,6 +2696,87 @@ public class ServoyTestingServerTest {
 									"must name the active solution: " + result),
 							() -> assertTrue(result.contains("1 form test(s) of other solutions"),
 									"must say what was left out: " + result));
+		}
+
+		private ServoyTestingServer serverWithDiscovery(IDeveloperServoyModel model, CypressTestDiscoveryService discovery) {
+			return new ServoyTestingServer() {
+				@Override
+				protected IDeveloperServoyModel getServoyModel() {
+					return model;
+				}
+
+				@Override
+				protected CypressTestDiscoveryService getTestDiscovery() {
+					return discovery;
+				}
+			};
+		}
+
+		@Test
+		@DisplayName("listFormTests asks discovery for exactly the active solution, then its modules")
+		void listPassesActiveSolutionThenModules() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("main.f1"));
+
+			serverWithDiscovery(modelWithSolutionAndModules("main", "modA", "modB"), discovery).listFormTests();
+
+			verify(discovery).discoverFormTests(
+					org.mockito.ArgumentMatchers.argThat(names -> List.of("main", "modA", "modB").equals(new ArrayList<>(names))));
+		}
+
+		@Test
+		@DisplayName("runAllFormTests asks discovery for the same scope as listFormTests")
+		void runAllPassesActiveSolutionThenModules() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+
+			serverWithDiscovery(modelWithSolutionAndModules("main", "modA"), discovery).runAllFormTests();
+
+			verify(discovery).discoverFormTests(
+					org.mockito.ArgumentMatchers.argThat(names -> List.of("main", "modA").equals(new ArrayList<>(names))));
+		}
+
+		@Test
+		@DisplayName("with no active solution discovery gets an empty scope, not null")
+		void noActiveSolutionPassesEmptyScope() {
+			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
+
+			serverWithDiscovery(modelWithNoActiveProject(), discovery).listFormTests();
+
+			verify(discovery).discoverFormTests(org.mockito.ArgumentMatchers.argThat(names -> names != null && names.isEmpty()));
+		}
+
+		@Test
+		@DisplayName("the module lookup failing keeps the active solution in scope")
+		void moduleLookupFailureKeepsActiveSolution() {
+			IDeveloperServoyModel model = modelWithSolution("sol");
+			lenient().when(model.getModulesOfActiveProject()).thenThrow(new RuntimeException("modules unavailable"));
+
+			String result = serverDiscovering(model, List.of("sol.a", "other.b")).listFormTests();
+
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**sol.a**"), "must still list the active solution's spec: " + result),
+					() -> assertFalse(result.contains("other.b"), "must not list another solution's spec: " + result));
+		}
+
+		@Test
+		@DisplayName("the 'other solutions' message names the cy-form folder and offers generateFormSpec")
+		void otherSolutionsMessageNamesFolder() {
+			String result = serverDiscovering(modelWithSolution("sol"), List.of("other.b")).listFormTests();
+
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("cy-form"), "must name the folder: " + result),
+					() -> assertTrue(result.contains("were not listed"), "must say the other specs were left out: " + result),
+					() -> assertTrue(result.contains("generateFormSpec"), "must point to generateFormSpec: " + result));
+		}
+
+		@Test
+		@DisplayName("the 'no active solution' message tells the caller to activate one")
+		void noActiveSolutionMessageAsksToActivate() {
+			String result = serverDiscovering(modelWithNoActiveProject(), List.of("sol.a", "sol.b")).listFormTests();
+
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("2 form test(s) exist in"), "must count the specs: " + result),
+					() -> assertTrue(result.contains("activate a solution"), "must ask to activate a solution: " + result));
 		}
 	}
 
