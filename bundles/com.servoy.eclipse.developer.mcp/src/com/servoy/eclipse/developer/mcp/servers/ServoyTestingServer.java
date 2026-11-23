@@ -78,6 +78,15 @@ public class ServoyTestingServer
 	}
 
 	/**
+	 * Seam over the test discovery service so unit tests can supply the discovered spec base names without a
+	 * workspace.
+	 */
+	protected CypressTestDiscoveryService getTestDiscovery()
+	{
+		return testDiscovery;
+	}
+
+	/**
 	 * Scans the cypress/support/ directory (recursively) for custom commands and
 	 * helper functions. Reads all .js and .ts files (excluding e2e.js/e2e.ts which
 	 * are just imports) and returns their content so the AI can use existing
@@ -327,7 +336,7 @@ public class ServoyTestingServer
 		}
 	}
 
-	@Tool(name = "listFormTests", description = "Lists all Cypress FORM TESTS (single-form specs: .spec.cy.js / .spec.cy.ts) in jenkins-custom/e2e-test-scripts/cypress/cy-form/. " +
+	@Tool(name = "listFormTests", description = "Lists the Cypress FORM TESTS (single-form specs: .spec.cy.js / .spec.cy.ts) of the ACTIVE SOLUTION and its modules, found in jenkins-custom/e2e-test-scripts/cypress/cy-form/. Specs of other solutions in that folder are not listed. " +
 		"These are single-form tests, NOT the multi-form E2E tests listed by listE2ETests in cypress/e2e/. " +
 		"Read-only: it only enumerates the specs; run one with testForm / showAndTest, or all of them with runAllFormTests. " +
 		"Returns the form name and the spec file name for each discovered form test.", type = "object")
@@ -335,10 +344,11 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			java.util.List<String> entries = testDiscovery.discoverAllTestForms();
+			java.util.List<String> entries = getTestDiscovery().discoverFormTests(resolveActiveSolutionNames());
 			if (entries.isEmpty())
 			{
-				return noFormTestsMessage();
+				int all = getTestDiscovery().discoverAllTestForms().size();
+				return all == 0 ? noFormTestsMessage() : noFormTestsForActiveSolutionMessage(all);
 			}
 			String solutionName = resolveActiveSolutionName();
 			java.nio.file.Path dir = specGenerator.getFormSpecDir();
@@ -364,7 +374,7 @@ public class ServoyTestingServer
 		}
 	}
 
-	@Tool(name = "runAllFormTests", description = "Runs EVERY Cypress FORM TEST found in jenkins-custom/e2e-test-scripts/cypress/cy-form/ headlessly and returns an aggregate pass/fail report (one section per form). " +
+	@Tool(name = "runAllFormTests", description = "Runs every Cypress FORM TEST of the ACTIVE SOLUTION and its modules (found in jenkins-custom/e2e-test-scripts/cypress/cy-form/) headlessly and returns an aggregate pass/fail report (one section per form). Specs of other solutions in that folder are not run. " +
 		"These are single-form tests, NOT the multi-form E2E tests (use testE2E for those); the set is discovered automatically, no list of form names is needed. " +
 		"WARNING: the form specs trigger REAL event handlers, which execute for real and CAN CHANGE DATA. " +
 		"Requires the NG client to be running (use checkNGClientStatus first).", type = "object")
@@ -372,10 +382,11 @@ public class ServoyTestingServer
 	{
 		try
 		{
-			java.util.List<String> entries = testDiscovery.discoverAllTestForms();
+			java.util.List<String> entries = getTestDiscovery().discoverFormTests(resolveActiveSolutionNames());
 			if (entries.isEmpty())
 			{
-				return noFormTestsMessage();
+				int all = getTestDiscovery().discoverAllTestForms().size();
+				return all == 0 ? noFormTestsMessage() : noFormTestsForActiveSolutionMessage(all);
 			}
 			String ngStatus = formPreview.checkNGClientStatus();
 			if (!ngStatus.startsWith("Servoy Developer is running"))
@@ -418,9 +429,13 @@ public class ServoyTestingServer
 	 */
 	private String noFormTestsMessage()
 	{
+		return "No form tests found in " + noFormTestsLocation() + ". Use generateFormSpec to create a form test.";
+	}
+
+	private String noFormTestsLocation()
+	{
 		java.nio.file.Path dir = specGenerator.getFormSpecDir();
-		String location = dir != null ? dir.toString() : "jenkins-custom/e2e-test-scripts/cypress/cy-form/";
-		return "No form tests found in " + location + ". Use generateFormSpec to create a form test.";
+		return dir != null ? dir.toString() : "jenkins-custom/e2e-test-scripts/cypress/cy-form/";
 	}
 
 	/**
@@ -442,6 +457,57 @@ public class ServoyTestingServer
 			// fall through: no solution name available
 		}
 		return null;
+	}
+
+	/**
+	 * The active solution and its modules, by name. Empty when there is no active project, so no spec is in scope.
+	 * Used to keep only the form tests that belong to the active solution.
+	 */
+	private java.util.List<String> resolveActiveSolutionNames()
+	{
+		java.util.List<String> names = new java.util.ArrayList<>();
+		try
+		{
+			ServoyProject activeProject = getServoyModel().getActiveProject();
+			if (activeProject == null || activeProject.getSolution() == null)
+			{
+				return names;
+			}
+			names.add(activeProject.getSolution().getName());
+			ServoyProject[] modules = getServoyModel().getModulesOfActiveProject();
+			if (modules != null)
+			{
+				for (ServoyProject module : modules)
+				{
+					if (module != null && module.getSolution() != null && !names.contains(module.getSolution().getName()))
+					{
+						names.add(module.getSolution().getName());
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// fall through: whatever was resolved so far is the scope
+		}
+		return names;
+	}
+
+	/**
+	 * Form tests exist in cy-form/, but none belongs to the active solution or its modules. Kept apart from
+	 * {@link #noFormTestsMessage()} so a caller does not conclude that the folder is empty.
+	 */
+	private String noFormTestsForActiveSolutionMessage(int otherCount)
+	{
+		String active = resolveActiveSolutionName();
+		if (active == null)
+		{
+			return "No active Servoy solution, so no form tests are in scope. " + otherCount + " form test(s) exist in "
+				+ noFormTestsLocation() + "; activate a solution to list or run its form tests.";
+		}
+		return "No form tests found for the active solution '" + active + "' or its modules. " + otherCount
+			+ " form test(s) of other solutions exist in " + noFormTestsLocation()
+			+ " and were not listed. Use generateFormSpec to create a form test for the active solution.";
 	}
 
 	/**

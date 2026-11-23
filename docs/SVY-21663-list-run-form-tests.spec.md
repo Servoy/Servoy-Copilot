@@ -106,13 +106,22 @@ change — the cypress bundle is already required.
 
 ### 3.2 `listFormTests` tool (read-only — the core fix)
 A new `@Tool(name = "listFormTests", type = "object")` with no parameters. It:
-1. Calls `testDiscovery.discoverAllTestForms()`.
-2. If the list is empty, returns a clear "no form tests" message that **names the folder**,
-   e.g.:
-   `"No form tests found in jenkins-custom/e2e-test-scripts/cypress/cy-form/. Use generateFormSpec to create a form test."`
-   (Resolve the folder for the message the same way the generator does, so the path shown is
-   the real one; if the folder path cannot be resolved, still name `cypress/cy-form/` in the
-   message.)
+1. Calls `getTestDiscovery().discoverFormTests(solutionNames)`, where `solutionNames` is the
+   active solution plus its modules (`resolveActiveSolutionNames()`). `discoverFormTests` lives in
+   `CypressTestDiscoveryService` (servoy-eclipse) and keeps a spec when the text before the first
+   dot of its base name (`<solution>.<form>`) is one of those names. A spec without a dot is kept,
+   because its owner cannot be told.
+2. If the list is empty, returns a clear "no form tests" message. Three cases, kept apart so a
+   caller does not mistake "none for this solution" for "empty folder":
+   - the folder holds no spec at all: **names the folder**, e.g.
+     `"No form tests found in jenkins-custom/e2e-test-scripts/cypress/cy-form/. Use generateFormSpec to create a form test."`
+     (Resolve the folder for the message the same way the generator does, so the path shown is
+     the real one; if the folder path cannot be resolved, still name `cypress/cy-form/` in the
+     message.)
+   - specs exist, none for the active solution or its modules:
+     `"No form tests found for the active solution 'X' or its modules. N form test(s) of other solutions exist in <folder> and were not listed. …"`
+   - no active solution:
+     `"No active Servoy solution, so no form tests are in scope. N form test(s) exist in <folder>; activate a solution to list or run its form tests."`
 3. Otherwise returns a markdown listing: a count line, the directory, and one line per entry
    showing the form name and the spec file name per form (see 3.4).
 
@@ -128,9 +137,10 @@ Follows the try/catch + `ServoyLog.logError` + `"Error: " + e.getMessage()` conv
 ### 3.3 `runAllFormTests` tool (optional — runs every discovered form test)
 A new `@Tool(name = "runAllFormTests", type = "object")` with no parameters (headless, like
 `testForm`). It:
-1. Calls `testDiscovery.discoverAllTestForms()`.
-2. If empty, returns the same "no form tests" message as `listFormTests` (naming the folder)
-   and does not run anything.
+1. Calls `getTestDiscovery().discoverFormTests(solutionNames)`, the same scoped discovery as
+   `listFormTests` (active solution and its modules only).
+2. If empty, returns the same "no form tests" message as `listFormTests` (one of the three
+   wordings in 3.2) and does not run anything.
 3. Otherwise checks the runtime up front (added in code review): calls
    `formPreview.checkNGClientStatus()`, the same call the `checkNGClientStatus` tool uses. When
    the status does not start with `Servoy Developer is running` it returns one
@@ -208,7 +218,7 @@ correctly. No logic change.
 1. **`bundles/com.servoy.eclipse.developer.mcp/.../servers/ServoyTestingServer.java`**
    - Add import `com.servoy.eclipse.cypress.services.CypressTestDiscoveryService`.
    - Add field `private final CypressTestDiscoveryService testDiscovery = new CypressTestDiscoveryService();`.
-   - Add the `listFormTests` `@Tool` (no params): call `discoverAllTestForms()`, build the
+   - Add the `listFormTests` `@Tool` (no params): call `discoverFormTests(solutionNames)` (scoped to the active solution and its modules, 3.2), build the
      markdown listing with per-form spec file name (3.2 / 3.4), empty → "no form tests"
      message naming `cypress/cy-form/` (3.2). Description per 3.2.
    - Add the `runAllFormTests` `@Tool` (no params, headless): loop discovered forms through
@@ -259,14 +269,15 @@ section 8). No `integrationpde` canary was added: the real discovery runs throug
 `ResourcesPlugin` and is covered by the manual scenarios in section 8.2 instead.
 
 ## 5. Acceptance criteria
-- [x] With specs present in `cypress/cy-form/`, `listFormTests` returns **every form that has
-      one, and nothing else**, each with its spec file name.
+- [x] With specs present in `cypress/cy-form/`, `listFormTests` returns **every form of the
+      active solution and its modules that has one, and nothing else** (specs of other solutions
+      are left out), each with its spec file name.
 - [x] With **no `cy-form` folder or no specs**, `listFormTests` returns a clear "no form tests"
       message that **names the `cy-form` folder**.
 - [x] `listE2ETests` still lists **only** `cypress/e2e`; its only description change is a
       pointer to `listFormTests`.
 - [x] An agent given "run all form tests" runs all of them via `runAllFormTests` with **no
-      manual list of form names** (it enumerates via `discoverAllTestForms()`).
+      manual list of form names** (it enumerates via `discoverFormTests(solutionNames)`).
 - [x] `runAllFormTests`'s `@Tool` description warns that **handlers execute for real and can
       change data** and that the **NG client must be running**.
 - [x] Both new tool descriptions state they read `cypress/cy-form/`; the folder split between
@@ -292,13 +303,18 @@ section 8). No `integrationpde` canary was added: the real discovery runs throug
 |----------|-------|--------|
 | Does `discoverAllTestForms()` return `<solution>.<form>` base names such that `runFormCypressTests` must receive the raw entry, or the bare form name? | Coding agent | resolved: the raw entry is passed unchanged (3.5) |
 | Should `runAllFormTests` surface a short "NG client not running" hint up front before looping? | Code review | resolved: yes, one up-front check (3.3 step 3) |
-| Should `listFormTests` / `runAllFormTests` only cover the active solution? Today they cover every spec in `cy-form/`, whatever solution it belongs to (8.3, item 4). | Product owner | open |
+| Should `listFormTests` / `runAllFormTests` only cover the active solution? | Product owner | resolved: yes, the active solution and its modules (3.2, 8.3 item 4) |
 | Should the 5 minute MCP timeout be raised, or `runAllFormTests` made asynchronous? (8.3, item 3) | Product owner | open |
 
 ## 8. Verification
 
 ### 8.1 Automated
-- `ServoyTestingServerTest`: 223 tests pass in the class, 25 of them added for this case: tool
+- Active-solution scope: 10 more tests in `ServoyTestingServerTest` (233 in the class) cover the
+  scoping (active only, modules, duplicate module name, null module, unprefixed spec, the three
+  messages, run-all stopping). 6 tests in `CypressTestDiscoveryServiceTest` (servoy-eclipse, 47 in
+  the class) cover `discoverFormTests` itself. The server tests use the `getTestDiscovery()` and
+  `getServoyModel()` seams, no reflection.
+- `ServoyTestingServerTest`: 223 tests passed in the class before the scope change, 25 of them added for this case: tool
   presence, `@Tool` description obligations, `toFormName`, `listFormTests` formatting and
   fallbacks (empty folder, unresolved folder, no active project, no solution, model throws, spec
   lookup throws), `runAllFormTests` guards and aggregation (empty, NG client not ready, all forms
@@ -340,9 +356,16 @@ Fixtures: 7 specs in `cy-form/` (5 `btn_fixture`, 2 `testscenario1`) and 33 file
 3. **MCP timeout (open).** The `servoy-test` timeout is 300000 ms. Running 13 forms takes longer.
    The run still finishes inside Developer and writes the full report to the Cypress console, but
    the agent's call times out and it falls back to `npx cypress run`.
-4. **Discovery covers every solution (open).** Both tools read the whole `cy-form/` folder, so
-   with `test_webcomponents2` active they still list and run the `btn_fixture` and `testscenario1`
-   specs. This matches `discoverAllTestForms()` and the IDE action.
+4. **Discovery is scoped to the active solution (fixed).** The first version read the whole
+   `cy-form/` folder, so with `test_webcomponents2` active it still listed and ran the
+   `btn_fixture` and `testscenario1` specs. Both tools now go through
+   `CypressTestDiscoveryService.discoverFormTests(solutionNames)` with the active solution and its
+   modules; the IDE action keeps using `discoverAllTestForms()`. The filter relies on the
+   `<solution>.` prefix of the spec name, so a form that later moves to another module keeps its old
+   prefix and drops out of scope. This is a cross-repo change: the method is in servoy-eclipse
+   (`com.servoy.eclipse.cypress`), so the two commits must land together. The manual check is open:
+   with `btn_fixture` active the list should show 5 specs, with `testscenario1` active it should
+   include the `fx_module` specs.
 5. **What `checkNGClientStatus` checks.** It reports "running" whenever a solution is active and
    the web server has a port; it does not look for a browser client. The "NG client not running"
    message is returned when there is no active project.

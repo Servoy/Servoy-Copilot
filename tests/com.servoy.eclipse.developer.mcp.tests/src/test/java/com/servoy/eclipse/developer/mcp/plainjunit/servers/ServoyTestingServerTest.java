@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -1234,6 +1235,47 @@ public class ServoyTestingServerTest {
 		};
 	}
 
+	/**
+	 * A server whose model seam and discovery seam return the supplied values: no
+	 * reflection, no workspace.
+	 */
+	private static ServoyTestingServer serverDiscovering(IDeveloperServoyModel model, List<String> discovered) {
+		return new ServoyTestingServer() {
+			@Override
+			protected IDeveloperServoyModel getServoyModel() {
+				return model;
+			}
+
+			@Override
+			protected CypressTestDiscoveryService getTestDiscovery() {
+				return new CypressTestDiscoveryService() {
+					@Override
+					public List<String> discoverAllTestForms() {
+						return discovered;
+					}
+				};
+			}
+		};
+	}
+
+	/**
+	 * A model whose active solution is {@code solutionName} and whose modules carry
+	 * the given names.
+	 */
+	private static IDeveloperServoyModel modelWithSolutionAndModules(String solutionName, String... moduleNames) {
+		IDeveloperServoyModel model = modelWithSolution(solutionName);
+		ServoyProject[] modules = new ServoyProject[moduleNames.length];
+		for (int i = 0; i < moduleNames.length; i++) {
+			ServoyProject module = mock(ServoyProject.class);
+			Solution solution = mock(Solution.class);
+			lenient().when(module.getSolution()).thenReturn(solution);
+			lenient().when(solution.getName()).thenReturn(moduleNames[i]);
+			modules[i] = module;
+		}
+		lenient().when(model.getModulesOfActiveProject()).thenReturn(modules);
+		return model;
+	}
+
 	/** A model whose active project is {@code null}. */
 	private static IDeveloperServoyModel modelWithNoActiveProject() {
 		IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
@@ -2342,7 +2384,7 @@ public class ServoyTestingServerTest {
 		void emptyNamesResolvedFolder(@TempDir Path tmp) {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			when(discovery.discoverFormTests(any())).thenReturn(Collections.emptyList());
 			Path cyForm = tmp.resolve("cy-form");
 			when(gen.getFormSpecDir()).thenReturn(cyForm);
 			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
@@ -2358,7 +2400,7 @@ public class ServoyTestingServerTest {
 		void emptyUnresolvedFolderNamesLiteralPath() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			when(discovery.discoverFormTests(any())).thenReturn(Collections.emptyList());
 			when(gen.getFormSpecDir()).thenReturn(null);
 			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
 			setField(server, "testDiscovery", discovery);
@@ -2376,7 +2418,7 @@ public class ServoyTestingServerTest {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
 			Path cyForm = tmp.resolve("cy-form");
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("mysolution.myform", "mysolution.other"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("mysolution.myform", "mysolution.other"));
 			when(gen.getFormSpecDir()).thenReturn(cyForm);
 			when(gen.findExistingSpecFile("mysolution.myform", "mysolution"))
 					.thenReturn(cyForm.resolve("mysolution.myform.spec.cy.js"));
@@ -2403,7 +2445,7 @@ public class ServoyTestingServerTest {
 		void singularAndFallbackToBaseName(@TempDir Path tmp) {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.lonely"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.lonely"));
 			when(gen.getFormSpecDir()).thenReturn(tmp.resolve("cy-form"));
 			// no on-disk file resolves for this entry -> the raw base name is shown
 			when(gen.findExistingSpecFile("sol.lonely", "sol")).thenReturn(null);
@@ -2423,7 +2465,7 @@ public class ServoyTestingServerTest {
 		@DisplayName("listFormTests marshals a thrown exception into 'Error: <message>'")
 		void wrapsException() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
-			when(discovery.discoverAllTestForms()).thenThrow(new RuntimeException("discovery blew up"));
+			when(discovery.discoverFormTests(any())).thenThrow(new RuntimeException("discovery blew up"));
 			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
 			setField(server, "testDiscovery", discovery);
 
@@ -2435,7 +2477,7 @@ public class ServoyTestingServerTest {
 		void listsEntriesWithoutDirectoryLineWhenFolderUnresolved() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.only"));
 			when(gen.getFormSpecDir()).thenReturn(null);
 			when(gen.findExistingSpecFile("sol.only", "sol")).thenReturn(Path.of("sol.only.spec.cy.js"));
 			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
@@ -2456,17 +2498,19 @@ public class ServoyTestingServerTest {
 		void resolvesSpecFileWithNullSolutionWhenNoActiveProject() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			// an unprefixed spec has no owner, so it stays in scope when no active solution
+			// can be resolved
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("legacy"));
 			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
-			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.ts"));
+			when(gen.findExistingSpecFile("legacy", null)).thenReturn(Path.of("legacy.spec.cy.ts"));
 			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specGenerator", gen);
 
 			String result = server.listFormTests();
-			assertTrue(result.contains("- **sol.only** → `sol.only.spec.cy.ts`"),
+			assertTrue(result.contains("- **legacy** → `legacy.spec.cy.ts`"),
 					"must resolve the spec with a null solution name: " + result);
-			verify(gen).findExistingSpecFile("sol.only", null);
+			verify(gen).findExistingSpecFile("legacy", null);
 		}
 
 		@Test
@@ -2478,16 +2522,16 @@ public class ServoyTestingServerTest {
 			ServoyProject project = mock(ServoyProject.class);
 			when(model.getActiveProject()).thenReturn(project);
 			when(project.getSolution()).thenReturn(null);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("legacy"));
 			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
-			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.js"));
+			when(gen.findExistingSpecFile("legacy", null)).thenReturn(Path.of("legacy.spec.cy.js"));
 			ServoyTestingServer server = serverWith(model);
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specGenerator", gen);
 
 			String result = server.listFormTests();
-			assertTrue(result.contains("`sol.only.spec.cy.js`"), "must still resolve the spec file: " + result);
-			verify(gen).findExistingSpecFile("sol.only", null);
+			assertTrue(result.contains("`legacy.spec.cy.js`"), "must still resolve the spec file: " + result);
+			verify(gen).findExistingSpecFile("legacy", null);
 		}
 
 		@Test
@@ -2497,9 +2541,9 @@ public class ServoyTestingServerTest {
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
 			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
 			when(model.getActiveProject()).thenThrow(new RuntimeException("model unavailable"));
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("legacy"));
 			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
-			when(gen.findExistingSpecFile("sol.only", null)).thenReturn(Path.of("sol.only.spec.cy.js"));
+			when(gen.findExistingSpecFile("legacy", null)).thenReturn(Path.of("legacy.spec.cy.js"));
 			ServoyTestingServer server = serverWith(model);
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specGenerator", gen);
@@ -2508,7 +2552,7 @@ public class ServoyTestingServerTest {
 			org.junit.jupiter.api.Assertions.assertAll(
 					() -> assertTrue(result.startsWith("**Form Tests** (1 file)"),
 							"must not turn the model failure into an error: " + result),
-					() -> assertTrue(result.contains("`sol.only.spec.cy.js`"), "must still list the spec: " + result));
+					() -> assertTrue(result.contains("`legacy.spec.cy.js`"), "must still list the spec: " + result));
 		}
 
 		@Test
@@ -2516,7 +2560,7 @@ public class ServoyTestingServerTest {
 		void fallsBackToBaseNameWhenSpecLookupThrows() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.one", "sol.two"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.one", "sol.two"));
 			when(gen.getFormSpecDir()).thenReturn(Path.of("cy-form"));
 			when(gen.findExistingSpecFile("sol.one", "sol")).thenThrow(new RuntimeException("lookup failed"));
 			when(gen.findExistingSpecFile("sol.two", "sol")).thenReturn(Path.of("sol.two.spec.cy.js"));
@@ -2534,6 +2578,127 @@ public class ServoyTestingServerTest {
 	}
 
 	@Nested
+	@DisplayName("SVY-21663 only the active solution and its modules are listed and run")
+	class ActiveSolutionScope {
+		@Test
+		@DisplayName("listFormTests lists the active solution's specs and leaves out other solutions' specs")
+		void listsOnlyActiveSolutionSpecs() {
+			String result = serverDiscovering(modelWithSolution("sol"), List.of("sol.a", "other.b", "sol.c"))
+					.listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (2 files)"),
+							"must count only the in-scope specs: " + result),
+					() -> assertTrue(result.contains("**sol.a**") && result.contains("**sol.c**"),
+							"must list the active solution's specs: " + result),
+					() -> assertFalse(result.contains("other.b"), "must not list another solution's spec: " + result));
+		}
+
+		@Test
+		@DisplayName("specs of the active solution's modules are listed too")
+		void listsModuleSpecs() {
+			String result = serverDiscovering(modelWithSolutionAndModules("main", "modA", "modB"),
+					List.of("main.f1", "modA.f2", "other.f3")).listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (2 files)"),
+							"must count main and module specs: " + result),
+					() -> assertTrue(result.contains("**main.f1**") && result.contains("**modA.f2**"),
+							"must list the main and the module spec: " + result),
+					() -> assertFalse(result.contains("other.f3"),
+							"must not list a spec outside the solution: " + result));
+		}
+
+		@Test
+		@DisplayName("a module with the same name as the active solution does not duplicate its specs")
+		void moduleNamedLikeActiveSolutionIsNotDuplicated() {
+			String result = serverDiscovering(modelWithSolutionAndModules("sol", "sol"), List.of("sol.a"))
+					.listFormTests();
+			assertTrue(result.contains("**Form Tests** (1 file)"), "must list the spec once: " + result);
+		}
+
+		@Test
+		@DisplayName("a null module and a module without a solution are ignored")
+		void ignoresNullAndSolutionlessModules() {
+			IDeveloperServoyModel model = modelWithSolution("sol");
+			ServoyProject solutionless = mock(ServoyProject.class);
+			lenient().when(model.getModulesOfActiveProject()).thenReturn(new ServoyProject[] { null, solutionless });
+
+			String result = serverDiscovering(model, List.of("sol.a", "x.b")).listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (1 file)"),
+							"must list only the active solution: " + result),
+					() -> assertTrue(result.contains("**sol.a**"), "must list the active solution's spec: " + result),
+					() -> assertFalse(result.contains("x.b"), "must not list the other spec: " + result));
+		}
+
+		@Test
+		@DisplayName("a spec without a solution prefix stays in scope, because its owner cannot be told")
+		void keepsUnprefixedSpecs() {
+			String result = serverDiscovering(modelWithSolution("sol"), List.of("legacy", "other.b")).listFormTests();
+			org.junit.jupiter.api.Assertions.assertAll(
+					() -> assertTrue(result.contains("**Form Tests** (1 file)"),
+							"must keep the unprefixed spec: " + result),
+					() -> assertTrue(result.contains("**legacy**"), "must list the unprefixed spec: " + result),
+					() -> assertFalse(result.contains("other.b"), "must not list another solution's spec: " + result));
+		}
+
+		@Test
+		@DisplayName("specs exist but none belong to the active solution: the message says so and is not 'folder empty'")
+		void messageWhenNoSpecBelongsToActiveSolution() {
+			String result = serverDiscovering(modelWithSolution("sol"), List.of("other.b", "other.c")).listFormTests();
+			org.junit.jupiter.api.Assertions
+					.assertAll(
+							() -> assertTrue(
+									result.startsWith(
+											"No form tests found for the active solution 'sol' or its modules."),
+									"must name the active solution: " + result),
+							() -> assertTrue(result.contains("2 form test(s) of other solutions"),
+									"must say how many other specs were left out: " + result),
+							() -> assertFalse(result.startsWith("No form tests found in"),
+									"must not read like an empty folder: " + result));
+		}
+
+		@Test
+		@DisplayName("no active solution: prefixed specs are out of scope and the message asks to activate a solution")
+		void messageWhenNoActiveSolution() {
+			String result = serverDiscovering(modelWithNoActiveProject(), List.of("sol.a")).listFormTests();
+			assertTrue(result.startsWith("No active Servoy solution, so no form tests are in scope. 1 form test(s)"),
+					"must say there is no active solution: " + result);
+		}
+
+		@Test
+		@DisplayName("the model failing while resolving the active solution gives the same 'no active solution' message")
+		void messageWhenModelThrows() {
+			IDeveloperServoyModel model = mock(IDeveloperServoyModel.class);
+			when(model.getActiveProject()).thenThrow(new RuntimeException("model unavailable"));
+
+			String result = serverDiscovering(model, List.of("sol.a")).listFormTests();
+			assertTrue(result.startsWith("No active Servoy solution"),
+					"must not turn the failure into an error: " + result);
+		}
+
+		@Test
+		@DisplayName("an empty folder still says 'No form tests found in <folder>'")
+		void emptyFolderMessageIsUnchanged() {
+			String result = serverDiscovering(modelWithSolution("sol"), Collections.emptyList()).listFormTests();
+			assertTrue(result.startsWith("No form tests found in "), "must keep the empty-folder message: " + result);
+		}
+
+		@Test
+		@DisplayName("runAllFormTests stops with the same message when no spec belongs to the active solution")
+		void runAllStopsWhenNothingInScope() {
+			String result = serverDiscovering(modelWithSolution("sol"), List.of("other.b")).runAllFormTests();
+			org.junit.jupiter.api.Assertions
+					.assertAll(
+							() -> assertTrue(
+									result.startsWith(
+											"No form tests found for the active solution 'sol' or its modules."),
+									"must name the active solution: " + result),
+							() -> assertTrue(result.contains("1 form test(s) of other solutions"),
+									"must say what was left out: " + result));
+		}
+	}
+
+	@Nested
 	@DisplayName("SVY-21663 runAllFormTests guards / aggregation (collaborators mocked)")
 	class RunAllFormTests {
 		@Test
@@ -2543,9 +2708,9 @@ public class ServoyTestingServerTest {
 			FormSpecGenerator gen = mock(FormSpecGenerator.class);
 			FormSpecRunner runner = mock(FormSpecRunner.class);
 			FormPreviewService preview = mock(FormPreviewService.class);
-			when(discovery.discoverAllTestForms()).thenReturn(Collections.emptyList());
+			when(discovery.discoverFormTests(any())).thenReturn(Collections.emptyList());
 			when(gen.getFormSpecDir()).thenReturn(null);
-			ServoyTestingServer server = new ServoyTestingServer();
+			ServoyTestingServer server = serverWith(modelWithNoActiveProject());
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specGenerator", gen);
 			setField(server, "specRunner", runner);
@@ -2563,9 +2728,9 @@ public class ServoyTestingServerTest {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecRunner runner = mock(FormSpecRunner.class);
 			FormPreviewService preview = mock(FormPreviewService.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.form1"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.form1"));
 			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is NOT running.");
-			ServoyTestingServer server = new ServoyTestingServer();
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specRunner", runner);
 			setField(server, "formPreview", preview);
@@ -2585,11 +2750,11 @@ public class ServoyTestingServerTest {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecRunner runner = mock(FormSpecRunner.class);
 			FormPreviewService preview = mock(FormPreviewService.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.form1", "sol.form2"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.form1", "sol.form2"));
 			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
 			when(runner.runFormCypressTests("sol.form1", true)).thenReturn("form1: 1 passing");
 			when(runner.runFormCypressTests("sol.form2", true)).thenReturn("form2: 2 passing");
-			ServoyTestingServer server = new ServoyTestingServer();
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specRunner", runner);
 			setField(server, "formPreview", preview);
@@ -2613,11 +2778,11 @@ public class ServoyTestingServerTest {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecRunner runner = mock(FormSpecRunner.class);
 			FormPreviewService preview = mock(FormPreviewService.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.bad", "sol.good"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.bad", "sol.good"));
 			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
 			when(runner.runFormCypressTests("sol.bad", true)).thenThrow(new RuntimeException("run failed"));
 			when(runner.runFormCypressTests("sol.good", true)).thenReturn("good: 1 passing");
-			ServoyTestingServer server = new ServoyTestingServer();
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specRunner", runner);
 			setField(server, "formPreview", preview);
@@ -2637,8 +2802,8 @@ public class ServoyTestingServerTest {
 		@DisplayName("runAllFormTests marshals a top-level thrown exception into 'Error: <message>'")
 		void wrapsTopLevelException() {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
-			when(discovery.discoverAllTestForms()).thenThrow(new RuntimeException("discovery exploded"));
-			ServoyTestingServer server = new ServoyTestingServer();
+			when(discovery.discoverFormTests(any())).thenThrow(new RuntimeException("discovery exploded"));
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
 			setField(server, "testDiscovery", discovery);
 
 			assertEquals("Error: discovery exploded", server.runAllFormTests());
@@ -2650,10 +2815,10 @@ public class ServoyTestingServerTest {
 			CypressTestDiscoveryService discovery = mock(CypressTestDiscoveryService.class);
 			FormSpecRunner runner = mock(FormSpecRunner.class);
 			FormPreviewService preview = mock(FormPreviewService.class);
-			when(discovery.discoverAllTestForms()).thenReturn(List.of("sol.only"));
+			when(discovery.discoverFormTests(any())).thenReturn(List.of("sol.only"));
 			when(preview.checkNGClientStatus()).thenReturn("Servoy Developer is running.");
 			when(runner.runFormCypressTests("sol.only", true)).thenReturn("only: 1 passing");
-			ServoyTestingServer server = new ServoyTestingServer();
+			ServoyTestingServer server = serverWith(modelWithSolution("sol"));
 			setField(server, "testDiscovery", discovery);
 			setField(server, "specRunner", runner);
 			setField(server, "formPreview", preview);
