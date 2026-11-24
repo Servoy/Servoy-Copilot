@@ -52,8 +52,9 @@ public class ServicesProvider implements IServicesProvider {
 					ServicesProvider::resolvePassword, ServicesProvider::isServerReady, ServicesProvider::waitForServer,
 					OpenCodeUtil::getActiveProjectPath, ServicesProvider::resolveBundleResource,
 					OpenCodeUtil::getActiveSolutionName,
-					() -> new KiroUsageSnapshotReader(OpenCodeUtil::getServoyOpencodeConfigDir)
-						.readJson(System.currentTimeMillis())),
+					() -> new KiroUsageSnapshotReader(
+						() -> KiroUsageSnapshotReader.defaultCandidateDirs(OpenCodeUtil.getServoyOpencodeConfigDir()), true)
+							.readJson(System.currentTimeMillis())),
 					OpencodeChatServlet.BASE_PATH + "/*"));
 			return set;
 		}

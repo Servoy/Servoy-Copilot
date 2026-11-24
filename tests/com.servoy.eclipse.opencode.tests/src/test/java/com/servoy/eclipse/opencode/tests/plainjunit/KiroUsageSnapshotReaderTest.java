@@ -75,6 +75,28 @@ class KiroUsageSnapshotReaderTest {
 	}
 
 	@Test
+	@DisplayName("with several candidate dirs the most recently written snapshot wins")
+	void newestCandidateDirWins() throws IOException {
+		Path older = Files.createDirectory(dir.resolve("older"));
+		Path newer = Files.createDirectory(dir.resolve("newer"));
+		Path missing = dir.resolve("missing");
+		Files.writeString(older.resolve("kiro-usage.json"), file(account(true, "111", "10000", NOW + DAY, Long.toString(NOW))));
+		Files.writeString(newer.resolve("kiro-usage.json"), file(account(true, "222", "10000", NOW + DAY, Long.toString(NOW))));
+		Files.setLastModifiedTime(older.resolve("kiro-usage.json"), java.nio.file.attribute.FileTime.fromMillis(NOW - 5 * DAY));
+		Files.setLastModifiedTime(newer.resolve("kiro-usage.json"), java.nio.file.attribute.FileTime.fromMillis(NOW - HOUR));
+		JsonNode n = MAPPER.readTree(
+			new KiroUsageSnapshotReader(() -> java.util.List.of(missing, older, newer), true).readJson(NOW));
+		assertEquals(222, n.path("used").asDouble(), 0.0001);
+	}
+
+	@Test
+	@DisplayName("no candidate dir holds a snapshot gives unavailable")
+	void noCandidateHasSnapshot() {
+		assertEquals(UNAVAILABLE,
+			new KiroUsageSnapshotReader(() -> java.util.List.of(dir.resolve("a"), dir.resolve("b")), true).readJson(NOW));
+	}
+
+	@Test
 	@DisplayName("maps a healthy account to the whitelisted numbers")
 	void mapsHealthyAccount() throws IOException {
 		long resetAt = NOW + 5 * DAY;

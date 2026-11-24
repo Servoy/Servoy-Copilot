@@ -27,6 +27,8 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,13 +64,63 @@ public class KiroUsageSnapshotReader {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	private final Supplier<Path> configDirSupplier;
+	private final Supplier<List<Path>> configDirsSupplier;
 
 	/**
-	 * @param configDirSupplier resolves the Servoy opencode config directory (may return {@code null})
+	 * @param configDirSupplier resolves the opencode config directory (may return {@code null})
 	 */
 	public KiroUsageSnapshotReader(Supplier<Path> configDirSupplier) {
-		this.configDirSupplier = configDirSupplier;
+		this.configDirsSupplier = () -> {
+			Path dir = configDirSupplier != null ? configDirSupplier.get() : null;
+			return dir != null ? List.of(dir) : List.of();
+		};
+	}
+
+	/**
+	 * @param configDirsSupplier resolves the fixed list of candidate directories; the one holding the most
+	 *            recently written {@value #FILE_NAME} is used
+	 * @param candidates marker to select this constructor
+	 */
+	public KiroUsageSnapshotReader(Supplier<List<Path>> configDirsSupplier, boolean candidates) {
+		this.configDirsSupplier = configDirsSupplier;
+	}
+
+	/**
+	 * The directories the kiro-auth plugin may write its snapshot to: its {@code KIRO_CONFIG_DIR} override,
+	 * the Servoy opencode config dir, and the opencode default config dirs ({@code XDG_CONFIG_HOME},
+	 * {@code ~/.config}, {@code %APPDATA%}). Fixed list; never a client-supplied path.
+	 */
+	public static List<Path> defaultCandidateDirs(Path servoyConfigDir) {
+		List<Path> dirs = new ArrayList<>();
+		addDir(dirs, System.getenv("KIRO_CONFIG_DIR")); //$NON-NLS-1$
+		if (servoyConfigDir != null) {
+			dirs.add(servoyConfigDir);
+		}
+		String xdg = System.getenv("XDG_CONFIG_HOME"); //$NON-NLS-1$
+		if (xdg != null && !xdg.isBlank()) {
+			addDir(dirs, Path.of(xdg, "opencode").toString()); //$NON-NLS-1$
+		}
+		String home = System.getProperty("user.home"); //$NON-NLS-1$
+		if (home != null && !home.isBlank()) {
+			addDir(dirs, Path.of(home, ".config", "opencode").toString()); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		String appData = System.getenv("APPDATA"); //$NON-NLS-1$
+		if (appData != null && !appData.isBlank()) {
+			addDir(dirs, Path.of(appData, "opencode").toString()); //$NON-NLS-1$
+		}
+		return dirs;
+	}
+
+	private static void addDir(List<Path> dirs, String dir) {
+		if (dir == null || dir.isBlank()) {
+			return;
+		}
+		try {
+			dirs.add(Path.of(dir));
+		}
+		catch (RuntimeException e) {
+			// invalid path string in the environment: ignored
+		}
 	}
 
 	/**
@@ -76,13 +128,37 @@ public class KiroUsageSnapshotReader {
 	 */
 	public String readJson(long nowMillis) {
 		try {
-			Path dir = configDirSupplier != null ? configDirSupplier.get() : null;
-			return read(dir, nowMillis);
+			List<Path> dirs = configDirsSupplier != null ? configDirsSupplier.get() : null;
+			return read(newest(dirs), nowMillis);
 		}
 		catch (RuntimeException e) {
 			logWarning(e);
 			return UNAVAILABLE_JSON;
 		}
+	}
+
+	private static Path newest(List<Path> dirs) {
+		Path best = null;
+		long bestTime = Long.MIN_VALUE;
+		if (dirs == null) {
+			return null;
+		}
+		for (Path dir : dirs) {
+			try {
+				Path file = dir != null ? dir.resolve(FILE_NAME) : null;
+				if (file != null && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+					long time = Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toMillis();
+					if (time > bestTime) {
+						bestTime = time;
+						best = dir;
+					}
+				}
+			}
+			catch (IOException | RuntimeException e) {
+				// candidate unreadable: skipped
+			}
+		}
+		return best;
 	}
 
 	/**
