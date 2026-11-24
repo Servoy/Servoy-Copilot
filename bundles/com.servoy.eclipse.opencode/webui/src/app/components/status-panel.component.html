@@ -66,6 +66,45 @@
     </div>
   </div>
 
+  @if (creditsView(); as credits) {
+    <div class="usage">
+      <div class="usage-title">Usage - this month</div>
+      <div class="fact">
+        <span class="fact-label">Credits</span>
+        <span class="fact-value" [class.stale]="credits.state === 'stale'">{{ credits.value }}</span>
+      </div>
+      @if (credits.bar) {
+        <div
+          class="usage-bar"
+          role="progressbar"
+          aria-label="Credits used"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          [attr.aria-valuenow]="credits.percent"
+        >
+          <div
+            class="usage-fill"
+            [class.high]="credits.level === 'high'"
+            [class.danger]="credits.level === 'danger'"
+            [style.width.%]="credits.percent"
+          ></div>
+        </div>
+        <div class="usage-left">{{ credits.left }}</div>
+      }
+    </div>
+  }
+
+  <div class="session-usage">
+    <div class="fact">
+      <span class="fact-label">This session</span>
+      <span class="fact-value">{{ sessionTokensText() }}</span>
+    </div>
+    <div class="fact">
+      <span class="fact-label">Context</span>
+      <span class="fact-value" [class.high]="usage.context().high">{{ contextText() }}</span>
+    </div>
+  </div>
+
   <div class="mcp">
     <button
       type="button"

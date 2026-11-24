@@ -25,6 +25,8 @@ describe('AppComponent', () => {
     providers: ReturnType<typeof vi.fn>;
     solution: ReturnType<typeof vi.fn>;
   };
+    models: ReturnType<typeof vi.fn>;
+    usage: ReturnType<typeof vi.fn>;
 
   function setQuery(query: string): void {
     history.replaceState(null, '', window.location.pathname + query);
@@ -76,7 +78,9 @@ describe('AppComponent', () => {
       health: vi.fn(() => of({ healthy: true, version: '2.0.0' })),
       mcp: vi.fn(() => of({})),
       providers: vi.fn(() => of({ connected: ['kiro'], default: {} })),
-      solution: vi.fn(() => of('crm_app'))
+      solution: vi.fn(() => of('crm_app')),
+      models: vi.fn(() => of([{ providerID: 'kiro', id: 'm1', context: 100000 }])),
+      usage: vi.fn(() => of({ available: false }))
     };
     configure?.(status);
     await TestBed.configureTestingModule({
@@ -812,3 +816,53 @@ describe('AppComponent', () => {
     });
   });
 });
+
+  describe('context ring', () => {
+    const ring = () => q<HTMLButtonElement>('button.ctx-ring');
+    const msgs = () => store['messages'] as ReturnType<typeof signal<unknown[]>>;
+    const asst = (id: string, input: number) => ({
+      info: { id, role: 'assistant', tokens: { input, output: 0 }, model: { id: 'm1', providerID: 'kiro' } },
+      parts: []
+    });
+
+    beforeEach(async () => setup());
+
+    it('is absent while the session has no usage', () => {
+      expect(ring()).toBeNull();
+    });
+
+    it('appears and updates with a larger assistant message without a reload', async () => {
+      msgs().set([asst('a1', 40000)]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(ring()!.getAttribute('aria-label')).toBe('Context 40% used. Open status');
+      msgs().update((m) => [...m, asst('a2', 85000)]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(ring()!.getAttribute('aria-label')).toContain('Context 85% used');
+      expect(ring()!.classList.contains('high')).toBe(true);
+    });
+
+    it('toggles the status panel when clicked', async () => {
+      msgs().set([asst('a1', 40000)]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(component.statusOpen()).toBe(true);
+      await click(ring()!);
+      expect(component.statusOpen()).toBe(false);
+      await click(ring()!);
+      expect(component.statusOpen()).toBe(true);
+    });
+
+    it('is not rendered in a subagent view', async () => {
+      msgs().set([asst('a1', 40000)]);
+      (store['activeIsSubagent'] as ReturnType<typeof signal<boolean>>).set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(ring()).toBeNull();
+    });
+  });

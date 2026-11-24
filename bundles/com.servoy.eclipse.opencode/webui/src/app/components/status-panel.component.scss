@@ -150,6 +150,54 @@
   color: var(--svy-muted, #6b7075);
 }
 
+.usage,
+.session-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--svy-line2);
+}
+
+.usage-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.usage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--svy-line2);
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+  background: var(--svy-ok);
+
+  &.high {
+    background: var(--svy-accent, #f5a623);
+  }
+
+  &.danger {
+    background: var(--svy-danger, #d1242f);
+  }
+}
+
+.usage-left {
+  font-size: 12px;
+  color: var(--svy-muted, #6b7075);
+}
+
+.fact-value.high {
+  color: var(--svy-acc-fg);
+}
+
+.fact-value.stale {
+  color: var(--svy-muted, #6b7075);
+  font-style: italic;
+}
+
 .spinner {
   width: 12px;
   height: 12px;

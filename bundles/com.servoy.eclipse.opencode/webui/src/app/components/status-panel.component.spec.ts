@@ -15,6 +15,8 @@ interface FlushOpts {
   mcpData?: McpData;
   providerData?: ProviderData;
   solution?: unknown;
+  usage?: unknown;
+  models?: unknown;
 }
 
 describe('StatusPanelComponent', () => {
@@ -32,7 +34,7 @@ describe('StatusPanelComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: ChatStore, useValue: { messages, streaming } }
+        { provide: ChatStore, useValue: { messages, streaming, activeSessionId: signal<string | null>('s1') } }
       ]
     });
     fixture = TestBed.createComponent(StatusPanelComponent);
@@ -49,6 +51,14 @@ describe('StatusPanelComponent', () => {
     httpMock.expectOne('rest_api/mcp').flush({ data: opts.mcpData ?? [] });
     httpMock.expectOne('rest_api/provider').flush({ data: opts.providerData ?? [] });
     httpMock.expectOne('solution').flush(opts.solution ?? { name: null });
+    flushUsage(opts);
+  }
+
+  function flushUsage(opts: FlushOpts = {}): void {
+    const modelReqs = httpMock.match('rest_api/model');
+    expect(modelReqs.length).toBeGreaterThan(0);
+    modelReqs.forEach((r) => r.flush({ data: opts.models ?? [] }));
+    httpMock.expectOne('usage').flush(opts.usage ?? { available: false });
   }
 
   const KIRO: ProviderData = [{ id: 'kiro', activation: 'auto' }];
@@ -70,9 +80,9 @@ describe('StatusPanelComponent', () => {
   const headDot = (): HTMLElement => q<HTMLElement>('.summary > .dot')!;
   const toggle = (): HTMLButtonElement => q<HTMLButtonElement>('button.mcp-toggle')!;
   const factValues = (): string[] =>
-    Array.from(el().querySelectorAll('.fact .fact-value')).map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim());
+    Array.from(el().querySelectorAll('.facts .fact-value')).map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim());
   const factLabels = (): string[] =>
-    Array.from(el().querySelectorAll('.fact .fact-label')).map((e) => (e.textContent ?? '').trim());
+    Array.from(el().querySelectorAll('.facts .fact-label')).map((e) => (e.textContent ?? '').trim());
   const mcpRowsDom = (): Array<{ name: string; state: string }> =>
     Array.from(el().querySelectorAll('.mcp-row')).map((r) => ({
       name: (r.querySelector('.mcp-name')?.textContent ?? '').trim(),
@@ -176,6 +186,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [] });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush({ name: null });
+      flushUsage();
       fixture.detectChanges();
       expect(component.loadError()).toBe(true);
       expect(component.loading()).toBe(false);
@@ -231,6 +242,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [{ name: 'a', status: { status: 'connected' } }] });
       const providerReq = httpMock.expectOne('rest_api/provider');
       httpMock.expectOne('solution').flush({ name: null });
+      flushUsage();
       expect(component.initialized()).toBe(true);
       expect(component.overall()).toBe('ok');
       providerReq.flush({ data: [] });
@@ -403,7 +415,7 @@ describe('StatusPanelComponent', () => {
       initReady();
       expect(factLabels()).toEqual(['Solution', 'Model', 'Agents']);
       const order = Array.from(q('.panel')!.children).map((c) => c.className.split(' ')[0]);
-      expect(order).toEqual(['summary', 'facts', 'mcp']);
+      expect(order).toEqual(['summary', 'facts', 'session-usage', 'mcp']);
     });
 
     it('shows the solution name returned by the endpoint and a green dot', () => {
@@ -427,6 +439,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [] });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush('x', { status: 500, statusText: 'err' });
+      flushUsage();
       fixture.detectChanges();
       expect(factValues()[0]).toBe('-');
       expect(component.overall()).toBe('ok');
@@ -503,6 +516,8 @@ describe('StatusPanelComponent', () => {
       expect(el().querySelectorAll('.fact')[2].querySelector('.dot')!.classList.contains('warn')).toBe(true);
       streaming.set(false);
       fixture.detectChanges();
+      httpMock.match('usage').forEach((r) => r.flush({ available: false }));
+      httpMock.match('rest_api/session/s1/message').forEach((r) => r.flush({ messages: [] }));
       expect(factValues()[2]).toBe('idle');
       expect(q('.spinner')).toBeNull();
     });
@@ -510,7 +525,7 @@ describe('StatusPanelComponent', () => {
     it('sets the title of the solution and model values', () => {
       messages.set([msg('assistant', { id: 'm1' })]);
       initReady({ solution: { name: 'crm_app' } });
-      const values = Array.from(el().querySelectorAll('.fact .fact-value')) as HTMLElement[];
+      const values = Array.from(el().querySelectorAll('.facts .fact-value')) as HTMLElement[];
       expect(values[0].getAttribute('title')).toBe('crm_app');
       expect(values[1].getAttribute('title')).toBe('m1');
     });
@@ -582,7 +597,154 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush('x', { status: 500, statusText: 'err' });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush({ name: null });
+      flushUsage();
       expect(component.mcpRows()).toEqual([]);
+    });
+  });
+
+  describe('usage blocks', () => {
+    const NOW = Date.now();
+    const freshUsage = (extra: Record<string, unknown> = {}) => ({
+      available: true,
+      used: 381.29,
+      limit: 10000,
+      pct: 4,
+      resetAt: NOW + 5 * 86_400_000,
+      updatedAt: NOW - 60_000,
+      stale: false,
+      ...extra
+    });
+    const resetLabel = (ms: number): string =>
+      new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(ms));
+    const asst = (id: string, tokens: unknown, model: unknown = { id: 'm1', providerID: 'kiro' }) => ({
+      info: { id, role: 'assistant', tokens, model },
+      parts: []
+    });
+    const usageText = (): string => text('.usage');
+    const sessionVals = (): string[] =>
+      Array.from(el().querySelectorAll('.session-usage .fact-value')).map((e) => (e.textContent ?? '').trim());
+
+    it('renders the Usage block between facts and mcp with the fresh credits text', () => {
+      const u = freshUsage();
+      initReady({ usage: u });
+      const order = Array.from(q('.panel')!.children).map((c) => c.className.split(' ')[0]);
+      expect(order).toEqual(['summary', 'facts', 'usage', 'session-usage', 'mcp']);
+      expect(text('.usage-title')).toBe('Usage - this month');
+      expect(usageText()).toContain('Credits');
+      expect(usageText()).toContain('381 / 10,000');
+      expect(usageText()).toContain('9,619 left - resets ' + resetLabel(u.resetAt));
+    });
+
+    it('renders a progressbar with the used percentage', () => {
+      initReady({ usage: freshUsage() });
+      const bar = q('.usage [role="progressbar"]')!;
+      expect(bar.getAttribute('aria-label')).toBe('Credits used');
+      expect(bar.getAttribute('aria-valuemin')).toBe('0');
+      expect(bar.getAttribute('aria-valuemax')).toBe('100');
+      expect(bar.getAttribute('aria-valuenow')).toBe('4');
+    });
+
+    it('uses the high and danger fill levels at 80 and 100 percent', () => {
+      initReady({ usage: freshUsage({ used: 8500 }) });
+      expect(q('.usage-fill')!.classList.contains('high')).toBe(true);
+      component.refresh();
+      flushAll({ providerData: KIRO, usage: freshUsage({ used: 10000 }) });
+      fixture.detectChanges();
+      expect(q('.usage-fill')!.classList.contains('danger')).toBe(true);
+    });
+
+    it('shows not synced without bar or left text when resetAt is in the past', () => {
+      initReady({ usage: freshUsage({ resetAt: NOW - 1000 }) });
+      expect(usageText()).toContain('not synced');
+      expect(q('.usage [role="progressbar"]')).toBeNull();
+      expect(usageText()).not.toContain('left');
+      expect(q('.usage .fact-value')!.classList.contains('stale')).toBe(true);
+    });
+
+    it('shows not synced when updatedAt is older than 24 hours', () => {
+      initReady({ usage: freshUsage({ updatedAt: NOW - 25 * 3_600_000 }) });
+      expect(usageText()).toContain('not synced');
+      expect(q('.usage [role="progressbar"]')).toBeNull();
+    });
+
+    it('shows only the used value when there is no limit', () => {
+      initReady({ usage: freshUsage({ limit: undefined }) });
+      expect(q('.usage .fact-value')!.textContent!.trim()).toBe('381');
+      expect(q('.usage [role="progressbar"]')).toBeNull();
+      expect(usageText()).not.toContain('left');
+    });
+
+    it('hides the block when the snapshot is unavailable', () => {
+      initReady({ usage: { available: false } });
+      expect(q('.usage')).toBeNull();
+    });
+
+    it('hides the block when the usage request fails', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('rest_api/info').flush({ version: '2' });
+      httpMock.expectOne('rest_api/mcp').flush({ data: [] });
+      httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
+      httpMock.expectOne('solution').flush({ name: null });
+      httpMock.expectOne('rest_api/model').flush({ data: [] });
+      httpMock.expectOne('usage').flush('x', { status: 500, statusText: 'err' });
+      fixture.detectChanges();
+      expect(q('.usage')).toBeNull();
+    });
+
+    it('hides the block when the viewed session uses a non-Kiro provider', () => {
+      messages.set([asst('a1', { input: 1, output: 1 }, { id: 'gpt', providerID: 'openai' })]);
+      initReady({ usage: freshUsage() });
+      expect(q('.usage')).toBeNull();
+    });
+
+    it('has no monthly tokens row, currency sign or dollar amount', () => {
+      messages.set([asst('a1', { input: 10, output: 5 })]);
+      initReady({ usage: freshUsage() });
+      const content = el().textContent!;
+      expect(content).not.toMatch(/[\$\u20AC]/);
+      expect(usageText()).not.toMatch(/tokens/i);
+    });
+
+    it('shows This session as the formatted token sum, excluding cache', () => {
+      messages.set([
+        asst('a1', { input: 40000, output: 4000, reasoning: 0, cache: { read: 900000, write: 5 } }),
+        asst('a2', { input: 15000, output: 4000, reasoning: 1000, cache: { read: 1, write: 1 } })
+      ]);
+      initReady();
+      expect(sessionVals()[0]).toBe('64k tok');
+    });
+
+    it('shows dashes for session tokens and context when there is no usage', () => {
+      initReady();
+      expect(sessionVals()).toEqual(['-', '-']);
+    });
+
+    it('shows Context N% used from the model limit and no high class below 80', () => {
+      messages.set([asst('a1', { input: 40000, output: 2000, cache: { read: 0, write: 0 } })]);
+      initReady({ models: [{ id: 'm1', providerID: 'kiro', limit: { context: 100000 } }] });
+      expect(sessionVals()[1]).toBe('42% used');
+      expect(q('.session-usage .fact-value.high')).toBeNull();
+    });
+
+    it('marks the context value with the high class at 80 percent and above', () => {
+      messages.set([asst('a1', { input: 80000, output: 0 })]);
+      initReady({ models: [{ id: 'm1', providerID: 'kiro', limit: { context: 100000 } }] });
+      expect(sessionVals()[1]).toBe('80% used');
+      expect(q('.session-usage .fact-value.high')).not.toBeNull();
+    });
+
+    it('shows Context - when the model limit is unknown', () => {
+      messages.set([asst('a1', { input: 80000, output: 0 })]);
+      initReady({ models: [] });
+      expect(sessionVals()[1]).toBe('-');
+    });
+
+    it('does not throw NG0600 when usage signals change', () => {
+      initReady({ usage: freshUsage() });
+      expect(() => {
+        messages.set([asst('a1', { input: 5, output: 5 })]);
+        fixture.detectChanges();
+      }).not.toThrow();
     });
   });
 });

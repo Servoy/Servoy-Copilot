@@ -736,4 +736,61 @@ describe('ComposerComponent', () => {
       expect(drafts).toHaveLength(0);
     });
   });
+
+  describe('context ring', () => {
+    const ring = (): HTMLButtonElement | null => fixture.nativeElement.querySelector('button.ctx-ring');
+    const sendBtn = (): HTMLButtonElement => fixture.nativeElement.querySelector('button.send-btn');
+
+    function setPercent(value: number | null): void {
+      fixture.componentRef.setInput('contextPercent', value);
+      fixture.detectChanges();
+    }
+
+    it('is absent when the percent is null and does not throw', () => {
+      expect(() => setPercent(null)).not.toThrow();
+      expect(ring()).toBeNull();
+      expect(sendBtn()).not.toBeNull();
+    });
+
+    it('is present with an accessible name and title when the percent is known', () => {
+      expect(() => setPercent(42)).not.toThrow();
+      expect(ring()!.getAttribute('aria-label')).toBe('Context 42% used. Open status');
+      expect(ring()!.getAttribute('title')).toBe('Context 42% used');
+      expect(ring()!.getAttribute('type')).toBe('button');
+      expect(ring()!.classList.contains('high')).toBe(false);
+    });
+
+    it('hints at a new session or compact from 80 percent, not at 79', () => {
+      setPercent(79);
+      expect(ring()!.getAttribute('title')).not.toContain('start a new session or compact');
+      expect(ring()!.getAttribute('aria-label')).not.toContain('start a new session or compact');
+      setPercent(80);
+      expect(ring()!.getAttribute('title')).toBe('Context 80% used - start a new session or compact');
+      expect(ring()!.getAttribute('aria-label')).toContain('start a new session or compact');
+      expect(ring()!.classList.contains('high')).toBe(true);
+    });
+
+    it('shows percentages over 100 and caps the ring fill', () => {
+      setPercent(103);
+      expect(ring()!.getAttribute('title')).toContain('103%');
+      expect(component.ringFill()).toBe(100);
+      const arc = ring()!.querySelector('.arc')!;
+      expect(arc.getAttribute('stroke-dasharray')).toBe('100 100');
+    });
+
+    it('emits contextClick when clicked', () => {
+      setPercent(10);
+      let clicks = 0;
+      component.contextClick.subscribe(() => clicks++);
+      ring()!.click();
+      expect(clicks).toBe(1);
+    });
+
+    it('keeps the send button unaffected by the ring', () => {
+      const before = sendBtn().outerHTML;
+      setPercent(50);
+      expect(sendBtn().outerHTML).toBe(before);
+      expect(ring()!.nextElementSibling).toBe(sendBtn());
+    });
+  });
 });

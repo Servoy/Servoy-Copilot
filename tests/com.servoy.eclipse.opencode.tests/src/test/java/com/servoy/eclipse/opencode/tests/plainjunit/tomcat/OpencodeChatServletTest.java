@@ -380,6 +380,26 @@ class OpencodeChatServletTest {
 	}
 
 	@Nested
+	class UsageRoute {
+		@Test
+		@DisplayName("only exactly '/usage' is the usage route, and it is neither an API nor a file request")
+		void usageRouteExact() {
+			assertAll(() -> assertTrue(OpencodeChatServlet.isUsageRequest("/usage")),
+					() -> assertFalse(OpencodeChatServlet.isApiRequest("/usage")),
+					() -> assertFalse(OpencodeChatServlet.isFileRequest("/usage")),
+					() -> assertFalse(OpencodeChatServlet.isUsageRequest(null)));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "", "/", "/usage/x", "/usage/", "/rest_api/usage", "/Usage", "/USAGE", "usage",
+				"/usages", "/file", "/solution" })
+		@DisplayName("every other path is not the usage route")
+		void otherPathsNotUsage(String pathInfo) {
+			assertFalse(OpencodeChatServlet.isUsageRequest(pathInfo), pathInfo);
+		}
+	}
+
+	@Nested
 	class BlockedApiPaths {
 		@ParameterizedTest
 		@ValueSource(strings = { "/rest_api/fs/read/x", "/rest_api/fs", "/rest_api/fs/", "/rest_api/FS/list",

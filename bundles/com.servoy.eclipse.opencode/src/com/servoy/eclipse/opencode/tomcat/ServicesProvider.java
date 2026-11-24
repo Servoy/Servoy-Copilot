@@ -25,6 +25,7 @@ import org.apache.tomcat.starter.IServicesProvider;
 import org.apache.tomcat.starter.ServletInstance;
 
 import com.servoy.eclipse.opencode.Activator;
+import com.servoy.eclipse.opencode.KiroUsageSnapshotReader;
 import com.servoy.eclipse.opencode.OpenCodeUtil;
 
 /**
@@ -50,7 +51,9 @@ public class ServicesProvider implements IServicesProvider {
 			set.add(new ServletInstance(new OpencodeChatServlet(ServicesProvider::resolvePort,
 					ServicesProvider::resolvePassword, ServicesProvider::isServerReady, ServicesProvider::waitForServer,
 					OpenCodeUtil::getActiveProjectPath, ServicesProvider::resolveBundleResource,
-					OpenCodeUtil::getActiveSolutionName),
+					OpenCodeUtil::getActiveSolutionName,
+					() -> new KiroUsageSnapshotReader(OpenCodeUtil::getServoyOpencodeConfigDir)
+						.readJson(System.currentTimeMillis())),
 					OpencodeChatServlet.BASE_PATH + "/*"));
 			return set;
 		}

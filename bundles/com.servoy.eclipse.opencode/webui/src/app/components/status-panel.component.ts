@@ -14,6 +14,8 @@ import { interval } from 'rxjs';
 import { McpStatusMap, ProviderStatus } from '../models/opencode.models';
 import { ChatStore } from '../services/chat-store.service';
 import { StatusService } from '../services/status.service';
+import { UsageStore } from '../services/usage-store.service';
+import { formatTokens } from '../services/usage-utils';
 
 type McpState = 'online' | 'offline' | 'disabled';
 
@@ -54,6 +56,7 @@ const MCP_ORDER: Record<McpState, number> = { offline: 0, online: 1, disabled: 2
 export class StatusPanelComponent implements OnInit {
   private readonly status = inject(StatusService);
   private readonly store = inject(ChatStore);
+  readonly usage = inject(UsageStore);
   private readonly destroyRef = inject(DestroyRef);
 
   /** How often the status is polled in the background (ms). */
@@ -144,6 +147,45 @@ export class StatusPanelComponent implements OnInit {
 
   readonly overall = computed<OverallState>(() => this.summary().state);
 
+  /** Kiro credits block; null hides it. */
+  readonly creditsView = computed(() => {
+    const c = this.usage.credits();
+    if (!c || !this.usage.creditsVisible()) {
+      return null;
+    }
+    const nf = new Intl.NumberFormat('en-US');
+    const used = nf.format(Math.round(c.used));
+    if (c.state === 'stale') {
+      return { state: c.state, value: 'not synced', bar: false, percent: 0, left: '', level: 'ok' };
+    }
+    if (c.state === 'nolimit' || c.limit === null) {
+      return { state: c.state, value: used, bar: false, percent: 0, left: '', level: 'ok' };
+    }
+    const rawPercent = (c.used / c.limit) * 100;
+    const left = nf.format(Math.max(0, Math.round(c.limit - c.used)));
+    const reset =
+      c.resetAt !== null
+        ? ` - resets ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(c.resetAt))}`
+        : '';
+    return {
+      state: c.state,
+      value: `${used} / ${nf.format(c.limit)}`,
+      bar: true,
+      percent: Math.max(0, Math.min(100, Math.round(rawPercent))),
+      left: `${left} left${reset}`,
+      level: rawPercent >= 100 ? 'danger' : rawPercent >= 80 ? 'high' : 'ok'
+    };
+  });
+
+  readonly sessionTokensText = computed(() =>
+    this.usage.hasSessionTokens() ? `${formatTokens(this.usage.sessionTokens())} tok` : '-'
+  );
+
+  readonly contextText = computed(() => {
+    const p = this.usage.context().percent;
+    return p === null ? '-' : `${p}% used`;
+  });
+
   ngOnInit(): void {
     // Fetch once immediately so the dot reflects real state without a click,
     // then keep it fresh with a lightweight background poll.
@@ -194,5 +236,7 @@ export class StatusPanelComponent implements OnInit {
     });
 
     this.status.solution().subscribe((name) => this.solutionName.set(name));
+
+    this.usage.refresh();
   }
 }

@@ -53,6 +53,24 @@ export class ComposerComponent implements OnInit {
    */
   readonly draft = input<ComposerDraft>({ text: '', attachments: [] });
 
+  /** Context fill of the viewed session in percent; null hides the ring. */
+  readonly contextPercent = input<number | null>(null);
+
+  readonly contextClick = output<void>();
+
+  /** Ring arc length (0..100), capped so a value over 100 still draws a full ring. */
+  readonly ringFill = computed(() => Math.max(0, Math.min(100, this.contextPercent() ?? 0)));
+  readonly ringHigh = computed(() => (this.contextPercent() ?? 0) >= 80);
+  readonly ringTitle = computed(() => {
+    const p = this.contextPercent();
+    if (p === null) {
+      return '';
+    }
+    return this.ringHigh()
+      ? `Context ${p}% used - start a new session or compact`
+      : `Context ${p}% used`;
+  });
+
   readonly sendMessage = output<SendPart[]>();
   readonly stop = output<void>();
   readonly draftChange = output<ComposerDraft>();

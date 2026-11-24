@@ -316,6 +316,24 @@ export interface ProviderStatus {
   default: Record<string, string>;
 }
 
+/** Context window of a model, from {@code GET /model}. */
+export interface ModelLimit {
+  providerID: string;
+  id: string;
+  context: number | null;
+}
+
+/** Whitelisted Kiro credit snapshot served by the BFF {@code GET usage} route. */
+export interface UsageSnapshot {
+  available: boolean;
+  used?: number;
+  limit?: number;
+  pct?: number;
+  resetAt?: number;
+  updatedAt?: number;
+  stale?: boolean;
+}
+
 export interface CommandInfo {
   name: string;
   description?: string;

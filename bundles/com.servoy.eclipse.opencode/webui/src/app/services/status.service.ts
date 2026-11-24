@@ -3,7 +3,14 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 
-import { HealthStatus, McpStatus, McpStatusMap, ProviderStatus } from '../models/opencode.models';
+import {
+  HealthStatus,
+  McpStatus,
+  McpStatusMap,
+  ModelLimit,
+  ProviderStatus,
+  UsageSnapshot
+} from '../models/opencode.models';
 
 /**
  * Typed wrappers over the BFF servlet's status/health endpoints (proxied from
@@ -59,6 +66,42 @@ export class StatusService {
   solution(): Observable<string | null> {
     return this.http.get<{ name?: string | null }>('solution').pipe(
       map((r) => r?.name ?? null),
+      catchError(() => of(null))
+    );
+  }
+
+  /**
+   * Context window per model. V2 {@code GET /model} returns
+   * {@code { data: [{ id, providerID, limit: { context, output } }] }}.
+   */
+  models(): Observable<ModelLimit[]> {
+    return this.http
+      .get<{ data?: Array<{ id?: string; providerID?: string; limit?: { context?: unknown } }> }>(
+        `${this.base}/model`
+      )
+      .pipe(
+        map((r) => {
+          const out: ModelLimit[] = [];
+          for (const m of r?.data ?? []) {
+            if (m?.id && m.providerID) {
+              const context = m.limit?.context;
+              out.push({
+                providerID: m.providerID,
+                id: m.id,
+                context: typeof context === 'number' && Number.isFinite(context) ? context : null
+              });
+            }
+          }
+          return out;
+        }),
+        catchError(() => of([] as ModelLimit[]))
+      );
+  }
+
+  /** Kiro credit snapshot served by the BFF itself at {@code GET usage}. */
+  usage(): Observable<UsageSnapshot | null> {
+    return this.http.get<UsageSnapshot>('usage').pipe(
+      map((r) => (r && typeof r === 'object' ? r : null)),
       catchError(() => of(null))
     );
   }

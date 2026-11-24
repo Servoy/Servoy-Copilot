@@ -15,6 +15,7 @@ import { buildAgentView } from './services/agent-view';
 import { debugEnabled } from './services/debug-log';
 import { SvyCommand, insertionText } from './services/svy-commands';
 import { ThemeService } from './services/theme.service';
+import { UsageStore } from './services/usage-store.service';
 import { FormAnswer } from './models/opencode.models';
 import { AgentFooterComponent } from './components/agent-footer.component';
 import { AgentHeaderComponent } from './components/agent-header.component';
@@ -54,6 +55,7 @@ import { StatusPanelComponent } from './components/status-panel.component';
 export class AppComponent implements OnInit {
   readonly store = inject(ChatStore);
   readonly themeService = inject(ThemeService);
+  readonly usage = inject(UsageStore);
 
   /**
    * Whether the status area is shown; the single source of truth for it. Docked and open on

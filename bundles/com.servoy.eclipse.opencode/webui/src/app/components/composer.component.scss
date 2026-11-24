@@ -103,6 +103,48 @@
   }
 }
 
+.ctx-ring {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    transform: rotate(-90deg);
+  }
+
+  circle {
+    fill: none;
+    stroke-width: 3;
+  }
+
+  .track {
+    stroke: var(--svy-muted, #9aa0a6);
+    opacity: 0.35;
+  }
+
+  .arc {
+    stroke: var(--svy-ok);
+    stroke-linecap: round;
+  }
+
+  &.high .arc {
+    stroke: var(--svy-accent, #f5a623);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-acc-fg);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
 .send-btn {
   // Idle (nothing to send): muted/greyed so it reads as inactive. It becomes
   // the accent colour via .active the moment there is text or an attachment.

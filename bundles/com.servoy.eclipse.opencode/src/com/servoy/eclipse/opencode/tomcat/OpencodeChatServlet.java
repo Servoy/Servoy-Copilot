@@ -103,6 +103,11 @@ public class OpencodeChatServlet extends HttpServlet {
 	/** BFF-owned read-only workspace file reader ({@link WorkspaceFileReader}). */
 	static final String FILE_PATH = "/file";
 
+	/** BFF-owned read-only Kiro credit snapshot (whitelisted numbers only). */
+	static final String USAGE_PATH = "/usage";
+
+	private static final String USAGE_UNAVAILABLE_JSON = "{\"available\":false}";
+
 	private static final String JSON_UTF8 = "application/json;charset=UTF-8";
 	private static final String FORBIDDEN_JSON = "{\"error\":\"forbidden\"}";
 
@@ -165,6 +170,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	private final Supplier<String> projectPathSupplier;
 	private final transient java.util.function.Function<String, URL> resourceResolver;
 	private final Supplier<String> solutionNameSupplier;
+	private final Supplier<String> usageJsonSupplier;
 
 	private transient WorkspaceFileReader fileReader = WorkspaceFileReader.createDefault();
 
@@ -222,6 +228,21 @@ public class OpencodeChatServlet extends HttpServlet {
 	public OpencodeChatServlet(IntSupplier portSupplier, Supplier<String> serverPasswordSupplier,
 			BooleanSupplier serverReadySupplier, WaitForServer waitForServer, Supplier<String> projectPathSupplier,
 			java.util.function.Function<String, URL> resourceResolver, Supplier<String> solutionNameSupplier) {
+		this(portSupplier, serverPasswordSupplier, serverReadySupplier, waitForServer, projectPathSupplier,
+				resourceResolver, solutionNameSupplier, () -> USAGE_UNAVAILABLE_JSON);
+	}
+
+	/**
+	 * Same as the 7-argument constructor, additionally taking the supplier of the
+	 * JSON answer of {@code GET /usage}. The servlet only sends what it returns.
+	 *
+	 * @param usageJsonSupplier resolves the whitelisted usage JSON
+	 */
+	public OpencodeChatServlet(IntSupplier portSupplier, Supplier<String> serverPasswordSupplier,
+			BooleanSupplier serverReadySupplier, WaitForServer waitForServer, Supplier<String> projectPathSupplier,
+			java.util.function.Function<String, URL> resourceResolver, Supplier<String> solutionNameSupplier,
+			Supplier<String> usageJsonSupplier) {
+		this.usageJsonSupplier = usageJsonSupplier;
 		this.solutionNameSupplier = solutionNameSupplier;
 		this.portSupplier = portSupplier;
 		this.serverPasswordSupplier = serverPasswordSupplier;
@@ -241,6 +262,14 @@ public class OpencodeChatServlet extends HttpServlet {
 	 */
 	public static boolean isSolutionRequest(String pathInfo) {
 		return SOLUTION_PATH.equals(pathInfo);
+	}
+
+	/**
+	 * @return {@code true} if the given path-info is exactly the BFF usage
+	 *         endpoint ({@code /usage})
+	 */
+	public static boolean isUsageRequest(String pathInfo) {
+		return USAGE_PATH.equals(pathInfo);
 	}
 
 	/**
@@ -534,6 +563,8 @@ public class OpencodeChatServlet extends HttpServlet {
 		String pathInfo = req.getPathInfo();
 		if (isSolutionRequest(pathInfo)) {
 			handleSolution(req, resp);
+		} else if (isUsageRequest(pathInfo)) {
+			handleUsage(req, resp);
 		} else if (isFileRequest(pathInfo)) {
 			handleFile(req, resp);
 		} else if (isApiRequest(pathInfo)) {
@@ -593,6 +624,27 @@ public class OpencodeChatServlet extends HttpServlet {
 				return false;
 		}
 		return true;
+	}
+
+	private void handleUsage(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		String method = req.getMethod();
+		if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+			resp.setHeader("Allow", "GET, HEAD");
+			resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+			return;
+		}
+		if (!isSameOriginLoopbackRequest(req.getHeader("Host"), req.getHeader("Sec-Fetch-Site"),
+				req.getHeader("Origin"))) {
+			sendJson(req, resp, HttpServletResponse.SC_FORBIDDEN, FORBIDDEN_JSON);
+			return;
+		}
+		String json = null;
+		try {
+			json = usageJsonSupplier.get();
+		} catch (RuntimeException e) {
+			safeLogInfo("OpencodeChatServlet: cannot resolve usage snapshot (" + e.getClass().getSimpleName() + ")");
+		}
+		sendJson(req, resp, HttpServletResponse.SC_OK, json == null || json.isEmpty() ? USAGE_UNAVAILABLE_JSON : json);
 	}
 
 	private void handleFile(HttpServletRequest req, HttpServletResponse resp) throws IOException {

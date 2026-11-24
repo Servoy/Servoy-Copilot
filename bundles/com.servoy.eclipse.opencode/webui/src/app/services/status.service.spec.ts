@@ -115,4 +115,68 @@ describe('StatusService', () => {
 
     expect(result).toEqual({ connected: ['opencode', 'kiro'], default: {} });
   });
+
+  it('maps /model data to provider, id and numeric context limit', () => {
+    let result: unknown;
+    service.models().subscribe((r) => (result = r));
+    const req = httpMock.expectOne('rest_api/model');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      data: [
+        { id: 'm1', providerID: 'kiro', limit: { context: 200000, output: 8000 } },
+        { id: 'm2', providerID: 'kiro', limit: {} },
+        { id: 'm3', providerID: 'kiro', limit: { context: '1000' } },
+        { id: 'm4', providerID: 'kiro' },
+        { providerID: 'kiro', limit: { context: 5 } },
+        { id: 'm6', limit: { context: 5 } }
+      ]
+    });
+    expect(result).toEqual([
+      { providerID: 'kiro', id: 'm1', context: 200000 },
+      { providerID: 'kiro', id: 'm2', context: null },
+      { providerID: 'kiro', id: 'm3', context: null },
+      { providerID: 'kiro', id: 'm4', context: null }
+    ]);
+  });
+
+  it('maps a /model response without data to an empty list', () => {
+    let result: unknown;
+    service.models().subscribe((r) => (result = r));
+    httpMock.expectOne('rest_api/model').flush({});
+    expect(result).toEqual([]);
+  });
+
+  it('maps an HTTP error on /model to an empty list', () => {
+    let result: unknown = 'unset';
+    let failed = false;
+    service.models().subscribe({ next: (r) => (result = r), error: () => (failed = true) });
+    httpMock.expectOne('rest_api/model').flush('boom', { status: 500, statusText: 'err' });
+    expect(failed).toBe(false);
+    expect(result).toEqual([]);
+  });
+
+  it('returns the usage snapshot from the BFF-owned relative usage endpoint', () => {
+    let result: unknown;
+    service.usage().subscribe((r) => (result = r));
+    const req = httpMock.expectOne('usage');
+    expect(req.request.method).toBe('GET');
+    req.flush({ available: true, used: 3, limit: 10, stale: false });
+    expect(result).toEqual({ available: true, used: 3, limit: 10, stale: false });
+  });
+
+  it('maps an HTTP error on usage to null', () => {
+    let result: unknown = 'unset';
+    let failed = false;
+    service.usage().subscribe({ next: (r) => (result = r), error: () => (failed = true) });
+    httpMock.expectOne('usage').flush('boom', { status: 500, statusText: 'err' });
+    expect(failed).toBe(false);
+    expect(result).toBeNull();
+  });
+
+  it('maps a non-object usage body to null', () => {
+    let result: unknown = 'unset';
+    service.usage().subscribe((r) => (result = r));
+    httpMock.expectOne('usage').flush(null);
+    expect(result).toBeNull();
+  });
 });
