@@ -67,7 +67,12 @@ import com.servoy.eclipse.opencode.skilltest.outcome.OutcomeInferenceTest;
 	CoverageExtractorTest.class,
 	PackCatalogReaderTest.class,
 	CoverageReportTest.class,
-	CoverageReportHtmlTest.class
+	CoverageReportHtmlTest.class,
+	RunHistoryTest.class,
+	RunHistoryTrendTest.class,
+	SkillTestPathsHistoryFileTest.class,
+	TrendAlertsTest.class,
+	TrendReportHtmlTest.class
 })
 public class AllSkillTestUnitTests {
 }

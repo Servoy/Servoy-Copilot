@@ -651,7 +651,7 @@ public final class SkillTestRunner {
 	 * @param baseline the baseline being replayed
 	 * @return the model spec, or {@code null} to let the server pick its default
 	 */
-	private static String resolveModel(Baseline baseline) {
+	public static String resolveModel(Baseline baseline) {
 		if (baseline.model() != null && !baseline.model().isBlank()) {
 			return baseline.model();
 		}
@@ -792,7 +792,8 @@ public final class SkillTestRunner {
 					+ "' has no editing solution yet\n", List.of()); //$NON-NLS-1$
 		}
 		logger.log("[skilltest] verifying outcomes against active solution '" + solution.getName() + "'"); //$NON-NLS-1$ //$NON-NLS-2$
-		// SVY-21659: resolve against the editing flattened solution so persists living in modules are found
+		// SVY-21659: resolve against the editing flattened solution so persists living
+		// in modules are found
 		PersistOutcomeChecker checker = new PersistOutcomeChecker(solution, active.getEditingFlattenedSolution());
 		PersistOutcomeChecker.Result result = checker.check(baseline.expected());
 		return new OutcomeCheckResult(result.match(), result.diff(), result.nodes());

@@ -108,6 +108,12 @@
 				     local `mvn verify -Pintegration` run does not need the flag; the Jenkins job
 				     passes -Dopencode.shutdown.debug=true on the mvn line to turn it on. -->
 				<opencode.shutdown.debug>false</opencode.shutdown.debug>
+				<!-- SVY-21661: run history file + skills version. Empty = local default
+				     (<workspace>/servoy_ai_skilltests/reports/run-history.jsonl) / unknown. The
+				     Jenkins job passes a persistent /data/skilltest-history path and the
+				     skill4servoy short commit. -->
+				<servoy.skilltest.historyFile></servoy.skilltest.historyFile>
+				<servoy.skilltest.skillsVersion></servoy.skilltest.skillsVersion>
 			</properties>
 			<build>
 				<plugins>
@@ -227,7 +233,7 @@
 							     `let` throws AssertionError, the solution fails to load and
 							     JSUnit runs 0 tests (build #68). Re-enable -ea once SVY-21727
 							     is fixed in DLTK. -->
-							<argLine>-Xms256m -Xmx3072m -da --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs} -Dopencode.shutdown.debug=${opencode.shutdown.debug}</argLine>
+							<argLine>-Xms256m -Xmx3072m -da --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs} -Dopencode.shutdown.debug=${opencode.shutdown.debug} -Dservoy.skilltest.historyFile=${servoy.skilltest.historyFile} -Dservoy.skilltest.skillsVersion=${servoy.skilltest.skillsVersion}</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<bundleStartLevel>
 								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>

@@ -1,0 +1,258 @@
+/*
+ * Shared stylesheet for the skill-test reports (SVY-21661): coverage.html and trend.html.
+ * Linked relatively (<link rel="stylesheet" href="skilltest-report.css">) and written next to
+ * each report, so it is same-origin wherever the page is served and allowed by Jenkins'
+ * Content-Security-Policy (style-src 'self'). The reports carry no <style> block and no
+ * style="..." attributes; they stay readable unstyled.
+ */
+
+/* --- common base --- */
+body {
+	font-family: Segoe UI, Arial, sans-serif;
+	font-size: 13px;
+	color: #202124;
+	margin: 16px;
+	background: #fff;
+}
+
+h1, h2, h3 {
+	font-weight: 600;
+	margin: 14px 0 6px;
+}
+
+h1 { font-size: 16px; }
+h2 { font-size: 14px; }
+h3 { font-size: 13px; }
+
+.muted {
+	color: #5f6368;
+}
+
+/* --- coverage.html --- */
+.cov-header {
+	background: #e6f4ea;
+	color: #137333;
+	padding: 8px 12px;
+	border-radius: 6px;
+	font-weight: 600;
+	margin-bottom: 12px;
+}
+
+.cov-header-id {
+	color: #5f6368;
+	font-weight: 400;
+	margin-left: 8px;
+}
+
+.cov-badges {
+	margin: 8px 0;
+}
+
+.cov-badge {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 10px;
+	margin-right: 6px;
+	font-weight: 600;
+	font-size: 11px;
+}
+
+.cov-badge-full {
+	background: #e6f4ea;
+	color: #137333;
+}
+
+.cov-badge-partial {
+	background: #fef7e0;
+	color: #b06000;
+}
+
+.cov-section-summary {
+	font-weight: 600;
+	font-size: 14px;
+	margin: 12px 0 4px;
+}
+
+.cov-table {
+	border-collapse: collapse;
+	margin: 4px 0;
+	width: 100%;
+}
+
+.cov-th {
+	text-align: left;
+	color: #5f6368;
+	font-size: 10px;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	border-bottom: 1px solid #eee;
+}
+
+.cov-td {
+	vertical-align: top;
+	padding: 2px 6px;
+	font-size: 11px;
+	border-bottom: 1px solid #f1f3f4;
+}
+
+.cov-td-item {
+	font-family: Consolas, monospace;
+}
+
+.cov-td-count {
+	text-align: right;
+	color: #5f6368;
+	white-space: nowrap;
+}
+
+.cov-notcovered {
+	background: #fce8e6;
+	border: 1px solid #f3c0bc;
+	border-radius: 6px;
+	padding: 6px 8px;
+	margin: 4px 0;
+}
+
+.cov-nc-title {
+	font-weight: 700;
+	color: #c5221f;
+	margin-bottom: 4px;
+}
+
+.cov-nc-list {
+	margin: 0;
+	padding-left: 18px;
+}
+
+.cov-nc-item {
+	font-family: Consolas, monospace;
+	font-size: 11px;
+	color: #c5221f;
+}
+
+.cov-offcatalog {
+	margin: 4px 0;
+}
+
+.cov-oc-title {
+	font-weight: 600;
+	color: #5f6368;
+	font-size: 10px;
+	text-transform: uppercase;
+	margin-bottom: 2px;
+}
+
+/* --- trend.html --- */
+.tr-header {
+	background: #e8f0fe;
+	color: #1a56b0;
+	padding: 8px 12px;
+	border-radius: 6px;
+	font-weight: 600;
+	margin-bottom: 12px;
+}
+
+.tr-header-meta {
+	color: #5f6368;
+	font-weight: 400;
+	margin-left: 8px;
+}
+
+.tr-alerts {
+	background: #fce8e6;
+	border: 1px solid #f3c0bc;
+	border-radius: 6px;
+	padding: 6px 10px;
+	margin: 8px 0 12px;
+}
+
+.tr-alerts-title {
+	font-weight: 700;
+	color: #c5221f;
+	margin-bottom: 4px;
+}
+
+.tr-alert-rule {
+	font-family: Consolas, monospace;
+	font-weight: 600;
+	color: #c5221f;
+}
+
+.tr-alert-cause {
+	color: #5f6368;
+	font-style: italic;
+}
+
+.tr-ok {
+	background: #e6f4ea;
+	color: #137333;
+	border-radius: 6px;
+	padding: 6px 10px;
+	margin: 8px 0 12px;
+	font-weight: 600;
+}
+
+.tr-table {
+	border-collapse: collapse;
+	margin: 4px 0 12px;
+	width: 100%;
+}
+
+.tr-table th {
+	text-align: left;
+	color: #5f6368;
+	font-size: 10px;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	border-bottom: 1px solid #eee;
+}
+
+.tr-table td {
+	vertical-align: top;
+	padding: 2px 6px;
+	font-size: 12px;
+	border-bottom: 1px solid #f1f3f4;
+}
+
+.tr-id {
+	font-family: Consolas, monospace;
+}
+
+.tr-s-pass { color: #137333; font-weight: 600; }
+.tr-s-fail { color: #c5221f; font-weight: 600; }
+.tr-s-error { color: #b06000; font-weight: 600; }
+.tr-s-skipped { color: #5f6368; }
+
+.tr-baseline {
+	border: 1px solid #dadce0;
+	border-radius: 6px;
+	padding: 6px 10px;
+	margin: 10px 0;
+}
+
+.tr-chart-title {
+	color: #5f6368;
+	font-size: 10px;
+	text-transform: uppercase;
+	margin: 6px 0 2px;
+}
+
+.tr-chart {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	background: #fafafa;
+	border: 1px solid #eee;
+	border-radius: 4px;
+}
+
+.tr-chart text {
+	font-family: Segoe UI, Arial, sans-serif;
+	font-size: 9px;
+}
+
+.tr-legend {
+	color: #5f6368;
+	font-size: 11px;
+	margin: 2px 0 6px;
+}

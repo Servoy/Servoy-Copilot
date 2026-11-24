@@ -208,7 +208,8 @@ public final class SkillTestHtml {
 					.append(esc(budgetWarning)).append("</div>"); //$NON-NLS-1$
 		}
 		// Per-request token table (SVY-21660 C): ranked by input, the most inefficient
-		// request highlighted, with base input. Per-tool cost is an attribution estimate.
+		// request highlighted, with base input. Per-tool cost is an attribution
+		// estimate.
 		if (m != null && !m.requestTokens().isEmpty()) {
 			sb.append(requestTokenTable(m));
 		}
@@ -462,6 +463,22 @@ public final class SkillTestHtml {
 		case ERROR -> "s-error"; //$NON-NLS-1$
 		case SKIPPED -> "s-skipped"; //$NON-NLS-1$
 		};
+	}
+
+	/**
+	 * Appends an extra HTML fragment (e.g. the run-history section, SVY-21661) to
+	 * the end of the body of a page built by this class.
+	 *
+	 * @param page     a complete page from {@link #render}/{@link #notRun}
+	 * @param fragment the fragment to append (may be {@code null}/empty)
+	 * @return the page with the fragment appended before {@code </body>}
+	 */
+	public static String withExtraSection(String page, String fragment) {
+		if (page == null || fragment == null || fragment.isEmpty()) {
+			return page;
+		}
+		int idx = page.lastIndexOf("</body>"); //$NON-NLS-1$
+		return idx < 0 ? page + fragment : page.substring(0, idx) + fragment + page.substring(idx);
 	}
 
 	/** Wraps body content in a styled HTML document. */

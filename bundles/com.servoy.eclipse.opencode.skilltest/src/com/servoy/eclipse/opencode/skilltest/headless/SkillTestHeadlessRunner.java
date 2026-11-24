@@ -37,9 +37,12 @@ import com.servoy.eclipse.model.util.ModelUtils;
 import com.servoy.eclipse.model.util.ServoyLog;
 import com.servoy.eclipse.opencode.skilltest.Baseline;
 import com.servoy.eclipse.opencode.skilltest.BaselineLoader;
+import com.servoy.eclipse.opencode.skilltest.RunHistory;
 import com.servoy.eclipse.opencode.skilltest.SkillTestPaths;
 import com.servoy.eclipse.opencode.skilltest.SkillTestResult;
 import com.servoy.eclipse.opencode.skilltest.SkillTestRunner;
+import com.servoy.eclipse.opencode.skilltest.TrendAlerts;
+import com.servoy.eclipse.opencode.skilltest.TrendReportHtml;
 import com.servoy.j2db.server.shared.ApplicationServerRegistry;
 import com.servoy.j2db.server.starter.IWebServerStarter;
 import com.servoy.j2db.util.Settings;
@@ -343,7 +346,8 @@ public class SkillTestHeadlessRunner implements IApplication {
 		for (int i = 0; i < entries.size(); i++) {
 			Baseline baseline = entries.get(i).baseline();
 			// Incremental report: before each baseline, rewrite TEST-skilltest.xml with the
-			// finished results, THIS baseline as an ERROR placeholder ("did not finish") and
+			// finished results, THIS baseline as an ERROR placeholder ("did not finish")
+			// and
 			// the rest as SKIPPED. If the run is killed mid-baseline (hang -> Maven/Jenkins
 			// timeout), CI still publishes everything that ran, and names the baseline that
 			// was running when it died. The next write replaces the placeholder.
@@ -364,7 +368,8 @@ public class SkillTestHeadlessRunner implements IApplication {
 
 		// 6. Final report (all baselines done). Carry any WARN-only budget warnings
 		// (SVY-21660) into <system-out>; they never change failure/error counts.
-		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results, budgetWarnings(entries, results)); //$NON-NLS-1$
+		Path reportFile = JUnitXmlReporter.writeReport(outputDir, "skilltest", results, //$NON-NLS-1$
+				budgetWarnings(entries, results));
 		output("JUnit XML report written to: " + reportFile.toAbsolutePath());
 		output(runner.formatResults(results));
 
@@ -378,6 +383,10 @@ public class SkillTestHeadlessRunner implements IApplication {
 		// is not cleaned between runs).
 		com.servoy.eclipse.opencode.skilltest.coverage.CoverageReportHtml.emitCoverage(results, null, outputDir,
 				"coverage.html", this::output); //$NON-NLS-1$
+
+		// 6c. Run history + trend alerts + trend report (SVY-21661) - best-effort,
+		// never touches exitCode.
+		recordHistoryAndTrends(results, entries, outputDir);
 
 		if (results.isEmpty()) {
 			output("No active skill-test baselines - nothing to run (vacuous pass).");
@@ -398,6 +407,85 @@ public class SkillTestHeadlessRunner implements IApplication {
 	}
 
 	/**
+	 * Appends the completed run to the run history (SVY-21661), copies the history
+	 * into {@code outputDir} for archiving when it lives elsewhere, then evaluates
+	 * the trend alerts and writes {@code alerts.json}, {@code trend.html} and
+	 * {@code skilltest-report.css} into {@code outputDir}. Best-effort: nothing
+	 * here throws or changes the exit code; the pipeline decides UNSTABLE from
+	 * {@code alerts.json}.
+	 */
+	private void recordHistoryAndTrends(List<SkillTestResult> results, List<BaselineLoader.Entry> entries,
+			Path outputDir) {
+		try {
+			java.util.Map<String, String> models = new java.util.HashMap<>();
+			java.util.Map<String, List<Baseline.Budget>> budgets = new java.util.HashMap<>();
+			for (BaselineLoader.Entry entry : entries) {
+				Baseline b = entry.baseline();
+				try {
+					String model = SkillTestRunner.resolveModel(b);
+					if (model != null) {
+						models.put(b.id(), model);
+					}
+				} catch (RuntimeException e) {
+					// unknown model -> field omitted
+				}
+				if (b.budgets() != null && !b.budgets().isEmpty()) {
+					budgets.put(b.id(), b.budgets());
+				}
+			}
+			File historyFile = SkillTestPaths.historyFile();
+			RunHistory.RunIdentity identity = RunHistory.RunIdentity.ci();
+			String runId = RunHistory.runId(identity);
+			RunHistory.append(historyFile, results, identity, runId, models::get, this::output);
+			copyHistoryIntoOutputDir(historyFile, outputDir);
+			if (outputDir == null) {
+				return;
+			}
+			List<RunHistory.Entry> history = RunHistory.read(historyFile);
+			TrendAlerts.AlertConfig cfg = TrendAlerts.AlertConfig.fromSystem();
+			List<TrendAlerts.Alert> alerts = TrendAlerts.evaluate(history, runId, budgets, cfg);
+			TrendAlerts.writeAlertsJson(outputDir.resolve(TrendAlerts.ALERTS_FILE).toFile(), runId, alerts,
+					this::output);
+			TrendReportHtml.writeReport(outputDir.toFile(), TrendReportHtml.render(history, alerts, cfg.window()),
+					this::output);
+			if (alerts.isEmpty()) {
+				output("[skilltest] no trend alerts."); //$NON-NLS-1$
+			}
+			for (TrendAlerts.Alert a : alerts) {
+				output("[skilltest] TREND ALERT " + a.rule() + " " + a.baselineId() + ": " + a.message() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+						+ (a.likelyCause() != null ? " (likely cause: " + a.likelyCause() + ")" : "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			}
+		} catch (RuntimeException | LinkageError e) {
+			output("[skilltest] run history / trend report failed: " + e); //$NON-NLS-1$
+		}
+	}
+
+	/**
+	 * Copies the history file to {@code outputDir/run-history.jsonl} when it lives
+	 * outside {@code outputDir}, so the per-build archive holds a snapshot.
+	 * Best-effort.
+	 */
+	private void copyHistoryIntoOutputDir(File historyFile, Path outputDir) {
+		if (historyFile == null || outputDir == null || !historyFile.isFile()) {
+			return;
+		}
+		try {
+			Path target = outputDir.resolve(SkillTestPaths.HISTORY_FILE);
+			Path source = historyFile.toPath();
+			if (java.nio.file.Files.exists(target) && java.nio.file.Files.isSameFile(source, target)) {
+				return;
+			}
+			if (source.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize())) {
+				return;
+			}
+			java.nio.file.Files.createDirectories(outputDir);
+			java.nio.file.Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException | RuntimeException e) {
+			output("[skilltest] could not copy run history into " + outputDir + ": " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	/**
 	 * Rewrites {@code TEST-skilltest.xml} with the run's progress so far, so a run
 	 * killed mid-baseline (hang, Maven/Jenkins timeout) still leaves a report of
 	 * everything that ran. Finished baselines keep their real result and metrics;
@@ -410,13 +498,14 @@ public class SkillTestHeadlessRunner implements IApplication {
 	 * @param finished     the results of the baselines that have completed
 	 * @param runningIndex the index in {@code entries} of the baseline about to run
 	 */
-	private void writeInterimReport(Path outputDir, List<BaselineLoader.Entry> entries,
-			List<SkillTestResult> finished, int runningIndex) {
+	private void writeInterimReport(Path outputDir, List<BaselineLoader.Entry> entries, List<SkillTestResult> finished,
+			int runningIndex) {
 		List<SkillTestResult> interim = new ArrayList<>(finished);
 		for (int j = runningIndex; j < entries.size(); j++) {
 			String id = entries.get(j).baseline().id();
 			interim.add(j == runningIndex
-					? SkillTestResult.error(id, 0, "did not finish: the run was stopped while this baseline was running") //$NON-NLS-1$
+					? SkillTestResult.error(id, 0,
+							"did not finish: the run was stopped while this baseline was running") //$NON-NLS-1$
 					: SkillTestResult.skipped(id, "not reached: the run was stopped before this baseline")); //$NON-NLS-1$
 		}
 		try {

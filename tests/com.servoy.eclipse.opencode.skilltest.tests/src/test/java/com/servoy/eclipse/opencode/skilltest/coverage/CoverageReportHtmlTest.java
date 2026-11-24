@@ -144,24 +144,30 @@ public class CoverageReportHtmlTest {
 		}
 
 		@Test
-		@DisplayName("a dimension with a gap renders an amber (partial) badge via inline style")
+		@DisplayName("a dimension with a gap renders an amber (partial) badge class")
 		void partialBadgeWhenGap() {
 			CoverageReport report = CoverageReport.aggregate("ts", List.of(obs("b1", Set.of("s1"), Set.of(), Set.of())),
 					new PackCatalog(Set.of("s1", "s2"), Set.of(), Set.of()));
 			String html = CoverageReportHtml.render(report);
-			// The amber (partial) badge uses the #b06000 foreground on #fef7e0.
-			assertTrue(html.contains("#b06000"), "a dimension below 100% must carry the amber badge colour inline");
+			assertAll(
+					() -> assertTrue(html.contains("<span class=\"cov-badge cov-badge-partial\">Skills 1/2</span>"),
+							"a dimension below 100% must carry the partial badge class"),
+					() -> assertFalse(html.contains("#b06000"), "no inline colour"));
 		}
 
 		@Test
-		@DisplayName("a fully covered dimension renders a green (full) badge via inline style")
+		@DisplayName("a fully covered dimension renders a green (full) badge class")
 		void fullBadgeWhenComplete() {
 			CoverageReport report = CoverageReport.aggregate("ts",
 					List.of(obs("b1", Set.of("s1"), Set.of("build"), Set.of("eclipse-ide.read"))),
 					new PackCatalog(Set.of("s1"), Set.of("build"), Set.of()));
 			String html = CoverageReportHtml.render(report);
-			// The green (full) badge uses the #137333 foreground on #e6f4ea.
-			assertTrue(html.contains("#137333"), "a 100%-covered dimension must carry the green badge colour inline");
+			assertAll(
+					() -> assertTrue(html.contains("<span class=\"cov-badge cov-badge-full\">Skills 1/1</span>"),
+							"a 100%-covered dimension must carry the full badge class"),
+					() -> assertFalse(html.contains("cov-badge-partial"),
+							"no partial badge when every dimension is full"),
+					() -> assertFalse(html.contains("#137333"), "no inline colour"));
 		}
 	}
 
@@ -195,21 +201,37 @@ public class CoverageReportHtmlTest {
 	}
 
 	@Nested
-	class InlineStyling {
+	class CspSafeStyling {
 
 		@Test
-		@DisplayName("styled elements carry inline style= attributes (Jenkins CSP strips <style> blocks)")
-		void carriesInlineStyleAttributes() {
+		@DisplayName("no inline CSS or script, exactly one relative skilltest-report.css link (Jenkins CSP style-src 'self')")
+		void externalStylesheetOnly() {
 			CoverageReport report = CoverageReport.aggregate("ts",
 					List.of(obs("b1", Set.of("s1"), Set.of("build"), Set.of("servoy-workspace_listProjects"))),
-					new PackCatalog(Set.of("s1"), Set.of("build"), Set.of()));
+					new PackCatalog(Set.of("s1", "s2"), Set.of("build"), Set.of()));
 			String html = CoverageReportHtml.render(report);
-			assertAll(
-					// the header must carry its colours inline so it renders under a strict CSP
-					() -> assertTrue(html.contains("style=\""), "elements must carry inline style attributes"),
-					() -> assertTrue(html.contains("#137333"), "the green header colour must be present inline"),
-					// no inline <style> sheet relied upon
-					() -> assertFalse(html.contains("<style"), "the report must not depend on a <style> block"));
+			String link = "<link rel=\"stylesheet\" href=\"skilltest-report.css\">";
+			assertAll(() -> assertFalse(html.contains("style="), "no inline style attributes"),
+					() -> assertFalse(html.contains("<style"), "no <style> block"),
+					() -> assertFalse(html.contains("<script"), "no script"),
+					() -> assertEquals(html.indexOf(link), html.lastIndexOf(link), "exactly one stylesheet link"),
+					() -> assertTrue(html.indexOf(link) > 0 && html.indexOf(link) < html.indexOf("</head>"),
+							"the relative stylesheet link sits in the head"),
+					() -> assertTrue(html.contains("<div class=\"cov-header\">"), "header styled through a class"),
+					() -> assertTrue(html.contains("<div class=\"cov-notcovered\">"),
+							"not-covered block styled through a class"));
+		}
+
+		@Test
+		@DisplayName("write(...) puts a non-empty skilltest-report.css next to the HTML")
+		void writesStylesheetNextToHtml(@TempDir Path dir) throws IOException {
+			java.io.File out = CoverageReportHtml.write(CoverageReport.aggregate("ts", List.of(), PackCatalog.empty()),
+					dir.resolve("reports"), "coverage.html");
+			Path css = out.toPath().resolveSibling("skilltest-report.css");
+			assertAll(() -> assertTrue(Files.isRegularFile(css), "stylesheet written next to the HTML"),
+					() -> assertTrue(Files.size(css) > 0, "stylesheet not empty"),
+					() -> assertTrue(Files.readString(css).contains(".cov-badge-full"),
+							"it carries the coverage rules"));
 		}
 	}
 }

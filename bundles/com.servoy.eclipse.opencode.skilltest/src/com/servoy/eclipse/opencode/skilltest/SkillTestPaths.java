@@ -36,7 +36,8 @@ import java.io.File;
  * │   └── &lt;id&gt;/{export.json, baseline.json}
  * └── reports/                   derived, git-ignored (like target/)
  *     ├── last-results.json      canonical machine-readable results
- *     └── run-&lt;timestamp&gt;.md      human-readable report, one per run
+ *     ├── run-&lt;timestamp&gt;.md      human-readable report, one per run
+ *     └── run-history.jsonl      append-only run history, one line per baseline per run (SVY-21661)
  * </pre>
  * <p>
  * The workspace root is resolved via
@@ -53,6 +54,14 @@ public final class SkillTestPaths {
 	public static final String BASELINES_DIR = "baselines"; //$NON-NLS-1$
 	public static final String REPORTS_DIR = "reports"; //$NON-NLS-1$
 	public static final String LAST_RESULTS_FILE = "last-results.json"; //$NON-NLS-1$
+	/** Append-only run history file name (SVY-21661). */
+	public static final String HISTORY_FILE = "run-history.jsonl"; //$NON-NLS-1$
+	/** System property overriding the run history file location (SVY-21661). */
+	public static final String HISTORY_FILE_PROPERTY = "servoy.skilltest.historyFile"; //$NON-NLS-1$
+	/**
+	 * Environment variable overriding the run history file location (SVY-21661).
+	 */
+	public static final String HISTORY_FILE_ENV = "SERVOY_SKILLTEST_HISTORY_FILE"; //$NON-NLS-1$
 
 	private SkillTestPaths() {
 	}
@@ -97,8 +106,9 @@ public final class SkillTestPaths {
 	}
 
 	/**
-	 * @return the baselines root ({@code <workspace>/servoy_ai_skilltests/baselines});
-	 *         created if absent
+	 * @return the baselines root
+	 *         ({@code <workspace>/servoy_ai_skilltests/baselines}); created if
+	 *         absent
 	 */
 	public static File baselinesRoot() {
 		File dir = new File(skillTestsRoot(), BASELINES_DIR);
@@ -136,5 +146,41 @@ public final class SkillTestPaths {
 	/** @return the canonical machine-readable results file (may not yet exist) */
 	public static File lastResultsFile() {
 		return new File(reportsRoot(), LAST_RESULTS_FILE);
+	}
+
+	/**
+	 * Resolves the append-only run history file (SVY-21661): the
+	 * {@code servoy.skilltest.historyFile} system property, else the
+	 * {@code SERVOY_SKILLTEST_HISTORY_FILE} env var, else
+	 * {@code reports/run-history.jsonl}. The file may not exist yet.
+	 *
+	 * @return the history file
+	 */
+	public static File historyFile() {
+		String prop = System.getProperty(HISTORY_FILE_PROPERTY);
+		String env = System.getenv(HISTORY_FILE_ENV);
+		if (!isBlank(prop) || !isBlank(env)) {
+			return resolveHistoryFile(prop, env, null);
+		}
+		return resolveHistoryFile(null, null, reportsRoot());
+	}
+
+	/**
+	 * Pure resolution of the history file location: a non-blank {@code sysProp}
+	 * beats a non-blank {@code env}, which beats
+	 * {@code reportsRoot/run-history.jsonl}. Blank values are treated as unset.
+	 */
+	static File resolveHistoryFile(String sysProp, String env, File reportsRoot) {
+		if (!isBlank(sysProp)) {
+			return new File(sysProp.trim());
+		}
+		if (!isBlank(env)) {
+			return new File(env.trim());
+		}
+		return new File(reportsRoot, HISTORY_FILE);
+	}
+
+	private static boolean isBlank(String s) {
+		return s == null || s.isBlank();
 	}
 }

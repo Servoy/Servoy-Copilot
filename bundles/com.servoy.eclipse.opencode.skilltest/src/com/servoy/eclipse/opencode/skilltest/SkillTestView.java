@@ -83,6 +83,21 @@ public class SkillTestView extends ViewPart {
 	/** Last run result per baseline id, so selecting a row shows its detail. */
 	private final Map<String, SkillTestResult> lastResults = new HashMap<>();
 
+	/** Preference key of the configurable trend window (SVY-21661). */
+	static final String PREF_TREND_RUNS = "skilltest.trendRuns"; //$NON-NLS-1$
+
+	/** Local run history (SVY-21661), read on open and after each run. */
+	private volatile List<RunHistory.Entry> history = List.of();
+
+	/** Per-baseline trend over the last {@link #trendRuns} runs. */
+	private volatile Map<String, RunHistory.Trend> trends = Map.of();
+
+	/** The current trend window ("last N runs"). */
+	private volatile int trendRuns = RunHistory.DEFAULT_TREND_RUNS;
+
+	/** The "Trend" table column, whose header shows the window. */
+	private TableViewerColumn trendColumn;
+
 	/** The currently running test Job, or {@code null} when idle. Used by Stop. */
 	private volatile Job runJob;
 
@@ -109,6 +124,11 @@ public class SkillTestView extends ViewPart {
 		createColumn("Last result", 120, e -> { //$NON-NLS-1$
 			SkillTestResult r = lastResults.get(e.baseline().id());
 			return r != null ? r.getStatus().toString() : "—"; //$NON-NLS-1$
+		});
+		trendRuns = loadTrendRunsPreference();
+		trendColumn = createColumn(trendColumnTitle(), 150, e -> {
+			RunHistory.Trend t = trends.get(e.baseline().id());
+			return t != null ? t.label() : "\u2014"; //$NON-NLS-1$
 		});
 		// Cost/efficiency columns (SVY-21660): the primary tool-call count and the
 		// best-effort token figure ("unknown" when absent). No separate Kiro column
@@ -143,7 +163,101 @@ public class SkillTestView extends ViewPart {
 		createActions();
 		createContextMenu();
 		lastResults.putAll(SkillTestReporter.loadLastResults());
+		reloadHistory();
 		refresh();
+	}
+
+	/** @return the Trend column header, e.g. {@code "Trend (last 10)"} */
+	private String trendColumnTitle() {
+		return "Trend (last " + trendRuns + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/**
+	 * Re-reads the local run history and recomputes the trends (SVY-21661). Never
+	 * throws.
+	 */
+	private void reloadHistory() {
+		try {
+			history = RunHistory.read(SkillTestPaths.historyFile());
+		} catch (RuntimeException e) {
+			history = List.of();
+			log("Could not read skill-test run history: " + e.getMessage()); //$NON-NLS-1$
+		}
+		recomputeTrends();
+	}
+
+	private void recomputeTrends() {
+		try {
+			trends = RunHistory.trends(history, trendRuns);
+		} catch (RuntimeException e) {
+			trends = Map.of();
+		}
+	}
+
+	/**
+	 * Reads the trend window preference. Overridable seam; a failure falls back to
+	 * the default.
+	 *
+	 * @return the stored window, clamped to 1..1000
+	 */
+	protected int loadTrendRunsPreference() {
+		try {
+			org.eclipse.core.runtime.preferences.IEclipsePreferences node = org.eclipse.core.runtime.preferences.InstanceScope.INSTANCE
+					.getNode(preferenceNodeName());
+			return RunHistory.clampTrendRuns(node.getInt(PREF_TREND_RUNS, RunHistory.DEFAULT_TREND_RUNS));
+		} catch (RuntimeException e) {
+			log("Could not read the trend window preference: " + e.getMessage()); //$NON-NLS-1$
+			return RunHistory.DEFAULT_TREND_RUNS;
+		}
+	}
+
+	/**
+	 * Stores the trend window preference and flushes it. Overridable seam; a
+	 * failure is logged, never thrown.
+	 *
+	 * @param value the window (already validated)
+	 */
+	protected void storeTrendRunsPreference(int value) {
+		try {
+			org.eclipse.core.runtime.preferences.IEclipsePreferences node = org.eclipse.core.runtime.preferences.InstanceScope.INSTANCE
+					.getNode(preferenceNodeName());
+			node.putInt(PREF_TREND_RUNS, value);
+			node.flush();
+		} catch (org.osgi.service.prefs.BackingStoreException | RuntimeException e) {
+			log("Could not store the trend window preference: " + e.getMessage()); //$NON-NLS-1$
+		}
+	}
+
+	private static String preferenceNodeName() {
+		org.osgi.framework.Bundle bundle = org.osgi.framework.FrameworkUtil.getBundle(SkillTestView.class);
+		return bundle != null ? bundle.getSymbolicName() : "com.servoy.eclipse.opencode.skilltest"; //$NON-NLS-1$
+	}
+
+	/** Opens the "Trend window (last N runs)" dialog and applies the new value. */
+	private void configureTrendWindow() {
+		org.eclipse.jface.dialogs.InputDialog dialog = new org.eclipse.jface.dialogs.InputDialog(getSite().getShell(),
+				"Trend window", //$NON-NLS-1$
+				"Number of most recent runs the trend covers (" + RunHistory.MIN_TREND_RUNS + ".." //$NON-NLS-1$ //$NON-NLS-2$
+						+ RunHistory.MAX_TREND_RUNS + "):", //$NON-NLS-1$
+				Integer.toString(trendRuns),
+				newText -> RunHistory.parseTrendRuns(newText) != null ? null
+						: "Enter a whole number between " + RunHistory.MIN_TREND_RUNS + " and " //$NON-NLS-1$ //$NON-NLS-2$
+								+ RunHistory.MAX_TREND_RUNS + "."); //$NON-NLS-1$
+		if (dialog.open() != Window.OK) {
+			return;
+		}
+		Integer value = RunHistory.parseTrendRuns(dialog.getValue());
+		if (value == null) {
+			return;
+		}
+		trendRuns = value.intValue();
+		storeTrendRunsPreference(trendRuns);
+		recomputeTrends();
+		if (trendColumn != null && !trendColumn.getColumn().isDisposed()) {
+			trendColumn.getColumn().setText(trendColumnTitle());
+		}
+		viewer.refresh();
+		showDetail();
 	}
 
 	/**
@@ -167,7 +281,7 @@ public class SkillTestView extends ViewPart {
 		return BudgetEvaluator.evaluateAll(baseline.budgets(), metrics).orElse(null);
 	}
 
-	private void createColumn(String title, int width,
+	private TableViewerColumn createColumn(String title, int width,
 			java.util.function.Function<BaselineLoader.Entry, String> value) {
 		TableViewerColumn col = new TableViewerColumn(viewer, SWT.NONE);
 		col.getColumn().setText(title);
@@ -188,6 +302,7 @@ public class SkillTestView extends ViewPart {
 				return null;
 			}
 		});
+		return col;
 	}
 
 	private void createActions() {
@@ -276,6 +391,15 @@ public class SkillTestView extends ViewPart {
 		tb.add(editJsUnitAction);
 		tb.add(deleteAction);
 		tb.add(refreshAction);
+
+		Action trendWindowAction = new Action("Trend window (last N runs)...") { //$NON-NLS-1$
+			@Override
+			public void run() {
+				configureTrendWindow();
+			}
+		};
+		trendWindowAction.setToolTipText("Set how many of the most recent runs the Trend column and history cover"); //$NON-NLS-1$
+		getViewSite().getActionBars().getMenuManager().add(trendWindowAction);
 	}
 
 	/**
@@ -319,12 +443,15 @@ public class SkillTestView extends ViewPart {
 			detail.setText(SkillTestHtml.placeholder());
 			return;
 		}
-		SkillTestResult r = lastResults.get(entry.baseline().id());
+		String id = entry.baseline().id();
+		SkillTestResult r = lastResults.get(id);
+		String historyHtml = RunHistory.historyHtml(history, id, trendRuns);
 		if (r == null) {
-			detail.setText(SkillTestHtml.notRun(entry.baseline().id()));
+			detail.setText(SkillTestHtml.withExtraSection(SkillTestHtml.notRun(id), historyHtml));
 			return;
 		}
-		detail.setText(SkillTestHtml.render(r, budgetWarning(entry.baseline(), r.getMetrics())));
+		detail.setText(SkillTestHtml.withExtraSection(
+				SkillTestHtml.render(r, budgetWarning(entry.baseline(), r.getMetrics())), historyHtml));
 	}
 
 	private BaselineLoader.Entry selectedEntry() {
@@ -503,6 +630,22 @@ public class SkillTestView extends ViewPart {
 				} catch (IOException e) {
 					log("Could not persist skill-test results: " + e.getMessage()); //$NON-NLS-1$
 				}
+				// Run history (SVY-21661): outside the writeRun try/catch so a report
+				// failure never skips it; append never throws.
+				Map<String, String> models = new HashMap<>();
+				for (Baseline b : baselines) {
+					try {
+						String model = SkillTestRunner.resolveModel(b);
+						if (model != null) {
+							models.put(b.id(), model);
+						}
+					} catch (RuntimeException e) {
+						// unknown model -> field omitted
+					}
+				}
+				RunHistory.append(SkillTestPaths.historyFile(), results, RunHistory.RunIdentity.ide(), models::get,
+						SkillTestView.this::log);
+				reloadHistory();
 				// Coverage report (SVY-21711) - informational, best-effort, written next to
 				// last-results.json/run-<timestamp>.md under reportsRoot(). emitCoverage never
 				// throws, so it can never affect the run outcome.

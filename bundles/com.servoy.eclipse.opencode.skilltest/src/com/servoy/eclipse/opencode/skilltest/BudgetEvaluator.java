@@ -20,6 +20,7 @@ package com.servoy.eclipse.opencode.skilltest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
 /**
  * Evaluates an optional per-baseline soft {@link Baseline.Budget} against a
  * run's representative {@link RunMetrics} (SVY-21660).
@@ -83,14 +84,15 @@ public final class BudgetEvaluator {
 
 	/**
 	 * Evaluates every budget in the list against the metrics and returns one
-	 * combined warning (one line per over-budget metric), or {@link Optional#empty()}
-	 * when none are over, the list is {@code null}/empty, or metrics are absent.
-	 * Each metric is judged independently; a metric whose data is absent is skipped,
-	 * never warned. Never signals a failure.
+	 * combined warning (one line per over-budget metric), or
+	 * {@link Optional#empty()} when none are over, the list is {@code null}/empty,
+	 * or metrics are absent. Each metric is judged independently; a metric whose
+	 * data is absent is skipped, never warned. Never signals a failure.
 	 *
 	 * @param budgets the soft budgets (may be {@code null}/empty)
 	 * @param metrics the run's representative metrics (may be {@code null})
-	 * @return the combined WARN text, or empty when within budget / nothing to judge
+	 * @return the combined WARN text, or empty when within budget / nothing to
+	 *         judge
 	 */
 	public static Optional<String> evaluateAll(List<Baseline.Budget> budgets, RunMetrics metrics) {
 		if (budgets == null || budgets.isEmpty() || metrics == null) {
@@ -112,6 +114,27 @@ public final class BudgetEvaluator {
 	 * warning when exceeded.
 	 */
 	private static Optional<String> evaluateValue(Baseline.Budget budget, long current, String metricLabel) {
+		return evaluateValue(budget, current, metricLabel, 0);
+	}
+
+	/**
+	 * As {@link #evaluateValue(Baseline.Budget, long, String)} but with an explicit
+	 * default tolerance applied when the budget sets a {@code baselineValue}
+	 * without its own {@code tolerancePct}. The WARN-only budget warnings use
+	 * {@code 0} (unchanged behaviour); the trend alerts (SVY-21661) pass their own
+	 * default.
+	 *
+	 * @param budget           the budget (non-null)
+	 * @param current          the current value of the budgeted metric
+	 * @param metricLabel      the label used in the message
+	 * @param defaultTolerance tolerance percentage used when the budget has none
+	 * @return the over-budget message, or empty
+	 */
+	static Optional<String> evaluateValue(Baseline.Budget budget, long current, String metricLabel,
+			int defaultTolerance) {
+		if (budget == null) {
+			return Optional.empty();
+		}
 		// Absolute ceiling.
 		if (budget.max() != null && current > budget.max().intValue()) {
 			int over = (int) current - budget.max().intValue();
@@ -121,7 +144,7 @@ public final class BudgetEvaluator {
 		}
 		// Reference value + tolerance.
 		if (budget.baselineValue() != null) {
-			int tolerance = budget.tolerancePct() != null ? budget.tolerancePct().intValue() : 0;
+			int tolerance = budget.tolerancePct() != null ? budget.tolerancePct().intValue() : defaultTolerance;
 			double threshold = budget.baselineValue().intValue() * (1d + tolerance / 100d);
 			if (current > threshold) {
 				int pct = budget.baselineValue().intValue() > 0
