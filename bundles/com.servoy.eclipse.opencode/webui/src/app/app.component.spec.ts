@@ -25,9 +25,9 @@ describe('AppComponent', () => {
     mcp: ReturnType<typeof vi.fn>;
     providers: ReturnType<typeof vi.fn>;
     solution: ReturnType<typeof vi.fn>;
-  };
     models: ReturnType<typeof vi.fn>;
     usage: ReturnType<typeof vi.fn>;
+  };
 
   function setQuery(query: string): void {
     history.replaceState(null, '', window.location.pathname + query);
@@ -840,7 +840,6 @@ describe('AppComponent', () => {
       expect(draft().text).toBe('half typed');
     });
   });
-});
 
   describe('context ring', () => {
     const ring = () => q<HTMLButtonElement>('button.ctx-ring');
@@ -891,3 +890,4 @@ describe('AppComponent', () => {
       expect(ring()).toBeNull();
     });
   });
+});

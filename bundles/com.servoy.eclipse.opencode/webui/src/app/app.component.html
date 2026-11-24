@@ -137,12 +137,12 @@
         [draft]="store.activeDraft()"
         [disabled]="!!store.pendingForm()"
         [disabledHint]="'Answer the question above to continue.'"
+        [contextPercent]="usage.context().percent"
+        (contextClick)="toggleStatus()"
         (sendMessage)="onSend($event)"
         (stop)="onStop()"
         (draftChange)="onDraftChange($event)"
       ></svy-composer>
-        [contextPercent]="usage.context().percent"
-        (contextClick)="toggleStatus()"
     }
   </main>
   <aside id="status-panel" class="status-area" aria-label="Status" [hidden]="!statusOpen()">
