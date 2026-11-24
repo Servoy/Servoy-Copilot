@@ -43,6 +43,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -53,6 +54,8 @@
 
 .agent {
   color: var(--svy-acc-fg);
+  flex: 0 0 auto;
+  max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

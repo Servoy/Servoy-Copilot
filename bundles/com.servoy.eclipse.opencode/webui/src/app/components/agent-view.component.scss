@@ -51,7 +51,20 @@
 }
 
 .agent-stopped-step {
-  color: var(--svy-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 2rem;
+  color: var(--svy-accent-wait);
   font-size: 12px;
   font-weight: 600;
+
+  &::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--svy-accent-wait);
+  }
 }
