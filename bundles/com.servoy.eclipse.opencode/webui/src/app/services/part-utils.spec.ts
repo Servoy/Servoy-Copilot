@@ -184,6 +184,37 @@ describe('toolLabel', () => {
   });
 });
 
+describe('internal .servoy reads', () => {
+  const internal = part({
+    type: 'tool',
+    tool: 'read',
+    state: {
+      status: 'completed',
+      input: { filePath: 'C:\\Users\\jcomp\\.servoy\\opencode\\skills\\servoy-orchestrator\\context\\tooling.md' },
+      output: '1: # MCP tooling'
+    } as Part['state']
+  });
+
+  it('shows only the file name as subtitle', () => {
+    expect(toolSubtitle(internal)).toBe('tooling.md');
+  });
+
+  it('is not expandable', () => {
+    expect(hasToolOutput(internal)).toBe(false);
+    expect(isToolExpandable(internal)).toBe(false);
+  });
+
+  it('leaves normal reads untouched', () => {
+    const normal = part({
+      type: 'tool',
+      tool: 'read',
+      state: { status: 'completed', input: { filePath: 'D:\\git\\x\\a.ts' }, output: 'x' } as Part['state']
+    });
+    expect(toolSubtitle(normal)).toBe('D:\\git\\x\\a.ts');
+    expect(isToolExpandable(normal)).toBe(true);
+  });
+});
+
 describe('toolDisplayName', () => {
   it('maps known tool ids to friendly names', () => {
     expect(toolDisplayName(part({ type: 'tool', tool: 'read' }))).toBe('Read File');

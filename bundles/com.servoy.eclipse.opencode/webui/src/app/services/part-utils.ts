@@ -283,7 +283,31 @@ export function toolSubtitle(part: Part): string {
   if (typeof candidate !== 'string') {
     return '';
   }
-  return candidate.trim();
+  const trimmed = candidate.trim();
+  // Internal Servoy files (~/.servoy/...) are plumbing: show only the file name.
+  if (isServoyInternalRead(part)) {
+    return trimmed.replace(/\\/g, '/').split('/').pop() ?? trimmed;
+  }
+  return trimmed;
+}
+
+/**
+ * True for a {@code read} tool part whose file lives under the user's
+ * {@code .servoy} home directory (skills, context files, ...). Those are
+ * internal Servoy files that mean nothing to the user, so the row shows only
+ * the file name and is not expandable.
+ */
+export function isServoyInternalRead(part: Part): boolean {
+  if (part.tool !== 'read') {
+    return false;
+  }
+  const input = part.state?.input;
+  if (!input || typeof input !== 'object') {
+    return false;
+  }
+  const args = input as Record<string, unknown>;
+  const path = args['filePath'] ?? args['path'];
+  return typeof path === 'string' && /(^|[\\/])\.servoy[\\/]/.test(path);
 }
 
 /**
@@ -296,6 +320,9 @@ const NON_EXPANDABLE_TOOLS = new Set(['skill']);
 /** Whether a tool part has any output worth expanding to see. */
 export function hasToolOutput(part: Part): boolean {
   if (part.tool && NON_EXPANDABLE_TOOLS.has(part.tool)) {
+    return false;
+  }
+  if (isServoyInternalRead(part)) {
     return false;
   }
   return !!part.state?.output && part.state.output.trim().length > 0;
