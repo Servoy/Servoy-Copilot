@@ -68,6 +68,29 @@ class OpencodeChatServletGuardTest {
 		String contentType;
 		final CharArrayWriter body = new CharArrayWriter();
 		final PrintWriter writer = new PrintWriter(body);
+		final java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+		final java.util.Map<String, String> headers = new java.util.HashMap<>();
+		int errorStatus = -1;
+		int contentLength = -1;
+		final jakarta.servlet.ServletOutputStream stream = new jakarta.servlet.ServletOutputStream() {
+			@Override
+			public boolean isReady() {
+				return true;
+			}
+
+			@Override
+			public void setWriteListener(jakarta.servlet.WriteListener listener) {
+			}
+
+			@Override
+			public void write(int b) {
+				bytes.write(b);
+			}
+		};
+
+		String bytesBody() {
+			return new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+		}
 	}
 
 	private static HttpServletRequest fakeRequest(String pathInfo, String method) {
@@ -109,6 +132,17 @@ class OpencodeChatServletGuardTest {
 				return cap.contentType;
 			case "getWriter":
 				return cap.writer;
+			case "getOutputStream":
+				return cap.stream;
+			case "setHeader":
+				cap.headers.put((String) args[0], (String) args[1]);
+				return null;
+			case "setContentLength":
+				cap.contentLength = ((Integer) args[0]).intValue();
+				return null;
+			case "sendError":
+				cap.errorStatus = ((Integer) args[0]).intValue();
+				return null;
 			default:
 				Class<?> rt = m.getReturnType();
 				if (rt == boolean.class)
@@ -235,6 +269,112 @@ class OpencodeChatServletGuardTest {
 			cap.writer.flush();
 
 			assertEquals(HttpServletResponse.SC_SERVICE_UNAVAILABLE, cap.status);
+		}
+	}
+
+	@Nested
+	class SolutionEndpoint {
+		private OpencodeChatServlet withSolution(Supplier<String> solution, IntSupplier port, BooleanSupplier ready,
+				OpencodeChatServlet.WaitForServer wait) {
+			Function<String, URL> noResources = p -> null;
+			Supplier<String> noPassword = () -> null;
+			return new OpencodeChatServlet(port, noPassword, ready, wait, () -> "/home/proj", noResources, solution);
+		}
+
+		private ResponseCapture get(OpencodeChatServlet s, String method) throws Exception {
+			ResponseCapture cap = new ResponseCapture();
+			s.service(fakeRequest("/solution", method), fakeResponse(cap));
+			return cap;
+		}
+
+		@Test
+		@DisplayName("GET /solution answers 200 application/json no-store with the name")
+		void returnsName() throws Exception {
+			ResponseCapture cap = get(withSolution(() -> "crm_app", () -> 5000, () -> true, t -> true), "GET");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertTrue(cap.contentType.startsWith("application/json"), cap.contentType),
+					() -> assertEquals("no-store", cap.headers.get("Cache-Control")),
+					() -> assertEquals("{\"name\":\"crm_app\"}", cap.bytesBody()),
+					() -> assertEquals(cap.bytes.size(), cap.contentLength));
+		}
+
+		@Test
+		@DisplayName("null supplier result gives {name:null}")
+		void nullName() throws Exception {
+			ResponseCapture cap = get(withSolution(() -> null, () -> 5000, () -> true, t -> true), "GET");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertEquals("{\"name\":null}", cap.bytesBody()));
+		}
+
+		@Test
+		@DisplayName("quotes and backslashes in the name are JSON-escaped")
+		void escapesName() throws Exception {
+			ResponseCapture cap = get(withSolution(() -> "a\"b\\c", () -> 5000, () -> true, t -> true), "GET");
+			assertEquals("{\"name\":\"a\\\"b\\\\c\"}", cap.bytesBody());
+		}
+
+		@Test
+		@DisplayName("a throwing supplier still answers 200 {name:null}")
+		void throwingSupplier() throws Exception {
+			ResponseCapture cap = get(withSolution(() -> {
+				throw new IllegalStateException("boom");
+			}, () -> 5000, () -> true, t -> true), "GET");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertEquals("{\"name\":null}", cap.bytesBody()));
+		}
+
+		@Test
+		@DisplayName("HEAD answers 200 with headers and no body")
+		void headHasNoBody() throws Exception {
+			ResponseCapture cap = get(withSolution(() -> "crm_app", () -> 5000, () -> true, t -> true), "HEAD");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertEquals(0, cap.bytes.size()),
+					() -> assertEquals("{\"name\":\"crm_app\"}".length(), cap.contentLength));
+		}
+
+		@Test
+		@DisplayName("POST /solution answers 405 and does not consult the supplier")
+		void postNotAllowed() throws Exception {
+			AtomicInteger calls = new AtomicInteger();
+			ResponseCapture cap = get(withSolution(() -> {
+				calls.incrementAndGet();
+				return "crm_app";
+			}, () -> 5000, () -> true, t -> true), "POST");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_METHOD_NOT_ALLOWED, cap.errorStatus),
+					() -> assertEquals(0, cap.bytes.size()), () -> assertEquals(0, calls.get()));
+		}
+
+		@Test
+		@DisplayName("answered even when the server is not ready and the port is -1; no wait hook")
+		void noReadinessGate() throws Exception {
+			AtomicInteger waitCalls = new AtomicInteger();
+			ResponseCapture cap = get(withSolution(() -> "crm_app", () -> -1, () -> false, t -> {
+				waitCalls.incrementAndGet();
+				return false;
+			}), "GET");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertEquals("{\"name\":\"crm_app\"}", cap.bytesBody()),
+					() -> assertEquals(0, waitCalls.get()));
+		}
+
+		@Test
+		@DisplayName("6-argument constructor answers {name:null}")
+		void sixArgConstructor() throws Exception {
+			ResponseCapture cap = get(servlet(() -> 5000, () -> true, t -> true, () -> "/home/proj"), "GET");
+			assertAll(() -> assertEquals(HttpServletResponse.SC_OK, cap.status),
+					() -> assertEquals("{\"name\":null}", cap.bytesBody()));
+		}
+
+		@Test
+		@DisplayName("the /rest_api 409 no-active-solution guard is unchanged")
+		void apiGuardUnchanged() throws Exception {
+			ResponseCapture cap2 = new ResponseCapture();
+			Function<String, URL> noResources = p -> null;
+			new OpencodeChatServlet(() -> 5000, () -> null, () -> true, t -> true, () -> null, noResources,
+					() -> "crm_app").service(fakeRequest("/rest_api/session", "GET"), fakeResponse(cap2));
+			cap2.writer.flush();
+			assertAll(() -> assertEquals(HttpServletResponse.SC_CONFLICT, cap2.status),
+					() -> assertTrue(cap2.body.toString().contains("no active solution")));
 		}
 	}
 

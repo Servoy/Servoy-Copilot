@@ -1,6 +1,6 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { BehaviorSubject, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppComponent } from './app.component';
@@ -12,13 +12,18 @@ describe('AppComponent', () => {
   let component: AppComponent;
   let draft: ReturnType<typeof signal<ComposerDraft>>;
   let store: Record<string, unknown>;
-  let status: { health: ReturnType<typeof vi.fn>; mcp: ReturnType<typeof vi.fn>; providers: ReturnType<typeof vi.fn> };
+  let status: {
+    health: ReturnType<typeof vi.fn>;
+    mcp: ReturnType<typeof vi.fn>;
+    providers: ReturnType<typeof vi.fn>;
+    solution: ReturnType<typeof vi.fn>;
+  };
 
   function setQuery(query: string): void {
     history.replaceState(null, '', window.location.pathname + query);
   }
 
-  async function setup(query = ''): Promise<void> {
+  async function setup(query = '', configure?: (s: typeof status) => void): Promise<void> {
     setQuery(query);
     document.documentElement.removeAttribute('data-theme');
     draft = signal<ComposerDraft>({ text: '', attachments: [] });
@@ -48,8 +53,10 @@ describe('AppComponent', () => {
     status = {
       health: vi.fn(() => of({ healthy: true, version: '2.0.0' })),
       mcp: vi.fn(() => of({})),
-      providers: vi.fn(() => of({ connected: ['kiro'], default: {} }))
+      providers: vi.fn(() => of({ connected: ['kiro'], default: {} })),
+      solution: vi.fn(() => of('crm_app'))
     };
+    configure?.(status);
     await TestBed.configureTestingModule({
       imports: [AppComponent],
       providers: [
@@ -155,6 +162,7 @@ describe('AppComponent', () => {
       expect(status.health.mock.calls.length).toBe(callsBefore + 1);
       expect(status.mcp.mock.calls.length).toBe(callsBefore + 1);
       expect(status.providers.mock.calls.length).toBe(callsBefore + 1);
+      expect(status.solution.mock.calls.length).toBe(callsBefore + 1);
     });
 
     it('the panel close button closes it and returns focus to the status button', async () => {
@@ -184,6 +192,64 @@ describe('AppComponent', () => {
       fixture.detectChanges();
       expect(q('.status-dot')!.classList.contains('error')).toBe(true);
       expect(q('.status-dot')!.classList.contains('ok')).toBe(false);
+    });
+  });
+
+  describe('header status dot states', () => {
+    const dot = () => q<HTMLElement>('.status-dot')!;
+    const states = () => ['ok', 'warn', 'error'].filter((c) => dot().classList.contains(c));
+    const failedMcp = { bad: { status: 'failed' } };
+
+    it('has no state class while health has not resolved (idle)', async () => {
+      await setup('', (s) => s.health.mockReturnValue(new Subject()));
+      expect(states()).toEqual([]);
+    });
+
+    it('is ok when ready', async () => {
+      await setup();
+      expect(states()).toEqual(['ok']);
+    });
+
+    it('is warn when an enabled MCP server is offline', async () => {
+      await setup('', (s) => s.mcp.mockReturnValue(of({ good: { status: 'connected' }, ...failedMcp })));
+      expect(states()).toEqual(['warn']);
+    });
+
+    it('stays ok when the only non-connected MCP server is disabled', async () => {
+      await setup('', (s) => s.mcp.mockReturnValue(of({ d: { status: 'disabled' } })));
+      expect(states()).toEqual(['ok']);
+    });
+
+    it('is error when unhealthy', async () => {
+      await setup('', (s) => s.health.mockReturnValue(of({ healthy: false })));
+      expect(states()).toEqual(['error']);
+    });
+
+    it('is error when there is no provider', async () => {
+      await setup('', (s) => s.providers.mockReturnValue(of({ connected: [], default: {} })));
+      expect(states()).toEqual(['error']);
+    });
+
+    it('is live while the panel is closed, including a state change after closing', async () => {
+      const mcp$ = new BehaviorSubject<Record<string, { status: string }>>({});
+      await setup('', (s) => s.mcp.mockReturnValue(mcp$));
+      expect(states()).toEqual(['ok']);
+      await click(statusBtn());
+      expect(panel().hidden).toBe(true);
+      expect(states()).toEqual(['ok']);
+      mcp$.next(failedMcp);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(panel().hidden).toBe(true);
+      expect(states()).toEqual(['warn']);
+    });
+
+    it('does not throw NG0600 when the dot state changes', async () => {
+      const mcp$ = new BehaviorSubject<Record<string, { status: string }>>({});
+      await setup('', (s) => s.mcp.mockReturnValue(mcp$));
+      mcp$.next(failedMcp);
+      expect(() => fixture.detectChanges()).not.toThrow();
     });
   });
 

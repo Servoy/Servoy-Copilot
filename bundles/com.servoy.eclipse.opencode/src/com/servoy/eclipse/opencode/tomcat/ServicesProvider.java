@@ -49,7 +49,8 @@ public class ServicesProvider implements IServicesProvider {
 			HashSet<ServletInstance> set = new HashSet<>();
 			set.add(new ServletInstance(new OpencodeChatServlet(ServicesProvider::resolvePort,
 					ServicesProvider::resolvePassword, ServicesProvider::isServerReady, ServicesProvider::waitForServer,
-					OpenCodeUtil::getActiveProjectPath, ServicesProvider::resolveBundleResource),
+					OpenCodeUtil::getActiveProjectPath, ServicesProvider::resolveBundleResource,
+					OpenCodeUtil::getActiveSolutionName),
 					OpencodeChatServlet.BASE_PATH + "/*"));
 			return set;
 		}

@@ -1,8 +1,32 @@
 <div class="panel">
-  <div class="head">
-    <span class="title">Status</span>
-    <button type="button" class="refresh" (click)="refresh()" [disabled]="loading()">
-      {{ loading() ? 'Refreshing…' : 'Refresh' }}
+  <div class="summary">
+    <span
+      class="dot"
+      [class.ok]="overall() === 'ok'"
+      [class.warn]="overall() === 'warn'"
+      [class.error]="overall() === 'error'"
+      aria-hidden="true"
+    ></span>
+    <div class="summary-text" role="status">
+      <span class="headline" [class.error-text]="overall() === 'error'">{{ summary().headline }}</span>
+      @if (summary().detail) {
+        <span class="sr-only"> - </span>
+        <span class="detail">{{ summary().detail }}</span>
+      }
+    </div>
+    <button
+      type="button"
+      class="refresh"
+      [class.spinning]="loading()"
+      [attr.aria-label]="loading() ? 'Refreshing…' : 'Refresh status'"
+      [title]="loading() ? 'Refreshing…' : 'Refresh status'"
+      [disabled]="loading()"
+      (click)="refresh()"
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v5h-5" />
+      </svg>
     </button>
     <button
       type="button"
@@ -16,74 +40,67 @@
       </svg>
     </button>
   </div>
-    @if (loadError()) {
-      <div class="section error-text">Could not reach Servoy AI. It may still be starting.</div>
-    } @else {
-      <div class="section">
-        <div class="section-title">Server</div>
-        <div class="row">
-          <span
-            class="dot"
-            [class.ok]="healthy() === true"
-            [class.error]="healthy() === false"
-            [class.warn]="healthy() === null"
-          ></span>
-          <span class="row-label">
-            @if (healthy() === true) {
-              Healthy
-            } @else if (healthy() === false) {
-              Unhealthy
-            } @else {
-              Unknown
-            }
-          </span>
-          @if (version(); as v) {
-            <span class="row-meta">v{{ v }}</span>
-          }
-        </div>
-      </div>
 
-      <div class="section">
-        <div class="section-title">
-          Providers
-          <span class="count">{{ connectedProviders().length }} connected</span>
-        </div>
-        @if (hasProviders()) {
-          @for (p of providerRows(); track p.name) {
-            <div class="row">
-              <span class="dot ok"></span>
-              <span class="row-label">{{ p.name }}</span>
-              @if (p.defaultModel) {
-                <span class="row-meta">{{ p.defaultModel }}</span>
-              }
-            </div>
-          }
+  <div class="facts">
+    <div class="fact">
+      <span class="dot" [class.ok]="!!solutionName()" aria-hidden="true"></span>
+      <span class="fact-label">Solution</span>
+      <span class="fact-value" [title]="solutionName() ?? '-'">{{ solutionName() ?? '-' }}</span>
+    </div>
+    <div class="fact">
+      <span class="dot" [class.ok]="!!currentModel()" aria-hidden="true"></span>
+      <span class="fact-label">Model</span>
+      <span class="fact-value" [title]="currentModel() ?? '-'">{{ currentModel() ?? '-' }}</span>
+    </div>
+    <div class="fact">
+      <span class="dot" [class.warn]="agentsWorking()" aria-hidden="true"></span>
+      <span class="fact-label">Agents</span>
+      <span class="fact-value">
+        @if (agentsWorking()) {
+          <span class="spinner" aria-hidden="true"></span>
+          working
         } @else {
-          <div class="row error-text">
-            No provider is connected — sign in to a provider so the assistant can respond.
+          idle
+        }
+      </span>
+    </div>
+  </div>
+
+  <div class="mcp">
+    <button
+      type="button"
+      class="mcp-toggle"
+      [attr.aria-expanded]="mcpOpen()"
+      aria-controls="status-mcp-list"
+      (click)="toggleMcp()"
+    >
+      <svg class="caret" [class.open]="mcpOpen()" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+      <span class="mcp-title">MCP servers</span>
+      <span class="mcp-count"> · {{ mcpOnline() }} of {{ mcpEnabled() }} online</span>
+      @if (mcpOffline() > 0) {
+        <span class="mcp-offline"> · {{ mcpOffline() }} offline</span>
+      }
+      @if (mcpDisabled() > 0) {
+        <span class="mcp-disabled"> · {{ mcpDisabled() }} disabled</span>
+      }
+    </button>
+    @if (mcpOpen()) {
+      <div class="mcp-list" id="status-mcp-list">
+        @for (row of mcpRows(); track row.name) {
+          <div class="mcp-row">
+            <span
+              class="dot"
+              [class.ok]="row.state === 'online'"
+              [class.error]="row.state === 'offline'"
+              aria-hidden="true"
+            ></span>
+            <span class="mcp-name">{{ row.name }}</span>
+            <span class="mcp-state">{{ row.state }}</span>
           </div>
         }
       </div>
-
-      <div class="section">
-        <div class="section-title">
-          MCP servers
-          <span class="count">{{ mcpConnectedCount() }}/{{ mcpTotalCount() }} connected</span>
-        </div>
-        @if (mcpTotalCount() === 0) {
-          <div class="row row-meta">No MCP servers reported.</div>
-        } @else {
-          @for (row of mcpRows(); track row.name) {
-            <div class="row">
-              <span class="dot" [class.ok]="row.ok" [class.error]="!row.ok"></span>
-              <span class="row-label">{{ row.name }}</span>
-              <span class="row-meta">{{ row.status }}</span>
-              @if (row.error) {
-                <span class="row-error" [title]="row.error">⚠</span>
-              }
-            </div>
-          }
-        }
-      </div>
     }
+  </div>
 </div>

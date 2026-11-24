@@ -9,31 +9,40 @@ import {
   signal
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { forkJoin, interval } from 'rxjs';
+import { interval } from 'rxjs';
 
 import { McpStatusMap, ProviderStatus } from '../models/opencode.models';
+import { ChatStore } from '../services/chat-store.service';
 import { StatusService } from '../services/status.service';
+
+type McpState = 'online' | 'offline' | 'disabled';
 
 /** A flattened MCP row for the template. */
 interface McpRow {
   name: string;
-  status: string;
-  error?: string;
-  ok: boolean;
+  state: McpState;
 }
 
-/** A connected provider and the default model opencode picks for it. */
-interface ProviderRow {
-  name: string;
-  defaultModel: string | null;
+type OverallState = 'idle' | 'ok' | 'warn' | 'error';
+
+interface StatusSummary {
+  state: OverallState;
+  text: string;
+  headline: string;
+  detail: string;
 }
+
+const READY_HEADLINE = 'Ready';
+const READY_DETAIL = 'Servoy AI is connected';
+
+const MCP_ORDER: Record<McpState, number> = { offline: 0, online: 1, disabled: 2 };
 
 /**
  * A docked status panel (hosted by the shell's status area, whose open state
- * lives in the shell) showing the health of the opencode server, the connection status of each MCP
- * server, and which model providers are authenticated. This surfaces the state
- * that explains most failures (server still starting, an MCP server failed to
- * connect, or no model provider is authenticated - the "No accounts" case).
+ * lives in the shell) that answers "can I work?" at a glance: one overall line
+ * in words (also driving the header dot through {@code overall()}), the facts
+ * Solution / Model / Agents (Model and Agents follow the session being
+ * viewed), and the MCP servers folded away behind a single summary line.
  */
 @Component({
   selector: 'svy-status-panel',
@@ -44,6 +53,7 @@ interface ProviderRow {
 })
 export class StatusPanelComponent implements OnInit {
   private readonly status = inject(StatusService);
+  private readonly store = inject(ChatStore);
   private readonly destroyRef = inject(DestroyRef);
 
   /** How often the status is polled in the background (ms). */
@@ -58,85 +68,81 @@ export class StatusPanelComponent implements OnInit {
   readonly initialized = signal(false);
 
   readonly healthy = signal<boolean | null>(null);
-  readonly version = signal<string | null>(null);
   readonly mcp = signal<McpStatusMap>({});
   readonly providers = signal<ProviderStatus | null>(null);
+  readonly solutionName = signal<string | null>(null);
+  readonly mcpOpen = signal(false);
 
-  /** MCP entries flattened and sorted (failed/needs-attention first). */
+  /** MCP entries flattened and sorted (offline first, then online, then disabled). */
   readonly mcpRows = computed<McpRow[]>(() => {
     const map = this.mcp();
-    const rows = Object.keys(map).map((name) => {
-      const entry = map[name];
-      const ok = entry.status === 'connected';
-      return { name, status: entry.status, error: entry.error, ok };
+    const rows = Object.keys(map).map((name): McpRow => {
+      const status = map[name].status;
+      const state: McpState =
+        status === 'connected' ? 'online' : status === 'disabled' ? 'disabled' : 'offline';
+      return { name, state };
     });
     return rows.sort((a, b) => {
-      if (a.ok !== b.ok) {
-        return a.ok ? 1 : -1;
+      if (a.state !== b.state) {
+        return MCP_ORDER[a.state] - MCP_ORDER[b.state];
       }
       return a.name.localeCompare(b.name);
     });
   });
 
-  readonly mcpConnectedCount = computed(() => this.mcpRows().filter((r) => r.ok).length);
-  readonly mcpTotalCount = computed(() => this.mcpRows().length);
+  readonly mcpOnline = computed(() => this.mcpRows().filter((r) => r.state === 'online').length);
+  readonly mcpOffline = computed(() => this.mcpRows().filter((r) => r.state === 'offline').length);
+  readonly mcpDisabled = computed(() => this.mcpRows().filter((r) => r.state === 'disabled').length);
+  readonly mcpEnabled = computed(() => this.mcpOnline() + this.mcpOffline());
 
   readonly connectedProviders = computed(() => this.providers()?.connected ?? []);
   readonly hasProviders = computed(() => this.connectedProviders().length > 0);
 
-  /**
-   * Connected providers paired with their default model id (from the
-   * {@code default} map of {@code GET /provider}). These are providers - each
-   * exposes a set of models; we show the default one opencode would pick.
-   */
-  readonly providerRows = computed<ProviderRow[]>(() => {
-    const status = this.providers();
-    if (!status) {
-      return [];
+  /** Model id of the newest message of the viewed session that carries one. */
+  readonly currentModel = computed<string | null>(() => {
+    const messages = this.store.messages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const model = messages[i].info['model'] as { id?: unknown } | null | undefined;
+      const id = model?.id;
+      if (typeof id === 'string' && id.length > 0) {
+        return id;
+      }
     }
-    const defaults = status.default ?? {};
-    return (status.connected ?? []).map((name) => ({
-      name,
-      defaultModel: defaults[name] ?? null
-    }));
+    return null;
   });
 
+  /** True while the viewed session has a turn running. */
+  readonly agentsWorking = computed(() => this.store.streaming());
+
   /**
-   * Overall dot colour, driven by the three health axes (server, providers,
-   * MCP):
-   * <ul>
-   *   <li>grey ({@code 'idle'}) until the first fetch resolves, so the dot
-   *       never claims a state it hasn't measured;</li>
-   *   <li>red ({@code 'error'}) on a fetch failure, an unhealthy server, or no
-   *       connected provider (the assistant cannot respond);</li>
-   *   <li>amber ({@code 'warn'}) when everything essential is up but some MCP
-   *       server is not connected;</li>
-   *   <li>green ({@code 'ok'}) only when the server is healthy, at least one
-   *       provider is connected, and every reported MCP server is connected.</li>
-   * </ul>
+   * Single source of truth for the overall state and its wording; the head
+   * dot and the summary line both derive from it. Priority, first match wins:
+   * not yet known (idle), unreachable/unhealthy (error), no provider (error),
+   * an enabled MCP server offline (warn), otherwise ok.
    */
-  readonly overall = computed<'idle' | 'ok' | 'warn' | 'error'>(() => {
-    // Grey only until the primary (health) axis has resolved once.
+  readonly summary = computed<StatusSummary>(() => {
     if (!this.initialized()) {
-      return 'idle';
+      const text = 'Checking Servoy AI…';
+      return { state: 'idle', text, headline: text, detail: '' };
     }
-    // A failed health fetch or an unhealthy server is a hard error.
-    if (this.loadError() || this.healthy() === false || this.healthy() === null) {
-      return 'error';
+    if (this.loadError() || this.healthy() !== true) {
+      const text = 'Could not reach Servoy AI. It may still be starting.';
+      return { state: 'error', text, headline: text, detail: '' };
     }
-    // Server is healthy. The provider and MCP axes load independently and may
-    // not have arrived yet; treat a not-yet-loaded provider list as "unknown",
-    // not as a failure, so the dot doesn't flash red on startup. Only an
-    // explicitly empty provider list (loaded, zero connected) is an error.
-    const providers = this.providers();
-    if (providers && !this.hasProviders()) {
-      return 'error';
+    if (this.providers() && !this.hasProviders()) {
+      const text = 'No model provider connected';
+      return { state: 'error', text, headline: text, detail: '' };
     }
-    if (this.mcpTotalCount() > 0 && this.mcpConnectedCount() < this.mcpTotalCount()) {
-      return 'warn';
-    }
-    return 'ok';
+    const state: OverallState = this.mcpOffline() > 0 ? 'warn' : 'ok';
+    return {
+      state,
+      text: `${READY_HEADLINE} - ${READY_DETAIL}`,
+      headline: READY_HEADLINE,
+      detail: READY_DETAIL
+    };
   });
+
+  readonly overall = computed<OverallState>(() => this.summary().state);
 
   ngOnInit(): void {
     // Fetch once immediately so the dot reflects real state without a click,
@@ -147,8 +153,12 @@ export class StatusPanelComponent implements OnInit {
       .subscribe(() => this.refresh());
   }
 
+  toggleMcp(): void {
+    this.mcpOpen.update((open) => !open);
+  }
+
   /**
-   * Refresh the three status axes independently rather than as one combined
+   * Refresh the status axes independently rather than as one combined
    * request. This matters because {@code GET /provider} returns the full
    * provider+model catalogue (multiple megabytes); waiting on it inside a
    * {@code forkJoin} kept the indicator stuck grey until that giant payload
@@ -162,7 +172,6 @@ export class StatusPanelComponent implements OnInit {
     this.status.health().subscribe({
       next: (health) => {
         this.healthy.set(health?.healthy ?? null);
-        this.version.set(health?.version ?? null);
         this.loadError.set(false);
         this.initialized.set(true);
         this.loading.set(false);
@@ -183,5 +192,7 @@ export class StatusPanelComponent implements OnInit {
       next: (providers) => this.providers.set(providers ?? null),
       error: () => this.providers.set(null)
     });
+
+    this.status.solution().subscribe((name) => this.solutionName.set(name));
   }
 }

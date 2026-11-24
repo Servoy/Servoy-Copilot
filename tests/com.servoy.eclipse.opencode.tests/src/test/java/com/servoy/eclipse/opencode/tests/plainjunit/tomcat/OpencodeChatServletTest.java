@@ -49,6 +49,26 @@ class OpencodeChatServletTest {
 	@Nested
 	class RouteClassification {
 		@Test
+		@DisplayName("'/solution' is a solution request and not an API request")
+		void solutionPathIsSolution() {
+			assertAll(() -> assertTrue(OpencodeChatServlet.isSolutionRequest("/solution")),
+					() -> assertFalse(OpencodeChatServlet.isApiRequest("/solution")));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "", "/", "/rest_api/solution", "/solution/x", "/Solution", "/solution/", "solution" })
+		@DisplayName("other paths are not solution requests")
+		void otherPathsAreNotSolution(String pathInfo) {
+			assertFalse(OpencodeChatServlet.isSolutionRequest(pathInfo));
+		}
+
+		@Test
+		@DisplayName("null path-info is not a solution request")
+		void nullIsNotSolution() {
+			assertFalse(OpencodeChatServlet.isSolutionRequest(null));
+		}
+
+		@Test
 		@DisplayName("null path-info is not an API request")
 		void nullPathIsNotApi() {
 			assertFalse(OpencodeChatServlet.isApiRequest(null));

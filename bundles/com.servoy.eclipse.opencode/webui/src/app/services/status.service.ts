@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 
 import { HealthStatus, McpStatus, McpStatusMap, ProviderStatus } from '../models/opencode.models';
 
@@ -49,6 +49,18 @@ export class StatusService {
           return out;
         })
       );
+  }
+
+  /**
+   * The real active Servoy solution name, served by the BFF itself (not
+   * proxied) at {@code GET solution}. A failure maps to {@code null} so the
+   * informational name never affects the health state.
+   */
+  solution(): Observable<string | null> {
+    return this.http.get<{ name?: string | null }>('solution').pipe(
+      map((r) => r?.name ?? null),
+      catchError(() => of(null))
+    );
   }
 
   /**

@@ -12,11 +12,10 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--svy-muted, #9aa0a6);
+  background: var(--svy-idle, #9aa0a6);
   flex: 0 0 auto;
 }
 
-// Popover rows put the state class directly on the .dot span.
 .dot.ok {
   background: var(--svy-ok);
 }
@@ -29,18 +28,45 @@
   background: var(--svy-danger, #d1242f);
 }
 
-.head {
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 14px 12px 14px 16px;
   border-bottom: 1px solid var(--svy-line2);
 }
 
-.title {
+.summary-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.headline {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.detail {
+  font-size: 12px;
+  color: var(--svy-muted, #6b7075);
+}
+
+.error-text {
+  color: var(--svy-danger, #d1242f);
 }
 
 .close {
@@ -61,78 +87,190 @@
 }
 
 .refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: none;
-  background: none;
-  color: var(--svy-acc-fg);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--svy-muted, #6b7075);
   cursor: pointer;
-  font-size: 0.78rem;
-  padding: 0.1rem 0.2rem;
+}
+
+.refresh:hover:not(:disabled) {
+  background: var(--svy-line2);
+  color: var(--svy-fg2);
 }
 
 .refresh:disabled {
-  color: var(--svy-muted, #9aa0a6);
   cursor: default;
 }
 
-.section {
-  padding: 0.6rem 16px;
-  border-top: 1px solid var(--svy-border, rgba(0, 0, 0, 0.08));
+.refresh svg {
+  display: block;
 }
 
-.section:first-of-type {
-  border-top: none;
+.refresh.spinning svg {
+  animation: svy-status-spin 0.8s linear infinite;
 }
 
-.section-title {
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--svy-line2);
+}
+
+.fact {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  margin-bottom: 0.3rem;
+  gap: 8px;
+  font-size: 13px;
 }
 
-.count {
-  font-weight: 400;
-  color: var(--svy-muted, #6b7075);
+.fact-label {
+  flex: 0 0 auto;
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.12rem 0;
-}
-
-.row-label {
+.fact-value {
   flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.row-meta {
+  font-family: var(--svy-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
   color: var(--svy-muted, #6b7075);
-  font-size: 0.72rem;
 }
 
-.row-error {
-  color: var(--svy-danger, #d1242f);
-  cursor: help;
+.spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--svy-line2);
+  border-top-color: var(--svy-accent, #f5a623);
+  animation: svy-status-spin 0.8s linear infinite;
+  flex: 0 0 auto;
 }
 
-.error-text {
-  color: var(--svy-danger, #d1242f);
+@keyframes svy-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.chips {
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .refresh.spinning svg {
+    animation: none;
+  }
+}
+
+.mcp {
+  padding: 8px;
+}
+
+.mcp-toggle {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--svy-fg);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.chip {
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  background: var(--svy-surface-hover, rgba(0, 0, 0, 0.06));
-  font-size: 0.74rem;
+.mcp-toggle:hover {
+  background: var(--svy-line2);
+}
+
+.mcp-toggle:focus-visible {
+  outline: 2px solid var(--svy-acc-fg);
+  outline-offset: 2px;
+}
+
+.caret {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  color: var(--svy-muted, #6b7075);
+  transition: transform 0.15s ease;
+}
+
+.caret.open {
+  transform: rotate(90deg);
+}
+
+.mcp-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: pre;
+}
+
+.mcp-count {
+  color: var(--svy-muted, #6b7075);
+  white-space: pre;
+}
+
+.mcp-offline {
+  margin-left: auto;
+  color: var(--svy-acc-fg);
+  white-space: pre;
+}
+
+.mcp-disabled {
+  color: var(--svy-muted, #6b7075);
+  white-space: pre;
+}
+
+.mcp-offline + .mcp-disabled {
+  margin-left: 0;
+}
+
+.mcp-count + .mcp-disabled {
+  margin-left: auto;
+}
+
+.mcp-list {
+  padding: 0 6px 8px 32px;
+}
+
+.mcp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-bottom: 1px solid var(--svy-soft, var(--svy-line2));
+}
+
+.mcp-row .dot {
+  width: 7px;
+  height: 7px;
+}
+
+.mcp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--svy-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+}
+
+.mcp-state {
+  font-size: 12px;
+  color: var(--svy-muted, #6b7075);
 }

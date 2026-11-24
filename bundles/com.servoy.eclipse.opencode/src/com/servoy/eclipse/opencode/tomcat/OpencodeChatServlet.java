@@ -89,6 +89,9 @@ public class OpencodeChatServlet extends HttpServlet {
 	/** Sub-path under the mount reserved for the proxied opencode API. */
 	static final String API_PREFIX = "/rest_api";
 
+	/** BFF-owned read-only endpoint that reports the active Servoy solution name. */
+	static final String SOLUTION_PATH = "/solution";
+
 	/**
 	 * Prefix opencode 2.x expects on every HTTP API path (e.g.
 	 * {@code /api/session}). The front-end keeps using the stable
@@ -147,6 +150,7 @@ public class OpencodeChatServlet extends HttpServlet {
 	private final transient WaitForServer waitForServer;
 	private final Supplier<String> projectPathSupplier;
 	private final transient java.util.function.Function<String, URL> resourceResolver;
+	private final Supplier<String> solutionNameSupplier;
 
 	private transient volatile HttpClient httpClient;
 
@@ -188,6 +192,21 @@ public class OpencodeChatServlet extends HttpServlet {
 	public OpencodeChatServlet(IntSupplier portSupplier, Supplier<String> serverPasswordSupplier,
 			BooleanSupplier serverReadySupplier, WaitForServer waitForServer, Supplier<String> projectPathSupplier,
 			java.util.function.Function<String, URL> resourceResolver) {
+		this(portSupplier, serverPasswordSupplier, serverReadySupplier, waitForServer, projectPathSupplier,
+				resourceResolver, () -> null);
+	}
+
+	/**
+	 * Same as the 6-argument constructor, additionally taking the supplier of the
+	 * active Servoy solution name served by {@code GET /solution}.
+	 *
+	 * @param solutionNameSupplier resolves the active solution name, or
+	 *                             {@code null} if no solution is active
+	 */
+	public OpencodeChatServlet(IntSupplier portSupplier, Supplier<String> serverPasswordSupplier,
+			BooleanSupplier serverReadySupplier, WaitForServer waitForServer, Supplier<String> projectPathSupplier,
+			java.util.function.Function<String, URL> resourceResolver, Supplier<String> solutionNameSupplier) {
+		this.solutionNameSupplier = solutionNameSupplier;
 		this.portSupplier = portSupplier;
 		this.serverPasswordSupplier = serverPasswordSupplier;
 		this.serverReadySupplier = serverReadySupplier;
@@ -199,6 +218,14 @@ public class OpencodeChatServlet extends HttpServlet {
 	// -----------------------------------------------------------------------
 	// Route classification (package-visible for unit tests)
 	// -----------------------------------------------------------------------
+
+	/**
+	 * @return {@code true} if the given path-info is exactly the BFF solution
+	 *         endpoint ({@code /solution})
+	 */
+	public static boolean isSolutionRequest(String pathInfo) {
+		return SOLUTION_PATH.equals(pathInfo);
+	}
 
 	/**
 	 * @return {@code true} if the given path-info targets the proxied opencode API
@@ -376,10 +403,37 @@ public class OpencodeChatServlet extends HttpServlet {
 	@Override
 	protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		String pathInfo = req.getPathInfo();
-		if (isApiRequest(pathInfo)) {
+		if (isSolutionRequest(pathInfo)) {
+			handleSolution(req, resp);
+		} else if (isApiRequest(pathInfo)) {
 			handleApi(req, resp, pathInfo);
 		} else {
 			serveStatic(req, resp, pathInfo);
+		}
+	}
+
+	private void handleSolution(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		if (!"GET".equalsIgnoreCase(req.getMethod()) && !"HEAD".equalsIgnoreCase(req.getMethod())) {
+			resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+			return;
+		}
+		String name = null;
+		try {
+			name = solutionNameSupplier.get();
+		} catch (RuntimeException e) {
+			ServoyLog.logError("OpencodeChatServlet: cannot resolve active solution name", e);
+		}
+		String json = name == null ? "{\"name\":null}" : "{\"name\":\"" + jsonEscape(name) + "\"}";
+		byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		resp.setStatus(HttpServletResponse.SC_OK);
+		resp.setContentType("application/json;charset=UTF-8");
+		resp.setHeader("Cache-Control", "no-store");
+		resp.setContentLength(bytes.length);
+		if (!"HEAD".equalsIgnoreCase(req.getMethod())) {
+			try (OutputStream out = resp.getOutputStream()) {
+				out.write(bytes);
+				out.flush();
+			}
 		}
 	}
 

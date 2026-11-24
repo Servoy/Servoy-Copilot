@@ -66,6 +66,38 @@ describe('StatusService', () => {
     });
   });
 
+  it('returns the solution name from the BFF-owned relative solution endpoint', () => {
+    let result: unknown = 'unset';
+    service.solution().subscribe((r) => (result = r));
+    const req = httpMock.expectOne('solution');
+    expect(req.request.method).toBe('GET');
+    req.flush({ name: 'crm_app' });
+    expect(result).toBe('crm_app');
+  });
+
+  it('maps a null solution name to null', () => {
+    let result: unknown = 'unset';
+    service.solution().subscribe((r) => (result = r));
+    httpMock.expectOne('solution').flush({ name: null });
+    expect(result).toBeNull();
+  });
+
+  it('maps a missing solution name to null', () => {
+    let result: unknown = 'unset';
+    service.solution().subscribe((r) => (result = r));
+    httpMock.expectOne('solution').flush({});
+    expect(result).toBeNull();
+  });
+
+  it('maps an HTTP error on solution to null instead of failing', () => {
+    let result: unknown = 'unset';
+    let failed = false;
+    service.solution().subscribe({ next: (r) => (result = r), error: () => (failed = true) });
+    httpMock.expectOne('solution').flush('boom', { status: 500, statusText: 'err' });
+    expect(failed).toBe(false);
+    expect(result).toBeNull();
+  });
+
   it('derives connected providers from the V2 /provider activation field', () => {
     let result: unknown;
     service.providers().subscribe((r) => (result = r));

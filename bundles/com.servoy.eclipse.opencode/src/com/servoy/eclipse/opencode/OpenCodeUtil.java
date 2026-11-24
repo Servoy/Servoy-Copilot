@@ -67,6 +67,35 @@ public class OpenCodeUtil {
 	}
 
 	/**
+	 * Returns the name of the currently active Servoy solution (the Eclipse
+	 * project name, which is the solution name in Servoy).
+	 *
+	 * @return the solution name, or {@code null} if no solution is active
+	 */
+	public static String getActiveSolutionName() {
+		IServoyModel model = ServoyModelFinder.getServoyModel();
+		if (model == null)
+			return null;
+		ServoyProject activeProject = model.getActiveProject();
+		if (activeProject == null)
+			return null;
+		IProject eclipseProject = activeProject.getProject();
+		if (eclipseProject == null)
+			return null;
+		return normalizeSolutionName(eclipseProject.getName());
+	}
+
+	/**
+	 * Trims the given project name; a {@code null} or blank name yields {@code null}.
+	 */
+	public static String normalizeSolutionName(String projectName) {
+		if (projectName == null)
+			return null;
+		String trimmed = projectName.trim();
+		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	/**
 	 * Returns the Servoy opencode config directory
 	 * ({@code ~/.servoy/opencode/}). This is the single source of truth for the
 	 * literal; all sites that need the config dir resolve it through this helper.
