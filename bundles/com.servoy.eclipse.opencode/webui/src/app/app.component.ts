@@ -11,9 +11,13 @@ import {
 
 import { SendPart } from './models/opencode.models';
 import { ChatStore, ComposerDraft } from './services/chat-store.service';
+import { buildAgentView } from './services/agent-view';
 import { debugEnabled } from './services/debug-log';
 import { ThemeService } from './services/theme.service';
 import { FormAnswer } from './models/opencode.models';
+import { AgentFooterComponent } from './components/agent-footer.component';
+import { AgentHeaderComponent } from './components/agent-header.component';
+import { AgentViewComponent } from './components/agent-view.component';
 import { ComposerComponent } from './components/composer.component';
 import { DebugOverlayComponent } from './components/debug-overlay.component';
 import { FormCardComponent } from './components/form-card.component';
@@ -35,6 +39,9 @@ import { StatusPanelComponent } from './components/status-panel.component';
     MessageListComponent,
     ComposerComponent,
     FormCardComponent,
+    AgentViewComponent,
+    AgentHeaderComponent,
+    AgentFooterComponent,
     StatusPanelComponent,
     DebugOverlayComponent
   ],
@@ -57,6 +64,9 @@ export class AppComponent implements OnInit {
    */
   readonly sessionsOpen = signal(AppComponent.matches('(min-width: 800px)'));
 
+  readonly restoreScroll = signal<{ top: number; pinned: boolean } | null>(null);
+
+  private readonly messageList = viewChild(MessageListComponent);
   private readonly statusPanel = viewChild(StatusPanelComponent);
   private readonly statusButton = viewChild<ElementRef<HTMLButtonElement>>('statusButton');
 
@@ -97,9 +107,32 @@ export class AppComponent implements OnInit {
   }
 
   onSelectSession(id: string): void {
+    const activeId = this.store.activeSessionId();
+    if (id !== activeId && activeId) {
+      if (this.store.activeIsSubagent()) {
+        this.restoreScroll.set(this.store.activeParent()?.id === id ? (this.store.takeScroll(id) ?? null) : null);
+      } else {
+        this.restoreScroll.set(null);
+        const list = this.messageList();
+        if (list && this.store.sessionParentId(id) === activeId) {
+          this.store.saveScroll(activeId, list.getScrollState());
+        }
+      }
+    }
     this.store.openSession(id);
     if (!AppComponent.matches('(min-width: 800px)')) {
       this.sessionsOpen.set(false);
+    }
+  }
+
+  readonly agentName = computed(
+    () => buildAgentView(this.store.messages(), this.store.activeSession(), this.store.activeChildSignals()).name
+  );
+
+  onBackToParent(): void {
+    const parent = this.store.activeParent();
+    if (parent) {
+      this.onSelectSession(parent.id);
     }
   }
 

@@ -1,0 +1,21 @@
+@if (parentId()) {
+  <button
+    type="button"
+    class="back"
+    [attr.aria-label]="backLabel()"
+    [attr.title]="parentLabel()"
+    (click)="back.emit()"
+  >
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  </button>
+}
+<div class="crumbs">
+  @if (parentId()) {
+    <span class="parent" [attr.title]="parentLabel()">{{ parentLabel() }}</span>
+    <span class="sep" aria-hidden="true">&gt;</span>
+  }
+  <span class="agent" [attr.title]="agentName()">{{ agentName() }}</span>
+</div>
+<span class="pill">read-only</span>

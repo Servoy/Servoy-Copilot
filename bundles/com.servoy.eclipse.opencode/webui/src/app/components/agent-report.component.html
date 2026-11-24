@@ -1,0 +1,11 @@
+<section class="block" role="region" [class.stopped]="report().stopped" [attr.aria-label]="title()">
+  <div class="title">{{ title() }}</div>
+  @if (report().text) {
+    <svy-markdown [content]="report().text"></svy-markdown>
+    @if (report().stopped && report().reason && !report().needsDecision) {
+      <div class="reason">{{ report().reason }}</div>
+    }
+  } @else if (report().reason) {
+    <div class="reason">{{ report().reason }}</div>
+  }
+</section>

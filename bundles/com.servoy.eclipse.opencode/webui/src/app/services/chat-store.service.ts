@@ -406,6 +406,32 @@ export class ChatStore implements OnDestroy {
     return this.allSessions().find((s) => s.id === id)?.title?.trim() ?? '';
   });
 
+  readonly activeSession = computed<Session | undefined>(() => {
+    const id = this.activeSessionId();
+    return id ? this.allSessions().find((s) => s.id === id) : undefined;
+  });
+
+  readonly activeChildSignals = computed<ChildSignals | undefined>(() => {
+    const id = this.activeSessionId();
+    return id ? this.childSignals().get(id) : undefined;
+  });
+
+  private readonly savedScroll = new Map<string, { top: number; pinned: boolean }>();
+
+  saveScroll(sessionId: string, pos: { top: number; pinned: boolean }): void {
+    this.savedScroll.set(sessionId, pos);
+  }
+
+  takeScroll(sessionId: string): { top: number; pinned: boolean } | undefined {
+    const pos = this.savedScroll.get(sessionId);
+    this.savedScroll.delete(sessionId);
+    return pos;
+  }
+
+  sessionParentId(id: string): string | undefined {
+    return this.allSessions().find((s) => s.id === id)?.parentID;
+  }
+
   readonly activeParent = computed(() => {
     const id = this.activeSessionId();
     if (!id) {

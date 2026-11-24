@@ -188,6 +188,62 @@ describe('ChatStore', () => {
     expect(store.activeParent()).toEqual({ id: 'gone', title: '' });
   });
 
+  describe('agent session view state (SVY-21850)', () => {
+    const sessions: Session[] = [
+      { id: 's1', title: 'Parent' },
+      { id: 'c1', title: 'Child (@reviewer subagent)', parentID: 's1' }
+    ];
+
+    beforeEach(() => {
+      api.listSessions.mockReturnValue(of(sessions));
+      api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+      store.refreshSessions();
+    });
+
+    it('activeSession is undefined without an active session and follows the active id', () => {
+      expect(store.activeSession()).toBeUndefined();
+      store.openSession('c1');
+      expect(store.activeSession()?.id).toBe('c1');
+      expect(store.activeSession()?.parentID).toBe('s1');
+      store.openSession('s1');
+      expect(store.activeSession()?.id).toBe('s1');
+    });
+
+    it('activeChildSignals returns the childSignals entry of the active session only', () => {
+      store.openSession('c1');
+      expect(store.activeChildSignals()?.busy).not.toBe(true);
+      events.fire({ type: 'session.execution.started', data: { sessionID: 'c1' } });
+      expect(store.activeChildSignals()).toBe(store.childSignals().get('c1'));
+      expect(store.activeChildSignals()?.busy).toBe(true);
+      store.openSession('s1');
+      expect(store.activeChildSignals()).toBeUndefined();
+    });
+
+    it('saveScroll then takeScroll returns the saved position once', () => {
+      store.saveScroll('s1', { top: 420, pinned: false });
+      expect(store.takeScroll('s1')).toEqual({ top: 420, pinned: false });
+      expect(store.takeScroll('s1')).toBeUndefined();
+    });
+
+    it('keeps saved scroll positions per session and overwrites on a second save', () => {
+      store.saveScroll('s1', { top: 1, pinned: false });
+      store.saveScroll('other', { top: 2, pinned: true });
+      store.saveScroll('s1', { top: 3, pinned: true });
+      expect(store.takeScroll('s1')).toEqual({ top: 3, pinned: true });
+      expect(store.takeScroll('other')).toEqual({ top: 2, pinned: true });
+    });
+
+    it('takeScroll is undefined for a session that was never saved', () => {
+      expect(store.takeScroll('nope')).toBeUndefined();
+    });
+
+    it('sessionParentId returns the parent of a child and undefined otherwise', () => {
+      expect(store.sessionParentId('c1')).toBe('s1');
+      expect(store.sessionParentId('s1')).toBeUndefined();
+      expect(store.sessionParentId('missing')).toBeUndefined();
+    });
+  });
+
   it('send is a no-op when the active session is a subagent', () => {
     const sessions: Session[] = [
       { id: 's1', title: 'Parent' },

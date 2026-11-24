@@ -8,6 +8,7 @@ import {
   ChildSignals,
   InterruptReason,
   deriveAgentStatus,
+  deriveChildStatus,
   parseBackgroundResult,
   parseReportStatus
 } from './agent-status';
@@ -694,5 +695,87 @@ describe('deriveAgentStatus: never-spinner invariant', () => {
     const done = deriveAgentStatus(sub(), { child: { busy: false, outcome: 'succeeded' }, parentLive: true });
     expect(stopped.label).not.toBe('Running');
     expect(done.label).not.toBe('Running');
+  });
+});
+
+describe('deriveChildStatus', () => {
+  const completed = (body: string): ChildSignals => ({ result: { state: 'completed', body } });
+
+  it('is running with label Running when busy', () => {
+    const s = deriveChildStatus({ busy: true });
+    expect(s.status).toBe('running');
+    expect(s.label).toBe('Running');
+  });
+
+  it('is done with the COMPLETED report for a completed result', () => {
+    const s = deriveChildStatus(completed('Status: COMPLETED\nDone'));
+    expect(s.status).toBe('done');
+    expect(s.label).toBe('Done');
+    expect(s.report).toBe('COMPLETED');
+  });
+
+  it('is stopped and needs a decision for INPUT_REQUIRED', () => {
+    const s = deriveChildStatus(completed('Status: INPUT_REQUIRED\nWhich one?'));
+    expect(s.status).toBe('stopped');
+    expect(s.label).toBe('Stopped — needs a decision');
+    expect(s.report).toBe('INPUT_REQUIRED');
+  });
+
+  it.each(['BLOCKED', 'FAILED'])('is plain Stopped for %s', (value) => {
+    const s = deriveChildStatus(completed(`Status: ${value}\nReason`));
+    expect(s.status).toBe('stopped');
+    expect(s.label).toBe('Stopped');
+    expect(s.report).toBe(value);
+  });
+
+  it('summarizes a cancelled result as Cancelled', () => {
+    const s = deriveChildStatus({ result: { state: 'cancelled', body: '' } });
+    expect(s.status).toBe('stopped');
+    expect(s.summary).toBe('Cancelled');
+  });
+
+  it('summarizes interruptedReason user as Stopped by user', () => {
+    const s = deriveChildStatus({ interruptedReason: 'user' });
+    expect(s.status).toBe('stopped');
+    expect(s.summary).toBe('Stopped by user');
+  });
+
+  it('summarizes outcome failed as Failed', () => {
+    const s = deriveChildStatus({ outcome: 'failed' });
+    expect(s.status).toBe('stopped');
+    expect(s.summary).toBe('Failed');
+  });
+
+  it.each([undefined, {}])('is stopped with Not running and never running for %j', (child) => {
+    const s = deriveChildStatus(child as ChildSignals | undefined);
+    expect(s.status).toBe('stopped');
+    expect(s.summary).toBe('Not running');
+    expect(s.report).toBeNull();
+  });
+
+  it('lets busy win over a stale result and outcome', () => {
+    const s = deriveChildStatus({
+      busy: true,
+      outcome: 'failed',
+      result: { state: 'completed', body: 'Status: COMPLETED\nOld' }
+    });
+    expect(s.status).toBe('running');
+    expect(s.report).toBeNull();
+  });
+
+  it('uses reportBody when there is no result: INPUT_REQUIRED stops', () => {
+    const s = deriveChildStatus({}, { reportBody: 'Status: INPUT_REQUIRED\nNeed input' });
+    expect(s.status).toBe('stopped');
+    expect(s.report).toBe('INPUT_REQUIRED');
+  });
+
+  it('uses reportBody when there is no result: a plain report is done', () => {
+    const s = deriveChildStatus({}, { reportBody: 'Status: COMPLETED\nAll good' });
+    expect(s.status).toBe('done');
+    expect(s.label).toBe('Done');
+  });
+
+  it('ignores reportBody for a busy child', () => {
+    expect(deriveChildStatus({ busy: true }, { reportBody: 'Status: COMPLETED\nx' }).status).toBe('running');
   });
 });

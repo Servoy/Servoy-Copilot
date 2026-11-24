@@ -1,0 +1,37 @@
+:host {
+  display: block;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid var(--svy-line);
+  background: var(--svy-surface);
+  color: var(--svy-muted);
+  font-size: 13px;
+}
+
+.open {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--svy-acc-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--svy-acc-fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--svy-acc-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-focus-ring, var(--svy-acc-fg));
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,25 @@
+:host {
+  display: block;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--svy-muted);
+  font-size: 12px;
+}
+
+.rule {
+  flex: 1 1 24px;
+  height: 1px;
+  background: var(--svy-line);
+}
+
+.text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

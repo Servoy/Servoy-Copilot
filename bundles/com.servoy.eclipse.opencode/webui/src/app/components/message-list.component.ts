@@ -41,9 +41,17 @@ export class MessageListComponent {
   /** Requested when the user scrolls near the top and older history exists. */
   readonly loadOlder = output<void>();
 
+  /** One-shot scroll position to restore once messages are rendered. */
+  readonly restoreScroll = input<{ top: number; pinned: boolean } | null>(null);
+
   readonly scroll = viewChild.required<ElementRef<HTMLDivElement>>('scroll');
 
   private pinnedToBottom = true;
+  private appliedRestore: { top: number; pinned: boolean } | null = null;
+
+  getScrollState(): { top: number; pinned: boolean } {
+    return { top: this.scroll().nativeElement.scrollTop, pinned: this.pinnedToBottom };
+  }
   /** True once a load-older request has fired for the current top dwell. */
   private loadOlderRequested = false;
   /** Scroll height at the previous render, to anchor the view on a prepend. */
@@ -87,13 +95,27 @@ export class MessageListComponent {
     afterRenderEffect(() => {
       this.contentSignature();
       const msgs = this.messages();
+      this.restoreScroll();
       const el = this.scroll().nativeElement;
       const newHeight = el.scrollHeight;
       const firstId = msgs[0]?.info.id ?? null;
 
-      if (this.pinnedToBottom) {
+      const restore = this.restoreScroll();
+      let restored = false;
+      if (restore && msgs.length > 0 && this.appliedRestore !== restore) {
+        this.appliedRestore = restore;
+        restored = true;
+        if (restore.pinned) {
+          this.pinnedToBottom = true;
+          el.scrollTop = el.scrollHeight;
+        } else {
+          this.pinnedToBottom = false;
+          el.scrollTop = Math.max(0, Math.min(restore.top, el.scrollHeight - el.clientHeight));
+        }
+      } else if (this.pinnedToBottom) {
         el.scrollTop = el.scrollHeight;
       } else if (
+        !restored &&
         this.prevFirstId !== null &&
         firstId !== this.prevFirstId &&
         newHeight > this.prevScrollHeight

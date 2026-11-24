@@ -1,10 +1,14 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppComponent } from './app.component';
-import { ChatStore, ComposerDraft } from './services/chat-store.service';
+import { MessageListComponent } from './components/message-list.component';
+import { Part, Session } from './models/opencode.models';
+import { ChildSignals } from './services/agent-status';
+import { ChatMessage, ChatStore, ComposerDraft } from './services/chat-store.service';
 import { StatusService } from './services/status.service';
 
 describe('AppComponent', () => {
@@ -42,6 +46,11 @@ describe('AppComponent', () => {
       activeIsSubagent: signal(false),
       activeParent: signal<{ id: string; title: string } | null>(null),
       activeTitle: signal(''),
+      activeSession: signal<Session | undefined>(undefined),
+      activeChildSignals: signal<ChildSignals | undefined>(undefined),
+      sessionParentId: vi.fn(() => undefined),
+      saveScroll: vi.fn(),
+      takeScroll: vi.fn(() => undefined),
       setActiveDraft: vi.fn((d: ComposerDraft) => draft.set(d)),
       openSession: vi.fn(),
       newSession: vi.fn(),
@@ -415,44 +424,216 @@ describe('AppComponent', () => {
     });
   });
 
-  describe('parent link', () => {
+  describe('agent header back button (replaces the parent link)', () => {
     beforeEach(async () => setup());
 
-    const parentLink = () => q<HTMLButtonElement>('.parent-link');
-    const setParent = async (p: { id: string; title: string } | null) => {
-      (store['activeParent'] as ReturnType<typeof signal<{ id: string; title: string } | null>>).set(p);
+    const backButton = () => q<HTMLButtonElement>('svy-agent-header button.back');
+    const setSubagent = async (parent: { id: string; title: string } | null, isSubagent = true) => {
+      (store['activeIsSubagent'] as ReturnType<typeof signal<boolean>>).set(isSubagent);
+      (store['activeParent'] as ReturnType<typeof signal<{ id: string; title: string } | null>>).set(parent);
       fixture.detectChanges();
       await fixture.whenStable();
       fixture.detectChanges();
     };
 
-    it('is absent when the active session has no parent', () => {
-      expect(parentLink()).toBeNull();
+    it('is absent when the active session is not a subagent', () => {
+      expect(q('svy-agent-header')).toBeNull();
+      expect(backButton()).toBeNull();
+      expect(q('.parent-link')).toBeNull();
     });
 
-    it('shows a Parent link with the parent title in the accessible name when viewing a subagent', async () => {
-      await setParent({ id: 's1', title: 'Main work' });
-      expect(parentLink()!.textContent).toContain('Parent');
-      expect(parentLink()!.getAttribute('aria-label')).toBe('Back to parent session: Main work');
-      expect(parentLink()!.getAttribute('title')).toBe('Main work');
+    it('shows the parent title in the accessible name and tooltip when viewing a subagent', async () => {
+      await setSubagent({ id: 's1', title: 'Main work' });
+      expect(q('svy-agent-header .parent')!.textContent!.trim()).toBe('Main work');
+      expect(backButton()!.getAttribute('aria-label')).toBe('Back to parent session: Main work');
+      expect(backButton()!.getAttribute('title')).toBe('Main work');
+    });
+
+    it('shows the agent name resolved from the active session title', async () => {
+      (store['activeSession'] as ReturnType<typeof signal<Session | undefined>>).set({
+        id: 'c1',
+        title: 'Check (@reviewer subagent)',
+        parentID: 's1'
+      });
+      await setSubagent({ id: 's1', title: 'Main work' });
+      expect(q('svy-agent-header .agent')!.textContent!.trim()).toBe('reviewer');
     });
 
     it('falls back to a generic label when the parent has no title', async () => {
-      await setParent({ id: 's1', title: '' });
-      expect(parentLink()!.getAttribute('aria-label')).toBe('Back to parent session');
-      expect(parentLink()!.getAttribute('title')).toBe('Parent session');
+      await setSubagent({ id: 's1', title: '' });
+      expect(backButton()!.getAttribute('aria-label')).toBe('Back to parent session');
+      expect(backButton()!.getAttribute('title')).toBe('Parent session');
     });
 
     it('opens the parent session when clicked', async () => {
-      await setParent({ id: 's1', title: 'Main work' });
-      await click(parentLink()!);
+      await setSubagent({ id: 's1', title: 'Main work' });
+      await click(backButton()!);
       expect(store['openSession']).toHaveBeenCalledWith('s1');
     });
 
     it('disappears again when the active session is no longer a subagent', async () => {
-      await setParent({ id: 's1', title: 'Main work' });
-      await setParent(null);
-      expect(parentLink()).toBeNull();
+      await setSubagent({ id: 's1', title: 'Main work' });
+      await setSubagent(null, false);
+      expect(q('svy-agent-header')).toBeNull();
+      expect(backButton()).toBeNull();
+    });
+
+    it('orphan child: header has no back button and the footer has no Open parent session', async () => {
+      await setSubagent(null);
+      expect(q('svy-agent-header')).not.toBeNull();
+      expect(backButton()).toBeNull();
+      expect(q('svy-agent-footer')).not.toBeNull();
+      expect(q('svy-agent-footer button.open')).toBeNull();
+    });
+  });
+
+  describe('agent view wiring', () => {
+    beforeEach(async () => setup());
+
+    const setSubagent = async (isSubagent: boolean, parent: { id: string; title: string } | null = null) => {
+      (store['activeIsSubagent'] as ReturnType<typeof signal<boolean>>).set(isSubagent);
+      (store['activeParent'] as ReturnType<typeof signal<{ id: string; title: string } | null>>).set(parent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+
+    it('regular session: composer and message list present, agent components absent', () => {
+      expect(q('svy-composer')).not.toBeNull();
+      expect(q('svy-message-list')).not.toBeNull();
+      expect(q('svy-agent-view')).toBeNull();
+      expect(q('svy-agent-footer')).toBeNull();
+      expect(q('svy-agent-header')).toBeNull();
+    });
+
+    it('subagent session: agent view, header and footer present; composer and message list absent', async () => {
+      await setSubagent(true, { id: 's1', title: 'Main work' });
+      expect(q('svy-agent-view')).not.toBeNull();
+      expect(q('svy-agent-footer')).not.toBeNull();
+      expect(q('svy-agent-header')).not.toBeNull();
+      expect(q('svy-composer')).toBeNull();
+      expect(q('svy-message-list')).toBeNull();
+    });
+
+    it('the footer Open parent session button opens the parent', async () => {
+      await setSubagent(true, { id: 's1', title: 'Main work' });
+      await click(q<HTMLButtonElement>('svy-agent-footer button.open')!);
+      expect(store['openSession']).toHaveBeenCalledWith('s1');
+    });
+
+    it('feeds the agent view the store messages', async () => {
+      (store['messages'] as ReturnType<typeof signal<ChatMessage[]>>).set([
+        { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'Do the review' } as Part] }
+      ] as unknown as ChatMessage[]);
+      await setSubagent(true, { id: 's1', title: 'Main work' });
+      expect(q('svy-agent-task')!.textContent).toContain('Do the review');
+    });
+
+    it('does not throw NG0600 when switching between regular and agent view', async () => {
+      await setSubagent(true, { id: 's1', title: 'Main work' });
+      expect(() => fixture.detectChanges()).not.toThrow();
+      await setSubagent(false);
+      expect(() => fixture.detectChanges()).not.toThrow();
+      expect(q('svy-composer')).not.toBeNull();
+    });
+  });
+
+  describe('scroll save and restore on parent/child navigation', () => {
+    beforeEach(async () => setup());
+
+    const set = <T>(key: string, value: T) => (store[key] as ReturnType<typeof signal<T>>).set(value);
+
+    it('opening a child of the active parent saves the list scroll state under the parent id', () => {
+      const spy = vi.spyOn(MessageListComponent.prototype, 'getScrollState').mockReturnValue({ top: 321, pinned: false });
+      set('activeSessionId', 'p1');
+      (store['sessionParentId'] as ReturnType<typeof vi.fn>).mockImplementation((id: string) =>
+        id === 'c1' ? 'p1' : undefined
+      );
+      component.onSelectSession('c1');
+      expect(spy).toHaveBeenCalled();
+      expect(store['saveScroll']).toHaveBeenCalledWith('p1', { top: 321, pinned: false });
+      expect(store['openSession']).toHaveBeenCalledWith('c1');
+      expect(component.restoreScroll()).toBeNull();
+      spy.mockRestore();
+    });
+
+    it('opening an unrelated session saves nothing', () => {
+      set('activeSessionId', 'p1');
+      component.onSelectSession('other');
+      expect(store['saveScroll']).not.toHaveBeenCalled();
+      expect(store['openSession']).toHaveBeenCalledWith('other');
+    });
+
+    it('re-selecting the active session saves nothing', () => {
+      set('activeSessionId', 'p1');
+      (store['sessionParentId'] as ReturnType<typeof vi.fn>).mockReturnValue('p1');
+      component.onSelectSession('p1');
+      expect(store['saveScroll']).not.toHaveBeenCalled();
+    });
+
+    it('going back to the parent from the agent view passes the saved state to the list', () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 'p1', title: 'Main' });
+      (store['takeScroll'] as ReturnType<typeof vi.fn>).mockReturnValue({ top: 321, pinned: false });
+      component.onBackToParent();
+      expect(store['takeScroll']).toHaveBeenCalledWith('p1');
+      expect(component.restoreScroll()).toEqual({ top: 321, pinned: false });
+      expect(store['openSession']).toHaveBeenCalledWith('p1');
+    });
+
+    it('binds the saved scroll state to the message list input after going back to the parent', async () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 'p1', title: 'Main' });
+      (store['takeScroll'] as ReturnType<typeof vi.fn>).mockReturnValue({ top: 321, pinned: false });
+      component.onBackToParent();
+      set('activeSessionId', 'p1');
+      set('activeIsSubagent', false);
+      set('activeParent', null);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const list = fixture.debugElement.query(By.directive(MessageListComponent));
+      expect(list).not.toBeNull();
+      expect((list.componentInstance as MessageListComponent).restoreScroll()).toEqual({ top: 321, pinned: false });
+    });
+
+    it('selecting the parent from the sidebar while in the agent view restores its saved scroll', () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 'p1', title: 'Main' });
+      (store['takeScroll'] as ReturnType<typeof vi.fn>).mockReturnValue({ top: 321, pinned: false });
+      component.onSelectSession('p1');
+      expect(store['takeScroll']).toHaveBeenCalledWith('p1');
+      expect(component.restoreScroll()).toEqual({ top: 321, pinned: false });
+      expect(store['openSession']).toHaveBeenCalledWith('p1');
+    });
+
+    it('going from the agent view to an unrelated session restores nothing', () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 'p1', title: 'Main' });
+      component.restoreScroll.set({ top: 5, pinned: false });
+      component.onSelectSession('other');
+      expect(store['takeScroll']).not.toHaveBeenCalled();
+      expect(component.restoreScroll()).toBeNull();
+    });
+
+    it('going back with nothing saved leaves restoreScroll null', () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 'p1', title: 'Main' });
+      component.onBackToParent();
+      expect(component.restoreScroll()).toBeNull();
+      expect(store['openSession']).toHaveBeenCalledWith('p1');
+    });
+
+    it('onBackToParent does nothing for an orphan', () => {
+      set('activeSessionId', 'c1');
+      set('activeIsSubagent', true);
+      component.onBackToParent();
+      expect(store['openSession']).not.toHaveBeenCalled();
     });
   });
 

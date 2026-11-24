@@ -32,25 +32,19 @@
           <path d="M9 4v16" />
         </svg>
       </button>
-      <div class="header-leading">
-        @if (store.activeParent(); as parent) {
-          <button
-            type="button"
-            class="parent-link"
-            [attr.aria-label]="'Back to parent session' + (parent.title ? ': ' + parent.title : '')"
-            [attr.title]="parent.title || 'Parent session'"
-            (click)="onSelectSession(parent.id)"
-          >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            <span>Parent</span>
-          </button>
-        }
-      </div>
-      <div class="header-title">
-        <div class="title-text" [attr.title]="store.activeTitle() || null">{{ store.activeTitle() || 'Servoy AI' }}</div>
-      </div>
+      @if (store.activeIsSubagent()) {
+        <svy-agent-header
+          [parentTitle]="store.activeParent()?.title || null"
+          [parentId]="store.activeParent()?.id ?? null"
+          [agentName]="agentName()"
+          (back)="onBackToParent()"
+        ></svy-agent-header>
+      } @else {
+        <div class="header-leading"></div>
+        <div class="header-title">
+          <div class="title-text" [attr.title]="store.activeTitle() || null">{{ store.activeTitle() || 'Servoy AI' }}</div>
+        </div>
+      }
       <div class="header-actions">
         <button
           type="button"
@@ -96,15 +90,28 @@
     @if (store.error(); as error) {
       <div class="banner">{{ error }}</div>
     }
-    <svy-message-list
-      class="messages"
-      [messages]="store.messages()"
-      [canLoadOlder]="store.hasMoreMessages()"
-      [childSignals]="store.childSignals()"
-      [turnBusy]="store.streaming()"
-      (openSession)="onSelectSession($event)"
-      (loadOlder)="onLoadOlder()"
-    ></svy-message-list>
+    @if (store.activeIsSubagent()) {
+      <svy-agent-view
+        class="messages"
+        [messages]="store.messages()"
+        [session]="store.activeSession()"
+        [child]="store.activeChildSignals()"
+        [parentTitle]="store.activeParent()?.title || null"
+        [parentId]="store.activeParent()?.id ?? null"
+        (openSession)="onSelectSession($event)"
+      ></svy-agent-view>
+    } @else {
+      <svy-message-list
+        class="messages"
+        [messages]="store.messages()"
+        [canLoadOlder]="store.hasMoreMessages()"
+        [childSignals]="store.childSignals()"
+        [turnBusy]="store.streaming()"
+        [restoreScroll]="restoreScroll()"
+        (openSession)="onSelectSession($event)"
+        (loadOlder)="onLoadOlder()"
+      ></svy-message-list>
+    }
     @if (store.pendingForm(); as form) {
       <svy-form-card
         [form]="form"
@@ -112,19 +119,22 @@
         (cancelForm)="onFormCancel()"
       ></svy-form-card>
     }
-    <svy-composer
-      [streaming]="store.streaming()"
-      [draft]="store.activeDraft()"
-      [disabled]="store.activeIsSubagent() || !!store.pendingForm()"
-      [disabledHint]="
-        store.pendingForm()
-          ? 'Answer the question above to continue.'
-          : 'You\'re viewing a subagent session. Open its parent session to chat.'
-      "
-      (sendMessage)="onSend($event)"
-      (stop)="onStop()"
-      (draftChange)="onDraftChange($event)"
-    ></svy-composer>
+    @if (store.activeIsSubagent()) {
+      <svy-agent-footer
+        [canOpenParent]="!!store.activeParent()"
+        (openParent)="onBackToParent()"
+      ></svy-agent-footer>
+    } @else {
+      <svy-composer
+        [streaming]="store.streaming()"
+        [draft]="store.activeDraft()"
+        [disabled]="!!store.pendingForm()"
+        [disabledHint]="'Answer the question above to continue.'"
+        (sendMessage)="onSend($event)"
+        (stop)="onStop()"
+        (draftChange)="onDraftChange($event)"
+      ></svy-composer>
+    }
   </main>
   <aside id="status-panel" class="status-area" aria-label="Status" [hidden]="!statusOpen()">
     <svy-status-panel (closed)="closeStatus()"></svy-status-panel>

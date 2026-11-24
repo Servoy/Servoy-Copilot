@@ -1,0 +1,16 @@
+<section class="block" aria-label="Task from Orchestrator">
+  <div class="title">Task from Orchestrator</div>
+  <div class="body" [class.clamped]="long() && !expanded()">
+    <svy-markdown [content]="task()"></svy-markdown>
+  </div>
+  @if (long()) {
+    <button type="button" class="toggle" [attr.aria-expanded]="expanded()" (click)="toggle()">
+      {{ expanded() ? 'Show less' : 'Show more' }}
+    </button>
+  }
+  <div data-slot="agent-files" class="agent-files">
+    @for (file of files(); track $index) {
+      <span class="chip" [attr.title]="file.path || file.name">{{ file.name }}</span>
+    }
+  </div>
+</section>

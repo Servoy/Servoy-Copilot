@@ -1,0 +1,6 @@
+<div class="footer">
+  <span class="text">You're viewing an agent session. Questions and answers go through the Orchestrator.</span>
+  @if (canOpenParent()) {
+    <button type="button" class="open" (click)="openParent.emit()">Open parent session</button>
+  }
+</div>

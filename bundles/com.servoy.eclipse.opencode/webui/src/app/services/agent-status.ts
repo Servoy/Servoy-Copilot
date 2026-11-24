@@ -232,6 +232,82 @@ function labelOf(status: AgentRunStatus, report: AgentReportStatus | null): stri
   return report === 'INPUT_REQUIRED' ? 'Stopped — needs a decision' : 'Stopped';
 }
 
+interface CoreStatus {
+  readonly status: AgentRunStatus;
+  readonly via: Via;
+  readonly report: AgentReportStatus | null;
+}
+
+function reportOutcome(body: string | undefined): CoreStatus {
+  const report = parseReportStatus(body);
+  const stopped = report !== null && STOP_REPORTS.includes(report);
+  return { status: stopped ? 'stopped' : 'done', via: stopped ? 'report' : 'done', report };
+}
+
+function coreStatus(c: ChildSignals, reportBody?: string): CoreStatus | null {
+  const resultEnded = c.result?.state === 'error' || c.result?.state === 'cancelled';
+  const outcomeEnded = c.outcome === 'failed' || c.outcome === 'interrupted';
+  if (c.busy === true) {
+    return { status: 'running', via: 'busy', report: null };
+  }
+  if (resultEnded || outcomeEnded || c.interruptedReason !== undefined) {
+    return { status: 'stopped', via: 'ended', report: null };
+  }
+  if (c.result?.state === 'completed' || c.result?.state === 'running' || c.outcome === 'succeeded') {
+    return reportOutcome(c.result?.body ?? reportBody);
+  }
+  if (c.result === undefined && reportBody !== undefined && reportBody.trim().length > 0) {
+    return reportOutcome(reportBody);
+  }
+  return null;
+}
+
+function endedSummary(c: ChildSignals): string {
+  if (c.interruptedReason) {
+    return INTERRUPT_SUMMARY[c.interruptedReason];
+  }
+  if (c.result?.state === 'cancelled') {
+    return 'Cancelled';
+  }
+  if (c.result?.state === 'error' || c.outcome === 'failed') {
+    return (c.result?.state === 'error' ? firstLine(c.result.body) : '') || 'Failed';
+  }
+  return 'Interrupted';
+}
+
+export interface ChildStatus {
+  readonly status: AgentRunStatus;
+  readonly label: string;
+  readonly summary: string;
+  readonly report: AgentReportStatus | null;
+}
+
+export function deriveChildStatus(
+  child: ChildSignals | undefined,
+  opts: { reportBody?: string } = {}
+): ChildStatus {
+  const c: ChildSignals = child ?? {};
+  const core: CoreStatus = coreStatus(c, opts.reportBody) ?? { status: 'stopped', via: 'stale', report: null };
+  let summary = '';
+  if (core.via === 'done' || core.via === 'report') {
+    summary = bodySummary(c.result?.body ?? opts.reportBody ?? '');
+  } else if (core.via === 'ended') {
+    summary = endedSummary(c);
+  } else if (core.via === 'stale') {
+    summary = 'Not running';
+  }
+  return {
+    status: core.status,
+    label: labelOf(core.status, core.report),
+    summary: oneLine(summary),
+    report: core.report
+  };
+}
+
+export function reportBodyText(body: string | undefined): string {
+  return bodyLines(body).join('\n').trim();
+}
+
 export function deriveAgentStatus(part: Part, ctx: AgentStatusContext = {}): AgentStatus {
   const tool = part.state?.status;
   const base = ctx.child ?? {};
@@ -250,24 +326,18 @@ export function deriveAgentStatus(part: Part, ctx: AgentStatusContext = {}): Age
   let via: Via;
   let report: AgentReportStatus | null = null;
 
-  const resultEnded = c.result?.state === 'error' || c.result?.state === 'cancelled';
-  const outcomeEnded = c.outcome === 'failed' || c.outcome === 'interrupted';
   const nonTerminalTool =
     tool === undefined || tool === 'pending' || tool === 'running' || tool === 'streaming';
 
-  if (c.busy === true) {
-    status = 'running';
-    via = 'busy';
+  const core = c.busy !== true && tool === 'error' ? null : coreStatus(c);
+
+  if (core) {
+    status = core.status;
+    via = core.via;
+    report = core.report;
   } else if (tool === 'error') {
     status = 'stopped';
     via = 'toolError';
-  } else if (resultEnded || outcomeEnded || c.interruptedReason !== undefined) {
-    status = 'stopped';
-    via = 'ended';
-  } else if (c.result?.state === 'completed' || c.result?.state === 'running' || c.outcome === 'succeeded') {
-    report = parseReportStatus(c.result?.body);
-    status = report !== null && STOP_REPORTS.includes(report) ? 'stopped' : 'done';
-    via = status === 'stopped' ? 'report' : 'done';
   } else if ((nonTerminalTool || (tool === 'completed' && noSig)) && live) {
     status = 'running';
     via = 'launch';
@@ -284,15 +354,7 @@ export function deriveAgentStatus(part: Part, ctx: AgentStatusContext = {}): Age
   } else if (via === 'toolError') {
     summary = toolErrorText(part) || 'Failed to start';
   } else if (via === 'ended') {
-    if (c.interruptedReason) {
-      summary = INTERRUPT_SUMMARY[c.interruptedReason];
-    } else if (c.result?.state === 'cancelled') {
-      summary = 'Cancelled';
-    } else if (c.result?.state === 'error' || c.outcome === 'failed') {
-      summary = (c.result?.state === 'error' ? firstLine(c.result.body) : '') || 'Failed';
-    } else {
-      summary = 'Interrupted';
-    }
+    summary = endedSummary(c);
   } else {
     summary = 'Not running';
   }

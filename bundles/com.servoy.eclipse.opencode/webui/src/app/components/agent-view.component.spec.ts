@@ -1,0 +1,209 @@
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+import { Part, Session } from '../models/opencode.models';
+import { ChildSignals } from '../services/agent-status';
+import { ChatMessage, ChatStore } from '../services/chat-store.service';
+import { AgentViewComponent } from './agent-view.component';
+
+const msg = (id: string, role: string, parts: Part[], info: Record<string, unknown> = {}): ChatMessage =>
+  ({ info: { id, role, ...info }, parts }) as unknown as ChatMessage;
+const text = (t: string): Part => ({ type: 'text', text: t }) as Part;
+const tool = (status: string, name = 'read'): Part =>
+  ({ type: 'tool', tool: name, state: { status } }) as unknown as Part;
+const subagentPart = (childId: string): Part =>
+  ({
+    type: 'tool',
+    tool: 'subagent',
+    state: { status: 'completed', input: { agent: 'Reviewer' }, metadata: { sessionID: childId } }
+  }) as unknown as Part;
+
+describe('AgentViewComponent', () => {
+  let fixture: ComponentFixture<AgentViewComponent>;
+  let el: HTMLElement;
+  let childSignals: ReturnType<typeof signal<ReadonlyMap<string, ChildSignals>>>;
+
+  const render = (inputs: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(inputs)) {
+      fixture.componentRef.setInput(key, value);
+    }
+    fixture.detectChanges();
+  };
+  const q = <T extends HTMLElement>(sel: string) => el.querySelector(sel) as T | null;
+  const contentChildren = () =>
+    Array.from(q('.content')!.children).map((c) =>
+      c.tagName === 'DIV' ? 'div.' + c.className.split(' ')[0] : c.tagName.toLowerCase()
+    );
+
+  beforeEach(async () => {
+    childSignals = signal<ReadonlyMap<string, ChildSignals>>(new Map());
+    await TestBed.configureTestingModule({
+      imports: [AgentViewComponent],
+      providers: [provideZonelessChangeDetection(), { provide: ChatStore, useValue: { childSignals } }]
+    }).compileComponents();
+    fixture = TestBed.createComponent(AgentViewComponent);
+    el = fixture.nativeElement as HTMLElement;
+  });
+
+  const twoRoundMessages = () => [
+    msg('u1', 'user', [text('Review the form')]),
+    msg('a1', 'assistant', [tool('completed')]),
+    msg('u2', 'user', [text('Use option B')]),
+    msg('a2', 'assistant', [tool('completed', 'grep'), text('Status: COMPLETED\nFinal report')])
+  ];
+
+  it('renders task, round 1, stopped step, divider, round 2 and report in order', () => {
+    render({ messages: twoRoundMessages(), session: { id: 'c1' } as Session, child: undefined });
+    expect(contentChildren()).toEqual([
+      'svy-agent-task',
+      'svy-message-item',
+      'div.agent-stopped-step',
+      'svy-agent-resume-divider',
+      'svy-message-item',
+      'svy-agent-report'
+    ]);
+    expect(q('svy-agent-task')!.textContent).toContain('Review the form');
+    expect(q('svy-agent-resume-divider')!.textContent).toContain('Use option B');
+    expect(q('svy-agent-report')!.textContent).toContain('Final report');
+  });
+
+  it('renders no divider and no stopped step for a single round', () => {
+    render({
+      messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [tool('completed')])],
+      session: { id: 'c1' } as Session,
+      child: { outcome: 'succeeded' }
+    });
+    expect(q('svy-agent-resume-divider')).toBeNull();
+    expect(q('.agent-stopped-step')).toBeNull();
+    expect(q('svy-agent-task')).not.toBeNull();
+  });
+
+  it('omits the task block when there is no user message', () => {
+    render({ messages: [msg('a1', 'assistant', [tool('completed')])], session: { id: 'c1' } as Session });
+    expect(q('svy-agent-task')).toBeNull();
+  });
+
+  describe('spinner rule', () => {
+    const runningMessages = (status: string) => [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [tool(status)])];
+
+    it('shows a role=status spinner row only when the child is busy and a tool is running', () => {
+      render({ messages: runningMessages('running'), session: { id: 'c1' } as Session, child: { busy: true } });
+      const row = q('.agent-running-step')!;
+      expect(row).not.toBeNull();
+      expect(row.getAttribute('role')).toBe('status');
+      expect(row.getAttribute('aria-label')).toMatch(/^Running /);
+      expect(row.querySelector('.spinner')).not.toBeNull();
+    });
+
+    it('shows no spinner when busy but every tool has completed', () => {
+      render({ messages: runningMessages('completed'), session: { id: 'c1' } as Session, child: { busy: true } });
+      expect(q('.agent-running-step')).toBeNull();
+    });
+
+    it('shows no spinner for a running tool part when the child is not busy', () => {
+      render({ messages: runningMessages('running'), session: { id: 'c1' } as Session, child: { busy: false } });
+      expect(q('.agent-running-step')).toBeNull();
+      render({ child: undefined });
+      expect(q('.agent-running-step')).toBeNull();
+    });
+  });
+
+  it('hands nested agent cards the real childSignals of the store', () => {
+    childSignals.set(new Map<string, ChildSignals>([['c2', { busy: true }]]));
+    render({
+      messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [subagentPart('c2')])],
+      session: { id: 'c1' } as Session,
+      child: { busy: true }
+    });
+    const card = q('svy-agent-card')!;
+    expect(card).not.toBeNull();
+    expect(card.querySelector('.agent-status')!.textContent!.trim()).toBe('Running');
+
+    childSignals.set(new Map<string, ChildSignals>([['c2', { outcome: 'failed' }]]));
+    fixture.detectChanges();
+    expect(q('svy-agent-card .agent-status')!.textContent!.trim()).toBe('Stopped');
+  });
+
+  it('bubbles openSession from a nested agent card', () => {
+    const spy = vi.fn();
+    fixture.componentInstance.openSession.subscribe(spy);
+    render({
+      messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [subagentPart('c2')])],
+      session: { id: 'c1' } as Session,
+      child: undefined
+    });
+    q<HTMLButtonElement>('svy-agent-card button.agent-open')!.click();
+    expect(spy).toHaveBeenCalledWith('c2');
+  });
+
+  it('does not throw NG0600 when inputs change', () => {
+    render({ messages: twoRoundMessages(), session: { id: 'c1' } as Session, child: { busy: true } });
+    fixture.componentRef.setInput('child', { outcome: 'succeeded' });
+    fixture.componentRef.setInput('messages', [msg('u1', 'user', [text('Other')])]);
+    expect(() => fixture.detectChanges()).not.toThrow();
+    expect(q('svy-agent-task')!.textContent).toContain('Other');
+  });
+
+  describe('pin to bottom', () => {
+    let top: number;
+
+    const setupScroll = () => {
+      const scroll = q<HTMLElement>('.scroll')!;
+      top = 0;
+      Object.defineProperty(scroll, 'scrollTop', { configurable: true, get: () => top, set: (v: number) => (top = v) });
+      Object.defineProperty(scroll, 'scrollHeight', { configurable: true, get: () => 1000 });
+      Object.defineProperty(scroll, 'clientHeight', { configurable: true, get: () => 100 });
+      return scroll;
+    };
+
+    const busyMessages = (n: number) => [
+      msg('u1', 'user', [text('Task')]),
+      ...Array.from({ length: n }, (_, i) => msg('a' + i, 'assistant', [tool('running')]))
+    ];
+
+    it('pins to the bottom while busy, stops when the user scrolled up, and re-pins on a session switch', () => {
+      render({ messages: busyMessages(1), session: { id: 'c1' } as Session, child: { busy: true } });
+      const scroll = setupScroll();
+
+      render({ messages: busyMessages(2) });
+      expect(top).toBe(1000);
+
+      top = 0;
+      scroll.dispatchEvent(new Event('scroll'));
+      render({ messages: busyMessages(3) });
+      expect(top).toBe(0);
+
+      render({ session: { id: 'c9' } as Session, messages: busyMessages(1) });
+      expect(top).toBe(1000);
+    });
+
+    it('does not scroll when the child is not busy', () => {
+      render({ messages: busyMessages(1), session: { id: 'c1' } as Session, child: { outcome: 'succeeded' } });
+      setupScroll();
+      render({ messages: busyMessages(2) });
+      expect(top).toBe(0);
+    });
+  });
+
+  describe('styles use tokens', () => {
+    const scss = (name: string) =>
+      readFileSync(`src/app/components/${name}.component.scss`, 'utf8');
+
+    it('the orange report block references the accent tokens and no hex colors', () => {
+      const css = scss('agent-report');
+      expect(css).toContain('--svy-acc-soft2');
+      expect(css).toContain('--svy-acc-line');
+      expect(css).toContain('--svy-acc-fg');
+      expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    });
+
+    it.each(['agent-view', 'agent-task', 'agent-header', 'agent-footer', 'agent-resume-divider'])(
+      '%s has no hard-coded hex colors',
+      (name) => {
+        expect(scss(name)).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+      }
+    );
+  });
+});

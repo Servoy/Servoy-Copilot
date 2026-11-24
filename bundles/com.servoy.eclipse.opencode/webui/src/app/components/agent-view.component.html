@@ -1,0 +1,35 @@
+<div class="scroll" #scroll (scroll)="onScroll()">
+  <div class="content">
+    @if (view().task; as task) {
+      <svy-agent-task [task]="task"></svy-agent-task>
+    }
+    @for (round of rows(); track $index) {
+      @if (round.resume !== null) {
+        <svy-agent-resume-divider [answer]="round.resume"></svy-agent-resume-divider>
+      }
+      @for (message of round.messages; track message.info.id) {
+        <svy-message-item
+          [role]="message.info.role"
+          [parts]="message.parts"
+          [error]="message.info.error ?? null"
+          [completed]="message.info.time?.completed ?? null"
+          [childSignals]="childSignals()"
+          [turnBusy]="busy()"
+          (openSession)="openSession.emit($event)"
+        ></svy-message-item>
+      }
+      @if (round.runningTool !== null && busy()) {
+        <div class="agent-running-step" role="status" [attr.aria-label]="'Running ' + round.runningTool">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>{{ round.runningTool }}</span>
+        </div>
+      }
+      @if (round.stoppedAtEnd) {
+        <div class="agent-stopped-step">Stopped</div>
+      }
+    }
+    @if (view().report; as report) {
+      <svy-agent-report [report]="report"></svy-agent-report>
+    }
+  </div>
+</div>

@@ -1,0 +1,32 @@
+:host {
+  display: block;
+}
+
+.block {
+  padding: 12px 14px;
+  border: 1px solid var(--svy-line);
+  border-left: 3px solid var(--svy-ok-fg);
+  border-radius: 10px;
+  background: var(--svy-surface);
+
+  &.stopped {
+    border-color: var(--svy-acc-line);
+    background: var(--svy-acc-soft2);
+
+    .title {
+      color: var(--svy-acc-fg);
+    }
+  }
+}
+
+.title {
+  margin-bottom: 6px;
+  color: var(--svy-ok-fg);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reason {
+  color: var(--svy-fg2);
+  font-size: 13px;
+}

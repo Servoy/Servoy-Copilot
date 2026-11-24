@@ -1,0 +1,62 @@
+:host {
+  display: block;
+}
+
+.block {
+  padding: 12px 14px;
+  border: 1px solid var(--svy-line);
+  border-radius: 10px;
+  background: var(--svy-soft);
+}
+
+.title {
+  margin-bottom: 6px;
+  color: var(--svy-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.body.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+}
+
+.toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--svy-acc-fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-focus-ring, var(--svy-acc-fg));
+    outline-offset: 2px;
+  }
+}
+
+.agent-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  &:not(:empty) {
+    margin-top: 8px;
+  }
+}
+
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--svy-line);
+  border-radius: 999px;
+  background: var(--svy-surface);
+  color: var(--svy-fg2);
+  font-size: 12px;
+}
