@@ -571,11 +571,21 @@ public class ServoyArtifactCreationService
 	{
 		String doc;
 		String params;
+		// Signatures follow the method templates declared on com.servoy.j2db.persistence.Form
+		// (@templateparam / @templatetype): that is the source of truth for form events.
 		switch (eventName)
 		{
+			case "onShow" :
+				doc = "/**\n * @param {Boolean} firstShow\n * @param {JSEvent} event\n */";
+				params = "firstShow, event";
+				break;
 			case "onRecordEditStop" :
 				doc = "/**\n * @param {JSRecord} record\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
 				params = "record, event";
+				break;
+			case "onBeforeRecordSelection" :
+				doc = "/**\n * @param {Array<JSRecord>} oldSelection\n * @param {Array<JSRecord>} newSelection\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
+				params = "oldSelection, newSelection, event";
 				break;
 			case "onElementDataChange" :
 				doc = "/**\n * @param {Object} oldValue\n * @param {Object} newValue\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
@@ -586,6 +596,9 @@ public class ServoyArtifactCreationService
 				params = "dataProviderID, asc, event";
 				break;
 			case "onBeforeHide" :
+			case "onRecordEditStart" :
+			case "onElementFocusGained" :
+			case "onElementFocusLost" :
 				doc = "/**\n * @param {JSEvent} event\n *\n * @return {Boolean}\n */";
 				params = "event";
 				break;
@@ -624,6 +637,7 @@ public class ServoyArtifactCreationService
 
 		IValidateName validator = servoyModel.getNameValidator();
 		List<String> wired = new ArrayList<>();
+		List<String> failed = new ArrayList<>();
 		for (Map.Entry<String, String> entry : events.entrySet())
 		{
 			String eventName = entry.getKey();
@@ -631,17 +645,39 @@ public class ServoyArtifactCreationService
 			if (eventName == null || eventName.isBlank() || methodName == null || methodName.isBlank()) continue;
 			if (!SUPPORTED_EVENTS.contains(eventName)) continue;
 
-			String methodUUID = resolveOrCreateMethod(form, methodName, eventName, validator);
-			if (methodUUID != null)
+			try
 			{
-				AiBridge.applyEventMethod(form, eventName, methodUUID);
-				wired.add(eventName + " -> " + methodName);
+				String methodUUID = resolveOrCreateMethod(form, methodName, eventName, validator);
+				if (methodUUID != null)
+				{
+					AiBridge.applyEventMethod(form, eventName, methodUUID);
+					wired.add(eventName + " -> " + methodName);
+				}
+			}
+			catch (RepositoryException e)
+			{
+				// one bad handler must not discard the ones that already wired
+				failed.add(eventName + " -> " + methodName + " (" + e.getMessage() + ")");
 			}
 		}
 
-		project.saveEditingSolutionNodes(new IPersist[] { form }, true);
+		if (!wired.isEmpty()) project.saveEditingSolutionNodes(new IPersist[] { form }, true);
 
-		if (wired.isEmpty()) return "";
-		return "Wired events: " + String.join(", ", wired);
+		StringBuilder result = new StringBuilder();
+		if (!wired.isEmpty()) result.append("Wired events: ").append(String.join(", ", wired));
+		if (!failed.isEmpty())
+		{
+			if (result.length() > 0) result.append("\n  ");
+			result.append("Failed to wire events: ").append(String.join("; ", failed));
+		}
+		return result.toString();
+	}
+
+	/**
+	 * @return true if the given name can be used as a JavaScript function name (an ASCII identifier).
+	 */
+	public static boolean isValidMethodName(String name)
+	{
+		return name != null && name.matches("[A-Za-z_$][A-Za-z0-9_$]*");
 	}
 }

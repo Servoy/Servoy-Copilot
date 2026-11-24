@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Iterator;
@@ -328,8 +329,8 @@ public class CreateFormEventsWiringIntegrationTest extends TestUtilitiesClassCop
 	class PerEventSkeletons {
 
 		@Test
-		@org.junit.jupiter.api.DisplayName("onShow skeleton has an (event) parameter list")
-		void onShow_skeletonHasEventParam() {
+		@org.junit.jupiter.api.DisplayName("onShow skeleton has (firstShow, event) as declared by Form's onShow method template")
+		void onShow_skeletonHasFirstShowAndEventParams() {
 			String formName = uniqueName("skelShowForm");
 
 			devServer.createForm(formName, "css", "640", "480", null, null, "onShow:handleShow", null);
@@ -341,10 +342,75 @@ public class CreateFormEventsWiringIntegrationTest extends TestUtilitiesClassCop
 
 			String decl = method.getDeclaration();
 			assertNotNull(decl, "the created method must carry a skeleton declaration");
-			assertTrue(decl.contains("function handleShow(event)"),
-					"onShow skeleton must take a single (event) parameter: " + decl);
-			assertTrue(decl.contains("@param {JSEvent} event"),
-					"onShow skeleton must document the {JSEvent} event param: " + decl);
+			assertAll(
+					() -> assertTrue(decl.contains("function handleShow(firstShow, event)"),
+							"onShow skeleton must take (firstShow, event): " + decl),
+					() -> assertTrue(decl.contains("@param {Boolean} firstShow"),
+							"onShow skeleton must document the {Boolean} firstShow param: " + decl),
+					() -> assertTrue(decl.contains("@param {JSEvent} event"),
+							"onShow skeleton must document the {JSEvent} event param: " + decl));
+		}
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("onBeforeRecordSelection skeleton has (oldSelection, newSelection, event) and returns Boolean")
+		void onBeforeRecordSelection_skeletonHasSelectionParamsAndBooleanReturn() {
+			String formName = uniqueName("skelBRSForm");
+
+			devServer.createForm(formName, "css", "640", "480", null, null, "onBeforeRecordSelection:beforeSel", null);
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			ScriptMethod method = findMethod(form, "beforeSel");
+			assertNotNull(method, "the onBeforeRecordSelection method must have been created");
+
+			String decl = method.getDeclaration();
+			assertNotNull(decl, "the created method must carry a skeleton declaration");
+			assertAll(
+					() -> assertTrue(decl.contains("function beforeSel(oldSelection, newSelection, event)"),
+							"onBeforeRecordSelection skeleton must take (oldSelection, newSelection, event): " + decl),
+					() -> assertTrue(decl.contains("@return {Boolean}"),
+							"onBeforeRecordSelection skeleton must declare a {Boolean} return: " + decl));
+		}
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("onSort skeleton has (dataProviderID, asc, event)")
+		void onSort_skeletonHasDataProviderAscAndEvent() {
+			String formName = uniqueName("skelSortForm");
+
+			devServer.createForm(formName, "css", "640", "480", null, null, "onSort:handleSort", null);
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			ScriptMethod method = findMethod(form, "handleSort");
+			assertNotNull(method, "the onSort method must have been created");
+
+			String decl = method.getDeclaration();
+			assertNotNull(decl, "the created method must carry a skeleton declaration");
+			assertTrue(decl.contains("function handleSort(dataProviderID, asc, event)"),
+					"onSort skeleton must take (dataProviderID, asc, event): " + decl);
+		}
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("onRecordEditStart, onElementFocusGained and onElementFocusLost skeletons take (event) and return Boolean")
+		void booleanReturningEventSkeletons_takeEventAndReturnBoolean() {
+			String formName = uniqueName("skelBoolForm");
+
+			devServer.createForm(formName, "css", "640", "480", null, null,
+					"onRecordEditStart:editStart,onElementFocusGained:focusIn,onElementFocusLost:focusOut", null);
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			for (String methodName : new String[] { "editStart", "focusIn", "focusOut" }) {
+				ScriptMethod method = findMethod(form, methodName);
+				assertNotNull(method, "the method '" + methodName + "' must have been created");
+				String decl = method.getDeclaration();
+				assertNotNull(decl, "the created method must carry a skeleton declaration");
+				assertAll(
+						() -> assertTrue(decl.contains("function " + methodName + "(event)"),
+								methodName + " skeleton must take (event): " + decl),
+						() -> assertTrue(decl.contains("@return {Boolean}"),
+								methodName + " skeleton must declare a {Boolean} return: " + decl));
+			}
 		}
 
 		@Test
@@ -395,6 +461,79 @@ public class CreateFormEventsWiringIntegrationTest extends TestUtilitiesClassCop
 							"onElementDataChange skeleton must document the newValue param: " + decl),
 					() -> assertTrue(decl.contains("@return {Boolean}"),
 							"onElementDataChange skeleton must declare a {Boolean} return: " + decl));
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Review findings (SVY-21596): existing form untouched, partial failure,
+	// method names must be valid JavaScript identifiers.
+	// -----------------------------------------------------------------------
+
+	@Nested
+	class ReviewFindings {
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("events on an existing form name: 'already exists' and the existing form is NOT modified")
+		void existingForm_isNotModified_withoutColumns() {
+			String formName = uniqueName("dupForm");
+
+			devServer.createForm(formName, "css", "640", "480", null, null, "onShow:handlerA", null);
+			String second = devServer.createForm(formName, "css", "640", "480", null, null, "onShow:handlerB", null);
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			assertAll(
+					() -> assertTrue(second.contains("already exists"),
+							"second call must report 'already exists': " + second),
+					() -> assertFalse(second.contains("Wired events"),
+							"nothing must be wired on an existing form: " + second),
+					() -> assertTrue(second.contains("Events not applied"),
+							"the caller must be told the events were not applied: " + second),
+					() -> assertWired(form, form.getOnShowMethodID(), "handlerA"),
+					() -> assertNull(findMethod(form, "handlerB"),
+							"handlerB must NOT have been added to the existing form"));
+		}
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("events + columns on an existing form name: existing form is NOT modified")
+		void existingForm_isNotModified_withColumns() {
+			String tableName = uniqueName("dupcols_tbl");
+			String dataSource = createMemTable(tableName, "name:TEXT:100");
+			String formName = uniqueName("dupColsForm");
+
+			devServer.createForm(formName, "css", "640", "480", dataSource, null, "onShow:handlerA", "*");
+			String second = devServer.createForm(formName, "css", "640", "480", dataSource, null, "onShow:handlerB",
+					"*");
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			assertAll(
+					() -> assertTrue(second.contains("already exists"),
+							"second call must report 'already exists': " + second),
+					() -> assertWired(form, form.getOnShowMethodID(), "handlerA"),
+					() -> assertNull(findMethod(form, "handlerB"),
+							"handlerB must NOT have been added to the existing form"));
+		}
+
+		@Test
+		@org.junit.jupiter.api.DisplayName("a method name that is not a JS identifier is reported and never reaches the script")
+		void invalidIdentifier_isReported_andNotWritten() {
+			String formName = uniqueName("badIdForm");
+
+			String result = devServer.createForm(formName, "css", "640", "480", null, null,
+					"onShow:f(){};x,onLoad:initForm", null);
+
+			Form form = resolveForm(formName);
+			assertNotNull(form, "form should exist");
+			assertAll(
+					() -> assertTrue(result.contains("Skipped unrecognised events") && result.contains("f(){};x"),
+							"the invalid method name must be reported: " + result),
+					() -> assertTrue(
+							form.getOnShowMethodID() == null || form.getOnShowMethodID().isBlank()
+									|| "-1".equals(form.getOnShowMethodID()),
+							"onShow must stay unwired for an invalid name"),
+					() -> assertNull(findMethod(form, "f(){};x"), "no method with an invalid name may be created"),
+					() -> assertWired(form, form.getOnLoadMethodID(), "initForm"));
 		}
 	}
 

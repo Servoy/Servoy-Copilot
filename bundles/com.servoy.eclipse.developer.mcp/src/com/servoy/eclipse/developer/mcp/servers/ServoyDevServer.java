@@ -1620,7 +1620,8 @@ public class ServoyDevServer {
 			+ "Unrecognised or unsupported events are reported back in the result string instead of being silently dropped. "
 			+ "When 'columns' is provided (use '*' for all columns or a comma-separated list), "
 			+ "the form is created with label+field pairs for each column in a single call — no separate applyPatch needed. "
-			+ "Returns an error if a form with the same name already exists.", type = "object")
+			+ "Method names must be valid JavaScript identifiers. If one handler cannot be wired it is reported per event ('Failed to wire events') and the others are still wired. "
+			+ "If a form with the same name already exists, it is left unchanged: nothing (including events) is applied and an 'already exists' result is returned.", type = "object")
 	public String createForm(
 			@ToolParam(name = "name", description = "Form name (e.g. 'customerList', 'orderDetails')", required = true) String name,
 			@ToolParam(name = "style", description = "Form style: 'css' (default) or 'responsive'", required = false) String style,
@@ -1648,7 +1649,7 @@ public class ServoyDevServer {
 					} else if (kv.length == 2) {
 						String ev = kv[0].trim();
 						String methodName = kv[1].trim();
-						if (!ev.isEmpty() && !methodName.isEmpty() && ServoyArtifactCreationService.SUPPORTED_EVENTS.contains(ev))
+						if (ServoyArtifactCreationService.SUPPORTED_EVENTS.contains(ev) && ServoyArtifactCreationService.isValidMethodName(methodName))
 							eventMap.put(ev, methodName);
 						else
 							unrecognised.add(entry);
@@ -1676,13 +1677,17 @@ public class ServoyDevServer {
 
 			StringBuilder result = new StringBuilder(createResult);
 
-			// Wire events on the just-created form, regardless of the columns branch taken.
-			if (!eventMap.isEmpty()) {
+			// Wire events only on a form this call actually created: an "already exists" result must leave the existing form untouched.
+			boolean alreadyExisted = createResult != null && createResult.startsWith("Form '" + name + "' already exists");
+			if (!eventMap.isEmpty() && !alreadyExisted) {
 				String wired = artifactService.applyEventsToForm(name, eventMap);
 				if (wired != null && !wired.isBlank()) result.append("\n  ").append(wired);
 			}
+			if (!eventMap.isEmpty() && alreadyExisted) {
+				result.append("\n  Events not applied: the form already exists and was left unchanged.");
+			}
 			if (!unrecognised.isEmpty()) {
-				result.append("\n  Skipped unrecognised events: ").append(String.join(", ", unrecognised));
+				result.append("\n  Skipped unrecognised events (unknown event, malformed entry or method name that is not a valid JavaScript identifier): ").append(String.join(", ", unrecognised));
 			}
 			return result.toString();
 		} catch (Exception e) {
