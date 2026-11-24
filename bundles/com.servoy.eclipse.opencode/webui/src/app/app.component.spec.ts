@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppComponent } from './app.component';
 import { MessageListComponent } from './components/message-list.component';
+import { SessionListComponent } from './components/session-list.component';
 import { Part, Session } from './models/opencode.models';
 import { ChildSignals } from './services/agent-status';
 import { ChatMessage, ChatStore, ComposerDraft } from './services/chat-store.service';
@@ -50,6 +51,8 @@ describe('AppComponent', () => {
       hasMoreMessages: signal(false),
       childSignals: signal(new Map()),
       busySessionIds: signal(new Set<string>()),
+      pendingFormSessions: signal(new Set<string>()),
+      loadSessionReports: vi.fn(),
       error: signal<string | null>(null),
       pendingForm: signal(null),
       streaming: signal(false),
@@ -368,6 +371,28 @@ describe('AppComponent', () => {
       await click(sessionsBtn());
       expect(sessions().hidden).toBe(false);
       expect(sessionsBtn().getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('binds the sidebar status inputs from the store and forwards (expand) to loadSessionReports', async () => {
+      mockWidth(1024);
+      await setup();
+      const busy = new Set(['s1']);
+      const pendingSet = new Set(['s2']);
+      const signals = new Map<string, ChildSignals>([['c1', { busy: true }]]);
+      (store['busySessionIds'] as ReturnType<typeof signal<Set<string>>>).set(busy);
+      (store['pendingFormSessions'] as ReturnType<typeof signal<Set<string>>>).set(pendingSet);
+      (store['childSignals'] as ReturnType<typeof signal<Map<string, ChildSignals>>>).set(signals);
+      expect(() => fixture.detectChanges()).not.toThrow();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const list = fixture.debugElement.query(By.directive(SessionListComponent)).componentInstance as SessionListComponent;
+      expect(list.busySessionIds()).toBe(busy);
+      expect(list.pendingFormSessions()).toBe(pendingSet);
+      expect(list.childSignals()).toBe(signals);
+
+      list.expand.emit('s1');
+      expect(store['loadSessionReports']).toHaveBeenCalledWith('s1');
     });
 
     it('starts closed below 800px, and the status panel is independent of it', async () => {

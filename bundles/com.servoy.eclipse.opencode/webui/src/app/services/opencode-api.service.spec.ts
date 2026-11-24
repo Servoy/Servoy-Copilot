@@ -57,6 +57,42 @@ describe('OpencodeApiService', () => {
     expect(result).toEqual([]);
   });
 
+  describe('listAllPendingForms', () => {
+    const form = { id: 'f1', sessionID: 's1', title: 'Q', fields: [] } as unknown as FormInfo;
+
+    it('GETs rest_api/form and unwraps the { data } envelope', () => {
+      let result: FormInfo[] | undefined;
+      service.listAllPendingForms().subscribe((r) => (result = r));
+      const req = httpMock.expectOne('rest_api/form');
+      expect(req.request.method).toBe('GET');
+      req.flush({ data: [form] });
+      expect(result).toEqual([form]);
+    });
+
+    it('accepts a bare array', () => {
+      let result: FormInfo[] | undefined;
+      service.listAllPendingForms().subscribe((r) => (result = r));
+      httpMock.expectOne('rest_api/form').flush([form]);
+      expect(result).toEqual([form]);
+    });
+
+    it('returns [] when data is missing', () => {
+      let result: FormInfo[] | undefined;
+      service.listAllPendingForms().subscribe((r) => (result = r));
+      httpMock.expectOne('rest_api/form').flush({});
+      expect(result).toEqual([]);
+    });
+
+    it.each([404, 500])('maps HTTP %i to [] without an error', (status) => {
+      let result: FormInfo[] | undefined;
+      let failed = false;
+      service.listAllPendingForms().subscribe({ next: (r) => (result = r), error: () => (failed = true) });
+      httpMock.expectOne('rest_api/form').flush('nope', { status, statusText: 'err' });
+      expect(failed).toBe(false);
+      expect(result).toEqual([]);
+    });
+  });
+
   it('getActiveSessions GETs rest_api/session/active and returns the ids of the data keys', () => {
     let result: ReadonlySet<string> | undefined;
     service.getActiveSessions().subscribe((r) => (result = r));

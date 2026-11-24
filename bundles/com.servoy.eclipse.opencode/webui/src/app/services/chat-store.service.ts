@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 
-import { forkJoin } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 
 import {
   FormAnswer,
@@ -218,6 +218,18 @@ export class ChatStore implements OnDestroy {
   private readonly pendingFormSig = signal<FormInfo | null>(null);
   readonly pendingForm = this.pendingFormSig.asReadonly();
 
+  /** Pending forms of every session (formId -> sessionID), for the sidebar. */
+  private readonly pendingForms = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly pendingFormSeeds = new Set<{ created: Map<string, string>; settled: Set<string> }>();
+  private readonly reportsRequested = new Set<string>();
+  /** Sessions that currently wait for the user (distinct sessionIDs of the pending forms). */
+  readonly pendingFormSessions = computed<ReadonlySet<string>>(
+    () => new Set(this.pendingForms().values()),
+    {
+      equal: (a, b) => a.size === b.size && [...a].every((id) => b.has(id))
+    }
+  );
+
   readonly hasActiveSession = computed(() => this.activeSessionId() !== null);
 
   /** The draft map key for the active session, or the fresh-session key. */
@@ -258,7 +270,7 @@ export class ChatStore implements OnDestroy {
   }
 
   /** Seed the server-reported running sessions (one request; failure = empty set). */
-  private seedActiveSessions(): void {
+  private seedActiveSessions(onDone?: () => void): void {
     const endedMeanwhile = new Set<string>();
     this.pendingSeeds.add(endedMeanwhile);
     this.api.getActiveSessions().subscribe((ids) => {
@@ -266,6 +278,137 @@ export class ChatStore implements OnDestroy {
       const fresh = new Set([...ids].filter((id) => !endedMeanwhile.has(id)));
       this.activeSessionIds.set(fresh);
       this.activeSeeded.set(true);
+      onDone?.();
+    });
+  }
+
+  /** Seed the sidebar state: running sessions first, then pending forms of every session. */
+  private seedSidebarState(): void {
+    this.seedActiveSessions(() => this.seedPendingForms());
+  }
+
+  private seedPendingForms(): void {
+    const tracker = { created: new Map<string, string>(), settled: new Set<string>() };
+    this.pendingFormSeeds.add(tracker);
+    const finish = (snapshot: Map<string, string>): void => {
+      this.pendingFormSeeds.delete(tracker);
+      for (const id of tracker.settled) {
+        snapshot.delete(id);
+      }
+      for (const [id, sessionID] of tracker.created) {
+        snapshot.set(id, sessionID);
+      }
+      this.pendingForms.set(snapshot);
+    };
+    this.api.listAllPendingForms().subscribe((forms) => {
+      if (forms.length > 0) {
+        finish(new Map(forms.filter((f) => f.id && f.sessionID).map((f) => [f.id, f.sessionID])));
+        return;
+      }
+      const busyTopLevel = this.allSessions()
+        .filter((s) => !s.parentID && this.busySessionIds().has(s.id))
+        .map((s) => s.id);
+      if (busyTopLevel.length === 0) {
+        finish(new Map());
+        return;
+      }
+      forkJoin(
+        busyTopLevel.map((id) =>
+          this.api.listPendingForms(id).pipe(
+            catchError((err) => {
+              dbg('error', `listPendingForms ${this.errorDetail(err)}`);
+              return of([] as FormInfo[]);
+            })
+          )
+        )
+      ).subscribe((lists) => {
+        const snapshot = new Map<string, string>();
+        busyTopLevel.forEach((sessionID, i) => {
+          for (const f of lists[i]) {
+            if (f.id) {
+              snapshot.set(f.id, sessionID);
+            }
+          }
+        });
+        finish(snapshot);
+      });
+    });
+  }
+
+  private addPendingForm(id: string, sessionID: string): void {
+    for (const tracker of this.pendingFormSeeds) {
+      tracker.settled.delete(id);
+      tracker.created.set(id, sessionID);
+    }
+    this.pendingForms.update((m) => {
+      if (m.get(id) === sessionID) {
+        return m;
+      }
+      const next = new Map(m);
+      next.set(id, sessionID);
+      return next;
+    });
+  }
+
+  private removePendingForm(id: string | undefined, sessionID: string | undefined): void {
+    const current = this.pendingForms();
+    const ids = new Set<string>();
+    if (id) {
+      ids.add(id);
+    } else if (sessionID) {
+      for (const [formId, sid] of current) {
+        if (sid === sessionID) {
+          ids.add(formId);
+        }
+      }
+    }
+    for (const tracker of this.pendingFormSeeds) {
+      for (const formId of ids) {
+        tracker.created.delete(formId);
+        tracker.settled.add(formId);
+      }
+    }
+    if (![...ids].some((formId) => current.has(formId))) {
+      return;
+    }
+    this.pendingForms.update((m) => {
+      const next = new Map(m);
+      for (const formId of ids) {
+        next.delete(formId);
+      }
+      return next;
+    });
+  }
+
+  private dropPendingFormsOf(sessionID: string): void {
+    for (const tracker of this.pendingFormSeeds) {
+      for (const [formId, sid] of tracker.created) {
+        if (sid === sessionID) {
+          tracker.created.delete(formId);
+        }
+      }
+    }
+    if (![...this.pendingForms().values()].includes(sessionID)) {
+      return;
+    }
+    this.pendingForms.update((m) => new Map([...m].filter(([, sid]) => sid !== sessionID)));
+  }
+
+  /** Lazily load a cold top-level session's newest page so hand-back reports show in the sidebar. */
+  loadSessionReports(sessionId: string): void {
+    if (this.reportsRequested.has(sessionId)) {
+      return;
+    }
+    this.reportsRequested.add(sessionId);
+    if (sessionId === this.activeSessionId()) {
+      return;
+    }
+    this.api.listMessagePage(sessionId).subscribe({
+      next: (page) => this.recordSyntheticResults(page.messages ?? [], true),
+      error: (err) => {
+        this.reportsRequested.delete(sessionId);
+        dbg('error', `loadSessionReports ${this.errorDetail(err)}`);
+      }
     });
   }
 
@@ -276,6 +419,7 @@ export class ChatStore implements OnDestroy {
   }
 
   private pruneSessionState(id: string): void {
+    this.dropPendingFormsOf(id);
     this.removeActive(id);
     this.setSessionStreaming(id, false);
     this.setMapEntry(this.liveOutcomes, id, null);
@@ -481,7 +625,7 @@ export class ChatStore implements OnDestroy {
       }
     });
     this.eventStream.events().subscribe((evt) => this.onEvent(evt));
-    this.eventStream.reconnected().subscribe(() => this.seedActiveSessions());
+    this.eventStream.reconnected().subscribe(() => this.seedSidebarState());
   }
 
   /**
@@ -532,6 +676,7 @@ export class ChatStore implements OnDestroy {
         const all = sessions ?? [];
         this.allSessions.set(all);
         this.sessionsLoadedSig.set(true);
+        this.seedSidebarState();
         const mostRecent = this.mostRecentSession(all);
         if (mostRecent) {
           this.openSession(mostRecent.id);
@@ -812,6 +957,7 @@ export class ChatStore implements OnDestroy {
 
   /** Clears the pending form if it still matches {@code formID}. */
   private clearForm(formID: string): void {
+    this.removePendingForm(formID, undefined);
     if (this.pendingFormSig()?.id === formID) {
       this.pendingFormSig.set(null);
     }
@@ -968,6 +1114,7 @@ export class ChatStore implements OnDestroy {
         } else if (id && type === 'idle') {
           this.setSessionStreaming(id, false);
           this.removeActive(id);
+          this.dropPendingFormsOf(id);
         }
         break;
       }
@@ -989,6 +1136,7 @@ export class ChatStore implements OnDestroy {
         if (id) {
           this.setSessionStreaming(id, false);
           this.removeActive(id);
+          this.dropPendingFormsOf(id);
           if (evt.type === 'session.execution.succeeded') {
             this.setMapEntry<ChildOutcome>(this.liveOutcomes, id, 'succeeded');
           } else if (evt.type === 'session.execution.failed') {
@@ -1557,6 +1705,9 @@ export class ChatStore implements OnDestroy {
     if (!form) {
       return;
     }
+    if (form.id && form.sessionID) {
+      this.addPendingForm(form.id, form.sessionID);
+    }
     const active = this.activeSessionId();
     if (!active || form.sessionID !== active) {
       return;
@@ -1573,6 +1724,7 @@ export class ChatStore implements OnDestroy {
     const id =
       (props['id'] as string | undefined) ??
       (this.extractForm(props)?.id as string | undefined);
+    this.removePendingForm(id, props['sessionID'] as string | undefined);
     if (id) {
       this.clearForm(id);
     }

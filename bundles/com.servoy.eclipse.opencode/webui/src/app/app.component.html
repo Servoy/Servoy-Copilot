@@ -3,7 +3,11 @@
     <svy-session-list
       [tree]="store.sessionTree()"
       [activeSessionId]="store.activeSessionId()"
+      [childSignals]="store.childSignals()"
+      [busySessionIds]="store.busySessionIds()"
+      [pendingFormSessions]="store.pendingFormSessions()"
       (select)="onSelectSession($event)"
+      (expand)="store.loadSessionReports($event)"
       (create)="onNewSession()"
       (rename)="onRenameSession($event)"
       (export)="onExportSession($event)"

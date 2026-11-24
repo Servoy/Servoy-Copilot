@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Subject, of, throwError } from 'rxjs';
 
+import { deriveChildStatus } from './agent-status';
 import { ChatStore } from './chat-store.service';
 import { LoadedMessagesService } from './loaded-messages.service';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
@@ -39,6 +40,7 @@ function apiMock() {
     interrupt: vi.fn(),
     readWorkspaceFile: vi.fn(),
     listPendingForms: vi.fn(),
+    listAllPendingForms: vi.fn(),
     getActiveSessions: vi.fn(),
     replyToForm: vi.fn(),
     cancelForm: vi.fn()
@@ -66,6 +68,7 @@ describe('ChatStore', () => {
     // openSession/bootstrap now recover pending forms; default to none so the
     // existing session-focused tests are unaffected.
     api.listPendingForms.mockReturnValue(of<FormInfo[]>([]));
+    api.listAllPendingForms.mockReturnValue(of<FormInfo[]>([]));
     // openSession pages the transcript (listMessagePage) and export walks the
     // whole history (listAllMessages); default both to empty so the many
     // session-focused tests that only need an empty transcript keep working.
@@ -1320,6 +1323,301 @@ describe('ChatStore', () => {
 
     expect(store.pendingForm()).toBeNull();
     expect(store.error()).toBeNull();
+  });
+
+  describe('sidebar pending forms and report loading (SVY-21846)', () => {
+    const fire = (type: string, data: Record<string, unknown>) => events.fire({ type, data });
+    const sessionsOf = (...s: Session[]) => {
+      api.listSessions.mockReturnValue(of<Session[]>(s));
+      store.refreshSessions();
+    };
+    const busy = (...ids: string[]) =>
+      api.getActiveSessions.mockReturnValue(of(new Set(ids) as ReadonlySet<string>));
+    const pending = () => [...store.pendingFormSessions()].sort();
+
+    describe('live events', () => {
+      it('form.created for a non-active session adds it to pendingFormSessions and leaves pendingForm null', () => {
+        store.openSession('s1');
+        fire('form.created', { form: sampleForm('s2', 'f2') });
+
+        expect(pending()).toEqual(['s2']);
+        expect(store.pendingForm()).toBeNull();
+      });
+
+      it('form.created for the active session is in the set and sets pendingForm', () => {
+        store.openSession('s1');
+        fire('form.created', { form: sampleForm('s1', 'f1') });
+
+        expect(pending()).toEqual(['s1']);
+        expect(store.pendingForm()?.id).toBe('f1');
+      });
+
+      it.each([
+        ['form.replied', { id: 'f2', sessionID: 's2' }],
+        ['form.cancelled', { id: 'f2', sessionID: 's2' }],
+        ['form.replied', { id: 'f2' }],
+        ['form.cancelled', { id: 'f2' }]
+      ])('%s %j removes the session', (type, payload) => {
+        fire('form.created', { form: sampleForm('s2', 'f2') });
+        fire(type, payload);
+
+        expect(pending()).toEqual([]);
+      });
+
+      it('a settle event with only a sessionID removes every form of that session', () => {
+        fire('form.created', { form: sampleForm('s2', 'f1') });
+        fire('form.created', { form: sampleForm('s2', 'f2') });
+        fire('form.created', { form: sampleForm('s3', 'f3') });
+
+        fire('form.cancelled', { sessionID: 's2' });
+
+        expect(pending()).toEqual(['s3']);
+      });
+
+      it('keeps the session in the set until both of its forms are settled', () => {
+        fire('form.created', { form: sampleForm('s2', 'f1') });
+        fire('form.created', { form: sampleForm('s2', 'f2') });
+
+        fire('form.replied', { id: 'f1', sessionID: 's2' });
+        expect(pending()).toEqual(['s2']);
+
+        fire('form.replied', { id: 'f2', sessionID: 's2' });
+        expect(pending()).toEqual([]);
+      });
+
+      it('does not emit a new set instance when nothing changed', () => {
+        fire('form.created', { form: sampleForm('s2', 'f1') });
+        const before = store.pendingFormSessions();
+        fire('form.created', { form: sampleForm('s2', 'f1') });
+        fire('form.replied', { id: 'unknown' });
+
+        expect(store.pendingFormSessions()).toBe(before);
+      });
+
+      it.each([
+        ['session.idle', { sessionID: 's2' }],
+        ['session.status', { sessionID: 's2', status: { type: 'idle' } }],
+        ['session.deleted', { sessionID: 's2' }]
+      ])('%s drops the entries of that session only', (type, payload) => {
+        fire('form.created', { form: sampleForm('s2', 'f2') });
+        fire('form.created', { form: sampleForm('s3', 'f3') });
+
+        fire(type, payload);
+
+        expect(pending()).toEqual(['s3']);
+      });
+
+      it('idle does not touch the active pendingForm', () => {
+        store.openSession('s1');
+        fire('form.created', { form: sampleForm('s1', 'f1') });
+
+        fire('session.idle', { sessionID: 's1' });
+
+        expect(pending()).toEqual([]);
+        expect(store.pendingForm()?.id).toBe('f1');
+      });
+
+      it('submitForm and cancelPendingForm remove the form from pendingFormSessions', () => {
+        api.replyToForm.mockReturnValue(of<void>(undefined));
+        api.cancelForm.mockReturnValue(of<void>(undefined));
+        store.openSession('s1');
+        fire('form.created', { form: sampleForm('s1', 'f1') });
+        store.submitForm({ q0: 'Apple' });
+        expect(pending()).toEqual([]);
+
+        fire('form.created', { form: sampleForm('s1', 'f2') });
+        expect(pending()).toEqual(['s1']);
+        store.cancelPendingForm();
+        expect(pending()).toEqual([]);
+      });
+
+      it('a 409 on submitForm also removes the form from pendingFormSessions', () => {
+        api.replyToForm.mockReturnValue(throwError(() => ({ status: 409 })));
+        store.openSession('s1');
+        fire('form.created', { form: sampleForm('s1', 'f1') });
+
+        store.submitForm({ q0: 'Apple' });
+
+        expect(pending()).toEqual([]);
+      });
+    });
+
+    describe('seeding', () => {
+      it('bootstrap seeds /session/active once before any openSession', () => {
+        busy('a');
+        api.listSessions.mockReturnValue(of<Session[]>([]));
+
+        store.bootstrap();
+
+        expect(api.getActiveSessions).toHaveBeenCalledTimes(1);
+        expect(store.busySessionIds().has('a')).toBe(true);
+      });
+
+      it('primary path: forms of two sessions are seeded and listPendingForms is not called', () => {
+        api.listSessions.mockReturnValue(of<Session[]>([]));
+        api.listAllPendingForms.mockReturnValue(of([sampleForm('a', 'fa'), sampleForm('b', 'fb')]));
+
+        store.bootstrap();
+
+        expect(pending()).toEqual(['a', 'b']);
+        expect(api.listPendingForms).not.toHaveBeenCalled();
+      });
+
+      it('fallback path queries only busy top-level sessions', () => {
+        sessionsOf({ id: 'a' }, { id: 'b' }, { id: 'c', parentID: 'a' });
+        busy('a', 'c');
+        api.listPendingForms.mockImplementation((id: string) =>
+          of(id === 'a' ? [sampleForm('a', 'fa')] : [])
+        );
+
+        events.fireReconnect();
+
+        expect(api.listPendingForms).toHaveBeenCalledTimes(1);
+        expect(api.listPendingForms).toHaveBeenCalledWith('a');
+        expect(pending()).toEqual(['a']);
+      });
+
+      it('fallback path survives a per-session failure', () => {
+        sessionsOf({ id: 'a' }, { id: 'b' });
+        busy('a', 'b');
+        api.listPendingForms.mockImplementation((id: string) =>
+          id === 'a' ? throwError(() => ({ status: 500 })) : of([sampleForm('b', 'fb')])
+        );
+
+        events.fireReconnect();
+
+        expect(api.listPendingForms).toHaveBeenCalledTimes(2);
+        expect(pending()).toEqual(['b']);
+        expect(store.error()).toBeNull();
+      });
+
+      it('makes no per-session requests when nothing is busy', () => {
+        sessionsOf({ id: 'a' }, { id: 'b' });
+        busy();
+
+        events.fireReconnect();
+
+        expect(api.listPendingForms).not.toHaveBeenCalled();
+        expect(pending()).toEqual([]);
+      });
+
+      it('a form.created arriving while the snapshot is pending survives it', () => {
+        const snapshot = new Subject<FormInfo[]>();
+        api.listAllPendingForms.mockReturnValue(snapshot.asObservable());
+        events.fireReconnect();
+
+        fire('form.created', { form: sampleForm('s9', 'f9') });
+        snapshot.next([sampleForm('s1', 'f1')]);
+
+        expect(pending()).toEqual(['s1', 's9']);
+      });
+
+      it('a form.replied arriving while the snapshot is pending removes a form the snapshot lists', () => {
+        const snapshot = new Subject<FormInfo[]>();
+        api.listAllPendingForms.mockReturnValue(snapshot.asObservable());
+        events.fireReconnect();
+
+        fire('form.replied', { id: 'f1', sessionID: 's1' });
+        snapshot.next([sampleForm('s1', 'f1'), sampleForm('s2', 'f2')]);
+
+        expect(pending()).toEqual(['s2']);
+      });
+
+      it('reconnect re-seeds and clears stale entries', () => {
+        fire('form.created', { form: sampleForm('stale', 'fs') });
+        expect(pending()).toEqual(['stale']);
+        api.listAllPendingForms.mockReturnValue(of([sampleForm('fresh', 'ff')]));
+
+        events.fireReconnect();
+
+        expect(pending()).toEqual(['fresh']);
+      });
+    });
+
+    describe('loadSessionReports', () => {
+      const bgResult = (childId: string, state: string, body: string) =>
+        `<background-result kind="subagent" sessionID="${childId}" state="${state}" description="d">\n${body}\n</background-result>`;
+      const synthetic = (id: string, text: string): MessageWithParts => ({
+        info: { id, role: 'synthetic', text } as MessageWithParts['info'],
+        parts: []
+      });
+      const tree = () => sessionsOf({ id: 's1' }, { id: 'c1', parentID: 's1' }, { id: 's2' });
+      const pageWith = (...messages: MessageWithParts[]) =>
+        api.listMessagePage.mockReturnValue(of({ messages, olderCursor: null }));
+
+      it('records an INPUT_REQUIRED hand-back of a cold session as stopped', () => {
+        tree();
+        pageWith(synthetic('m1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nneed a decision')));
+
+        store.loadSessionReports('s2');
+
+        const signals = store.childSignals().get('c1');
+        expect(signals?.result?.body).toContain('INPUT_REQUIRED');
+        expect(deriveChildStatus(signals).status).toBe('stopped');
+      });
+
+      it('requests once per session', () => {
+        tree();
+        store.loadSessionReports('s2');
+        store.loadSessionReports('s2');
+
+        expect(api.listMessagePage).toHaveBeenCalledTimes(1);
+        expect(api.listMessagePage).toHaveBeenCalledWith('s2');
+      });
+
+      it('makes no request for the active session', () => {
+        tree();
+        store.openSession('s2');
+        api.listMessagePage.mockClear();
+
+        store.loadSessionReports('s2');
+
+        expect(api.listMessagePage).not.toHaveBeenCalled();
+      });
+
+      it('does not overwrite a live-recorded result', () => {
+        tree();
+        fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'Status: COMPLETED\nlive') });
+        pageWith(synthetic('m1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nold')));
+
+        store.loadSessionReports('s2');
+
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nlive');
+      });
+
+      it('a failure raises no error and a later call retries', () => {
+        tree();
+        api.listMessagePage.mockReturnValue(throwError(() => ({ status: 500 })));
+
+        store.loadSessionReports('s2');
+        expect(store.error()).toBeNull();
+
+        pageWith(synthetic('m1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED')));
+        store.loadSessionReports('s2');
+
+        expect(api.listMessagePage).toHaveBeenCalledTimes(2);
+        expect(store.childSignals().get('c1')?.result).toBeDefined();
+      });
+
+      it('leaves messages and the active session untouched', () => {
+        tree();
+        api.listMessagePage.mockReturnValue(
+          of({ messages: [{ info: { id: 'u1', role: 'user' }, parts: [] }] as MessageWithParts[], olderCursor: null })
+        );
+        store.openSession('s1');
+        const before = store.messages();
+
+        pageWith(
+          { info: { id: 'u9', role: 'user' }, parts: [] } as MessageWithParts,
+          synthetic('m1', bgResult('c1', 'completed', 'Status: COMPLETED'))
+        );
+        store.loadSessionReports('s2');
+
+        expect(store.activeSessionId()).toBe('s1');
+        expect(store.messages()).toBe(before);
+        expect(store.messages().map((m) => m.info.id)).toEqual(['u1']);
+      });
+    });
   });
 
   describe('agent card child signals (SVY-21849)', () => {

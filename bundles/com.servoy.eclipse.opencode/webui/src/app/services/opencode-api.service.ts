@@ -237,6 +237,18 @@ export class OpencodeApiService {
   }
 
   /**
+   * List the pending forms of every session in the location ({@code GET /form}).
+   * Never fails: any error maps to an empty list, so callers can fall back to
+   * per-session queries.
+   */
+  listAllPendingForms(): Observable<FormInfo[]> {
+    return this.http.get<{ data?: FormInfo[] } | FormInfo[]>(`${this.base}/form`).pipe(
+      map((r) => (Array.isArray(r) ? r : (r?.data ?? []))),
+      catchError(() => of([] as FormInfo[]))
+    );
+  }
+
+  /**
    * Answer a pending form (V2 {@code POST /session/:id/form/:formID/reply}, body
    * {@code { answer }}). The answer is keyed by each field's {@code key}. V2
    * returns 204 No Content, so this resolves to {@code void}; answering unblocks

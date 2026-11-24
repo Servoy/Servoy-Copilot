@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   afterNextRender,
@@ -15,8 +16,16 @@ import {
 import { FormsModule } from '@angular/forms';
 
 import { Session } from '../models/opencode.models';
+import { ChildSignals } from '../services/agent-status';
 import { SessionNode } from '../services/chat-store.service';
 import { dbg, debugEnabled } from '../services/debug-log';
+import {
+  filterNodes,
+  formatActivity,
+  groupSessions,
+  sessionActivity
+} from '../services/session-groups';
+import { agentName, agentRowStatus, sessionStatus } from '../services/session-status';
 
 /** A rename request carried out of the list. */
 export interface SessionRename {
@@ -49,7 +58,11 @@ export class SessionListComponent {
 
   readonly tree = input<SessionNode[]>([]);
   readonly activeSessionId = input<string | null>(null);
+  readonly childSignals = input<ReadonlyMap<string, ChildSignals>>(new Map());
+  readonly busySessionIds = input<ReadonlySet<string>>(new Set());
+  readonly pendingFormSessions = input<ReadonlySet<string>>(new Set());
 
+  readonly expand = output<string>();
   readonly select = output<string>();
   readonly create = output<void>();
   readonly rename = output<SessionRename>();
@@ -84,7 +97,26 @@ export class SessionListComponent {
   /** True when there are no top-level sessions to show. */
   readonly isEmpty = computed(() => this.tree().length === 0);
 
+  readonly searchTerm = signal('');
+  readonly clock = signal(Date.now());
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+
+  readonly filtered = computed(() => {
+    const nodes = this.tree();
+    const matched = filterNodes(nodes, this.searchTerm());
+    const renaming = this.renamingSessionId();
+    if (matched === nodes || !renaming) {
+      return matched;
+    }
+    return nodes.filter((n) => matched.includes(n) || n.session.id === renaming);
+  });
+  readonly groups = computed(() => groupSessions(this.filtered(), this.clock()));
+  readonly noMatches = computed(() => !this.isEmpty() && this.filtered().length === 0);
+
   constructor() {
+    const timer = setInterval(() => this.clock.set(Date.now()), 60_000);
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+
     // When the active session is a subagent (child), auto-expand its parent so
     // the selected child is actually visible in the tree. This makes opening a
     // subagent from the chat transcript behave like clicking it in the sidebar:
@@ -126,8 +158,16 @@ export class SessionListComponent {
     this.create.emit();
   }
 
-  isExpanded(id: string): boolean {
-    return this.expandedIds().has(id);
+  isExpanded(node: SessionNode): boolean {
+    if (this.expandedIds().has(node.session.id)) {
+      return true;
+    }
+    const term = this.searchTerm().trim().toLowerCase();
+    return (
+      term.length > 0 &&
+      !this.title(node.session).toLowerCase().includes(term) &&
+      node.children.some((c) => this.title(c).toLowerCase().includes(term))
+    );
   }
 
   toggleExpand(event: MouseEvent, id: string): void {
@@ -137,33 +177,34 @@ export class SessionListComponent {
       next.delete(id);
     } else {
       next.add(id);
+      this.expand.emit(id);
     }
     this.expandedIds.set(next);
   }
 
-  title(session: Session): string {
-    return session.title && session.title.trim().length > 0 ? session.title : 'Untitled session';
+  clearSearch(): void {
+    this.searchTerm.set('');
+    this.searchInput()?.nativeElement.focus();
   }
 
-  relativeTime(session: Session): string {
-    const updated = session.time?.updated ?? session.time?.created;
-    if (!updated) {
-      return '';
-    }
-    const diff = Date.now() - updated;
-    const minutes = Math.round(diff / 60000);
-    if (minutes < 1) {
-      return 'just now';
-    }
-    if (minutes < 60) {
-      return `${minutes}m ago`;
-    }
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) {
-      return `${hours}h ago`;
-    }
-    const days = Math.round(hours / 24);
-    return `${days}d ago`;
+  statusOf(node: SessionNode) {
+    return sessionStatus(node, this.busySessionIds(), this.pendingFormSessions());
+  }
+
+  activityOf(session: Session): string {
+    return formatActivity(sessionActivity(session), this.clock());
+  }
+
+  agentStatusOf(child: Session) {
+    return agentRowStatus(this.childSignals().get(child.id));
+  }
+
+  agentLabelOf(child: Session): string {
+    return agentName(child);
+  }
+
+  title(session: Session): string {
+    return session.title && session.title.trim().length > 0 ? session.title : 'Untitled session';
   }
 
   // -----------------------------------------------------------------------
