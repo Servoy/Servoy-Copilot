@@ -465,8 +465,8 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                 // of trend alerts going back to SUCCESS does not post "Back to Normal" either.
                 // (Best-effort: the previous build's reason is read from its UNSTABLE description.)
                 def prev = currentBuild.previousBuild
-                boolean prevTrendOnly = prev != null && prev.result == 'UNSTABLE'
-                        && (prev.description ?: '').contains('trend-alerts-only')
+                boolean prevTrendOnly = prev != null && prev.result == 'UNSTABLE' &&
+                        (prev.description ?: '').contains('trend-alerts-only')
                 if (!prevTrendOnly || params.SKILLTEST_ALERT_TEAMS) {
                     office365ConnectorSend webhookUrl: TEAMS_WEBHOOK, status: 'Back to Normal', adaptiveCards: true
                 }
