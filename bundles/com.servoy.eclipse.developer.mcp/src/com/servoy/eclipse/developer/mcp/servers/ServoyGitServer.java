@@ -220,7 +220,7 @@ public class ServoyGitServer
 		return gitService.checkoutBranch(projectName, repo, branchName);
 	}
 
-	@Tool(name = "gitReset", description = "Unstages files from the index (equivalent to 'git reset HEAD <file>'). Does not modify the working tree. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project. To unstage a file outside any project, target the repository instead: pass 'repo' and leave 'projectName' empty. Reports the files it actually unstaged.", type = "object")
+	@Tool(name = "gitReset", description = "Unstages files from the index (equivalent to 'git reset HEAD <file>'). Does not modify the working tree. With 'projectName', '.' means THAT PROJECT only and a path must be inside it - a repository path outside the project is refused, naming the project. To unstage a file outside any project, target the repository instead: pass 'repo' and leave 'projectName' empty, where '.' then unstages everything in the index (the working tree is never touched). Reports the files it actually unstaged.", type = "object")
 	public String gitReset(
 		@ToolParam(name = "projectName", description = "The Eclipse project name. Optional when 'repo' is given.", required = false) String projectName,
 		@ToolParam(name = "repo", description = REPO_PARAM_DESC, required = false) String repo,

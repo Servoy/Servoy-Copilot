@@ -2021,7 +2021,24 @@ public class GitService
 			var reset = git.reset();
 			if (pathspecs.isEmpty())
 			{
-				reset.addPath(".");
+				// The whole repository (a project at the repository root, or a 'repo' call): unstage
+				// everything, as gitAdd's empty list stages everything. The path "." does NOT do this -
+				// JGit's path-based reset does not expand it, so the call was a no-op (reported as one
+				// since round 3; made to do what it says in round 4, SVY-21303).
+				if (repository.resolve(Constants.HEAD) != null)
+				{
+					// No path: a mixed reset to HEAD, which resets the index and leaves the working
+					// tree alone.
+					reset.setRef(Constants.HEAD);
+				}
+				else
+				{
+					// No commit yet, so there is no HEAD to reset to; unstage each entry by path.
+					for (String path : before.keySet())
+					{
+						reset.addPath(path);
+					}
+				}
 			}
 			else
 			{

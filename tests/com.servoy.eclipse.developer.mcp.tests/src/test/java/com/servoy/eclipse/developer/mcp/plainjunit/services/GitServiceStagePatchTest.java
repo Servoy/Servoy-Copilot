@@ -428,21 +428,57 @@ public class GitServiceStagePatchTest
 		}
 
 		@Test
-		@DisplayName("unstageIn with an empty pathspec list reports that nothing matched")
+		@DisplayName("unstageIn with an empty pathspec list unstages everything and leaves the working tree alone")
 		void unstageInWholeTree() throws Exception
 		{
-			Files.writeString(tempDir.resolve("file.txt"), "alpha\nbeta whole unstage\ngamma\n");
+			String edited = "alpha\nbeta whole unstage\ngamma\n";
+			Files.writeString(tempDir.resolve("file.txt"), edited);
+			Files.writeString(tempDir.resolve("second.txt"), "second\n");
 			git.add().addFilepattern(".").call();
 
-			// The empty-list branch resets the literal path ".", and JGit's path-based reset does not
-			// expand "." to every entry - so the index is untouched. That used to be reported as
-			// "Unstaged: .", which looked like it had worked; it now says plainly that nothing matched.
+			// The empty list is the whole repository (a project at the repository root, or a 'repo'
+			// call). It used to reset the literal path ".", which JGit does not expand, so the index
+			// was untouched: round 3 reported that honestly, round 4 makes it do what gitAdd's empty
+			// list does in the other direction.
 			String result = GitService.unstageIn(repository, java.util.List.of(), ".");
 
 			assertAll(
-				() -> assertTrue(result.startsWith("Nothing to unstage"),
-					"A no-op must not look like success: " + result),
+				() -> assertTrue(result.startsWith("Unstaged 2 file(s)"), "Should unstage both: " + result),
+				() -> assertTrue(result.contains("file.txt") && result.contains("second.txt"), "and name them: " + result),
+				() -> assertTrue(git.status().call().getAdded().isEmpty(), "nothing is left staged as new"),
+				() -> assertTrue(git.status().call().getChanged().isEmpty(), "nothing is left staged as changed"),
+				() -> assertEquals(edited, Files.readString(tempDir.resolve("file.txt")),
+					"the working tree must not be touched"));
+		}
+
+		@Test
+		@DisplayName("unstageIn with an empty pathspec list and nothing staged says so")
+		void unstageInWholeTreeNothingStaged() throws Exception
+		{
+			String result = GitService.unstageIn(repository, java.util.List.of(), ".");
+
+			assertAll(
+				() -> assertTrue(result.startsWith("Nothing to unstage"), "A no-op must not look like success: " + result),
 				() -> assertTrue(result.contains("the whole tree"), "and must say what was tried: " + result));
+		}
+
+		@Test
+		@DisplayName("unstageIn with an empty pathspec list works before the first commit")
+		void unstageInWholeTreeWithoutCommits() throws Exception
+		{
+			Path fresh = Files.createTempDirectory(tempDir, "fresh");
+			try (Git empty = Git.init().setDirectory(fresh.toFile()).call())
+			{
+				Files.writeString(fresh.resolve("a.txt"), "a\n");
+				empty.add().addFilepattern(".").call();
+
+				String result = GitService.unstageIn(empty.getRepository(), java.util.List.of(), ".");
+
+				assertAll(
+					() -> assertTrue(result.startsWith("Unstaged 1 file(s)"), result),
+					() -> assertTrue(empty.status().call().getAdded().isEmpty(), "nothing is left staged"),
+					() -> assertTrue(Files.exists(fresh.resolve("a.txt")), "the file itself is kept"));
+			}
 		}
 
 		@Test
