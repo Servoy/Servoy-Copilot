@@ -83,10 +83,38 @@ describe('StatusPanelComponent', () => {
     expect(component.overall()).toBe('ok');
   });
 
-  it('toggling open re-fetches all three status endpoints', () => {
+  it('renders as a plain docked panel with no toggle button, popover or dialog role', () => {
     init();
-    component.toggle();
-    expect(component.open()).toBe(true);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.status-toggle')).toBeNull();
+    expect(el.querySelector('.popover')).toBeNull();
+    expect(el.querySelector('[role="dialog"]')).toBeNull();
+    expect(el.querySelector('.panel .head .title')?.textContent).toContain('Status');
+  });
+
+  it('emits closed when the close button is clicked', () => {
+    init();
+    const closed: unknown[] = [];
+    component.closed.subscribe((v) => closed.push(v));
+    const btn = fixture.nativeElement.querySelector('button.close') as HTMLButtonElement;
+    expect(btn.getAttribute('aria-label')).toBe('Close status');
+    btn.click();
+    expect(closed.length).toBe(1);
+  });
+
+  it('does not emit closed when the refresh button is clicked', () => {
+    init();
+    let count = 0;
+    component.closed.subscribe(() => count++);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('button.refresh') as HTMLButtonElement).click();
+    flushAll({});
+    expect(count).toBe(0);
+  });
+
+  it('refresh() re-fetches all three status endpoints', () => {
+    init();
+    component.refresh();
     flushAll({
       info: { version: '2.0.18' },
       mcpData: [{ name: 'time', status: { status: 'connected' } }],

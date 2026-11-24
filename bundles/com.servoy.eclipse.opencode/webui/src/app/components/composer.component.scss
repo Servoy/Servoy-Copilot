@@ -70,7 +70,7 @@
   color: var(--svy-muted, #9aa0a6);
 
   &:hover {
-    color: var(--svy-accent, #f5a623);
+    color: var(--svy-acc-fg);
   }
 }
 
@@ -83,7 +83,7 @@
 
   &.active {
     background: var(--svy-accent, #f5a623);
-    color: #fff;
+    color: #1c1b19;
     cursor: pointer;
 
     &:hover {
@@ -94,7 +94,7 @@
   // The stop button is always actionable, so it keeps a solid colour even
   // though .active (a send-only concept) is not set while streaming.
   &.stop {
-    background: var(--svy-stop, #b5741a);
+    background: var(--svy-stop, #9a5b00);
     color: #fff;
     cursor: pointer;
   }

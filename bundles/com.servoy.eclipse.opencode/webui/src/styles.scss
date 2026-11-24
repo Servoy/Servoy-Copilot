@@ -2,51 +2,150 @@
    Matches the Servoy Developer look (orange accent) natively, replacing the
    runtime CSS injection that OpenCodeBranding used to do. */
 
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('assets/fonts/inter-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('assets/fonts/inter-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('assets/fonts/inter-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('assets/fonts/jetbrains-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('assets/fonts/jetbrains-mono-latin-500.woff2') format('woff2');
+}
+
 /* Theme tokens. Light is the default; the dark palette applies whenever the
    document root carries data-theme="dark". That attribute is set explicitly at
    startup (from the Eclipse theme the servlet reports, or a ?darkmode= URL
-   override) - the app does NOT follow the OS prefers-color-scheme, because it
-   must mirror the surrounding Eclipse IDE theme rather than the OS setting. */
+   override) and can be flipped at runtime by the header theme button - the app
+   does NOT follow the OS prefers-color-scheme, because it must mirror the
+   surrounding Eclipse IDE theme rather than the OS setting. */
 :root {
   color-scheme: light;
 
+  // Non-themed constants: bright orange for fills/borders/rings only, never text.
   --svy-accent: #f5a623;
+  --svy-accent-strong: #e39a1c;
+  --svy-accent-wait: #b86b00;
   --svy-accent-hover: #d4891e;
-  --svy-stop: #b5741a;
-  --svy-fg: #1f2328;
-  --svy-bg: #ffffff;
-  --svy-muted: #6b7075;
-  --svy-border: rgba(127, 127, 127, 0.25);
-  --svy-hover: rgba(127, 127, 127, 0.1);
-  --svy-hover-strong: rgba(127, 127, 127, 0.22);
-  --svy-active: rgba(245, 166, 35, 0.14);
+  --svy-ok: #1f8a4c;
+  --svy-focus-ring: rgba(245, 166, 35, 0.18);
+  --svy-stop: #9a5b00; // white glyph on this passes 4.5:1 (~5.4:1) in both themes
+  --svy-danger: #d1242f;
+
+  // Layout widths consumed by the shell; follow-up cases only change these.
+  --svy-sidebar-w: 260px;
+  --svy-sidebar-min-w: 240px;
+  --svy-sidebar-max-w: 288px;
+  --svy-chat-basis: 560px;
+  --svy-status-w: 300px;
+  --svy-status-min-w: 280px;
+  --svy-status-max-w: 340px;
+
+  // Design palette: light.
+  --svy-bg: #f7f6f3;
+  --svy-surface: #ffffff;
+  --svy-fg: #1c1b19;
+  --svy-fg2: #4a4740;
+  --svy-muted: #6b675e;
+  --svy-line: #e6e3dc;
+  --svy-line2: #efede8;
+  --svy-line3: #dad6cd;
+  --svy-soft: #f2f0eb;
+  --svy-inv: #1c1b19;
+  --svy-on-inv: #ffffff;
+  --svy-chip-bg: #3a3834;
+  --svy-chip-fg: #f5b94a;
+  --svy-acc-fg: #9a5b00;
+  --svy-acc-fg2: #6e4100;
+  --svy-acc-soft: #fff8ec;
+  --svy-acc-soft2: #fffbf3;
+  --svy-acc-line: #f2d9a6;
+  --svy-blue-soft: #e7eef5;
+  --svy-blue-fg: #2c4a66;
+  --svy-blue-line: #e3e8ee;
+  --svy-blue-bg: #fafbfc;
+  --svy-ok-fg: #145c33;
+  --svy-idle: #cfcac0;
+  --svy-ph1: #e3dfd7;
+  --svy-ph2: #d8d4cb;
+  --svy-drop: rgba(255, 248, 236, 0.95);
+
+  // Legacy aliases so existing components pick up the new palette.
+  --svy-border: var(--svy-line);
+  --svy-hover: var(--svy-line2);
+  --svy-hover-strong: var(--svy-line3);
+  --svy-active: var(--svy-acc-soft);
+  --svy-surface-hover: var(--svy-soft);
+
   // Code / tool-output blocks follow the theme (light in light mode).
   --svy-pre-bg: #f3f4f6;
   --svy-pre-fg: #1f2328;
   --svy-code-bg: rgba(127, 127, 127, 0.14);
-  --svy-danger: #d1242f;
-  // Surfaces sit slightly off the base bg so panels/chips/buttons read as raised.
-  --svy-surface: #ffffff;
-  --svy-surface-hover: rgba(0, 0, 0, 0.04);
-  --svy-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  --svy-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
 }
 
 :root[data-theme='dark'] {
   // color-scheme flips native UI (scrollbars, form controls) to dark.
   color-scheme: dark;
 
-  --svy-fg: #e6e6e6;
-  --svy-bg: #1b1b1d;
-  --svy-muted: #9aa0a6;
-  --svy-border: rgba(160, 160, 160, 0.25);
-  --svy-hover: rgba(200, 200, 200, 0.08);
-  --svy-hover-strong: rgba(200, 200, 200, 0.16);
   --svy-danger: #f06a6a;
+
+  --svy-bg: #141413;
+  --svy-surface: #1c1b19;
+  --svy-fg: #ece9e4;
+  --svy-fg2: #c9c5bc;
+  --svy-muted: #a39e93;
+  --svy-line: #34322e;
+  --svy-line2: #2a2926;
+  --svy-line3: #403d38;
+  --svy-soft: #262522;
+  --svy-inv: #ece9e4;
+  --svy-on-inv: #1c1b19;
+  --svy-chip-bg: #d8d4cb;
+  --svy-chip-fg: #6e4100;
+  --svy-acc-fg: #f5b94a;
+  --svy-acc-fg2: #f7c873;
+  --svy-acc-soft: #33260f;
+  --svy-acc-soft2: #241c10;
+  --svy-acc-line: #5c4318;
+  --svy-blue-soft: #22303d;
+  --svy-blue-fg: #a9c8e4;
+  --svy-blue-line: #2f3a45;
+  --svy-blue-bg: #1f2328;
+  --svy-ok-fg: #86d9a6;
+  --svy-idle: #5a564f;
+  --svy-ph1: #3a3834;
+  --svy-ph2: #4a4740;
+  --svy-drop: rgba(51, 38, 15, 0.95);
+
   --svy-pre-bg: #0d1117;
   --svy-pre-fg: #c9d1d9;
   --svy-code-bg: rgba(200, 200, 200, 0.1);
-  --svy-surface: #26282c;
-  --svy-surface-hover: rgba(200, 200, 200, 0.08);
 }
 
 * {
@@ -57,15 +156,35 @@ html,
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
   color: var(--svy-fg);
   background: var(--svy-bg);
 }
 
+button {
+  font: inherit;
+}
+
+a {
+  color: var(--svy-acc-fg);
+}
+
+a:hover {
+  color: var(--svy-acc-fg2);
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--svy-accent-strong);
+  outline-offset: 2px;
+}
 /* ---------------------------------------------------------------------------
    highlight.js syntax colors, theme-aware.
    Light = GitHub light palette (readable on a light code block); dark =

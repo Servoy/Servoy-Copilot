@@ -150,7 +150,7 @@
 }
 
 .external-link {
-  color: var(--svy-accent, #f5a623);
+  color: var(--svy-acc-fg);
   word-break: break-all;
 }
 
@@ -207,7 +207,7 @@
   &.submit {
     border-color: var(--svy-accent, #f5a623);
     background: var(--svy-accent, #f5a623);
-    color: #fff;
+    color: #1c1b19;
 
     &:hover:not(:disabled) {
       background: var(--svy-accent-hover, #d4891e);

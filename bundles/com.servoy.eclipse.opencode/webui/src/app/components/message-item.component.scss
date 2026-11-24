@@ -98,7 +98,7 @@
 
   &:hover,
   &:focus-visible {
-    color: var(--svy-accent, #f5a623);
+    color: var(--svy-acc-fg);
   }
 }
 
@@ -186,7 +186,7 @@
   cursor: pointer;
 
   &:hover .reasoning-label {
-    color: var(--svy-accent, #f5a623);
+    color: var(--svy-acc-fg);
   }
 }
 
@@ -244,7 +244,7 @@
   cursor: pointer;
 
   &:hover .tool-name {
-    color: var(--svy-accent, #f5a623);
+    color: var(--svy-acc-fg);
   }
 }
 
@@ -274,7 +274,7 @@
   // rules. No opacity gate and no :hover-only color change here - the accent
   // color and full visibility apply the moment isSubagentLink(part) is true.
   opacity: 1;
-  color: var(--svy-accent, #f5a623);
+  color: var(--svy-acc-fg);
   cursor: pointer;
 
   // Secondary emphasis only - never the thing that first reveals clickability.

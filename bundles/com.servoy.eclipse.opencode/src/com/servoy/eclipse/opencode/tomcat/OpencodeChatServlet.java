@@ -407,6 +407,8 @@ public class OpencodeChatServlet extends HttpServlet {
 		}
 
 		String contentType = MimeTypes.guessContentTypeFromName(spaFallback ? "index.html" : assetPath);
+		if (contentType == null && !spaFallback && assetPath.endsWith(".woff2"))
+			contentType = "font/woff2";
 		if (contentType != null)
 			resp.setContentType(contentType);
 

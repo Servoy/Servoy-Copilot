@@ -5,6 +5,7 @@ import {
   OnInit,
   computed,
   inject,
+  output,
   signal
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -28,8 +29,8 @@ interface ProviderRow {
 }
 
 /**
- * A small status indicator button that, when clicked, reveals a compact panel
- * showing the health of the opencode server, the connection status of each MCP
+ * A docked status panel (hosted by the shell's status area, whose open state
+ * lives in the shell) showing the health of the opencode server, the connection status of each MCP
  * server, and which model providers are authenticated. This surfaces the state
  * that explains most failures (server still starting, an MCP server failed to
  * connect, or no model provider is authenticated - the "No accounts" case).
@@ -48,7 +49,9 @@ export class StatusPanelComponent implements OnInit {
   /** How often the status is polled in the background (ms). */
   private static readonly POLL_INTERVAL_MS = 15_000;
 
-  readonly open = signal(false);
+  /** Emitted when the user presses the panel's close button. */
+  readonly closed = output<void>();
+
   readonly loading = signal(false);
   readonly loadError = signal(false);
   /** True until the first status fetch resolves, so the dot isn't misread as a real state. */
@@ -142,14 +145,6 @@ export class StatusPanelComponent implements OnInit {
     interval(StatusPanelComponent.POLL_INTERVAL_MS)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh());
-  }
-
-  toggle(): void {
-    const next = !this.open();
-    this.open.set(next);
-    if (next) {
-      this.refresh();
-    }
   }
 
   /**

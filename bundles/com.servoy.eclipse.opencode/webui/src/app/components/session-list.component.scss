@@ -17,13 +17,13 @@
   border-radius: 8px;
   border: 1px solid var(--svy-accent, #f5a623);
   background: transparent;
-  color: var(--svy-accent, #f5a623);
+  color: var(--svy-acc-fg);
   cursor: pointer;
   font: inherit;
 
   &:hover {
     background: var(--svy-accent, #f5a623);
-    color: #fff;
+    color: #1c1b19;
   }
 }
 

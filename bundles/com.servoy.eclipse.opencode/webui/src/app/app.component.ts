@@ -1,8 +1,18 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  OnInit,
+  computed,
+  inject,
+  signal,
+  viewChild
+} from '@angular/core';
 
 import { SendPart } from './models/opencode.models';
 import { ChatStore, ComposerDraft } from './services/chat-store.service';
 import { debugEnabled } from './services/debug-log';
+import { ThemeService } from './services/theme.service';
 import { FormAnswer } from './models/opencode.models';
 import { ComposerComponent } from './components/composer.component';
 import { DebugOverlayComponent } from './components/debug-overlay.component';
@@ -33,17 +43,64 @@ import { StatusPanelComponent } from './components/status-panel.component';
 })
 export class AppComponent implements OnInit {
   readonly store = inject(ChatStore);
+  readonly themeService = inject(ThemeService);
+
+  /**
+   * Whether the status area is shown; the single source of truth for it. Docked and open on
+   * wide viewports, an overlay that starts closed on narrow ones (see the media query in the SCSS).
+   */
+  readonly statusOpen = signal(AppComponent.matches('(min-width: 1080px)'));
+
+  /**
+   * Whether the sessions area is shown. Docked (and collapsible, pushing the chat) from 800px up,
+   * an overlay that starts closed below that.
+   */
+  readonly sessionsOpen = signal(AppComponent.matches('(min-width: 800px)'));
+
+  private readonly statusPanel = viewChild(StatusPanelComponent);
+  private readonly statusButton = viewChild<ElementRef<HTMLButtonElement>>('statusButton');
+
+  /** Overall state of the (always mounted) status panel, for the header dot. */
+  readonly statusDot = computed(() => this.statusPanel()?.overall() ?? 'idle');
 
   /** Renders the debug overlay only when {@code ?debug_view=true}. */
   readonly debugEnabled = debugEnabled;
+
+  private static matches(query: string): boolean {
+    return typeof window.matchMedia !== 'function' || window.matchMedia(query).matches;
+  }
 
   ngOnInit(): void {
     // Startup: open the most recent session for this directory, or a fresh draft.
     this.store.bootstrap();
   }
 
+  toggleStatus(): void {
+    const next = !this.statusOpen();
+    this.statusOpen.set(next);
+    if (next) {
+      this.statusPanel()?.refresh();
+    }
+  }
+
+  closeStatus(): void {
+    this.statusOpen.set(false);
+    this.statusButton()?.nativeElement.focus();
+  }
+
+  toggleSessions(): void {
+    this.sessionsOpen.set(!this.sessionsOpen());
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggle();
+  }
+
   onSelectSession(id: string): void {
     this.store.openSession(id);
+    if (!AppComponent.matches('(min-width: 800px)')) {
+      this.sessionsOpen.set(false);
+    }
   }
 
   onNewSession(): void {

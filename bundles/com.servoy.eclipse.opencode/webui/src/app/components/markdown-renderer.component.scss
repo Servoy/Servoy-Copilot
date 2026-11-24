@@ -80,13 +80,13 @@
     &.copied,
     &[data-copied] {
       opacity: 1;
-      color: var(--svy-accent, #f5a623);
+      color: var(--svy-acc-fg);
       border-color: var(--svy-accent, #f5a623);
     }
   }
 
   a {
-    color: var(--svy-accent, #f5a623);
+    color: var(--svy-acc-fg);
   }
 
   blockquote {
