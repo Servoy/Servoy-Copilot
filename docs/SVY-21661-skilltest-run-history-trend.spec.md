@@ -8,7 +8,7 @@ best-effort writer. The IDE view reads its local history and shows a per-baselin
 over the last N runs. On CI the history goes to a fixed, persistent directory on the Jenkins agent,
 so it builds up across nightly runs, and each build archives a copy. The user's question "where
 could we keep the data about runs (usage)? this should work locally and on CI" has this answer:
-locally in the git-ignored `reports/` folder, and on CI in `/data/skilltest-history/`.
+locally in the git-ignored `reports/` folder, and on CI in `$JENKINS_HOME/skilltest-history/` (owned by the Jenkins user, not public).
 
 On CI the same history also drives a CSP-safe **trend report** (`trend.html` + external `skilltest-report.css`, no JS, kept only as a
 Jenkins build artifact behind the login, never on the public `/latest/` site) and a set of **trend alerts** ("something is off": regression,
@@ -38,7 +38,8 @@ is deliberately **not** notified for trend alerts during the trial) and an alert
   (`rm -rf` at the start of the run, commit b79c5b2), `target/work/data` (`mvn clean`), and
   `kiro-state/` (it holds the key, commit dd5f10a). So nothing accumulates today.
 - The job already hard-depends on `/data/www/...` existing on the agent (servoy update site,
-  tarball, p2 deploy target). A `/data/skilltest-history/` directory follows that same precedent.
+  tarball, p2 deploy target), but the Jenkins user cannot create new directories under `/data`
+  (build #92: `Permission denied`), so the history lives in `$JENKINS_HOME/skilltest-history/`.
 - System properties reach the forked workbench only through the explicit `<argLine>` in
   `tests/com.servoy.eclipse.opencode.skilltest.tests/pom.xml` (`integration` profile). A new
   `-Dservoy.skilltest.historyFile` must be added there, and a property default must be defined
@@ -221,8 +222,8 @@ accepted, since Jenkins' JUnit trend still records the interim XML.
 ### 3.6 CI wiring (`Jenkinsfile.skilltest` + test pom)
 - `options { disableConcurrentBuilds() }` added next to `timeout`/`timestamps` (single writer on
   the agent file).
-- In the run `sh` block: `mkdir -p /data/skilltest-history` and pass
-  `-Dservoy.skilltest.historyFile=/data/skilltest-history/run-history.jsonl`, plus
+- In the run `sh` block: `mkdir -p "$JENKINS_HOME/skilltest-history"` and pass
+  `-Dservoy.skilltest.historyFile=$JENKINS_HOME/skilltest-history/run-history.jsonl`, plus
   `-Dservoy.skilltest.skillsVersion="$(git -C "$WORKSPACE/skill4servoy" rev-parse --short HEAD)"`
   (best-effort; empty is fine).
 - `tests/com.servoy.eclipse.opencode.skilltest.tests/pom.xml`, `integration` profile: add the property
@@ -435,7 +436,7 @@ In `Jenkinsfile.skilltest`:
 5. `SkillTestHeadlessRunner.runSkillTests`: append the history after the final report and coverage, and do the
    best-effort copy into `outputDir`. The exit code is untouched.
 6. `tests/com.servoy.eclipse.opencode.skilltest.tests/pom.xml`: property defaults + `argLine` entries.
-7. `Jenkinsfile.skilltest`: `disableConcurrentBuilds()`, `mkdir -p /data/skilltest-history`,
+7. `Jenkinsfile.skilltest`: `disableConcurrentBuilds()`, `mkdir -p $JENKINS_HOME/skilltest-history`,
    the two `-D` flags, and the archive glob entry.
 6a. Shared `skilltest-report.css` + `ReportCss` helper; convert `CoverageReportHtml` from
     `style=` attributes to classes + external stylesheet, update `CoverageReportHtmlTest` (3.6b-2).
@@ -505,7 +506,7 @@ In `Jenkinsfile.skilltest`:
       updates after a run.
 - [ ] The detail panel shows the selected baseline's recent history, including tokens and credits Δ.
 - [ ] `Jenkinsfile.skilltest` uses `disableConcurrentBuilds()`, writes to
-      `/data/skilltest-history/run-history.jsonl`, and archives a per-build copy as
+      `$JENKINS_HOME/skilltest-history/run-history.jsonl`, and archives a per-build copy as
       `skilltest-reports/run-history.jsonl`. The history accumulates across nightly builds.
 - [ ] Each CI run writes `trend.html` + `skilltest-report.css` (inline SVG pass-rate and tokens/credits charts
       per baseline, alerts banner) and `alerts.json` to the output dir. The page has **no JavaScript
@@ -535,7 +536,7 @@ In `Jenkinsfile.skilltest`:
 - Alert evaluation, report generation or email from the IDE view (CI only).
 - Email for ordinary build failures (Teams already covers those).
 - A database / Grafana dashboard (decided: file-based, Option A).
-- Backing up `/data/skilltest-history` (an infra concern).
+- Backing up `$JENKINS_HOME/skilltest-history` (an infra concern).
 - History lines for runs killed before completion.
 
 ## 7. Open questions

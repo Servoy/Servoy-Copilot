@@ -25,7 +25,7 @@ pipeline {
         timeout(time: 90, unit: 'MINUTES')
         timestamps()
         // SVY-21661: single writer of the persistent run history on the agent
-        // (/data/skilltest-history/run-history.jsonl).
+        // ($JENKINS_HOME/skilltest-history/run-history.jsonl).
         disableConcurrentBuilds()
     }
 
@@ -226,16 +226,18 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 rm -rf "$KIRO_CONFIG_DIR"
                                 mkdir -p "$KIRO_CONFIG_DIR"
                                 # Run history (SVY-21661): an append-only run-history.jsonl in a FIXED,
-                                # persistent directory on the agent, so it accumulates across nightly
-                                # builds. It is deliberately NOT under $WORKSPACE/skilltest-reports
-                                # (emptied above at the start of every build, b79c5b2), target/ (mvn
-                                # clean) or kiro-state/ (deleted after the run). Copy Artifact chaining
-                                # and committing it to the baselines repo were rejected on this case.
-                                # Same precedent as the job's other /data/www dependencies; mkdir -p
-                                # makes a missing /data mount visible early. If the dir is not writable
-                                # the runner logs it and the run still succeeds. The runner also copies
-                                # the file into skilltest-reports/ so each build archives a snapshot.
-                                mkdir -p /data/skilltest-history
+                                # persistent directory owned by the Jenkins user, so it accumulates across
+                                # nightly builds: $JENKINS_HOME/skilltest-history (not public, survives
+                                # builds and workspace wipes). It is deliberately NOT under
+                                # $WORKSPACE/skilltest-reports (emptied above at the start of every build,
+                                # b79c5b2), target/ (mvn clean) or kiro-state/ (deleted after the run), and
+                                # not under /data (the jenkins user may not create dirs there - build #92).
+                                # Copy Artifact chaining and committing it to the baselines repo were
+                                # rejected on this case. If the dir is not writable the runner logs it and
+                                # the run still succeeds. The runner also copies the file into
+                                # skilltest-reports/ so each build archives a snapshot.
+                                SKILLTEST_HISTORY_DIR="${JENKINS_HOME:-/var/lib/jenkins}/skilltest-history"
+                                mkdir -p "$SKILLTEST_HISTORY_DIR"
                                 SKILLS_VERSION="$(git -C "$WORKSPACE/skill4servoy" rev-parse --short HEAD 2>/dev/null || true)"
                                 # Tee the whole run to opencode-server.log so the opencode child
                                 # process output (model-call results, auth/quota errors, the reason
@@ -255,7 +257,7 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dservoy.skilltest.kiroApiKey="ci-skilltest-no-genai" \
                                 -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip" \
                                 -Dopencode.shutdown.debug=true \
-                                -Dservoy.skilltest.historyFile=/data/skilltest-history/run-history.jsonl \
+                                -Dservoy.skilltest.historyFile="$SKILLTEST_HISTORY_DIR/run-history.jsonl" \
                                 -Dservoy.skilltest.skillsVersion="$SKILLS_VERSION" \
                                 2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2) \
                                 | sed -u "s|${KIRO_API_KEY}|****|g" \
