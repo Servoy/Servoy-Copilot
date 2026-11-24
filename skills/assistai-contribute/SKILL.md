@@ -281,10 +281,9 @@ Per fix that passed the gate, **with user confirmation before each remote step**
    # backticked identifiers, $ and quotes, which the shell would execute or mangle
    # inside double quotes (command substitution). --body-file avoids all of it.
    #
-   # The TITLE needs the same care. It is short, so it looks safe - but it names
-   # the method or class being fixed, and a backticked identifier in it is
-   # command substitution just as surely as in the body. Put it in a shell
-   # variable with single quotes and pass the variable.
+   # The TITLE needs the same care: it names the method or class being fixed, so
+   # it can hold a backticked identifier, a quote or an apostrophe. It goes to a
+   # file as well - see below.
    cat > /tmp/opencode/assistai-pr-body.md <<'EOF'
    <what the fix does, why it's general, that it was first made in Servoy's port
    (SVY-xxxxx), and that upstream mvn verify passes>

@@ -1,6 +1,7 @@
 package com.servoy.eclipse.developer.mcp.plainjunit.services;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -132,6 +133,65 @@ public class GitServiceStagePatchTest
 
 			String staged = GitService.renderDiff(repository, true, java.util.List.of(), false);
 			assertEquals("No changes.", staged, "A failed patch must not leave a partial staged change");
+		}
+	}
+
+	/**
+	 * The index rollback goes through {@code index.lock} (SVY-21303, rounds 3 and 4). It is a private
+	 * helper, so it is driven through {@code applyPatchToIndex}: a patch that fails after the index was
+	 * snapshotted is what triggers it.
+	 */
+	@Nested
+	@DisplayName("the index rollback and index.lock")
+	class IndexRollbackLock
+	{
+		private static final String STALE_PATCH = """
+			--- a/file.txt
+			+++ b/file.txt
+			@@ -1,3 +1,3 @@
+			 this line is not in the file at all
+			-neither is this one
+			+nor this one
+			 and this one is invented too
+			""";
+
+		private Path indexFile()
+		{
+			return repository.getIndexFile().toPath();
+		}
+
+		private Path lockFile()
+		{
+			return repository.getIndexFile().toPath().resolveSibling("index.lock");
+		}
+
+		@Test
+		@DisplayName("a failed patch leaves the index as it was and no index.lock behind")
+		void failedPatchLeavesIndexAndNoLock() throws Exception
+		{
+			byte[] before = Files.readAllBytes(indexFile());
+
+			assertThrows(RuntimeException.class, () -> stagePatch(STALE_PATCH));
+
+			assertAll(
+				() -> assertArrayEquals(before, Files.readAllBytes(indexFile()), "the index must be byte-identical"),
+				() -> assertFalse(Files.exists(lockFile()), "the rollback must not leave index.lock behind"));
+		}
+
+		@Test
+		@DisplayName("an index.lock held by another writer is never deleted by the rollback")
+		void foreignLockIsLeftAlone() throws Exception
+		{
+			byte[] foreign = "held by another writer".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+			Files.write(lockFile(), foreign);
+
+			assertThrows(RuntimeException.class, () -> stagePatch(STALE_PATCH),
+				"the patch fails: the index is locked, or the patch does not apply");
+
+			assertAll(
+				() -> assertTrue(Files.exists(lockFile()), "the other writer's lock must survive"),
+				() -> assertArrayEquals(foreign, Files.readAllBytes(lockFile()),
+					"and its content must not have been overwritten by the rollback"));
 		}
 	}
 

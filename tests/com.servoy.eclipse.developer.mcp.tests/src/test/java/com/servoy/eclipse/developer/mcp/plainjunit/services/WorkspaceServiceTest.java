@@ -405,6 +405,39 @@ class WorkspaceServiceTest {
 		private static int eqForce() {
 			return org.mockito.ArgumentMatchers.eq(IResource.FORCE);
 		}
+
+		/**
+		 * searchAndReplace is a write like any other and must go through WriteAccessValidator (SVY-21303,
+		 * rounds 3 and 4): under a pessimistic VCS a read-only file has to be checked out before it is
+		 * written. A read-only file whose workspace refuses the edit must therefore not be written.
+		 */
+		@Test
+		void aRefusedEditOnAReadOnlyFileIsNotWritten() throws Exception {
+			IFile file = mockFile("/p/a.txt", "a.txt", "UTF-8", true, "foo");
+			when(file.isReadOnly()).thenReturn(true);
+
+			org.eclipse.core.resources.IWorkspace workspace = mock(org.eclipse.core.resources.IWorkspace.class);
+			when(workspace.validateEdit(any(IFile[].class), any()))
+				.thenReturn(new org.eclipse.core.runtime.Status(org.eclipse.core.runtime.IStatus.ERROR, "test", "checked out by someone else"));
+
+			try (org.mockito.MockedStatic<org.eclipse.core.resources.ResourcesPlugin> plugin =
+				org.mockito.Mockito.mockStatic(org.eclipse.core.resources.ResourcesPlugin.class)) {
+				plugin.when(org.eclipse.core.resources.ResourcesPlugin::getWorkspace).thenReturn(workspace);
+
+				RuntimeException refused = assertThrows(RuntimeException.class, () -> replaceInFile(file, "foo", "bar"));
+				assertTrue(refused.getMessage().contains("checked out by someone else"), refused.getMessage());
+			}
+			verify(file, times(0)).setContents((java.io.InputStream) any(), eqForce(), (org.eclipse.core.runtime.IProgressMonitor) any());
+		}
+
+		@Test
+		void aWritableFileSkipsTheValidationAndIsWritten() throws Exception {
+			IFile file = mockFile("/p/a.txt", "a.txt", "UTF-8", true, "foo");
+			when(file.isReadOnly()).thenReturn(false);
+
+			assertEquals(1, replaceInFile(file, "foo", "bar"));
+			verify(file).setContents((java.io.InputStream) any(), eqForce(), (org.eclipse.core.runtime.IProgressMonitor) any());
+		}
 	}
 
 	// =============================================================================================

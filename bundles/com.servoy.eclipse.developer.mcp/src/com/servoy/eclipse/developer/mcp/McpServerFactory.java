@@ -266,6 +266,47 @@ public class McpServerFactory
 		return type;
 	}
 
+	/**
+	 * Removes credentials embedded in any URL in the text. A tool failure can carry one in its
+	 * message (JGit's transport exceptions print the remote URL), and this message goes to the model
+	 * and into session transcripts. Applied here, to every tool, rather than in each service, so a
+	 * failure thrown from anywhere is covered whichever exception type it is. Package-visible and
+	 * static so it can be unit-tested without an MCP runtime.
+	 */
+	static String redactUrls(String text)
+	{
+		return com.servoy.eclipse.developer.mcp.services.GitService.redactUrlsIn(text);
+	}
+
+	/**
+	 * The text a failed tool call reports to the model: {@code "Error: "} plus the message of the
+	 * ROOT cause of the chain, with any URL credentials removed. The root cause is used because the
+	 * wrappers a service adds only repeat it, but it is also where JGit's transport exceptions put
+	 * the remote URL, so it is exactly the message that has to be redacted.
+	 */
+	public static String errorText(Throwable failure)
+	{
+		Throwable root = failure;
+		while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+		String cause = root.getMessage() != null ? root.getMessage() : failure.getClass().getSimpleName();
+		return "Error: " + redactUrls(cause);
+	}
+
+	/**
+	 * A copy of the exception chain whose messages are redacted, with the original stack traces and
+	 * the original exception class names kept for diagnosis. The original is never logged: its
+	 * message, and the messages of its causes, are what carry the URL.
+	 */
+	static Throwable redactedCopy(Throwable original)
+	{
+		if (original == null) return null;
+		Throwable cause = original.getCause() == original ? null : redactedCopy(original.getCause());
+		String message = original.getClass().getName() + (original.getMessage() == null ? "" : ": " + redactUrls(original.getMessage()));
+		Throwable copy = new RuntimeException(message, cause);
+		copy.setStackTrace(original.getStackTrace());
+		return copy;
+	}
+
 	private CallToolResult executeCallTool(ToolExecutor executor, Tool tool, Map<String, Object> args)
 	{
 		try
@@ -285,10 +326,11 @@ public class McpServerFactory
 			if (!(root instanceof com.servoy.eclipse.developer.mcp.ResourceNotFoundException))
 			{
 				// Expected "not found" outcomes are not real errors - don't spam the Eclipse log.
-				Platform.getLog(McpServerFactory.class).error(e.getMessage(), e);
+				// Logged through a redacted copy: a JGit failure message is the remote URL, which may
+				// carry a token, and the log is read by people and attached to bug reports.
+				Platform.getLog(McpServerFactory.class).error(redactUrls(e.getMessage()), redactedCopy(e));
 			}
-			String cause = root.getMessage() != null ? root.getMessage() : e.getClass().getSimpleName();
-			var content = new McpSchema.TextContent("Error: " + cause);
+			var content = new McpSchema.TextContent(errorText(e));
 			return McpSchema.CallToolResult.builder().addContent(content).isError(true).build();
 		}
 	}

@@ -2669,31 +2669,33 @@ public class GitService
 			return url;
 		}
 
-		// The authority runs from the scheme delimiter to the first '/', '?' or '#'; an '@' inside
-		// it separates userinfo from host (RFC 3986). Both bounds matter, and probing the redactor
-		// with adversarial URLs showed why (SVY-21303, round 3):
+		// The authority runs from the scheme delimiter to the first '/', and the userinfo ends at the
+		// LAST '@' inside it (RFC 3986). '?' and '#' do NOT end it here: a password or token may
+		// legitimately contain them ("https://u:p#SECRET@host/r"), and ending the authority at the
+		// first one left that secret printed (SVY-21303, round 4 - the round-3 rule regressed this).
+		// The price is that a URL with no path at all and an '@' in its query ("https://host?x=a@b")
+		// is over-redacted; that is the safe direction, and such a URL is not one a remote has.
 		//
-		//  - An '@' AFTER the authority is not a credential. "https://host/o/r@v1.git" is a path
-		//    carrying a tag-ish ref, and "...?x=a@b" is a query. Redacting those would replace the
-		//    host and path with "***" - a redaction that eats the URL is as wrong as one that
-		//    leaks, since the caller then cannot tell which remote failed.
-		//  - A '/' BEFORE the '@' therefore ends the authority, which means the remaining
-		//    credential-looking text is in the path, not the userinfo. Per the RFC a userinfo
-		//    cannot hold an unencoded '/', and git reads such a URL the same way - host "tok",
-		//    path "/SECRET@host/r" - so "https://tok/SECRET@host/r" has no credential to redact.
-		//    It is left alone deliberately rather than guessed at: inventing a credential where the
-		//    spec says there is none would corrupt a legitimate URL.
+		// An '@' AFTER the first '/' is not a credential: "https://host/o/r@v1.git" carries a
+		// tag-ish ref in its path, and "https://github.com/o/r.git?x=a@b" a query. Redacting those
+		// would replace the host and path with "***", and a redaction that eats the URL is as wrong
+		// as one that leaks, since the caller then cannot tell which remote failed. By the same
+		// reading "https://tok/SECRET@host/r" is host "tok" with a path, so there is nothing to
+		// redact in it; it is left alone rather than guessed at.
 		int authorityStart = schemeEnd + 3;
-		int authorityEnd = url.length();
-		for (int i = authorityStart; i < url.length(); i++)
+
+		// "https:///:tok@host" is what URIish.toString() prints for a password-only URL: an empty
+		// authority, then the credential as the first path segment. Treat a leading ":" segment as
+		// the userinfo it was before the round trip. Limited to that exact shape so a file:///a@b
+		// path is not touched.
+		if (authorityStart < url.length() && url.charAt(authorityStart) == '/' && authorityStart + 1 < url.length() &&
+			url.charAt(authorityStart + 1) == ':')
 		{
-			char c = url.charAt(i);
-			if (c == '/' || c == '?' || c == '#')
-			{
-				authorityEnd = i;
-				break;
-			}
+			authorityStart++;
 		}
+
+		int authorityEnd = url.indexOf('/', authorityStart);
+		if (authorityEnd < 0) authorityEnd = url.length();
 
 		int at = url.lastIndexOf('@', authorityEnd - 1);
 		if (at < authorityStart) return url;   // no userinfo in the authority
@@ -2825,7 +2827,7 @@ public class GitService
 			String messages = result.getMessages();
 			if (messages != null && !messages.isBlank())
 			{
-				sb.append("Remote said: ").append(messages.strip()).append("\n");
+				sb.append("Remote said: ").append(redactUrlsIn(messages.strip())).append("\n");
 			}
 			return sb.toString();
 		}
@@ -3329,10 +3331,6 @@ public class GitService
 	}
 
 	/**
-	 * The raw bytes of the index file, or {@code null} when there is no index yet (a repository with
-	 * nothing ever staged) or it cannot be read - in which case there is nothing to roll back to.
-	 */
-	/**
 	 * Restores saved index bytes through JGit's index lock, so no other writer can see a partially
 	 * written index.
 	 * <p>
@@ -3343,23 +3341,36 @@ public class GitService
 	 * third review round).
 	 * </p>
 	 * <p>
-	 * An existing {@code index.lock} means another writer holds it, so the rollback is skipped
-	 * rather than forced - the caller is told about the failure either way, and stealing a lock to
-	 * undo our own change could corrupt theirs.
+	 * The lock is taken with CREATE_NEW, so "is it held" and "take it" are one atomic step. An
+	 * existing {@code index.lock} means another writer holds it, so the rollback is skipped rather
+	 * than forced, and a lock this call did not create is never deleted - the caller is told about
+	 * the failure either way, and stealing a lock to undo our own change could corrupt theirs.
 	 * </p>
 	 */
 	private static void restoreIndexThroughLock(java.io.File indexFile, byte[] savedIndex)
 	{
 		java.io.File lockFile = new java.io.File(indexFile.getParentFile(), indexFile.getName() + ".lock");
+		// True only once THIS call has created the lock file. Whatever happens afterwards, only a lock
+		// we created may be deleted: a lock that already existed belongs to another writer, and
+		// removing it would let two writers rewrite the index at once (SVY-21303, round 4).
+		boolean createdLock = false;
 		try
 		{
-			if (lockFile.exists())
+			// CREATE_NEW makes "does the lock exist" and "take the lock" one atomic step. An exists()
+			// check followed by a truncating write left a window in which another writer could take
+			// the lock and have it overwritten.
+			try
+			{
+				Files.write(lockFile.toPath(), savedIndex, java.nio.file.StandardOpenOption.CREATE_NEW,
+					java.nio.file.StandardOpenOption.WRITE);
+				createdLock = true;
+			}
+			catch (java.nio.file.FileAlreadyExistsException held)
 			{
 				Platform.getLog(GitService.class).warn(
 					"Could not roll the git index back: " + lockFile + " is held by another writer.");
 				return;
 			}
-			Files.write(lockFile.toPath(), savedIndex);
 			try
 			{
 				Files.move(lockFile.toPath(), indexFile.toPath(),
@@ -3373,23 +3384,31 @@ public class GitService
 				Files.move(lockFile.toPath(), indexFile.toPath(),
 					java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			}
+			createdLock = false;   // moved into place - there is no lock file left to clean up
 		}
 		catch (IOException indexProblem)
 		{
 			Platform.getLog(GitService.class).warn(
 				"Could not roll the git index back after a failed patch: " + indexProblem.getMessage());
-			try
+			if (createdLock)
 			{
-				Files.deleteIfExists(lockFile.toPath());
-			}
-			catch (IOException cleanupProblem)
-			{
-				// Nothing further to do - leaving the lock behind would block later writes, but the
-				// original failure is what the caller needs to hear about.
+				try
+				{
+					Files.deleteIfExists(lockFile.toPath());
+				}
+				catch (IOException cleanupProblem)
+				{
+					// Nothing further to do - leaving the lock behind would block later writes, but the
+					// original failure is what the caller needs to hear about.
+				}
 			}
 		}
 	}
 
+	/**
+	 * The raw bytes of the index file, or {@code null} when there is no index yet (a repository with
+	 * nothing ever staged) or it cannot be read - in which case there is nothing to roll back to.
+	 */
 	private static byte[] readIndexFileOrNull(java.io.File indexFile)
 	{
 		if (indexFile == null || !indexFile.isFile())

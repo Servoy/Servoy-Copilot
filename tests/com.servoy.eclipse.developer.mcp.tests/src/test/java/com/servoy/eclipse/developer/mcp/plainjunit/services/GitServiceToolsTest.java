@@ -836,6 +836,52 @@ public class GitServiceToolsTest
 		}
 
 		@Test
+		@DisplayName("a '#' or '?' inside the userinfo does not hide the secret (round 4)")
+		void hashOrQuestionMarkInUserInfoIsRedacted()
+		{
+			// Round 3 ended the authority at the first '/', '?' or '#', so a password or token that
+			// contains one of those was cut off before the '@' and printed. The userinfo ends at the
+			// LAST '@' before the first '/'.
+			assertAll(
+				() -> assertFalse(GitService.redactUserInfo("https://u:p#SECRET@host/r.git").contains("SECRET"),
+					"a '#' in the password"),
+				() -> assertFalse(GitService.redactUserInfo("https://u:p?SECRET@host/r.git").contains("SECRET"),
+					"a '?' in the password"),
+				() -> assertEquals("https://***@host/r.git", GitService.redactUserInfo("https://u:p#SECRET@host/r.git"),
+					"host and path must survive"));
+		}
+
+		@Test
+		@DisplayName("an '@' in the query of a path-carrying URL is still left alone")
+		void queryAtIsStillNotUserInfo()
+		{
+			// The other half of the boundary above: widening the authority must not make the
+			// round-3 over-redaction come back.
+			assertAll(
+				() -> assertEquals("https://github.com/o/r.git?x=a@b",
+					GitService.redactUserInfo("https://github.com/o/r.git?x=a@b")),
+				() -> assertEquals("https://github.com/o/r.git#frag@x",
+					GitService.redactUserInfo("https://github.com/o/r.git#frag@x")));
+		}
+
+		@Test
+		@DisplayName("the empty-authority form URIish prints for a password-only URL is redacted")
+		void emptyAuthorityForm()
+		{
+			String redacted = GitService.redactUserInfo("https:///:tok_SECRET@host/r.git");
+			assertAll(
+				() -> assertFalse(redacted.contains("tok_SECRET"), "The secret must be gone: " + redacted),
+				() -> assertTrue(redacted.contains("host/r.git"), "The host must remain: " + redacted));
+		}
+
+		@Test
+		@DisplayName("a file:/// URL is not mistaken for the empty-authority form")
+		void fileUrlUntouched()
+		{
+			assertEquals("file:///home/me/a@b", GitService.redactUserInfo("file:///home/me/a@b"));
+		}
+
+		@Test
 		@DisplayName("an ssh:// URL and an uppercase scheme are handled")
 		void otherSchemes()
 		{
@@ -1066,5 +1112,91 @@ public class GitServiceToolsTest
 		}
 	}
 	}
+	}
+
+	/**
+	 * A credentialed URL driven through the real fetch/pull/push code, not through the helper
+	 * (round 4: the helper's own tests passed while the real paths still leaked). The remote is
+	 * unreachable, so JGit fails with a TransportException whose message is the URL.
+	 */
+	@Nested
+	@DisplayName("a credentialed remote that fails to connect")
+	class FailureTextOnTheRealPath
+	{
+		private static final String[] URLS = {
+			"https://tok_SECRET@127.0.0.1:9/n/r.git",
+			"https://:tok_SECRET@127.0.0.1:9/n/r.git",
+			"https://u:p#tok_SECRET@127.0.0.1:9/n/r.git",
+			"https://u:p?tok_SECRET@127.0.0.1:9/n/r.git" };
+
+		@BeforeEach
+		void commitSomething() throws Exception
+		{
+			commitFile("file.txt", "one\n", "initial commit");
+		}
+
+		private void addRemote(String url) throws Exception
+		{
+			StoredConfig config = repository.getConfig();
+			config.setString("remote", "origin", "url", url);
+			config.setString("remote", "origin", "fetch", "+refs/heads/*:refs/remotes/origin/*");
+			config.save();
+		}
+
+		private String outcome(java.util.concurrent.Callable<String> call)
+		{
+			try
+			{
+				return call.call();
+			}
+			catch (Exception e)
+			{
+				// What McpServerFactory would send to the model.
+				return com.servoy.eclipse.developer.mcp.McpServerFactory.errorText(e);
+			}
+		}
+
+		@Test
+		@DisplayName("fetch, pull and push never print the secret, whether they return or throw")
+		void noSecretInAnyOutcome() throws Exception
+		{
+			for (String url : URLS)
+			{
+				addRemote(url);
+				String branch = repository.getBranch();
+				assertAll(url,
+					() -> assertFalse(outcome(() -> GitService.fetchIn(repository, "origin", false)).contains("tok_SECRET"), "fetch"),
+					() -> assertFalse(outcome(() -> GitService.pullIn(repository, "origin", null, false)).contains("tok_SECRET"), "pull"),
+					() -> assertFalse(outcome(() -> GitService.pushIn(repository, "origin", branch, false, false)).contains("tok_SECRET"), "push"));
+			}
+		}
+	}
+
+	@Nested
+	@DisplayName("McpServerFactory reports a thrown failure without credentials")
+	class ThrownFailureText
+	{
+		@Test
+		@DisplayName("the root cause's URL is redacted in the text sent to the model")
+		void rootCauseIsRedacted()
+		{
+			Exception thrown = new RuntimeException("Failed to fetch: x",
+				new RuntimeException("wrapper", new java.io.IOException("https://tok_SECRET@host/r.git: connection failed")));
+
+			String text = com.servoy.eclipse.developer.mcp.McpServerFactory.errorText(thrown);
+
+			assertAll(
+				() -> assertFalse(text.contains("tok_SECRET"), text),
+				() -> assertTrue(text.startsWith("Error: "), text),
+				() -> assertTrue(text.contains("host/r.git: connection failed"), "the reason must remain: " + text));
+		}
+
+		@Test
+		@DisplayName("a failure with no message falls back to the exception class name")
+		void noMessage()
+		{
+			assertEquals("Error: IllegalStateException",
+				com.servoy.eclipse.developer.mcp.McpServerFactory.errorText(new IllegalStateException()));
+		}
 	}
 }

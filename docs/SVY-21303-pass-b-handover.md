@@ -20,7 +20,7 @@ ones):
 | `2113e54` | `gitMerge`, `gitRebase`, `gitCherryPick`, `gitRevert`, `gitFetch`, `gitPull`, `gitPush` + `org.eclipse.equinox.security` (+51 tests) |
 | `59797c9` | the two `a6dc32d` bug fixes (line-range refusal, CRLF line offsets) + the repo-centric `getProject(null)` NPE Jenkins caught in `f3e5672` (+36 tests) |
 
-Git tool surface: **16 → 32** `@Tool` methods (16 added; earlier notes said 18 → 33, which was miscounted). Plain-JUnit suite: **2144/2144**. Zero compilation errors in
+Git tool surface: **16 → 32** `@Tool` methods (16 added; earlier notes said 18 → 33, which was miscounted). Plain-JUnit suite: **2792/2792** (round 4, 2026-11-24; the earlier "2144/2144" was an interim figure). Zero compilation errors in
 `com.servoy.eclipse.developer.mcp` and `.tests`.
 
 ## What is left
