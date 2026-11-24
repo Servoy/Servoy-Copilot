@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { EMPTY, Observable, catchError, expand, map, of, reduce } from 'rxjs';
 
 import {
+  CommandInfo,
   FileMatch,
   FormAnswer,
   FormInfo,
@@ -49,6 +50,20 @@ export class OpencodeApiService {
     return this.http
       .get<{ data?: Session[] }>(`${this.base}/session`)
       .pipe(map((r) => r?.data ?? []));
+  }
+
+  listCommands(): Observable<CommandInfo[]> {
+    return this.http.get<unknown>(`${this.base}/command`).pipe(
+      map((r) => {
+        const list = Array.isArray(r) ? r : (r as { data?: unknown } | null)?.data;
+        if (!Array.isArray(list)) {
+          return [];
+        }
+        return list.filter(
+          (c): c is CommandInfo => !!c && typeof (c as { name?: unknown }).name === 'string'
+        );
+      })
+    );
   }
 
   /**

@@ -3,8 +3,13 @@ import {
   Component,
   ElementRef,
   computed,
+  effect,
+  inject,
   input,
+  OnInit,
   output,
+  signal,
+  untracked,
   viewChild
 } from '@angular/core';
 
@@ -12,7 +17,10 @@ import { FormsModule } from '@angular/forms';
 
 import { SendPart } from '../models/opencode.models';
 import { ComposerDraft } from '../services/chat-store.service';
+import { CommandCatalogService } from '../services/command-catalog.service';
+import { SvyCommand, filterSvyCommands, insertionText, slashQuery } from '../services/svy-commands';
 import { Attachment, AttachmentBarComponent } from './attachment-bar.component';
+import { CommandMenuComponent } from './command-menu.component';
 
 /**
  * Auto-growing composer: a textarea that grows with content (capped, then
@@ -24,11 +32,11 @@ import { Attachment, AttachmentBarComponent } from './attachment-bar.component';
   selector: 'svy-composer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, AttachmentBarComponent],
+  imports: [FormsModule, AttachmentBarComponent, CommandMenuComponent],
   templateUrl: './composer.component.html',
   styleUrl: './composer.component.scss'
 })
-export class ComposerComponent {
+export class ComposerComponent implements OnInit {
   readonly streaming = input(false);
   /** When true the composer is read-only (e.g. viewing a subagent session). */
   readonly disabled = input(false);
@@ -67,15 +75,118 @@ export class ComposerComponent {
 
   private static readonly MAX_HEIGHT_PX = 200;
 
+  private readonly catalog = inject(CommandCatalogService);
+  private dragDepth = 0;
+
+  readonly activeIndex = signal(0);
+  readonly dismissed = signal(false);
+  readonly dragging = signal(false);
+
+  readonly query = computed(() => slashQuery(this.text()));
+  readonly menuOpen = computed(
+    () => !this.disabled() && this.query() !== null && !this.dismissed()
+  );
+  readonly items = computed<SvyCommand[]>(() =>
+    filterSvyCommands(this.catalog.commands(), this.query() ?? '')
+  );
+
+  constructor() {
+    effect(() => {
+      this.text();
+      untracked(() => {
+        this.dismissed.set(false);
+        this.activeIndex.set(0);
+      });
+    });
+    effect(() => {
+      if (this.disabled()) {
+        untracked(() => {
+          this.dismissed.set(false);
+          this.activeIndex.set(0);
+          this.dragDepth = 0;
+          this.dragging.set(false);
+        });
+      }
+    });
+  }
+
   /** Textarea input: persist the typed text to the draft and grow the box. */
   onInput(value: string): void {
+    this.dismissed.set(false);
+    this.activeIndex.set(0);
+    if (slashQuery(value) !== null) {
+      this.catalog.load();
+    }
     this.emitDraft(value, this.attachments());
     this.autoGrow();
+  }
+
+  ngOnInit(): void {
+    if (this.query() !== null) {
+      this.catalog.load();
+    }
+  }
+
+  onHover(index: number): void {
+    this.activeIndex.set(index);
+  }
+
+  pickCommand(command: SvyCommand): void {
+    this.emitDraft(insertionText(command), this.attachments());
+    this.activeIndex.set(0);
+    this.textarea().nativeElement.focus();
+    this.autoGrow();
+  }
+
+  onDragEnter(event: DragEvent): void {
+    if (this.disabled() || !this.hasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    this.dragDepth++;
+    this.dragging.set(true);
+  }
+
+  onDragLeave(): void {
+    this.dragDepth = Math.max(0, this.dragDepth - 1);
+    if (this.dragDepth === 0) {
+      this.dragging.set(false);
+    }
+  }
+
+  private hasFiles(event: DragEvent): boolean {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
   }
 
   onKeydown(event: KeyboardEvent): void {
     if (this.disabled()) {
       return;
+    }
+    if (this.menuOpen()) {
+      const items = this.items();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.dismissed.set(true);
+        return;
+      }
+      if (items.length > 0) {
+        const current = Math.min(this.activeIndex(), items.length - 1);
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          this.activeIndex.set((current + 1) % items.length);
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          this.activeIndex.set((current - 1 + items.length) % items.length);
+          return;
+        }
+        if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+          event.preventDefault();
+          this.pickCommand(items[current]);
+          return;
+        }
+      }
     }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -100,8 +211,10 @@ export class ComposerComponent {
 
   onDrop(event: DragEvent): void {
     event.preventDefault();
+    this.dragDepth = 0;
+    this.dragging.set(false);
     const files = event.dataTransfer?.files;
-    if (!files) {
+    if (!files || this.disabled()) {
       return;
     }
     for (const file of Array.from(files)) {
@@ -111,6 +224,9 @@ export class ComposerComponent {
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
+    if (!this.disabled() && this.hasFiles(event)) {
+      this.dragging.set(true);
+    }
   }
 
   openFilePicker(): void {
@@ -160,6 +276,7 @@ export class ComposerComponent {
       });
     }
 
+    this.activeIndex.set(0);
     this.sendMessage.emit(parts);
     // The store clears this session's draft on send; mirror it locally so the
     // textarea empties immediately without waiting for the input binding.

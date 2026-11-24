@@ -28,6 +28,10 @@ export class AttachmentBarComponent {
     this.remove.emit(index);
   }
 
+  isImage(attachment: Attachment): boolean {
+    return attachment.mime.startsWith('image/') && attachment.url.startsWith('data:');
+  }
+
   attachmentKey(attachment: Attachment, index: number): string {
     return `${attachment.filename}-${index}`;
   }

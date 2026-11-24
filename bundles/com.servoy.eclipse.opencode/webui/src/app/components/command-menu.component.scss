@@ -1,0 +1,49 @@
+:host {
+  display: block;
+}
+
+.menu {
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--svy-surface, #ffffff);
+  border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.35));
+  border-radius: 10px;
+  padding: 0.25rem;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+
+  &.active {
+    background: var(--svy-hover, rgba(127, 127, 127, 0.15));
+  }
+}
+
+.name {
+  flex: 0 0 auto;
+  min-width: 150px;
+  font-family: var(--svy-mono, monospace);
+  color: var(--svy-accent, #f5a623);
+}
+
+.desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--svy-fg2, var(--svy-muted, #9aa0a6));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 13px;
+  color: var(--svy-muted, #9aa0a6);
+}

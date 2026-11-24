@@ -80,6 +80,7 @@ cover every one. Source of truth in this repo:
 | `health` | `GET /info` | – | `{ version }` |
 | `mcp` | `GET /mcp` | – | `{ data: [{ name, status }] }` |
 | `providers` | `GET /provider` | – | `{ data: [{ id, activation }] }` |
+| `listCommands` (SVY-21848) | `GET /command` | – | `{ data: [{ name, description }] }` (2.4.1 returns only these two fields, no source/template; the composer slash menu keeps only names starting with `svy`, so check that name+description still exist and agent-pack commands are still named `svy*`) |
 | event stream | `GET /event` (SSE) | – | bus events (`session.*`, `form.*`, `message.*`) |
 
 Also depended on, from the live event bus (see `chat-store.service.ts`):

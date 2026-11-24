@@ -1,0 +1,21 @@
+@if (items().length > 0) {
+  <div class="menu" role="listbox" aria-label="Commands">
+    @for (item of items(); track item.name; let i = $index) {
+      <div
+        class="item"
+        role="option"
+        [id]="idPrefix() + '-' + i"
+        [attr.data-index]="i"
+        [class.active]="i === activeIndex()"
+        [attr.aria-selected]="i === activeIndex()"
+        (mousedown)="onMouseDown($event, item)"
+        (mouseenter)="onMouseEnter(i)"
+      >
+        <span class="name">/{{ item.name }}</span>
+        <span class="desc">{{ item.description }}</span>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="menu empty" role="status">No command matches - Enter sends it as text.</div>
+}

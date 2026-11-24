@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -5,14 +6,25 @@ import { ComposerComponent } from './composer.component';
 import { ComposerDraft } from '../services/chat-store.service';
 import { Attachment } from './attachment-bar.component';
 import { SendPart } from '../models/opencode.models';
+import { CommandCatalogService } from '../services/command-catalog.service';
+import { SvyCommand } from '../services/svy-commands';
 
 describe('ComposerComponent', () => {
   let fixture: ComponentFixture<ComposerComponent>;
   let component: ComposerComponent;
+  const commands = signal<SvyCommand[]>([]);
+  const load = vi.fn();
 
   beforeEach(async () => {
+    commands.set([
+      { name: 'svyFixTicket', description: 'Fix a ticket' },
+      { name: 'svyFixStacktrace', description: 'Fix a stacktrace' },
+      { name: 'svyOptimize', description: 'Optimize code' }
+    ]);
+    load.mockClear();
     await TestBed.configureTestingModule({
-      imports: [ComposerComponent]
+      imports: [ComposerComponent],
+      providers: [{ provide: CommandCatalogService, useValue: { commands, load } }]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ComposerComponent);
@@ -205,5 +217,441 @@ describe('ComposerComponent', () => {
 
     expect(el.style.height).toBe('auto');
     expect(el.style.overflowY).toBe('hidden');
+  });
+
+  describe('command menu', () => {
+    const root = (): HTMLElement => fixture.nativeElement;
+    const menu = (): HTMLElement | null => root().querySelector('svy-command-menu');
+    const optionNames = (): string[] =>
+      Array.from(root().querySelectorAll('[role="option"] .name')).map((e) => e.textContent ?? '');
+    const textarea = (): HTMLTextAreaElement => component.textarea().nativeElement;
+
+    it('opens for "/" and lists all svy commands', () => {
+      setDraft('/');
+      expect(menu()).not.toBeNull();
+      expect(optionNames()).toEqual(['/svyFixTicket', '/svyFixStacktrace', '/svyOptimize']);
+    });
+
+    it('filters by case-insensitive substring', () => {
+      setDraft('/FIX');
+      expect(optionNames()).toEqual(['/svyFixTicket', '/svyFixStacktrace']);
+    });
+
+    it('closes once a space is typed', () => {
+      setDraft('/svyFixTicket ');
+      expect(menu()).toBeNull();
+    });
+
+    it('does not open for a slash that is not the first character', () => {
+      setDraft('a /x');
+      expect(menu()).toBeNull();
+      setDraft('hello/');
+      expect(menu()).toBeNull();
+    });
+
+    it('never opens when disabled', () => {
+      fixture.componentRef.setInput('disabled', true);
+      setDraft('/');
+      expect(menu()).toBeNull();
+    });
+
+    it('ArrowDown and ArrowUp move the active item with wrap-around and prevent default', () => {
+      setDraft('/');
+      expect(keydown('ArrowDown').preventDefault).toHaveBeenCalled();
+      expect(component.activeIndex()).toBe(1);
+      keydown('ArrowDown');
+      keydown('ArrowDown');
+      expect(component.activeIndex()).toBe(0);
+      const up = keydown('ArrowUp');
+      expect(up.preventDefault).toHaveBeenCalled();
+      expect(component.activeIndex()).toBe(2);
+    });
+
+    it('aria-activedescendant tracks the active item', () => {
+      setDraft('/');
+      expect(textarea().getAttribute('aria-activedescendant')).toBe('svy-cmd-0');
+      keydown('ArrowDown');
+      fixture.detectChanges();
+      expect(textarea().getAttribute('aria-activedescendant')).toBe('svy-cmd-1');
+      expect(textarea().getAttribute('aria-expanded')).toBe('true');
+      expect(textarea().getAttribute('aria-controls')).toBe('svy-cmd-menu');
+      expect(textarea().getAttribute('role')).toBe('combobox');
+    });
+
+    it('has no aria-activedescendant or aria-controls when closed', () => {
+      setDraft('hello');
+      expect(textarea().getAttribute('aria-activedescendant')).toBeNull();
+      expect(textarea().getAttribute('aria-controls')).toBeNull();
+      expect(textarea().getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('Enter picks the active item and does not send', () => {
+      const sent: SendPart[][] = [];
+      const drafts: ComposerDraft[] = [];
+      component.sendMessage.subscribe((p) => sent.push(p));
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/');
+      keydown('ArrowDown');
+
+      const event = keydown('Enter');
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(sent).toHaveLength(0);
+      expect(drafts.at(-1)).toEqual({ text: '/svyFixStacktrace ', attachments: [] });
+    });
+
+    it('Tab picks the active item', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/opt');
+
+      const event = keydown('Tab');
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(drafts.at(-1)).toEqual({ text: '/svyOptimize ', attachments: [] });
+    });
+
+    it('mousedown on an item picks it', () => {
+      const sent: SendPart[][] = [];
+      const drafts: ComposerDraft[] = [];
+      component.sendMessage.subscribe((p) => sent.push(p));
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/');
+
+      const rows = root().querySelectorAll('[role="option"]');
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      rows[2].dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(drafts.at(-1)).toEqual({ text: '/svyOptimize ', attachments: [] });
+      expect(sent).toHaveLength(0);
+    });
+
+    it('hovering an item makes it active', () => {
+      setDraft('/');
+      root().querySelectorAll('[role="option"]')[2].dispatchEvent(new MouseEvent('mouseenter'));
+      fixture.detectChanges();
+      expect(component.activeIndex()).toBe(2);
+    });
+
+    it('picking keeps the existing attachments', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      const att = { filename: 'a.txt', mime: 'text/plain', url: 'a.txt' };
+      setDraft('/', [att]);
+      keydown('Enter');
+      expect(drafts.at(-1)).toEqual({ text: '/svyFixTicket ', attachments: [att] });
+    });
+
+    it('Escape closes the menu without changing the text', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/');
+
+      const event = keydown('Escape');
+      fixture.detectChanges();
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(menu()).toBeNull();
+      expect(drafts).toHaveLength(0);
+      expect(component.text()).toBe('/');
+    });
+
+    it('typing again after Escape reopens the menu', () => {
+      setDraft('/');
+      keydown('Escape');
+      component.onInput('/s');
+      setDraft('/s');
+      expect(menu()).not.toBeNull();
+    });
+
+    it('shows the empty state and Enter sends the text as typed', () => {
+      const sent: SendPart[][] = [];
+      component.sendMessage.subscribe((p) => sent.push(p));
+      setDraft('/zzz');
+
+      expect(optionNames()).toEqual([]);
+      expect(root().querySelector('[role="status"]')?.textContent).toContain(
+        'No command matches - Enter sends it as text.'
+      );
+      expect(textarea().getAttribute('aria-activedescendant')).toBeNull();
+
+      const down = keydown('ArrowDown');
+      expect(down.preventDefault).not.toHaveBeenCalled();
+      expect(component.activeIndex()).toBe(0);
+
+      keydown('Enter');
+      expect(sent).toEqual([[{ type: 'text', text: '/zzz' }]]);
+    });
+
+    it('Escape closes the empty-state menu', () => {
+      setDraft('/zzz');
+      keydown('Escape');
+      fixture.detectChanges();
+      expect(menu()).toBeNull();
+    });
+
+    it('with the menu closed Enter sends and Shift+Enter does not', () => {
+      const sent: SendPart[][] = [];
+      component.sendMessage.subscribe((p) => sent.push(p));
+      setDraft('hello');
+
+      const shift = keydown('Enter', true);
+      expect(shift.preventDefault).not.toHaveBeenCalled();
+      expect(sent).toHaveLength(0);
+
+      const enter = keydown('Enter');
+      expect(enter.preventDefault).toHaveBeenCalled();
+      expect(sent).toHaveLength(1);
+    });
+
+    it('Tab is left alone when the menu is closed', () => {
+      setDraft('hello');
+      const event = keydown('Tab');
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('has no Commands button and shows the slash hint in the placeholder', () => {
+      expect(root().querySelector('button[aria-label="Commands"]')).toBeNull();
+      expect(textarea().placeholder).toContain('Type "/" for commands');
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      expect(textarea().placeholder).toBe('Chatting is disabled for subagent sessions');
+    });
+
+    it('loads the catalog on init when a restored draft starts with a slash', () => {
+      load.mockClear();
+      const f = TestBed.createComponent(ComposerComponent);
+      f.componentRef.setInput('draft', { text: '/fix', attachments: [] });
+      f.detectChanges();
+      expect(load).toHaveBeenCalled();
+    });
+
+    it('loads the catalog when the user types a slash, but not for ordinary text', () => {
+      component.onInput('hello');
+      expect(load).not.toHaveBeenCalled();
+      component.onInput('/');
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes a typed menu when the draft is swapped to plain text', () => {
+      setDraft('/fix');
+      expect(menu()).not.toBeNull();
+      setDraft('plain');
+      expect(menu()).toBeNull();
+    });
+
+    it('resets dismissed and activeIndex when the draft is swapped from outside', () => {
+      setDraft('/');
+      keydown('ArrowDown');
+      keydown('Escape');
+      expect(component.dismissed()).toBe(true);
+
+      setDraft('/s');
+
+      expect(component.dismissed()).toBe(false);
+      expect(component.activeIndex()).toBe(0);
+      expect(menu()).not.toBeNull();
+    });
+
+    it('closes a typed menu when disabled flips to true', () => {
+      setDraft('/');
+      expect(menu()).not.toBeNull();
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      expect(menu()).toBeNull();
+    });
+
+    it('clamps the active index when the list shrinks before Enter', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/');
+      keydown('ArrowDown');
+      keydown('ArrowDown');
+      expect(component.activeIndex()).toBe(2);
+
+      commands.set([{ name: 'svyOnly', description: 'only' }]);
+      keydown('Enter');
+
+      expect(drafts.at(-1)).toEqual({ text: '/svyOnly ', attachments: [] });
+    });
+
+    it('Tab and ArrowUp fall through in the empty-state menu', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/zzz');
+
+      const tab = keydown('Tab');
+      const up = keydown('ArrowUp');
+
+      expect(tab.preventDefault).not.toHaveBeenCalled();
+      expect(up.preventDefault).not.toHaveBeenCalled();
+      expect(drafts).toHaveLength(0);
+      expect(component.activeIndex()).toBe(0);
+    });
+
+    it('does not throw when the catalog arrives after the menu opened', () => {
+      commands.set([]);
+      setDraft('/');
+      expect(optionNames()).toEqual([]);
+      commands.set([{ name: 'svyA', description: 'a' }]);
+      expect(() => fixture.detectChanges()).not.toThrow();
+      expect(optionNames()).toEqual(['/svyA']);
+    });
+  });
+
+  describe('drag and drop', () => {
+    const composerEl = (): HTMLElement => fixture.nativeElement.querySelector('.composer');
+    const overlay = (): HTMLElement | null => fixture.nativeElement.querySelector('.drop-overlay');
+
+    function dragEvent(type: string, types: string[], files: File[] = []): Event {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: { types, files } });
+      return event;
+    }
+
+    function fire(type: string, types: string[] = ['Files']): void {
+      composerEl().dispatchEvent(dragEvent(type, types));
+      fixture.detectChanges();
+    }
+
+    it('shows the overlay for a Files drag', () => {
+      fire('dragenter');
+      expect(overlay()).not.toBeNull();
+      expect(overlay()?.textContent).toContain('Drop images to attach');
+      expect(overlay()?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('does not show the overlay for a text drag', () => {
+      fire('dragenter', ['text/plain']);
+      fire('dragover', ['text/plain']);
+      expect(overlay()).toBeNull();
+    });
+
+    it('keeps the overlay across nested enter/leave until the last leave', () => {
+      fire('dragenter');
+      fire('dragenter');
+      fire('dragleave');
+      expect(overlay()).not.toBeNull();
+      fire('dragleave');
+      expect(overlay()).toBeNull();
+    });
+
+    it('dragover alone shows the overlay for files and prevents default', () => {
+      const event = dragEvent('dragover', ['Files']);
+      composerEl().dispatchEvent(event);
+      fixture.detectChanges();
+      expect(event.defaultPrevented).toBe(true);
+      expect(overlay()).not.toBeNull();
+    });
+
+    it('extra leave events do not drive the depth negative', () => {
+      fire('dragleave');
+      fire('dragleave');
+      fire('dragenter');
+      expect(overlay()).not.toBeNull();
+      fire('dragleave');
+      expect(overlay()).toBeNull();
+    });
+
+    it('drop hides the overlay and attaches a non-image file by name', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      fire('dragenter');
+      const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+
+      composerEl().dispatchEvent(dragEvent('drop', ['Files'], [file]));
+      fixture.detectChanges();
+
+      expect(overlay()).toBeNull();
+      expect(drafts.at(-1)?.attachments).toEqual([
+        { filename: 'notes.txt', mime: 'text/plain', url: 'notes.txt' }
+      ]);
+    });
+
+    it('drop attaches an image as a data URL', async () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      const file = new File(['abc'], 'pic.png', { type: 'image/png' });
+
+      composerEl().dispatchEvent(dragEvent('drop', ['Files'], [file]));
+
+      await vi.waitFor(() => expect(drafts.length).toBeGreaterThan(0));
+      const attachment = drafts.at(-1)!.attachments[0];
+      expect(attachment.filename).toBe('pic.png');
+      expect(attachment.mime).toBe('image/png');
+      expect(attachment.url.startsWith('data:image/png')).toBe(true);
+    });
+
+    it('resets the drag state when disabled flips to true mid-drag', () => {
+      fire('dragenter');
+      expect(overlay()).not.toBeNull();
+
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      expect(overlay()).toBeNull();
+      expect(component.dragging()).toBe(false);
+
+      fixture.componentRef.setInput('disabled', false);
+      fixture.detectChanges();
+      fire('dragenter');
+      fire('dragleave');
+      expect(overlay()).toBeNull();
+    });
+
+    it('drop while disabled prevents default but attaches nothing', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+      const event = dragEvent('drop', ['Files'], [file]);
+
+      composerEl().dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(drafts).toHaveLength(0);
+    });
+
+    it('paste of an image attaches it as a data URL', async () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      const file = new File(['abc'], 'shot.png', { type: 'image/png' });
+      const event = {
+        clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] }
+      } as unknown as ClipboardEvent;
+
+      component.onPaste(event);
+
+      await vi.waitFor(() => expect(drafts.length).toBeGreaterThan(0));
+      const attachment = drafts.at(-1)!.attachments[0];
+      expect(attachment.filename).toBe('shot.png');
+      expect(attachment.url.startsWith('data:image/png')).toBe(true);
+    });
+
+    it('paste of plain text attaches nothing', () => {
+      const drafts: ComposerDraft[] = [];
+      component.draftChange.subscribe((d) => drafts.push(d));
+      const event = {
+        clipboardData: { items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }] }
+      } as unknown as ClipboardEvent;
+
+      component.onPaste(event);
+
+      expect(drafts).toHaveLength(0);
+    });
+
+    it('shows no overlay when disabled', () => {
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      fire('dragenter');
+      fire('dragover');
+      expect(overlay()).toBeNull();
+    });
+
+    it('does not throw while dragging', () => {
+      fire('dragenter');
+      expect(() => fixture.detectChanges()).not.toThrow();
+    });
   });
 });

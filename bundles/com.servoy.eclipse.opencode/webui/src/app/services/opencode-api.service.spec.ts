@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import { OpencodeApiService } from './opencode-api.service';
-import { FileMatch, FormInfo, MessageWithParts, SendPart, Session } from '../models/opencode.models';
+import { CommandInfo, FileMatch, FormInfo, MessageWithParts, SendPart, Session } from '../models/opencode.models';
 
 /**
  * Tests for the V2 ({@code @opencode/cli} 2.x) API wrappers: the front-end keeps
@@ -377,5 +377,52 @@ describe('OpencodeApiService', () => {
     req.flush('restarting', { status: 503, statusText: 'Service Unavailable' });
 
     expect(error?.status).toBe(503);
+  });
+
+  describe('listCommands', () => {
+    function run(body: object | null): CommandInfo[] {
+      let result: CommandInfo[] | undefined;
+      service.listCommands().subscribe((r) => (result = r));
+      const req = httpMock.expectOne('rest_api/command');
+      expect(req.request.method).toBe('GET');
+      req.flush(body);
+      return result as CommandInfo[];
+    }
+
+    it('unwraps the { data } envelope', () => {
+      const data = [{ name: 'svyFixTicket', description: 'Fix' }];
+      expect(run({ data })).toEqual(data);
+    });
+
+    it('unwraps the { location, data } envelope', () => {
+      const data = [{ name: 'svyImplement', description: 'Impl' }];
+      expect(run({ location: { directory: 'x' }, data })).toEqual(data);
+    });
+
+    it('accepts a bare array', () => {
+      const data = [{ name: 'svyOptimize' }];
+      expect(run(data)).toEqual(data);
+    });
+
+    it('returns [] for {}, null and non-array data', () => {
+      expect(run({})).toEqual([]);
+      expect(run(null)).toEqual([]);
+      expect(run({ data: 'nope' })).toEqual([]);
+      expect(run({ data: { name: 'svyX' } })).toEqual([]);
+    });
+
+    it('drops entries without a string name', () => {
+      const result = run({
+        data: [{ name: 'svyA' }, { description: 'no name' }, { name: 5 }, null, { name: 'svyB' }]
+      });
+      expect(result.map((c) => c.name)).toEqual(['svyA', 'svyB']);
+    });
+
+    it('propagates HTTP errors', () => {
+      let error: HttpErrorResponse | undefined;
+      service.listCommands().subscribe({ error: (e: HttpErrorResponse) => (error = e) });
+      httpMock.expectOne('rest_api/command').flush('x', { status: 503, statusText: 'Unavailable' });
+      expect(error?.status).toBe(503);
+    });
   });
 });

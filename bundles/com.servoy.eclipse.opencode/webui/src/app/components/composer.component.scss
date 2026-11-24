@@ -6,6 +6,35 @@
   border-top: 1px solid var(--svy-border, rgba(127, 127, 127, 0.25));
   padding: 0.6rem 1rem 0.8rem;
   background: var(--svy-composer-bg, transparent);
+  position: relative;
+}
+
+.command-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  z-index: 10;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  pointer-events: none;
+  border: 2px dashed var(--svy-accent, #f5a623);
+  border-radius: 12px;
+  background: var(--svy-surface, rgba(255, 255, 255, 0.9));
+  color: var(--svy-accent, #f5a623);
+  font-size: 0.9rem;
 }
 
 .disabled-hint {
