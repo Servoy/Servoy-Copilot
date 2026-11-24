@@ -23,7 +23,7 @@ form-test scenarios. The full setup prompt is at the bottom and is also carried
 - **`customers`** — bound to `db:/example_data/customers`, with text fields for
   the company name, the contact name and the phone number. The agent inspects the
   `customers` table for the real column names and binds to those.
-- **`orders`** — bound to `db:/example_data/orders`, with fields for the order id,
+- **`orders`** — bound to `db:/udm/orders`, with fields for the order id,
   the status, the order date and the order total. The agent inspects the `orders`
   table for the real column names.
 
@@ -68,12 +68,12 @@ solution, let the agent finish, verify against the checklist above, then **save*
 the solution and note its location.
 
 ```
-Build a small CRM starting solution in the active (empty) solution, bound to the
-example_data database. Create two CSS-position forms: a form named "customers" bound to
+Build a small CRM starting solution in the active (empty) solution, using the example_data
+and udm databases. Create two CSS-position forms: a form named "customers" bound to
 db:/example_data/customers with text fields for the company name, the contact name and the
 phone number (inspect the customers table for the real column names and bind to those); and
-a form named "orders" bound to db:/example_data/orders with fields for the order id, the
-status, the order date and the order total (again inspect the orders table for the real
+a form named "orders" bound to db:/udm/orders with fields for the order id, the
+status, the order date and the order total (again inspect the udm.orders table for the real
 column names). Create a custom-values value list named "orderStatus" with the values open,
 archived and cancelled. Add one i18n key crm.orders.title with the English value "Orders".
 Then create two global scopes. In a scope named "reports", add a method

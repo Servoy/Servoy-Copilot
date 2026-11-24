@@ -40,7 +40,7 @@ pre-built shape is authored and reviewed once.
 
 | id | purpose | shape summary | scenarios that use it |
 |---|---|---|---|
-| `setup-crm-basic` | A small CRM to enhance / fix / form-test against. | Solution `aiCrmBasic`, bound to `db:/example_data`. A CSS-position form `customers` bound to `db:/example_data/customers` (fields for company name, contact name, phone) and a CSS-position form `orders` bound to `db:/example_data/orders` (fields for order id, status, order date, a total field). A global scope `reports` with `getOrderTotalsByCustomer(customerIds)` (deliberately written as a query-in-a-loop so the fix/optimize scenarios have real N+1 code) and a scope `pricing` with `calculateLineTotal(quantity, unitPrice, discountPercent)`. A custom-values valuelist `orderStatus` (open, archived, cancelled). One i18n key `crm.orders.title`. | `svyfixstacktrace-order-totals`, `svycreateformtest-orders`, `enhance-order-total-field` |
+| `setup-crm-basic` | A small CRM to enhance / fix / form-test against. | Solution `aiCrmBasic`, bound to `db:/example_data`. A CSS-position form `customers` bound to `db:/example_data/customers` (fields for company name, contact name, phone) and a CSS-position form `orders` bound to `db:/udm/orders` (fields for order id, status, order date, a total field). A global scope `reports` with `getOrderTotalsByCustomer(customerIds)` (deliberately written as a query-in-a-loop so the fix/optimize scenarios have real N+1 code) and a scope `pricing` with `calculateLineTotal(quantity, unitPrice, discountPercent)`. A custom-values valuelist `orderStatus` (open, archived, cancelled). One i18n key `crm.orders.title`. | `svyfixstacktrace-order-totals`, `svycreateformtest-orders`, `enhance-order-total-field` |
 | `setup-auth-login` | A small solution with authentication wired but **broken on purpose**, for the described-problem fix scenario. | Solution `aiAuthLogin`, bound to `db:/example_data`. Configured as AUTHENTICATOR (type 3) with an authenticator **module** `aiAuthLogin_auth` whose `globals.js` holds a correct `onSolutionOpen(arg, queryParams)` that validates credentials and calls `security.login()`. The planted defect: the module's `solution_settings.obj` **does NOT set `onSolutionOpenMethodID`** to that function's UUID, so the runtime never calls it and login silently fails. A main-solution form `home` bound to `db:/example_data/customers` so there is something to land on after login. | `fix-authenticator-not-called` |
 
 > **Why these two.** `setup-crm-basic` is the workhorse: a couple of data-bound
@@ -57,18 +57,36 @@ in prose (for the human tester):
 [`inputs/setups/setup-crm-basic.md`](inputs/setups/setup-crm-basic.md) and
 [`inputs/setups/setup-auth-login.md`](inputs/setups/setup-auth-login.md).
 
+#### 1b. `aiSkilltest_empty` (committed empty solution + resources project)
+
+Scenarios that touch the `udm` database cannot start from the runner's generated
+`empty` solution, because its resources project only knows `example_data`. They
+start from a committed, otherwise empty solution instead:
+
+- Solution `aiSkilltest_empty`, referencing the resources project `servoy_resources`.
+  Both live in the baselines repo under `solutions/`, together with the `.dbi`
+  schemas of the `example_data` and `udm` servers (no `security.sec`, no
+  `ng_web_packages`: the runner plants the web packages itself).
+- A baseline selects it with `precondition.solution = "aiSkilltest_empty"` and a
+  `git` source pointing at the baselines repo itself
+  (`https://github.com/Servoy/servoy-ai-skilltest-baselines`, `ref: master`). The runner
+  clones it and imports the solution plus `servoy_resources`.
+
+Scenarios that start from it: `create-relation`, `datalayer-open-order-totals`,
+`datalayer-bulk-archive-save`.
+
 ### setup-crm-basic
 
 Starting solution: `aiCrmBasic`. Spec:
 [`inputs/setups/setup-crm-basic.md`](inputs/setups/setup-crm-basic.md).
 
 ```
-Build a small CRM starting solution in the active (empty) solution, bound to the
-example_data database. Create two CSS-position forms: a form named "customers" bound to
+Build a small CRM starting solution in the active (empty) solution, using the example_data
+and udm databases. Create two CSS-position forms: a form named "customers" bound to
 db:/example_data/customers with text fields for the company name, the contact name and the
 phone number (inspect the customers table for the real column names and bind to those); and
-a form named "orders" bound to db:/example_data/orders with fields for the order id, the
-status, the order date and the order total (again inspect the orders table for the real
+a form named "orders" bound to db:/udm/orders with fields for the order id, the
+status, the order date and the order total (again inspect the udm.orders table for the real
 column names). Create a custom-values value list named "orderStatus" with the values open,
 archived and cancelled. Add one i18n key crm.orders.title with the English value "Orders".
 Then create two global scopes. In a scope named "reports", add a method
@@ -112,8 +130,9 @@ Twenty scenarios, deliberately spanning **build, enhance, fix, review,
 security-review (both polarities), unit-test, form-test, E2E, modernise and
 optimise** — the full skill surface the pack ships, including all three valuelist
 types (`CUSTOM_VALUES`, `TABLE_VALUES`, `GLOBAL_METHOD`). The "starting state"
-column names either `empty` (the runner creates a fresh solution) or a Solution
-Setup id from §1 (the tester points the precondition at the saved setup solution).
+column names `empty` (the runner creates a fresh solution), `aiSkilltest_empty`
+(the committed empty solution with its resources project, §1b) or a Solution Setup
+id from §1 (the tester points the precondition at the saved setup solution).
 
 **For an `empty` scenario that must act on EXISTING code, the prompt builds that
 code first, in the same run, then invokes the skill on it** — this keeps the
@@ -137,9 +156,9 @@ run → JSUnit.
 | `create-valuelist-custom` | Create a custom/fixed-values valuelist (`CUSTOM_VALUES`) | servoy-developer (valuelist) | empty | `expect.persists` | Deterministic: the fixed custom values are known up front; a persist assertion nails them exactly. |
 | `create-valuelist-db` | Create a database/table-based valuelist (`TABLE_VALUES`) bound to a table's display + real columns | servoy-developer (valuelist) | empty | `expect.persists` | Deterministic: the valuelist's datasource plus its display and real dataprovider binding are fixed once the real columns are found, so a persist assertion nails them. |
 | `create-valuelist-global` | Create a global-method-based valuelist (`GLOBAL_METHOD`) bound to a scope method that returns the contents | servoy-developer (valuelist) | empty | `expect.persists` (+ optional `verify.jsunit`) | Deterministic: the valuelist type and its bound method, plus the method's existence, are fixed (persists). A jsunit tier is optional since the real list content is produced by the method at runtime. |
-| `create-relation` | Create a relation between two example_data tables — the task requires inspecting the schema for the real FK columns (delegates to Database-Researcher) | servoy-developer (relation), servoy-database (Database-Researcher) | empty | `expect.persists` | Deterministic: relation name, primary/foreign datasource and the key pair are fixed. The prompt withholds the column names so the real FK must be found from the live schema, exercising the bounded read-only schema delegation. |
-| `datalayer-open-order-totals` | Build a scope method that sums open-order totals for many customers in ONE query (tempts N+1) | servoy-developer (data-layer rails D4/D5), servoy-database | empty | `expect.persists` + `verify.jsunit` | The scope method is a deterministic artifact (persists); only running it proves it returns correct totals, guards the empty-input case, and uses a single query (jsunit). The prompt tempts a query-in-a-loop the rails must prevent. |
-| `datalayer-bulk-archive-save` | Build a scope method that bulk-updates records and must honour the `saveData()` result (tempts discarded save) | servoy-developer (data-layer rail D1) | empty | `verify.jsunit` | Behaviour-only: the defect (silently discarded `databaseManager.saveData()` Boolean → silent data loss) is invisible structurally; only a JSUnit run that asserts the records actually persisted catches it. Folds in the D4 unbounded-read concern — the load is scoped by the cutoff date, not an unbounded table scan. |
+| `create-relation` | Create a relation between two udm tables (companies, orders) — the task requires inspecting the schema for the real FK columns (delegates to Database-Researcher) | servoy-developer (relation), servoy-database (Database-Researcher) | `aiSkilltest_empty` | `expect.persists` | Deterministic: relation name, primary/foreign datasource and the key pair are fixed. The prompt withholds the column names so the real FK must be found from the live schema, exercising the bounded read-only schema delegation. |
+| `datalayer-open-order-totals` | Build a scope method that sums open-order totals for many customers in ONE query (tempts N+1) | servoy-developer (data-layer rails D4/D5), servoy-database | `aiSkilltest_empty` | `expect.persists` + `verify.jsunit` | The scope method is a deterministic artifact (persists); only running it proves it returns correct totals, guards the empty-input case, and uses a single query (jsunit). The prompt tempts a query-in-a-loop the rails must prevent. |
+| `datalayer-bulk-archive-save` | Build a scope method that bulk-updates records and must honour the `saveData()` result (tempts discarded save) | servoy-developer (data-layer rail D1) | `aiSkilltest_empty` | `verify.jsunit` | Behaviour-only: the defect (silently discarded `databaseManager.saveData()` Boolean → silent data loss) is invisible structurally; only a JSUnit run that asserts the records actually persisted catches it. Folds in the D4 unbounded-read concern — the load is scoped by the cutoff date, not an unbounded table scan. |
 | `security-tenant-query-clean` | Build a QBSelect-based search over a tenant table from user input, then run a security review — a correct run yields NO finding | servoy-developer (build), servoy-security-reviewer (false-positive filter) | empty | `acceptanceCriteria` (judge) | The judge grades that the feature was built AND that the security review returned a clean PASS with no spurious hardening: QBSelect is parameterized by construction, NGClient auto-sanitizes display, the tenant filter is auto-injected — a correct run neither concatenates raw SQL nor adds a manual tenant `WHERE`. This is the false-positive polarity. |
 | `security-rawsql-injection` | Build a `ws_*` endpoint that concatenates user input into a rawSQL string, then run a security review — the review MUST flag it CRITICAL | servoy-developer (build), servoy-security-reviewer (true-positive detection) | empty | `acceptanceCriteria` (judge) | The true-positive polarity: the prompt deliberately builds an injectable source→sink path (request param → `+` string concat → `plugins.rawSQL.executeSQL`) with no auth gate. The judge grades that the review names the SQL-injection (and the missing `ws_*` authz) as CRITICAL. No fix is applied; the verdict is the artifact. |
 | `reviewer-defect-find` | Build a form/method with a deliberate reviewer-catchable defect (a dangling `dataProviderID`, an `onActionMethodID` wired to a non-existent handler), then ask for a review that must FIND it | servoy-reviewer | empty | `acceptanceCriteria` (judge) | Review-only (no fix): the prompt plants a defect the `.frm` grep passes (U5/U7) are built to catch, then asks for a review. The judge grades that the review NAMES the planted defect; structure can't express "the reviewer noticed". |
@@ -245,13 +264,13 @@ test. Try to do this in a single run without stopping to ask questions.
 
 ### create-relation
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
-In the active solution, create a relation named "customers_to_orders" from
-db:/example_data/customers to db:/example_data/orders. The relation joins each customer to
-their orders, but do NOT assume the key column names — inspect the example_data schema and
-find the real primary key on customers and the matching foreign key on orders, then build the
+In the active solution, create a relation named "companies_to_orders" from
+db:/udm/companies to db:/udm/orders. The relation joins each company to their orders, but do
+NOT assume the key column names — inspect the udm schema and find the real primary key on
+companies and the matching foreign key on orders, then build the
 relation on that exact column pair. Use the live schema as the source of truth for the column
 names. If any detail is unspecified, choose a sensible default and continue without asking. Do
 not write any tests. Try to do this in a single run without stopping to ask questions.
@@ -259,35 +278,39 @@ not write any tests. Try to do this in a single run without stopping to ask ques
 
 ### datalayer-open-order-totals
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
-In the active solution, against the example_data database, create a global scope named
+In the active solution, against the udm database, create a global scope named
 "orders" with a method getOpenOrderTotalsByCustomer(customerIds). Given an array of customer
 id values it returns a plain object mapping each customer id to the summed total of that
-customer's orders whose status is "open". Requirements: it MUST run a single query for all
-customers at once (never a query inside a loop over the ids), it MUST guard against an empty
-or missing input array by returning an empty object, and it MUST use a query builder or
-foundset rather than rawSQL. Inspect the orders table to find the real total, status and
-customer-id columns and use them. If any detail is unspecified, choose sensible real values
-and continue without asking. Do not write any tests yourself. Try to do this in a single run
+customer's open orders. Use exactly these db:/udm/orders columns: the customer id is the text
+column customerid (key the result by its value), the total is order_total, and an order is
+open when shippeddate is null. There is no status column; do not use is_active or the
+company id columns. A customer with no open orders is left out of the result. Requirements:
+it MUST run a single query for all customers at once (never a query inside a loop over the
+ids), it MUST guard against an empty or missing input array by returning an empty object, and
+it MUST use a query builder or foundset rather than rawSQL. If any other detail is
+unspecified, choose sensible real values and continue without asking. Do not write any tests yourself. Try to do this in a single run
 without stopping to ask questions.
 ```
 
 ### datalayer-bulk-archive-save
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
-In the active solution, against the example_data database, create a global scope named
-"maintenance" with a method archiveOldOrders(cutoffDate). It loads every order whose order
-date is before cutoffDate, sets each one's status to "archived", and saves the changes. It
-must treat the save result as authoritative: if the save does not succeed it must report the
-failure to the caller (return false or throw) rather than silently continuing, so no record
-is left half-updated. Inspect the orders table for the real date and status column names and
-use them. If any detail is unspecified, choose sensible real values and continue without
-asking. Do not write any tests yourself. Try to do this in a single run without stopping to
-ask questions.
+In the active solution, against the udm database, create a global scope named
+"maintenance" with a method archiveOldOrders(cutoffDate). It loads every row of
+db:/udm/orders whose order_date is before cutoffDate and archives each one. The orders table
+has no status column: "archived" means the integer flag is_active is set to 0 (1 = active).
+Use exactly these two columns and do not add or change any table or column. A missing or
+invalid cutoffDate must be rejected before any row is touched. After changing the rows the
+method saves the changes. It must treat the save result as authoritative: if the save does
+not succeed it must report the failure to the caller (return false or throw) rather than
+silently continuing, so no record is left half-updated. If any other detail is unspecified,
+choose sensible real values and continue without asking. Do not write any tests yourself.
+Try to do this in a single run without stopping to ask questions.
 ```
 
 ### security-tenant-query-clean
@@ -363,7 +386,7 @@ Starting state: `setup-crm-basic` (solution `aiCrmBasic`).
 
 ```
 This solution is the saved "aiCrmBasic" starting solution: it already contains a CSS-position
-form named "orders" bound to db:/example_data/orders with its own form functions. Write a
+form named "orders" bound to db:/udm/orders with its own form functions. Write a
 JSUnit form test for the EXISTING "orders" form: create the orders_test extending form in the
 solution's *_test module (extending the production "orders" form, headless-safe), and a
 test_* function that exercises one of the orders form's own functions and asserts the result.
@@ -379,11 +402,11 @@ Starting state: `setup-crm-basic` (solution `aiCrmBasic`).
 
 ```
 This solution is the saved "aiCrmBasic" starting solution: it already contains a CSS-position
-form named "orders" bound to db:/example_data/orders. Enhance the EXISTING "orders" form —
+form named "orders" bound to db:/udm/orders. Enhance the EXISTING "orders" form —
 do not create a new form. Add a read-only "order total" field that shows the computed total
 for the currently selected order, and add a "Refresh total" button whose onAction recomputes
 and updates that field. Put the computation in a form function the button calls (and that a
-test could call), reading the order's real line/amount columns — inspect the orders table (and
+test could call), reading the order's real line/amount columns — inspect the udm.orders table (and
 any related order-lines table) for the real column names. Keep the rest of the form intact. If
 any detail is unspecified, choose sensible real values and continue without asking. Do not
 write any tests. Try to do this in a single run, iterating as needed, without stopping to ask
@@ -406,7 +429,7 @@ TypeError: Cannot read property "length" from undefined
 Find the bug behind this error and fix it: the method must guard an empty or missing
 customerIds array by returning an empty object without querying, and it must still return the
 correct per-customer totals for a normal input. Name the root cause in your summary. Inspect
-the orders table for the real customer-id and total columns if you need them. If any detail is
+the udm.orders table for the real customer-id and total columns if you need them. If any detail is
 unspecified, choose sensible real values and continue without asking. Do not write any tests
 yourself. Try to do this in a single run, iterating as needed, without stopping to ask
 questions.
@@ -465,14 +488,14 @@ to ask questions.
 Starting state: `empty`.
 
 ```
-In the active solution, against the example_data database, create a global scope named "reports"
+In the active solution, against the udm database, create a global scope named "reports"
 with a method getOrderCountsByCustomer(customerIds). Given an array of customer id values it
 returns a plain object mapping each customer id to the number of that customer's orders. First
 write it the naive way — loop over the ids and run one query per id inside the loop. Once it
 returns correct counts, optimize it so it runs a SINGLE query for all ids at once using an
 isin() condition, guarding the empty/missing input array so it returns an empty object without
 querying. The results for the same inputs must be identical to the naive version. Inspect the
-orders table for the real customer-id column and use it. If any detail is unspecified, choose
+udm.orders table for the real customer-id column and use it. If any detail is unspecified, choose
 sensible real values and continue without asking. Do not write any tests yourself. Try to do
 this in a single run without stopping to ask questions.
 ```
