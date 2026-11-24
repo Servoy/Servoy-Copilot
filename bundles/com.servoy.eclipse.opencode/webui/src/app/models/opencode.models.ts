@@ -26,12 +26,18 @@ export interface SessionTime {
   completed?: number;
   /** V2 assistant message streaming timestamp. */
   streamed?: number;
+  /** Start of the latest execution of a session. */
+  busy?: number;
+  /** End of the latest completed execution of a session. */
+  idle?: number;
 }
 
 export interface Session {
   id: string;
   parentID?: string;
   title?: string;
+  /** Outcome of the last completed execution; absent until the first one ends. */
+  outcome?: 'succeeded' | 'failed' | 'interrupted';
   /** V2 nests the working directory under {@code location.directory}. */
   location?: { directory?: string; [key: string]: unknown };
   time?: SessionTime;

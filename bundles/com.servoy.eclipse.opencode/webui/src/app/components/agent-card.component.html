@@ -1,0 +1,27 @@
+<div
+  class="agent-card"
+  role="group"
+  [class.running]="agent().status === 'running'"
+  [class.done]="agent().status === 'done'"
+  [class.stopped]="agent().status === 'stopped'"
+  [attr.aria-label]="groupLabel()"
+>
+  <div class="agent-head">
+    @if (agent().status === 'running') {
+      <span class="spinner" aria-hidden="true"></span>
+    } @else {
+      <span class="dot" aria-hidden="true"></span>
+    }
+    <span class="agent-name">{{ agent().name }}</span>
+    <span class="agent-tag">{{ tag() }}</span>
+    <span class="agent-status">{{ agent().label }}</span>
+    <button
+      type="button"
+      class="agent-open"
+      [disabled]="!agent().childSessionId"
+      [attr.aria-label]="'Open ' + agent().name + ' agent session'"
+      (click)="onOpen()"
+    >Open</button>
+  </div>
+  <span class="agent-summary" [title]="agent().summary">{{ agent().summary }}</span>
+</div>

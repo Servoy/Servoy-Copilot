@@ -35,6 +35,8 @@
           </div>
         }
       </div>
+    } @else if (isSubagent(part)) {
+      <svy-agent-card [agent]="agentOf(part)" (open)="openSession.emit($event)"></svy-agent-card>
     } @else if (isTool(part)) {
       <div class="tool" [class.expandable]="canExpand(part)" [class.open]="isExpanded(part, $index)">
         <div class="tool-row" (click)="toggle(part, $index)">
@@ -58,22 +60,6 @@
               <pre class="tool-output">{{ output }}</pre>
             </div>
           }
-        }
-        <!-- A subagent spawn is still expand/collapse above (its output), with a
-             separate "Open subagent" link below - a one-node tree into the child
-             session, like OpenChamber's "Open ... subtask". -->
-        @if (isSubagentLink(part)) {
-          <div class="subagent-open-wrap">
-            <button
-              type="button"
-              class="subagent-open"
-              [title]="'Open subagent session'"
-              (click)="openSubagent(part)"
-            >
-              <span class="subagent-open-icon" aria-hidden="true">↗</span>
-              <span>Open {{ subagentLabel(part) }}</span>
-            </button>
-          </div>
         }
       </div>
     }

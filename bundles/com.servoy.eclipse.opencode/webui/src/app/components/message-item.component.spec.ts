@@ -79,7 +79,7 @@ describe('MessageItemComponent', () => {
     expect(el.querySelector('.attachment-chip')?.textContent).toContain('spec.pdf');
   });
 
-  it('keeps a subagent row expandable (its output) AND exposes an open link that emits the child id', () => {
+  it('renders a subagent part as an agent card whose Open button emits the child id', () => {
     const sub = {
       type: 'tool',
       tool: 'subagent',
@@ -90,18 +90,15 @@ describe('MessageItemComponent', () => {
         output: '<subagent sessionID="ses_child_1" state="completed">\n## Summary'
       }
     } as Part;
+    fixture.componentRef.setInput('parts', [sub]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('svy-agent-card')).toBeTruthy();
+    expect(el.querySelector('.tool-row')).toBeNull();
 
-    expect(component.isSubagentLink(sub)).toBe(true);
-    // The row still expands/collapses to show the subagent output.
-    expect(component.canExpand(sub)).toBe(true);
-    expect(component.toolName(sub)).toBe('Subagent');
-    expect(component.toolSubtitle(sub)).toBe('Build it');
-    expect(component.subagentLabel(sub)).toBe('Build it subagent');
-
-    // The separate "Open subagent" link navigates into the child session.
     let opened: string | null = null;
     component.openSession.subscribe((id) => (opened = id));
-    component.openSubagent(sub);
+    (el.querySelector('.agent-open') as HTMLButtonElement).click();
     expect(opened).toBe('ses_child_1');
   });
 
@@ -111,20 +108,24 @@ describe('MessageItemComponent', () => {
       tool: 'subagent',
       state: { status: 'completed', input: { description: 'Re-review', sessionID: 'ses_child_2' } }
     } as Part;
-    expect(component.isSubagentLink(sub)).toBe(true);
+    fixture.componentRef.setInput('parts', [sub]);
+    fixture.detectChanges();
     let opened: string | null = null;
     component.openSession.subscribe((id) => (opened = id));
-    component.openSubagent(sub);
+    ((fixture.nativeElement as HTMLElement).querySelector('.agent-open') as HTMLButtonElement).click();
     expect(opened).toBe('ses_child_2');
   });
 
-  it('a subagent part with no resolvable child id is not treated as a link', () => {
+  it('disables the agent card Open button when no child id resolves', () => {
     const sub = {
       type: 'tool',
       tool: 'subagent',
       state: { status: 'running', input: { description: 'pending' } }
     } as Part;
-    expect(component.isSubagentLink(sub)).toBe(false);
+    fixture.componentRef.setInput('parts', [sub]);
+    fixture.detectChanges();
+    const btn = (fixture.nativeElement as HTMLElement).querySelector('.agent-open') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
   });
 
   it('shows the loaded skill id as the subtitle of a skill tool part', () => {
@@ -509,22 +510,8 @@ describe('MessageItemComponent', () => {
     });
   });
 
-  describe('always-visible "Open subagent" link (SVY-21764)', () => {
-    // NOTE on JSDOM/SCSS: Angular component SCSS is NOT applied in the Vitest
-    // (JSDOM) unit setup, so the always-on accent/opacity declarations from
-    // message-item.component.scss (opacity: 1; color: var(--svy-accent, ...))
-    // cannot be read back via getComputedStyle here. The SVY-21764 guarantee is
-    // therefore asserted on what IS observable in the DOM: the link element is
-    // rendered on first paint (no hover event dispatched) whenever
-    // isSubagentLink(part) is true, is not behind an [hidden] / aria-hidden gate,
-    // carries the .subagent-open class, and its click wiring opens the child
-    // session. The visual accent/opacity is covered by the SCSS itself + the
-    // spec's manual visual check; these tests lock the structural guarantee that
-    // the link is always present (not hover-revealed) and is the (only) open
-    // target.
-
-    /** A completed subagent tool part whose child id resolves from the output envelope. */
-    function openableSubagentPart(): Part {
+  describe('agent card Open button (SVY-21849, supersedes SVY-21764 link)', () => {
+    function part(): Part {
       return {
         type: 'tool',
         tool: 'subagent',
@@ -537,97 +524,199 @@ describe('MessageItemComponent', () => {
       } as Part;
     }
 
-    /** Render a single part and run a first change-detection pass. */
     function mount(parts: Part[]): HTMLElement {
       fixture.componentRef.setInput('parts', parts);
       fixture.detectChanges();
       return fixture.nativeElement as HTMLElement;
     }
 
-    // AC: the link is present and announces itself from first paint, no hover.
-    it('renders the .subagent-open link on first paint without any hover, un-gated', () => {
-      const el = mount([openableSubagentPart()]);
-
-      const link = el.querySelector('.subagent-open') as HTMLButtonElement | null;
-      // Present on the very first render - no hover/mouseover was dispatched.
-      expect(link).toBeTruthy();
-      // It is a real button and not hidden behind a visibility gate.
-      expect(link!.tagName.toLowerCase()).toBe('button');
-      expect(link!.hasAttribute('hidden')).toBe(false);
-      expect(link!.getAttribute('aria-hidden')).toBeNull();
-      // Carries the expected class and the "↗ Open ... subagent" affordance text.
-      expect(link!.classList.contains('subagent-open')).toBe(true);
-      expect(link!.textContent).toContain('Open');
-      expect(link!.textContent).toContain('Build it subagent');
+    it('renders the Open button on first paint without hover', () => {
+      const btn = mount([part()]).querySelector('.agent-open') as HTMLButtonElement | null;
+      expect(btn).toBeTruthy();
+      expect(btn!.disabled).toBe(false);
+      expect(btn!.textContent).toContain('Open');
     });
 
-    // AC: clicking the link opens the child session (emits openSession with the id).
-    it('emits openSession with the resolved child id when the link is clicked', () => {
-      const el = mount([openableSubagentPart()]);
-      const link = el.querySelector('.subagent-open') as HTMLButtonElement | null;
-      expect(link).toBeTruthy();
-
+    it('does not emit openSession when the card body is clicked', () => {
+      const el = mount([part()]);
       let opened: string | null = null;
       component.openSession.subscribe((id) => (opened = id));
-
-      link!.click();
-      fixture.detectChanges();
-
-      expect(opened).toBe('ses_child_1');
-    });
-
-    // AC: the whole row is NOT the open target - only the dedicated link opens it.
-    it('does not emit openSession when the subagent tool row itself is clicked', () => {
-      const el = mount([openableSubagentPart()]);
-
-      let opened: string | null = null;
-      component.openSession.subscribe((id) => (opened = id));
-
-      const row = el.querySelector('.tool-row') as HTMLElement | null;
-      expect(row).toBeTruthy();
-      row!.click();
-      fixture.detectChanges();
-
-      // The row toggles expand/collapse; it must not navigate into the child.
+      (el.querySelector('.agent-card') as HTMLElement).click();
       expect(opened).toBeNull();
     });
 
-    // AC: not rendered when the part is not an openable subagent (id unresolved).
-    it('does not render the .subagent-open link when no child id resolves', () => {
-      const pending = {
-        type: 'tool',
-        tool: 'subagent',
-        id: 'sa-pending',
-        state: { status: 'running', input: { description: 'pending' } }
-      } as Part;
-      // No metadata.sessionID, no input.sessionID, no output marker -> not openable.
-      expect(component.isSubagentLink(pending)).toBe(false);
-
-      const el = mount([pending]);
-      expect(el.querySelector('.subagent-open')).toBeNull();
-    });
-
-    // AC: not rendered for an ordinary (non-subagent) tool part.
-    it('does not render the .subagent-open link for a non-subagent tool part', () => {
+    it('renders no agent card for a non-subagent tool part', () => {
       const el = mount([
         { type: 'tool', tool: 'read', id: 't1', state: { status: 'completed', output: 'body' } } as Part
       ]);
+      expect(el.querySelector('svy-agent-card')).toBeNull();
+      expect(el.querySelector('.tool-row')).toBeTruthy();
+    });
+  });
+
+  describe('agent card live status (SVY-21849)', () => {
+    const launched = (): Part =>
+      ({
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-live',
+        state: {
+          status: 'completed',
+          input: { agent: 'Developer', description: 'Build it' },
+          metadata: { sessionID: 'ses_child' },
+          output: 'The subagent is working in the background'
+        }
+      }) as Part;
+
+    function mount(parts: Part[], inputs: Record<string, unknown> = {}): HTMLElement {
+      fixture.componentRef.setInput('parts', parts);
+      for (const [k, v] of Object.entries(inputs)) {
+        fixture.componentRef.setInput(k, v);
+      }
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    const statusText = (el: HTMLElement) => el.querySelector('.agent-status')?.textContent?.trim();
+
+    it('renders the card with name, tag and no old tool row, caret or subagent link', () => {
+      const el = mount([launched()]);
+      expect(el.querySelector('svy-agent-card')).toBeTruthy();
+      expect(el.querySelector('.agent-name')?.textContent?.trim()).toBe('Developer');
+      expect(el.querySelector('.agent-tag')?.textContent?.trim()).toBe('new session');
+      expect(el.querySelector('.tool-row')).toBeNull();
+      expect(el.querySelector('.tool-caret')).toBeNull();
       expect(el.querySelector('.subagent-open')).toBeNull();
     });
 
-    // Regression guard: the hover-gated expand/collapse row/caret is untouched -
-    // an openable subagent row is still expandable and still shows its caret.
-    it('keeps the subagent tool row expandable with its caret (row affordance untouched)', () => {
-      const el = mount([openableSubagentPart()]);
+    it('shows Running with a spinner when the child is busy although the tool part is completed', () => {
+      const el = mount([launched()], { childSignals: new Map([['ses_child', { busy: true }]]) });
+      expect(statusText(el)).toBe('Running');
+      expect(el.querySelector('.spinner')).toBeTruthy();
+    });
 
-      const tool = el.querySelector('.tool') as HTMLElement | null;
-      expect(tool).toBeTruthy();
-      // The row is still an expandable tool (expand/collapse of the output).
-      expect(tool!.classList.contains('expandable')).toBe(true);
-      // The caret element (hover/open-revealed by SCSS) is still in the DOM.
-      expect(el.querySelector('.tool-caret')).toBeTruthy();
-      // ...and both affordances coexist: the open link is also present.
-      expect(el.querySelector('.subagent-open')).toBeTruthy();
+    it('flips from running to stopped when the busy signal disappears and the parent is not live', () => {
+      const el = mount([launched()], { childSignals: new Map([['ses_child', { busy: true }]]) });
+      expect(statusText(el)).toBe('Running');
+
+      fixture.componentRef.setInput('childSignals', new Map([['ses_child', { busy: false }]]));
+      expect(() => fixture.detectChanges()).not.toThrow();
+
+      expect(statusText(el)).toBe('Stopped');
+      expect(el.querySelector('.spinner')).toBeNull();
+    });
+
+    it('flips from running to done when the child outcome becomes succeeded', () => {
+      const el = mount([launched()], { childSignals: new Map([['ses_child', { busy: true }]]) });
+      fixture.componentRef.setInput('childSignals', new Map([['ses_child', { busy: false, outcome: 'succeeded' }]]));
+      fixture.detectChanges();
+      expect(statusText(el)).toBe('Done');
+      expect(el.querySelector('.agent-card')?.classList.contains('done')).toBe(true);
+    });
+
+    it('a completed launch with no signals is Running only while the parent turn is live', () => {
+      const el = mount([launched()], { turnBusy: true, completed: null });
+      expect(statusText(el)).toBe('Running');
+
+      fixture.componentRef.setInput('turnBusy', false);
+      fixture.detectChanges();
+      expect(statusText(el)).toBe('Stopped');
+      expect(el.querySelector('.spinner')).toBeNull();
+    });
+
+    it('a finished (completed) assistant message is not live even when the turn is busy', () => {
+      const el = mount([launched()], { turnBusy: true, completed: 12345 });
+      expect(statusText(el)).toBe('Stopped');
+      expect(el.querySelector('.spinner')).toBeNull();
+    });
+
+    it('a result with Status: INPUT_REQUIRED shows the needs-a-decision stop label', () => {
+      const body = 'Analysis done\nStatus: INPUT_REQUIRED\nWhich option do you want?';
+      const el = mount([launched()], {
+        childSignals: new Map([['ses_child', { busy: false, outcome: 'succeeded', result: { state: 'completed', body } }]])
+      });
+      expect(statusText(el)).toBe('Stopped — needs a decision');
+      expect(el.querySelector('.agent-card')?.classList.contains('stopped')).toBe(true);
+      expect(el.querySelector('.agent-summary')?.textContent?.trim()).toBe('Which option do you want?');
+    });
+
+    it('a completed legacy tool output with Status: INPUT_REQUIRED shows the stop label', () => {
+      const legacy = {
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-legacy',
+        state: {
+          status: 'completed',
+          input: { agent: 'Developer', description: 'Old run' },
+          output: '<subagent sessionID="ses_old" state="completed">\nStatus: INPUT_REQUIRED\nPick one\n</subagent>'
+        }
+      } as Part;
+      const el = mount([legacy]);
+      expect(statusText(el)).toBe('Stopped — needs a decision');
+    });
+
+    it('a plain completed result shows Done with the report line as summary', () => {
+      const el = mount([launched()], {
+        childSignals: new Map([['ses_child', { busy: false, result: { state: 'completed', body: 'Built it.\nStatus: COMPLETED' } }]])
+      });
+      expect(statusText(el)).toBe('Done');
+      expect(el.querySelector('.agent-summary')?.textContent?.trim()).toBe('Built it.');
+    });
+
+    it('looks the child up by its id: signals for another child do not affect this card', () => {
+      const el = mount([launched()], { childSignals: new Map([['ses_other', { busy: true }]]) });
+      expect(statusText(el)).toBe('Stopped');
+    });
+
+    it('emits openSession with the child id from the card Open button exactly once', () => {
+      const el = mount([launched()]);
+      const opened: string[] = [];
+      component.openSession.subscribe((id) => opened.push(id));
+      (el.querySelector('.agent-open') as HTMLButtonElement).click();
+      expect(opened).toEqual(['ses_child']);
+    });
+
+    it('renders a continued tag from input.sessionID', () => {
+      const cont = {
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-cont',
+        state: { status: 'completed', input: { agent: 'Developer', sessionID: 'ses_child' } }
+      } as Part;
+      expect(mount([cont]).querySelector('.agent-tag')?.textContent?.trim()).toBe('continued');
+    });
+
+    it('renders each subagent part as its own card with its own child state', () => {
+      const second = {
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-2',
+        state: { status: 'completed', input: { agent: 'Reviewer' }, metadata: { sessionID: 'ses_child_2' } }
+      } as Part;
+      const el = mount([launched(), second], {
+        childSignals: new Map<string, { busy?: boolean; outcome?: 'succeeded' }>([
+          ['ses_child', { busy: true }],
+          ['ses_child_2', { busy: false, outcome: 'succeeded' }]
+        ])
+      });
+      const statuses = Array.from(el.querySelectorAll('.agent-status')).map((e) => e.textContent?.trim());
+      expect(statuses).toEqual(['Running', 'Done']);
+    });
+
+    it('leaves non-subagent tool rows unchanged next to a card', () => {
+      const read = { type: 'tool', tool: 'read', id: 't1', state: { status: 'completed', output: 'body' } } as Part;
+      const el = mount([launched(), read]);
+      expect(el.querySelectorAll('svy-agent-card')).toHaveLength(1);
+      expect(el.querySelectorAll('.tool-row')).toHaveLength(1);
+    });
+
+    it('a text part that is a background-result renders nothing', () => {
+      fixture.componentRef.setInput('parts', [
+        { type: 'text', text: '<background-result kind="subagent" sessionID="ses_child" state="completed">\nbody\n</background-result>' } as Part
+      ]);
+      fixture.detectChanges();
+      expect(component.renderable()).toHaveLength(0);
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('background-result');
     });
   });
 });

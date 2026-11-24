@@ -54,6 +54,14 @@ export class EventStreamService {
   /** Guards against scheduling more than one coalesced tick at a time. */
   private tickScheduled = false;
 
+  private readonly reconnected$ = new Subject<void>();
+  private opened = false;
+
+  /** Emits each time the stream re-opens after an earlier open (a reconnect). */
+  reconnected(): Observable<void> {
+    return this.reconnected$.asObservable();
+  }
+
   /** Stream of parsed opencode bus events for the whole server. */
   events(): Observable<OpencodeEvent> {
     this.ensureConnected();
@@ -73,6 +81,14 @@ export class EventStreamService {
     // Relative to the app base href (/servoy_ai/), same origin as the servlet.
     const source = new EventSource('rest_api/event');
     this.eventSource = source;
+
+    source.onopen = () => {
+      if (this.opened) {
+        this.reconnected$.next();
+        this.scheduleTick();
+      }
+      this.opened = true;
+    };
 
     source.onmessage = (evt) => {
       let parsed: OpencodeEvent | null = null;

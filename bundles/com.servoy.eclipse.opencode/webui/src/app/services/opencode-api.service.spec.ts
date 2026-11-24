@@ -57,6 +57,36 @@ describe('OpencodeApiService', () => {
     expect(result).toEqual([]);
   });
 
+  it('getActiveSessions GETs rest_api/session/active and returns the ids of the data keys', () => {
+    let result: ReadonlySet<string> | undefined;
+    service.getActiveSessions().subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne('rest_api/session/active');
+    expect(req.request.method).toBe('GET');
+    req.flush({ data: { ses_a: { type: 'running' }, ses_b: { type: 'running' } } });
+
+    expect(result).toBeInstanceOf(Set);
+    expect([...result!].sort()).toEqual(['ses_a', 'ses_b']);
+  });
+
+  it('getActiveSessions returns an empty set for a missing or empty data field', () => {
+    const results: ReadonlySet<string>[] = [];
+    service.getActiveSessions().subscribe((r) => results.push(r));
+    httpMock.expectOne('rest_api/session/active').flush({});
+    service.getActiveSessions().subscribe((r) => results.push(r));
+    httpMock.expectOne('rest_api/session/active').flush({ data: {} });
+    expect(results.map((r) => r.size)).toEqual([0, 0]);
+  });
+
+  it('getActiveSessions maps an HTTP error to an empty set instead of failing', () => {
+    let result: ReadonlySet<string> | undefined;
+    let failed = false;
+    service.getActiveSessions().subscribe({ next: (r) => (result = r), error: () => (failed = true) });
+    httpMock.expectOne('rest_api/session/active').flush('boom', { status: 500, statusText: 'Server Error' });
+    expect(failed).toBe(false);
+    expect(result?.size).toBe(0);
+  });
+
   it('createSession POSTs an empty body when no title is given and unwraps data', () => {
     let created: Session | undefined;
     service.createSession().subscribe((s) => (created = s));

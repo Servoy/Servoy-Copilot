@@ -26,6 +26,8 @@ import {
   toolScript,
   toolSubtitle
 } from '../services/part-utils';
+import { AgentStatus, ChildSignals, deriveAgentStatus } from '../services/agent-status';
+import { AgentCardComponent } from './agent-card.component';
 import { MarkdownRendererComponent } from './markdown-renderer.component';
 
 /**
@@ -38,7 +40,7 @@ import { MarkdownRendererComponent } from './markdown-renderer.component';
   selector: 'svy-message-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownRendererComponent],
+  imports: [MarkdownRendererComponent, AgentCardComponent],
   templateUrl: './message-item.component.html',
   styleUrl: './message-item.component.scss'
 })
@@ -51,6 +53,13 @@ export class MessageItemComponent {
    * running. Used to tell "still thinking" apart from "finished but empty".
    */
   readonly completed = input<number | null>(null);
+  /** Per child session signals (busy/outcome/result) for the agent cards. */
+  readonly childSignals = input<ReadonlyMap<string, ChildSignals>>(new Map());
+  /** Whether the active session has a turn running. */
+  readonly turnBusy = input<boolean>(false);
+
+  /** Only the in-progress assistant message of a busy session counts as live. */
+  readonly parentLive = computed(() => this.turnBusy() && this.completed() == null);
 
   /**
    * Emitted when the user clicks a subagent tool row: the id of the child
@@ -193,31 +202,18 @@ export class MessageItemComponent {
     return isScriptTool(part);
   }
 
-  /**
-   * True when this tool part is a subagent spawn whose child session can be
-   * opened. The row still expands/collapses to show the subagent's output; a
-   * separate "Open subagent" link below navigates into the child session.
-   */
-  isSubagentLink(part: Part): boolean {
-    return isSubagentTool(part) && subagentSessionId(part) !== null;
+  /** True for a subagent spawn, rendered as an agent card. */
+  isSubagent(part: Part): boolean {
+    return isSubagentTool(part);
   }
 
-  /**
-   * The label shown on the "Open subagent" link, e.g. the subagent's
-   * description ("Build orders/details master-detail") when it has one, else a
-   * generic "subagent". Mirrors OpenChamber's "Open &lt;name&gt; subtask".
-   */
-  subagentLabel(part: Part): string {
-    const subtitle = toolSubtitle(part);
-    return subtitle ? `${subtitle} subagent` : 'subagent';
-  }
-
-  /** Open the child session a subagent row links to. */
-  openSubagent(part: Part): void {
-    const id = subagentSessionId(part);
-    if (id) {
-      this.openSession.emit(id);
-    }
+  /** Live status of a subagent part, derived from the child session's signals. */
+  agentOf(part: Part): AgentStatus {
+    const childId = subagentSessionId(part);
+    return deriveAgentStatus(part, {
+      child: childId ? this.childSignals().get(childId) : undefined,
+      parentLive: this.parentLive()
+    });
   }
 
   /**

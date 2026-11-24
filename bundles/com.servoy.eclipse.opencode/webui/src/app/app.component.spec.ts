@@ -33,11 +33,15 @@ describe('AppComponent', () => {
       activeSessionId: signal<string | null>(null),
       messages: signal([]),
       hasMoreMessages: signal(false),
+      childSignals: signal(new Map()),
+      busySessionIds: signal(new Set<string>()),
       error: signal<string | null>(null),
       pendingForm: signal(null),
       streaming: signal(false),
       activeDraft: draft,
       activeIsSubagent: signal(false),
+      activeParent: signal<{ id: string; title: string } | null>(null),
+      activeTitle: signal(''),
       setActiveDraft: vi.fn((d: ComposerDraft) => draft.set(d)),
       openSession: vi.fn(),
       newSession: vi.fn(),
@@ -379,6 +383,76 @@ describe('AppComponent', () => {
       await setup();
       component.onSelectSession('s2');
       expect(component.sessionsOpen()).toBe(true);
+    });
+  });
+
+  describe('header title', () => {
+    beforeEach(async () => setup());
+
+    const titleEl = () => q<HTMLElement>('.title-text')!;
+    const setTitle = async (t: string) => {
+      (store['activeTitle'] as ReturnType<typeof signal<string>>).set(t);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+
+    it('falls back to "Servoy AI" when the active session has no title', () => {
+      expect(titleEl().textContent!.trim()).toBe('Servoy AI');
+      expect(titleEl().hasAttribute('title')).toBe(false);
+    });
+
+    it('shows the active session title and exposes it as hover text', async () => {
+      await setTitle('Warnings in TestSol ophalen');
+      expect(titleEl().textContent!.trim()).toBe('Warnings in TestSol ophalen');
+      expect(titleEl().getAttribute('title')).toBe('Warnings in TestSol ophalen');
+    });
+
+    it('returns to the fallback when the title becomes empty', async () => {
+      await setTitle('Some title');
+      await setTitle('');
+      expect(titleEl().textContent!.trim()).toBe('Servoy AI');
+    });
+  });
+
+  describe('parent link', () => {
+    beforeEach(async () => setup());
+
+    const parentLink = () => q<HTMLButtonElement>('.parent-link');
+    const setParent = async (p: { id: string; title: string } | null) => {
+      (store['activeParent'] as ReturnType<typeof signal<{ id: string; title: string } | null>>).set(p);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+
+    it('is absent when the active session has no parent', () => {
+      expect(parentLink()).toBeNull();
+    });
+
+    it('shows a Parent link with the parent title in the accessible name when viewing a subagent', async () => {
+      await setParent({ id: 's1', title: 'Main work' });
+      expect(parentLink()!.textContent).toContain('Parent');
+      expect(parentLink()!.getAttribute('aria-label')).toBe('Back to parent session: Main work');
+      expect(parentLink()!.getAttribute('title')).toBe('Main work');
+    });
+
+    it('falls back to a generic label when the parent has no title', async () => {
+      await setParent({ id: 's1', title: '' });
+      expect(parentLink()!.getAttribute('aria-label')).toBe('Back to parent session');
+      expect(parentLink()!.getAttribute('title')).toBe('Parent session');
+    });
+
+    it('opens the parent session when clicked', async () => {
+      await setParent({ id: 's1', title: 'Main work' });
+      await click(parentLink()!);
+      expect(store['openSession']).toHaveBeenCalledWith('s1');
+    });
+
+    it('disappears again when the active session is no longer a subagent', async () => {
+      await setParent({ id: 's1', title: 'Main work' });
+      await setParent(null);
+      expect(parentLink()).toBeNull();
     });
   });
 

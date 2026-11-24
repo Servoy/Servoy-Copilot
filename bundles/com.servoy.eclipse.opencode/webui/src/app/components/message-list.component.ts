@@ -9,6 +9,7 @@ import {
   viewChild
 } from '@angular/core';
 
+import { ChildSignals } from '../services/agent-status';
 import { ChatMessage } from '../services/chat-store.service';
 import { MessageItemComponent } from './message-item.component';
 
@@ -30,6 +31,10 @@ export class MessageListComponent {
   readonly messages = input<ChatMessage[]>([]);
   /** Whether there is older history to load (drives the top-scroll trigger). */
   readonly canLoadOlder = input<boolean>(false);
+  /** Child session signals forwarded to the agent cards. */
+  readonly childSignals = input<ReadonlyMap<string, ChildSignals>>(new Map());
+  /** Whether the active session has a turn running. */
+  readonly turnBusy = input<boolean>(false);
 
   /** Bubbled up from a subagent tool row: the child session id to open. */
   readonly openSession = output<string>();

@@ -12,8 +12,15 @@ class FakeEventStream {
   events() {
     return this.subject.asObservable();
   }
+  readonly reconnect$ = new Subject<void>();
+  reconnected() {
+    return this.reconnect$.asObservable();
+  }
   fire(evt: OpencodeEvent): void {
     this.subject.next(evt);
+  }
+  fireReconnect(): void {
+    this.reconnect$.next();
   }
 }
 
@@ -32,6 +39,7 @@ function apiMock() {
     findFiles: vi.fn(),
     readFile: vi.fn(),
     listPendingForms: vi.fn(),
+    getActiveSessions: vi.fn(),
     replyToForm: vi.fn(),
     cancelForm: vi.fn()
   };
@@ -64,6 +72,7 @@ describe('ChatStore', () => {
     // Tests that seed real messages or exercise pagination override these.
     api.listMessagePage.mockReturnValue(of({ messages: [] as MessageWithParts[], olderCursor: null }));
     api.listAllMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    api.getActiveSessions.mockReturnValue(of(new Set<string>() as ReadonlySet<string>));
   });
 
   /** Seed the newest transcript page for an openSession in a test. */
@@ -138,6 +147,45 @@ describe('ChatStore', () => {
 
     store.openSession('sub');
     expect(store.activeIsSubagent()).toBe(true);
+  });
+
+  it('activeTitle follows the active session and is empty without one or without a title', () => {
+    const sessions: Session[] = [
+      { id: 's1', title: '  Main work  ' },
+      { id: 'sub', title: 'Reviewer run', parentID: 's1' },
+      { id: 'blank' } as Session
+    ];
+    api.listSessions.mockReturnValue(of(sessions));
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.refreshSessions();
+
+    expect(store.activeTitle()).toBe('');
+    store.openSession('s1');
+    expect(store.activeTitle()).toBe('Main work');
+    store.openSession('sub');
+    expect(store.activeTitle()).toBe('Reviewer run');
+    store.openSession('blank');
+    expect(store.activeTitle()).toBe('');
+  });
+
+  it('activeParent resolves the parent id and title only for a subagent session', () => {
+    const sessions: Session[] = [
+      { id: 's1', title: 'Parent' },
+      { id: 'sub', title: 'subagent', parentID: 's1' },
+      { id: 'orphan', title: 'orphan', parentID: 'gone' }
+    ];
+    api.listSessions.mockReturnValue(of(sessions));
+    api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+    store.refreshSessions();
+
+    store.openSession('s1');
+    expect(store.activeParent()).toBeNull();
+
+    store.openSession('sub');
+    expect(store.activeParent()).toEqual({ id: 's1', title: 'Parent' });
+
+    store.openSession('orphan');
+    expect(store.activeParent()).toEqual({ id: 'gone', title: '' });
   });
 
   it('send is a no-op when the active session is a subagent', () => {
@@ -1088,5 +1136,516 @@ describe('ChatStore', () => {
 
     expect(store.pendingForm()).toBeNull();
     expect(store.error()).toBeNull();
+  });
+
+  describe('agent card child signals (SVY-21849)', () => {
+    const child = (id = 'c1', extra: Partial<Session> = {}): Session => ({ id, parentID: 's1', title: id, ...extra });
+
+    const bgResult = (childId: string, state: string, body: string) =>
+      `<background-result kind="subagent" sessionID="${childId}" state="${state}" description="d">\n${body}\n</background-result>`;
+
+    const synthetic = (id: string, text: string): MessageWithParts => ({
+      info: { id, role: 'synthetic', text } as MessageWithParts['info'],
+      parts: []
+    });
+
+    const withChildren = (...children: Session[]) => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'Parent' }, ...children]));
+      store.refreshSessions();
+    };
+
+    const fire = (type: string, data: Record<string, unknown>) => events.fire({ type, data });
+
+    const activeIds = () =>
+      (store as unknown as { activeSessionIds: () => ReadonlySet<string> }).activeSessionIds();
+
+    describe('busy tracking', () => {
+      it('adds a session to busySessionIds on session.execution.started and exposes busy: true in childSignals', () => {
+        withChildren(child());
+        expect(store.busySessionIds().has('c1')).toBe(false);
+
+        fire('session.execution.started', { sessionID: 'c1' });
+
+        expect(store.busySessionIds().has('c1')).toBe(true);
+        expect(store.childSignals().get('c1')?.busy).toBe(true);
+      });
+
+      it.each([
+        ['session.idle', {}],
+        ['session.execution.succeeded', {}],
+        ['session.execution.failed', { error: 'x' }],
+        ['session.execution.interrupted', { reason: 'user' }],
+        ['session.status', { status: { type: 'idle' } }]
+      ])('removes the session from busySessionIds after %s', (type, extra) => {
+        withChildren(child());
+        fire('session.execution.started', { sessionID: 'c1' });
+        expect(store.busySessionIds().has('c1')).toBe(true);
+
+        fire(type, { sessionID: 'c1', ...extra });
+
+        expect(store.busySessionIds().has('c1')).toBe(false);
+        expect(store.childSignals().get('c1')?.busy).not.toBe(true);
+      });
+
+      it('session.status busy marks the session busy and idle clears it', () => {
+        withChildren(child());
+
+        fire('session.status', { sessionID: 'c1', status: { type: 'busy' } });
+        expect(store.busySessionIds().has('c1')).toBe(true);
+
+        fire('session.status', { sessionID: 'c1', status: { type: 'idle' } });
+        expect(store.busySessionIds().has('c1')).toBe(false);
+      });
+
+      it('session.status retry leaves the busy state as it is', () => {
+        withChildren(child());
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.status', { sessionID: 'c1', status: { type: 'retry', attempt: 1 } });
+        expect(store.busySessionIds().has('c1')).toBe(true);
+      });
+
+      it('session.status busy for the active session turns streaming on, idle turns it off', () => {
+        store.openSession('s1');
+        fire('session.status', { sessionID: 's1', status: { type: 'busy' } });
+        expect(store.streaming()).toBe(true);
+        fire('session.status', { sessionID: 's1', status: { type: 'idle' } });
+        expect(store.streaming()).toBe(false);
+      });
+
+      it('childSignals busy is undefined before the active endpoint was seeded and false after', () => {
+        withChildren(child());
+        expect(store.childSignals().get('c1')?.busy).toBeUndefined();
+
+        store.openSession('s1');
+
+        expect(store.childSignals().get('c1')?.busy).toBe(false);
+      });
+
+      it('childSignals only contains child sessions of the list, not top-level sessions', () => {
+        withChildren(child());
+        expect(Array.from(store.childSignals().keys())).toEqual(['c1']);
+      });
+    });
+
+    describe('outcomes and interrupts', () => {
+      it('records the outcome from the session list', () => {
+        withChildren(child('c1', { outcome: 'succeeded' }));
+        expect(store.childSignals().get('c1')?.outcome).toBe('succeeded');
+      });
+
+      it('live outcomes override the list outcome', () => {
+        withChildren(child('c1', { outcome: 'succeeded' }));
+        fire('session.execution.failed', { sessionID: 'c1', error: 'x' });
+        expect(store.childSignals().get('c1')?.outcome).toBe('failed');
+      });
+
+      it('execution.succeeded records a succeeded outcome', () => {
+        withChildren(child());
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.execution.succeeded', { sessionID: 'c1' });
+        expect(store.childSignals().get('c1')?.outcome).toBe('succeeded');
+      });
+
+      it('session.idle alone writes no outcome', () => {
+        withChildren(child());
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.idle', { sessionID: 'c1' });
+        expect(store.childSignals().get('c1')?.outcome).toBeUndefined();
+      });
+
+      it('execution.interrupted records the reason and an interrupted outcome', () => {
+        withChildren(child());
+        fire('session.execution.started', { sessionID: 'c1' });
+
+        fire('session.execution.interrupted', { sessionID: 'c1', reason: 'shutdown' });
+
+        expect(store.childSignals().get('c1')).toMatchObject({
+          outcome: 'interrupted',
+          interruptedReason: 'shutdown'
+        });
+      });
+
+      it.each(['user', 'shutdown', 'superseded', 'inactivity'])('keeps the %s interrupt reason', (reason) => {
+        withChildren(child());
+        fire('session.execution.interrupted', { sessionID: 'c1', reason });
+        expect(store.childSignals().get('c1')?.interruptedReason).toBe(reason);
+      });
+
+      it('ignores an unknown interrupt reason but still records the interrupted outcome', () => {
+        withChildren(child());
+        fire('session.execution.interrupted', { sessionID: 'c1', reason: 'cosmic-ray' });
+        expect(store.childSignals().get('c1')?.interruptedReason).toBeUndefined();
+        expect(store.childSignals().get('c1')?.outcome).toBe('interrupted');
+      });
+
+      it('execution.started clears the previous live outcome and interrupt reason', () => {
+        withChildren(child('c1', { outcome: 'failed' }));
+        fire('session.execution.interrupted', { sessionID: 'c1', reason: 'user' });
+        expect(store.childSignals().get('c1')?.interruptedReason).toBe('user');
+
+        fire('session.execution.started', { sessionID: 'c1' });
+
+        const signals = store.childSignals().get('c1');
+        expect(signals?.interruptedReason).toBeUndefined();
+        expect(signals?.outcome).toBe('failed');
+        expect(signals?.busy).toBe(true);
+      });
+
+      it('execution.interrupted clears the active session streaming flag', () => {
+        store.openSession('s1');
+        fire('session.execution.started', { sessionID: 's1' });
+        expect(store.streaming()).toBe(true);
+
+        fire('session.execution.interrupted', { sessionID: 's1', reason: 'user' });
+
+        expect(store.streaming()).toBe(false);
+      });
+
+      it('execution.interrupted does not schedule a title refresh, while session.idle does', () => {
+        vi.useFakeTimers();
+        try {
+          api.getSession.mockReturnValue(of<Session>({ id: 's1', title: 'T' }));
+          store.openSession('s1');
+
+          fire('session.execution.interrupted', { sessionID: 's1', reason: 'user' });
+          vi.advanceTimersByTime(20000);
+          expect(api.getSession).not.toHaveBeenCalled();
+
+          fire('session.idle', { sessionID: 's1' });
+          vi.advanceTimersByTime(20000);
+          expect(api.getSession).toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    describe('background results', () => {
+      it('seeds the result of a synthetic message and never renders it in the transcript', () => {
+        withChildren(child());
+        seedPage([
+          { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'go' } as Part] },
+          synthetic('syn1', bgResult('c1', 'completed', 'Done it\nStatus: COMPLETED'))
+        ]);
+
+        store.openSession('s1');
+
+        expect(store.childSignals().get('c1')?.result).toEqual({
+          state: 'completed',
+          body: 'Done it\nStatus: COMPLETED'
+        });
+        expect(store.messages().map((m) => m.info.id)).toEqual(['u1']);
+      });
+
+      it('the latest seeded result of a continued child wins', () => {
+        withChildren(child());
+        seedPage([
+          synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nQuestion')),
+          synthetic('syn2', bgResult('c1', 'completed', 'Status: COMPLETED\nAll done'))
+        ]);
+
+        store.openSession('s1');
+
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nAll done');
+      });
+
+      it('tracks results for several children independently', () => {
+        withChildren(child('c1'), child('c2'));
+        seedPage([
+          synthetic('syn1', bgResult('c1', 'completed', 'one')),
+          synthetic('syn2', bgResult('c2', 'error', 'two'))
+        ]);
+
+        store.openSession('s1');
+
+        expect(store.childSignals().get('c1')?.result).toEqual({ state: 'completed', body: 'one' });
+        expect(store.childSignals().get('c2')?.result).toEqual({ state: 'error', body: 'two' });
+      });
+
+      it('ignores synthetic messages that are not a subagent background-result', () => {
+        withChildren(child());
+        seedPage([synthetic('syn1', 'just some text'), synthetic('syn2', '<background-result kind="shell" sessionID="c1" state="completed">x</background-result>')]);
+
+        store.openSession('s1');
+
+        expect(store.childSignals().get('c1')?.result).toBeUndefined();
+      });
+
+      it('creates a childSignals entry for a result whose child is not in the session list', () => {
+        seedPage([synthetic('syn1', bgResult('ghost', 'completed', 'x'))]);
+        store.openSession('s1');
+        expect(store.childSignals().get('ghost')?.result?.state).toBe('completed');
+      });
+
+      it('captures a live session.synthetic event, latest wins, and renders nothing', () => {
+        withChildren(child());
+        store.openSession('s1');
+
+        fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nq') });
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: INPUT_REQUIRED\nq');
+
+        fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'Status: COMPLETED\nok') });
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nok');
+        expect(store.messages()).toEqual([]);
+      });
+
+      it('captures the report from a live session.inbox.enqueued synthetic item, which is what 2.4.1 emits', () => {
+        withChildren(child());
+        store.openSession('s1');
+
+        fire('session.inbox.enqueued', {
+          sessionID: 's1',
+          inboxID: 'msg1',
+          item: { type: 'synthetic', delivery: 'steer', payload: { text: bgResult('c1', 'completed', 'Status: COMPLETED\nAnswer: one form') } }
+        });
+
+        expect(store.childSignals().get('c1')?.result?.state).toBe('completed');
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nAnswer: one form');
+        expect(store.messages()).toEqual([]);
+      });
+
+      it('a live inbox item overwrites an older seeded result', () => {
+        withChildren(child());
+        seedPage([synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nold'))]);
+        store.openSession('s1');
+
+        fire('session.inbox.enqueued', {
+          sessionID: 's1',
+          inboxID: 'msg2',
+          item: { type: 'synthetic', delivery: 'steer', payload: { text: bgResult('c1', 'completed', 'Status: COMPLETED\nnew') } }
+        });
+
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nnew');
+      });
+
+      it('ignores inbox items that are not a background result', () => {
+        withChildren(child());
+        store.openSession('s1');
+
+        fire('session.inbox.enqueued', { sessionID: 's1', inboxID: 'm', item: { type: 'user', payload: { text: bgResult('c1', 'completed', 'x') } } });
+        fire('session.inbox.enqueued', { sessionID: 's1', inboxID: 'm', item: { type: 'synthetic', payload: { text: 'plain note' } } });
+        fire('session.inbox.enqueued', { sessionID: 's1', inboxID: 'm' });
+
+        expect(store.childSignals().get('c1')?.result).toBeUndefined();
+      });
+
+      it('ignores a live session.synthetic without usable text', () => {
+        withChildren(child());
+        fire('session.synthetic', { sessionID: 's1' });
+        fire('session.synthetic', { sessionID: 's1', text: 'plain' });
+        expect(store.childSignals().get('c1')?.result).toBeUndefined();
+      });
+
+      it('a live session.synthetic always wins over a seeded result', () => {
+        withChildren(child());
+        seedPage([synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nold'))]);
+        store.openSession('s1');
+
+        fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'Status: COMPLETED\nnew') });
+
+        expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nnew');
+      });
+
+      describe('loading older messages (B1 regression)', () => {
+        const openWithNewestPage = (newest: MessageWithParts[]) => {
+          withChildren(child('c1'));
+          api.listMessagePage.mockReturnValueOnce(of({ messages: newest, olderCursor: 'cursor-1' }));
+          store.openSession('s1');
+        };
+
+        it('does not overwrite a newer result with an older page (INPUT_REQUIRED then COMPLETED stays done)', () => {
+          openWithNewestPage([synthetic('syn2', bgResult('c1', 'completed', 'Status: COMPLETED\nround two'))]);
+          api.listMessagePage.mockReturnValueOnce(
+            of({ messages: [synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nround one'))], olderCursor: null })
+          );
+
+          store.loadOlderMessages();
+
+          expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nround two');
+        });
+
+        it('does not overwrite a live result with an older page', () => {
+          openWithNewestPage([]);
+          fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'Status: COMPLETED\nlive') });
+          api.listMessagePage.mockReturnValueOnce(
+            of({ messages: [synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nold'))], olderCursor: null })
+          );
+
+          store.loadOlderMessages();
+
+          expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nlive');
+        });
+
+        it('fills a child that has no result yet', () => {
+          withChildren(child('c1'), child('c2'));
+          api.listMessagePage.mockReturnValueOnce(
+            of({ messages: [synthetic('syn2', bgResult('c1', 'completed', 'newest c1'))], olderCursor: 'cursor-1' })
+          );
+          store.openSession('s1');
+          api.listMessagePage.mockReturnValueOnce(
+            of({ messages: [synthetic('syn1', bgResult('c2', 'error', 'older c2'))], olderCursor: null })
+          );
+
+          store.loadOlderMessages();
+
+          expect(store.childSignals().get('c2')?.result).toEqual({ state: 'error', body: 'older c2' });
+          expect(store.childSignals().get('c1')?.result?.body).toBe('newest c1');
+        });
+
+        it('within one older page the newest message wins', () => {
+          openWithNewestPage([]);
+          api.listMessagePage.mockReturnValueOnce(
+            of({
+              messages: [
+                synthetic('syn1', bgResult('c1', 'completed', 'Status: INPUT_REQUIRED\nfirst')),
+                synthetic('syn2', bgResult('c1', 'completed', 'Status: COMPLETED\nsecond'))
+              ],
+              olderCursor: null
+            })
+          );
+
+          store.loadOlderMessages();
+
+          expect(store.childSignals().get('c1')?.result?.body).toBe('Status: COMPLETED\nsecond');
+        });
+
+        it('keeps the older synthetic message out of the transcript', () => {
+          openWithNewestPage([{ info: { id: 'u2', role: 'user' }, parts: [{ type: 'text', text: 'later' } as Part] }]);
+          api.listMessagePage.mockReturnValueOnce(
+            of({
+              messages: [
+                { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'earlier' } as Part] },
+                synthetic('syn1', bgResult('c1', 'completed', 'x'))
+              ],
+              olderCursor: null
+            })
+          );
+
+          store.loadOlderMessages();
+
+          expect(store.messages().map((m) => m.info.id)).toEqual(['u1', 'u2']);
+        });
+      });
+    });
+
+    describe('active session seeding', () => {
+      it('requests /session/active when a session is opened', () => {
+        store.openSession('s1');
+        expect(api.getActiveSessions).toHaveBeenCalledTimes(1);
+      });
+
+      it('seeds the busy set from the server answer', () => {
+        withChildren(child());
+        api.getActiveSessions.mockReturnValue(of(new Set(['c1']) as ReadonlySet<string>));
+
+        store.openSession('s1');
+
+        expect(store.busySessionIds().has('c1')).toBe(true);
+        expect(store.childSignals().get('c1')?.busy).toBe(true);
+      });
+
+      it('filters an id that ended while the request was in flight', () => {
+        const response = new Subject<ReadonlySet<string>>();
+        api.getActiveSessions.mockReturnValue(response.asObservable());
+        withChildren(child('c1'), child('c2'));
+        store.openSession('s1');
+
+        fire('session.idle', { sessionID: 'c1' });
+        response.next(new Set(['c1', 'c2']));
+
+        expect(store.busySessionIds().has('c1')).toBe(false);
+        expect(store.busySessionIds().has('c2')).toBe(true);
+      });
+
+      it('un-filters an id that started again while the request was in flight', () => {
+        const response = new Subject<ReadonlySet<string>>();
+        api.getActiveSessions.mockReturnValue(response.asObservable());
+        withChildren(child('c1'));
+        store.openSession('s1');
+
+        fire('session.idle', { sessionID: 'c1' });
+        fire('session.execution.started', { sessionID: 'c1' });
+        response.next(new Set(['c1']));
+
+        expect(activeIds().has('c1')).toBe(true);
+      });
+
+      it('replaces the previous seed and does not stay stuck busy after the child ends', () => {
+        withChildren(child('c1'));
+        api.getActiveSessions.mockReturnValue(of(new Set(['c1']) as ReadonlySet<string>));
+        store.openSession('s1');
+        expect(store.busySessionIds().has('c1')).toBe(true);
+
+        fire('session.idle', { sessionID: 'c1' });
+
+        expect(store.busySessionIds().has('c1')).toBe(false);
+        expect(store.childSignals().get('c1')?.busy).toBe(false);
+      });
+
+      it('an empty answer (the api maps a failed request to an empty set) leaves nothing stuck busy', () => {
+        withChildren(child('c1'));
+        api.getActiveSessions.mockReturnValue(of(new Set<string>() as ReadonlySet<string>));
+
+        store.openSession('s1');
+
+        expect(store.busySessionIds().size).toBe(0);
+        expect(store.childSignals().get('c1')?.busy).toBe(false);
+      });
+
+      it('a completed seed no longer filters ids in a later seed', () => {
+        withChildren(child('c1'));
+        store.openSession('s1');
+        fire('session.idle', { sessionID: 'c1' });
+        api.getActiveSessions.mockReturnValue(of(new Set(['c1']) as ReadonlySet<string>));
+
+        events.fireReconnect();
+
+        expect(store.busySessionIds().has('c1')).toBe(true);
+      });
+
+      it('re-seeds when the event stream reconnects', () => {
+        store.openSession('s1');
+        expect(api.getActiveSessions).toHaveBeenCalledTimes(1);
+        api.getActiveSessions.mockReturnValue(of(new Set(['c9']) as ReadonlySet<string>));
+
+        events.fireReconnect();
+
+        expect(api.getActiveSessions).toHaveBeenCalledTimes(2);
+        expect(store.busySessionIds().has('c9')).toBe(true);
+      });
+    });
+
+    describe('session.deleted pruning', () => {
+      it('prunes every per-session map and set of the deleted session', () => {
+        withChildren(child('c1'));
+        api.getActiveSessions.mockReturnValue(of(new Set(['c1']) as ReadonlySet<string>));
+        store.openSession('s1');
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.execution.interrupted', { sessionID: 'c1', reason: 'user' });
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.execution.interrupted', { sessionID: 'c1', reason: 'user' });
+        fire('session.synthetic', { sessionID: 's1', text: bgResult('c1', 'completed', 'x') });
+        expect(store.childSignals().get('c1')?.result).toBeDefined();
+
+        fire('session.deleted', { sessionID: 'c1' });
+        expect(store.childSignals().has('c1')).toBe(false);
+        expect(store.busySessionIds().has('c1')).toBe(false);
+        expect(activeIds().has('c1')).toBe(false);
+
+        fire('session.updated', { info: { id: 'c1', parentID: 's1' } });
+        expect(store.childSignals().get('c1')).toMatchObject({
+          outcome: undefined,
+          interruptedReason: undefined,
+          result: undefined
+        });
+      });
+
+      it('prunes a busy streaming flag', () => {
+        withChildren(child('c1'));
+        fire('session.execution.started', { sessionID: 'c1' });
+        fire('session.deleted', { sessionID: 'c1' });
+        expect(store.busySessionIds().has('c1')).toBe(false);
+      });
+    });
   });
 });

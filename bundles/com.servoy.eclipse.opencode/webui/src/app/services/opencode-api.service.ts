@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
+import { EMPTY, Observable, catchError, expand, map, of, reduce } from 'rxjs';
 
 import {
   FileMatch,
@@ -49,6 +49,17 @@ export class OpencodeApiService {
     return this.http
       .get<{ data?: Session[] }>(`${this.base}/session`)
       .pipe(map((r) => r?.data ?? []));
+  }
+
+  /**
+   * Ids of the sessions with a running execution (V2 {@code GET /session/active}
+   * -> {@code { data: { [id]: { type } } }}). Any failure yields an empty set.
+   */
+  getActiveSessions(): Observable<ReadonlySet<string>> {
+    return this.http.get<{ data?: Record<string, unknown> }>(`${this.base}/session/active`).pipe(
+      map((r) => new Set(Object.keys(r?.data ?? {})) as ReadonlySet<string>),
+      catchError(() => of(new Set<string>() as ReadonlySet<string>))
+    );
   }
 
   /** Create a session (V2 {@code POST /session} -> {@code { data }}). */

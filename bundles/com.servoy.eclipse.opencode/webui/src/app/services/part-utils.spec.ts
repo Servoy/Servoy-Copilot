@@ -56,6 +56,19 @@ describe('isSyntheticPart', () => {
   it('does not treat prose merely containing "[system:" as synthetic', () => {
     expect(isSyntheticPart(part({ type: 'text', text: 'the log line [system: x] appeared' }))).toBe(false);
   });
+
+  it('is true for a text part starting with <background-result (also after leading whitespace)', () => {
+    const text = '<background-result kind="subagent" sessionID="ses_1" state="completed">\nbody\n</background-result>';
+    expect(isSyntheticPart(part({ type: 'text', text }))).toBe(true);
+    expect(isSyntheticPart(part({ type: 'text', text: `  \n${text}` }))).toBe(true);
+    expect(isRenderablePart(part({ type: 'text', text }))).toBe(false);
+  });
+
+  it('does not treat prose merely mentioning <background-result as synthetic', () => {
+    const p = part({ type: 'text', text: 'the <background-result> message arrives later' });
+    expect(isSyntheticPart(p)).toBe(false);
+    expect(isRenderablePart(p)).toBe(true);
+  });
 });
 
 describe('isTextPart', () => {

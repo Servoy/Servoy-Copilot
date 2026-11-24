@@ -6,6 +6,8 @@
         [parts]="message.parts"
         [error]="message.info.error ?? null"
         [completed]="message.info.time?.completed ?? null"
+        [childSignals]="childSignals()"
+        [turnBusy]="turnBusy()"
         (openSession)="openSession.emit($event)"
       ></svy-message-item>
     } @empty {

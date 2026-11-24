@@ -32,9 +32,24 @@
           <path d="M9 4v16" />
         </svg>
       </button>
-      <div class="header-leading"></div>
+      <div class="header-leading">
+        @if (store.activeParent(); as parent) {
+          <button
+            type="button"
+            class="parent-link"
+            [attr.aria-label]="'Back to parent session' + (parent.title ? ': ' + parent.title : '')"
+            [attr.title]="parent.title || 'Parent session'"
+            (click)="onSelectSession(parent.id)"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            <span>Parent</span>
+          </button>
+        }
+      </div>
       <div class="header-title">
-        <div class="title-text">Servoy AI</div>
+        <div class="title-text" [attr.title]="store.activeTitle() || null">{{ store.activeTitle() || 'Servoy AI' }}</div>
       </div>
       <div class="header-actions">
         <button
@@ -85,6 +100,8 @@
       class="messages"
       [messages]="store.messages()"
       [canLoadOlder]="store.hasMoreMessages()"
+      [childSignals]="store.childSignals()"
+      [turnBusy]="store.streaming()"
       (openSession)="onSelectSession($event)"
       (loadOlder)="onLoadOlder()"
     ></svy-message-list>

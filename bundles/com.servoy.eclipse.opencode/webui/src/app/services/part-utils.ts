@@ -13,7 +13,7 @@ export function isSyntheticPart(part: Part): boolean {
   }
   if (part.type === 'text' && typeof part.text === 'string') {
     const trimmed = part.text.trim();
-    if (trimmed.startsWith('<system-reminder')) {
+    if (trimmed.startsWith('<system-reminder') || trimmed.startsWith('<background-result')) {
       return true;
     }
     // opencode injects a bare "[system: ...]" continuation marker between tool

@@ -12,6 +12,13 @@ import {
   Session,
   ToolState
 } from '../models/opencode.models';
+import {
+  BackgroundResultState,
+  ChildOutcome,
+  ChildSignals,
+  InterruptReason,
+  parseBackgroundResult
+} from './agent-status';
 import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { OpencodeApiService } from './opencode-api.service';
@@ -110,6 +117,55 @@ export class ChatStore implements OnDestroy {
    */
   private readonly streamingSessions = signal<ReadonlySet<string>>(new Set());
 
+  /** Sessions the server reports as running (seeded from {@code GET /session/active}). */
+  private readonly activeSessionIds = signal<ReadonlySet<string>>(new Set());
+  private readonly activeSeeded = signal<boolean>(false);
+  private readonly pendingSeeds = new Set<Set<string>>();
+  private readonly liveOutcomes = signal<ReadonlyMap<string, ChildOutcome>>(new Map());
+  private readonly interruptedReasons = signal<ReadonlyMap<string, InterruptReason>>(new Map());
+  private readonly backgroundResults = signal<
+    ReadonlyMap<string, { state: BackgroundResultState; body: string }>
+  >(new Map());
+
+  /** Sessions confirmed busy: event-tracked streaming plus the server's active set. */
+  readonly busySessionIds = computed<ReadonlySet<string>>(() => {
+    const active = this.activeSessionIds();
+    const streaming = this.streamingSessions();
+    if (active.size === 0) {
+      return streaming;
+    }
+    return new Set([...streaming, ...active]);
+  });
+
+  /** Per child session: what the store knows, for the agent cards. */
+  readonly childSignals = computed<ReadonlyMap<string, ChildSignals>>(() => {
+    const busy = this.busySessionIds();
+    const seeded = this.activeSeeded();
+    const outcomes = this.liveOutcomes();
+    const reasons = this.interruptedReasons();
+    const results = this.backgroundResults();
+    const map = new Map<string, ChildSignals>();
+    const add = (id: string, session?: Session) => {
+      map.set(id, {
+        busy: busy.has(id) ? true : seeded ? false : undefined,
+        outcome: outcomes.get(id) ?? session?.outcome,
+        interruptedReason: reasons.get(id),
+        result: results.get(id)
+      });
+    };
+    for (const s of this.allSessions()) {
+      if (s.parentID) {
+        add(s.id, s);
+      }
+    }
+    for (const id of results.keys()) {
+      if (!map.has(id)) {
+        add(id);
+      }
+    }
+    return map;
+  });
+
   /**
    * Whether the *active* session has a turn streaming. The composer binds its
    * stop/send button to this, so the button belongs to the open session rather
@@ -189,6 +245,96 @@ export class ChatStore implements OnDestroy {
     });
   }
 
+  /** Seed the server-reported running sessions (one request; failure = empty set). */
+  private seedActiveSessions(): void {
+    const endedMeanwhile = new Set<string>();
+    this.pendingSeeds.add(endedMeanwhile);
+    this.api.getActiveSessions().subscribe((ids) => {
+      this.pendingSeeds.delete(endedMeanwhile);
+      const fresh = new Set([...ids].filter((id) => !endedMeanwhile.has(id)));
+      this.activeSessionIds.set(fresh);
+      this.activeSeeded.set(true);
+    });
+  }
+
+  private markStartedDuringSeed(id: string): void {
+    for (const ended of this.pendingSeeds) {
+      ended.delete(id);
+    }
+  }
+
+  private pruneSessionState(id: string): void {
+    this.removeActive(id);
+    this.setSessionStreaming(id, false);
+    this.setMapEntry(this.liveOutcomes, id, null);
+    this.setMapEntry(this.interruptedReasons, id, null);
+    this.setMapEntry(this.backgroundResults, id, null);
+  }
+
+  private removeActive(id: string): void {
+    for (const ended of this.pendingSeeds) {
+      ended.add(id);
+    }
+    this.activeSessionIds.update((set) => {
+      if (!set.has(id)) {
+        return set;
+      }
+      const next = new Set(set);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  private setMapEntry<V>(
+    target: { update: (fn: (m: ReadonlyMap<string, V>) => ReadonlyMap<string, V>) => void },
+    id: string,
+    value: V | null
+  ): void {
+    target.update((m) => {
+      if (value === null ? !m.has(id) : m.get(id) === value) {
+        return m;
+      }
+      const next = new Map(m);
+      if (value === null) {
+        next.delete(id);
+      } else {
+        next.set(id, value);
+      }
+      return next;
+    });
+  }
+
+  /** Record the report of a synthetic {@code <background-result>} message; later wins. */
+  private recordBackgroundResult(text: unknown, keepExisting = false): void {
+    if (typeof text !== 'string') {
+      return;
+    }
+    const parsed = parseBackgroundResult(text);
+    if (parsed) {
+      this.backgroundResults.update((m) => {
+        if (keepExisting && m.has(parsed.childId)) {
+          return m;
+        }
+        const next = new Map(m);
+        next.set(parsed.childId, { state: parsed.state, body: parsed.body });
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Record results from a fetched page. For an OLDER page the newest page's (or a
+   * live) entry must win, so only absent children are filled; within the page the
+   * last (newest) message wins.
+   */
+  private recordSyntheticResults(messages: MessageWithParts[], older = false): void {
+    const synthetic = messages.filter((m) => m.info.role === 'synthetic');
+    const ordered = older ? synthetic.slice().reverse() : synthetic;
+    for (const m of ordered) {
+      this.recordBackgroundResult(m.info['text'], older);
+    }
+  }
+
   /** Marks a session as having a turn streaming, or not. */
   private setSessionStreaming(id: string, streaming: boolean): void {
     this.streamingSessions.update((set) => {
@@ -252,6 +398,27 @@ export class ChatStore implements OnDestroy {
     return !!this.allSessions().find((s) => s.id === id)?.parentID;
   });
 
+  readonly activeTitle = computed(() => {
+    const id = this.activeSessionId();
+    if (!id) {
+      return '';
+    }
+    return this.allSessions().find((s) => s.id === id)?.title?.trim() ?? '';
+  });
+
+  readonly activeParent = computed(() => {
+    const id = this.activeSessionId();
+    if (!id) {
+      return null;
+    }
+    const sessions = this.allSessions();
+    const parentId = sessions.find((s) => s.id === id)?.parentID;
+    if (!parentId) {
+      return null;
+    }
+    return { id: parentId, title: sessions.find((s) => s.id === parentId)?.title ?? '' };
+  });
+
   /**
    * Tool metadata captured live from the event bus, keyed by tool-call id. The
    * subagent tool's {@code metadata.sessionID} arrives on a
@@ -268,6 +435,7 @@ export class ChatStore implements OnDestroy {
 
   constructor() {
     this.eventStream.events().subscribe((evt) => this.onEvent(evt));
+    this.eventStream.reconnected().subscribe(() => this.seedActiveSessions());
   }
 
   /**
@@ -355,6 +523,7 @@ export class ChatStore implements OnDestroy {
     this.olderCursor = null;
     this.hasMoreSig.set(false);
     this.loadingOlderSig.set(false);
+    this.seedActiveSessions();
     this.api.listMessagePage(id).subscribe({
       next: (page) => {
         if (this.activeSessionId() !== id) {
@@ -362,6 +531,7 @@ export class ChatStore implements OnDestroy {
         }
         this.olderCursor = page.olderCursor;
         this.hasMoreSig.set(page.olderCursor !== null);
+        this.recordSyntheticResults(page.messages ?? []);
         this.messages.set(
           (page.messages ?? [])
             .filter((m) => this.isRenderableMessage(m))
@@ -408,6 +578,7 @@ export class ChatStore implements OnDestroy {
         }
         this.olderCursor = page.olderCursor;
         this.hasMoreSig.set(page.olderCursor !== null);
+        this.recordSyntheticResults(page.messages ?? [], true);
         const older = (page.messages ?? [])
           .filter((m) => this.isRenderableMessage(m))
           .map((m) => this.backfillToolMetadata(this.toChatMessage(m)));
@@ -718,6 +889,44 @@ export class ChatStore implements OnDestroy {
         const id = this.eventSessionId(props);
         if (id) {
           this.setSessionStreaming(id, true);
+          this.markStartedDuringSeed(id);
+          this.setMapEntry(this.liveOutcomes, id, null);
+          this.setMapEntry(this.interruptedReasons, id, null);
+        }
+        break;
+      }
+      case 'session.execution.interrupted': {
+        const id = this.eventSessionId(props);
+        if (id) {
+          this.setSessionStreaming(id, false);
+          this.removeActive(id);
+          this.setMapEntry<ChildOutcome>(this.liveOutcomes, id, 'interrupted');
+          const reason = props['reason'];
+          if (reason === 'user' || reason === 'shutdown' || reason === 'superseded' || reason === 'inactivity') {
+            this.setMapEntry<InterruptReason>(this.interruptedReasons, id, reason);
+          }
+        }
+        break;
+      }
+      case 'session.status': {
+        const id = this.eventSessionId(props);
+        const type = (props['status'] as { type?: string } | undefined)?.type;
+        if (id && type === 'busy') {
+          this.setSessionStreaming(id, true);
+          this.markStartedDuringSeed(id);
+        } else if (id && type === 'idle') {
+          this.setSessionStreaming(id, false);
+          this.removeActive(id);
+        }
+        break;
+      }
+      case 'session.synthetic':
+        this.recordBackgroundResult(props['text']);
+        break;
+      case 'session.inbox.enqueued': {
+        const item = props['item'] as { type?: string; payload?: { text?: unknown } } | undefined;
+        if (item?.type === 'synthetic') {
+          this.recordBackgroundResult(item.payload?.text);
         }
         break;
       }
@@ -728,6 +937,12 @@ export class ChatStore implements OnDestroy {
         const id = this.eventSessionId(props);
         if (id) {
           this.setSessionStreaming(id, false);
+          this.removeActive(id);
+          if (evt.type === 'session.execution.succeeded') {
+            this.setMapEntry<ChildOutcome>(this.liveOutcomes, id, 'succeeded');
+          } else if (evt.type === 'session.execution.failed') {
+            this.setMapEntry<ChildOutcome>(this.liveOutcomes, id, 'failed');
+          }
           if (
             id === this.activeSessionId() &&
             (evt.type === 'session.idle' || evt.type === 'session.execution.succeeded')
@@ -1251,6 +1466,7 @@ export class ChatStore implements OnDestroy {
       return;
     }
     this.allSessions.update((sessions) => sessions.filter((s) => s.id !== id));
+    this.pruneSessionState(id);
     if (this.activeSessionId() === id) {
       this.activeSessionId.set(null);
       this.messages.set([]);

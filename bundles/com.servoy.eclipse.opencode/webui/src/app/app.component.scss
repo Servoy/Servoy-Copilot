@@ -103,6 +103,30 @@
   display: none;
 }
 
+.parent-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--svy-line2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--svy-acc-fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--svy-line2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-acc-fg);
+    outline-offset: 2px;
+  }
+}
+
 .header-title {
   flex: 1 1 auto;
   min-width: 0;

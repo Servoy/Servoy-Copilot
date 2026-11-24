@@ -15,6 +15,7 @@ class FakeEventSource {
   readyState = FakeEventSource.OPEN;
   onmessage: ((evt: { data: string }) => void) | null = null;
   onerror: ((evt: unknown) => void) | null = null;
+  onopen: (() => void) | null = null;
   closed = false;
 
   constructor(url: string) {
@@ -119,6 +120,49 @@ describe('EventStreamService', () => {
     first.fail();
     vi.advanceTimersByTime(2000);
     expect(FakeEventSource.instances).toHaveLength(2);
+  });
+
+  describe('reconnected()', () => {
+    it('does not fire on the first open', () => {
+      let count = 0;
+      service.reconnected().subscribe(() => count++);
+      service.events().subscribe();
+      FakeEventSource.instances[0].onopen?.();
+      expect(count).toBe(0);
+    });
+
+    it('fires on the open of a replacement connection after an error', () => {
+      let count = 0;
+      service.reconnected().subscribe(() => count++);
+      service.events().subscribe();
+      FakeEventSource.instances[0].onopen?.();
+      FakeEventSource.instances[0].fail();
+      vi.advanceTimersByTime(2000);
+      expect(count).toBe(0);
+      FakeEventSource.instances[1].onopen?.();
+      expect(count).toBe(1);
+    });
+
+    it('fires on a browser-internal re-open of the same source (second onopen)', () => {
+      let count = 0;
+      service.reconnected().subscribe(() => count++);
+      service.events().subscribe();
+      const src = FakeEventSource.instances[0];
+      src.onopen?.();
+      src.onopen?.();
+      src.onopen?.();
+      expect(count).toBe(2);
+    });
+
+    it('does not fire merely because a new source was created before it opened', () => {
+      let count = 0;
+      service.reconnected().subscribe(() => count++);
+      service.events().subscribe();
+      FakeEventSource.instances[0].fail();
+      vi.advanceTimersByTime(2000);
+      expect(FakeEventSource.instances).toHaveLength(2);
+      expect(count).toBe(0);
+    });
   });
 
   it('does not reconnect on a transient error that stays open', () => {
