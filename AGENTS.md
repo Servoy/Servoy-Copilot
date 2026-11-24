@@ -519,34 +519,37 @@ Since this workspace is a complex, multi-project Eclipse environment, **always p
 
 > **Writing an MCP tool that returns an image (not just text):** `@Tool` methods normally return a `String`, which `McpServerFactory` wraps in a single `TextContent`. To also attach an image, return an `com.servoy.eclipse.developer.mcp.McpToolResult` (`{ text, imageData(base64), imageMimeType }`, via `McpToolResult.withImage(...)`) — the factory expands it into a `TextContent` **plus** an `ImageContent`. Any other return type keeps the original single-`TextContent` path, so this is backward-compatible. The `servoy-form_getFormLayout` tool uses this to attach a rendered-form screenshot (captured via `IBrowser.captureScreenshot()` — which, unlike `IBrowser.evaluate()`, must run **off** the SWT display thread). Whether the model receives the image depends on the MCP client forwarding `ImageContent`; the custom Angular chat UI does not yet render image tool-parts inline.
 
-### MCP servers: direct vs. Code Mode (dual registration)
+### How to call the Eclipse tools: Code Mode only
 
-This project's `opencode.json` registers a few high-traffic MCP servers **twice**, under two names that point at the same endpoint, so both call styles are available at once (this relies on OpenCode **V2** Code Mode, where the per-server `codemode` flag partitions tools into a *direct* list and a *Code Mode* catalog):
+`eclipse-ide`, `eclipse-coder`, `eclipse-git`, `eclipse-pde`, `eclipse-context` (and `eclipse-runner`, `time`, `angular-cli`) are **Code Mode only**. They are NOT normal tool calls: you reach them from inside an `execute` script as `tools["eclipse-ide"].getCompilationErrors({ ... })`. Only `memory_*` is a normal direct tool. Every `eclipse-ide_foo` / `eclipse-coder_foo` name in this file means `tools["eclipse-ide"].foo` / `tools["eclipse-coder"].foo` inside `execute`.
 
-| Concept | Direct name (`codemode: false`) | Code Mode name (default) |
-|---|---|---|
-| Eclipse coder | `eclipse-coder` | `eclipse-coder_codemode` |
-| Eclipse IDE | `eclipse-ide` | `eclipse-ide_codemode` |
-| Eclipse git | `eclipse-git` | `eclipse-git_codemode` |
-| Eclipse PDE | `eclipse-pde` | `eclipse-pde_codemode` |
-| Eclipse context | `eclipse-context` | `eclipse-context_codemode` |
-| Memory | `memory` | `memory_codemode` |
+Code Mode is the reason to prefer these tools, not an obstacle: one script can call several tools, filter the result in JavaScript and return only what matters, so the context stays small.
 
-- **Direct names** (`eclipse-coder_*`, `eclipse-ide_*`, `eclipse-git_*`, `eclipse-pde_*`, `eclipse-context_*`, `memory_*`) are callable as ordinary tool calls, one per turn, with no script. Use these for a **single** action (read one file, apply one patch, one compile check, one git status/commit, poll one long-running operation, store one thought).
-- **`_codemode` names** live in the Code Mode catalog and are only reachable from inside an `execute` script as `tools["eclipse-coder_codemode"].*`, `tools["eclipse-git_codemode"].*`, `tools.memory_codemode.*`, etc. Use these when you want to **compose several MCP calls in one script**.
-- A tool lives on exactly one side per name — the same registration is never in both the direct list and the Code Mode catalog. That is why the server is registered twice.
-- OpenCode does **not** auto-route between them; the agent picks. Prefer the direct name for one-off actions and the `_codemode` name only when scripting multiple calls together.
-- **`eclipse-runner`** is registered **once, Code Mode only** (debug flows compose naturally in scripts): call it inside `execute` as `tools["eclipse-runner"].*`. `time` and `angular-cli` are likewise Code Mode only.
-- Requires an OpenCode build with V2 Code Mode. On a build without it, the `codemode` flag is ignored, so the tool names still resolve but the direct/script split may not apply.
+```js
+// edit + verify in ONE call; only the compile result comes back
+await tools["eclipse-coder"].replaceString({ projectName, filePath, oldString, newString });
+return await tools["eclipse-ide"].getCompilationErrors({ projectName, resourcePath: filePath });
+```
 
-When this section names an `eclipse-coder_*` / `eclipse-ide_*` / `eclipse-git_*` / `eclipse-pde_*` / `eclipse-context_*` tool, use the direct name for a single call, or the matching `_codemode` namespace inside `execute` when batching.
+Finding a tool: the catalog lists namespaces, not every tool. Call `search("findReferences")` inside `execute` to get the exact signature, and never guess names or parameters (most parameters are typed `string`, e.g. `maxDepth: "3"`).
 
-- **File Reading:** Use `eclipse-ide_readProjectResource` instead of the generic `read` tool.
-- **File Writing & Creating:** Use `eclipse-coder_createFile` or `eclipse-coder_replaceFileContent` instead of the generic `write` tool.
-- **File Editing:** Use `eclipse-coder_applyPatch`, `eclipse-coder_insertIntoFile`, `eclipse-coder_replaceString`, or `eclipse-coder_deleteLinesInFile` instead of the generic `edit` tool.
-- **File / Class Searching:** Use `eclipse-ide_fileSearch`, `eclipse-ide_fileSearchRegExp`, or `eclipse-ide_findFiles` instead of generic `grep` or `glob`.
-- **Git Operations:** Use `eclipse-git_*` tools instead of standard shell `git` commands in `bash`.
-- **Testing:** Prefer `eclipse-ide_runAllTests`, `eclipse-ide_runClassTests`, `eclipse-ide_runTestMethod`, or `eclipse-pde_runJUnitPluginTests` over generic shell test commands.
+**Use this instead of the built-in tool, for Java (not `webui/`):**
+
+| Instead of | Use |
+|---|---|
+| `read` | `tools["eclipse-ide"].readProjectResource` (`projectName`, `resourcePath`, `startLine`, `endLine`) |
+| `write` | `tools["eclipse-coder"].createFile` / `replaceFileContent` |
+| `edit` | `tools["eclipse-coder"].applyPatch` / `replaceString` / `insertIntoFile` / `deleteLinesInFile` |
+| `grep` for a symbol | `findReferences` (all usages), `getMethodCallHierarchy` (callers/callees), `getTypeHierarchy` (super/subtypes) |
+| `glob` / `grep` for a class or method | `searchTypes` / `searchMethods`; orientation: `getWorkspaceOverview` / `getPackageSummary` |
+| shell `git` | `tools["eclipse-git"].*` |
+| shell test commands | `eclipse-ide` `runJUnitTests` / `runClassTests` / `runTestMethod`; `eclipse-pde` `runJUnitPluginTests`; poll with `getOperationStatus` |
+| manual rename | `tools["eclipse-coder"].refactorRename*` / `refactorMoveJavaType` |
+
+Rules of thumb:
+- `grep` is for plain text, config values and non-Java files. A question about a Java symbol ("who calls this", "where is this used") goes to `findReferences` or `getMethodCallHierarchy` first, because they answer it exactly and in one call.
+- After every Java change, run `getCompilationErrors` in the **same script** as the edit, and apply `executeQuickFix` when it fits (section 4).
+- At the start of a session call `memory_listMemories`.
 
 ### Refactoring
 - **Use `eclipse-coder_refactorRenameJavaType`** to rename classes, interfaces, enums, or records — this updates all references across the workspace.

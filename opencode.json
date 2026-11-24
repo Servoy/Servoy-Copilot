@@ -9,6 +9,10 @@
     "sdd": {
       "description": "Run full Spec-Driven Development pipeline for a Jira issue",
       "template": "Load the 'sdd' skill and execute the full SDD pipeline for: $ARGUMENTS"
+    },
+    "update-opencode": {
+      "description": "Update the embedded opencode CLI, with an API break-check",
+      "template": "Load the 'update-opencode' skill and run its full procedure to update the embedded opencode CLI. Target version (if the user gave one): $ARGUMENTS"
     }
   },
   "mcp": {
@@ -36,52 +40,23 @@
         "url": "http://localhost:8087/mcp/memory",
         "codemode": false
       },
-      "memory_codemode": {
-        "type": "remote",
-        "url": "http://localhost:8087/mcp/memory"
-      },
       "eclipse-coder": {
-        "type": "remote",
-        "url": "http://localhost:8087/mcp/eclipse-coder",
-        "codemode": false
-      },
-      "eclipse-coder_codemode": {
         "type": "remote",
         "url": "http://localhost:8087/mcp/eclipse-coder"
       },
       "eclipse-ide": {
         "type": "remote",
-        "url": "http://localhost:8087/mcp/eclipse-ide",
-        "codemode": false
-      },
-      "eclipse-ide_codemode": {
-        "type": "remote",
         "url": "http://localhost:8087/mcp/eclipse-ide"
       },
       "eclipse-git": {
-        "type": "remote",
-        "url": "http://localhost:8087/mcp/eclipse-git",
-        "codemode": false
-      },
-      "eclipse-git_codemode": {
         "type": "remote",
         "url": "http://localhost:8087/mcp/eclipse-git"
       },
       "eclipse-pde": {
         "type": "remote",
-        "url": "http://localhost:8087/mcp/eclipse-pde",
-        "codemode": false
-      },
-      "eclipse-pde_codemode": {
-        "type": "remote",
         "url": "http://localhost:8087/mcp/eclipse-pde"
       },
       "eclipse-context": {
-        "type": "remote",
-        "url": "http://localhost:8087/mcp/eclipse-context",
-        "codemode": false
-      },
-      "eclipse-context_codemode": {
         "type": "remote",
         "url": "http://localhost:8087/mcp/eclipse-context"
       }

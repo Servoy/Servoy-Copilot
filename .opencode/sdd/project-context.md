@@ -100,27 +100,16 @@ Eclipse JDT/PDE tools do **not** apply in `webui/`. Use the `angular-cli_*` MCP 
 generic `read`/`write`/`edit`/`grep`/`glob` file tools, and `npm`/`vitest`/`ng` via the
 shell.
 
-### MCP servers: direct vs Code Mode (dual registration)
+### Eclipse tools are Code Mode only
 
-This project's `opencode.json` registers several MCP servers **twice** under two names
-pointing at the same endpoint (OpenCode **V2** Code Mode; per-server `codemode` flag):
+`eclipse-ide`, `eclipse-coder`, `eclipse-git`, `eclipse-pde`, `eclipse-context`,
+`eclipse-runner`, `time` and `angular-cli` are reachable only inside an `execute` script, as
+`tools["eclipse-ide"].getCompilationErrors({ ... })`. Only `memory_*` is a normal tool call.
+Every `eclipse-ide_foo` name above means `tools["eclipse-ide"].foo` inside `execute`. Look up
+an exact signature with `search("<toolName>")` instead of guessing. Compose edit + compile
+check in one script and return only the filtered result. For a Java symbol question
+("who calls / uses this") use `findReferences` / `getMethodCallHierarchy` before `grep`.
 
-| Concept | Direct (`codemode: false`) | Code Mode name |
-|---|---|---|
-| Eclipse coder | `eclipse-coder` | `eclipse-coder_codemode` |
-| Eclipse IDE | `eclipse-ide` | `eclipse-ide_codemode` |
-| Eclipse git | `eclipse-git` | `eclipse-git_codemode` |
-| Eclipse PDE | `eclipse-pde` | `eclipse-pde_codemode` |
-| Eclipse context | `eclipse-context` | `eclipse-context_codemode` |
-| Memory | `memory` | `memory_codemode` |
-
-- **Direct names** are ordinary tool calls, one per turn — use for a **single** action
-  (read one file, apply one patch, one compile check, one git status/commit, poll one op).
-- **`_codemode` names** are only reachable inside an `execute` script as
-  `tools["eclipse-coder_codemode"].*` etc. — use when **composing several MCP calls** in one
-  script.
-- A tool lives on exactly one side per name. OpenCode does not auto-route; the agent picks.
-- `eclipse-runner`, `time`, `angular-cli` are **Code Mode only** (call inside `execute`).
 
 ### Browser abstraction — never depend on Chromium directly
 
