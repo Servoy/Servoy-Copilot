@@ -41,4 +41,13 @@ public @interface ToolParam
 
 	/** JSON Schema type of this parameter. Default: "string". */
 	String type() default "string";
+
+	/**
+	 * When {@code true} and {@link #type()} is not {@code "string"}, the published schema also accepts a
+	 * string for this parameter (type {@code [type, "string"]}). Use it for numeric/boolean parameters
+	 * that older callers (e.g. already-shipped skill text) send quoted, such as {@code "true"} or
+	 * {@code "30"}: the schema validator would otherwise reject them before the tool method runs.
+	 * The tool method must then parse its {@code String} argument leniently. Default: false.
+	 */
+	boolean acceptString() default false;
 }

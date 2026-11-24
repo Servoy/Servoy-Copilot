@@ -236,7 +236,7 @@ public class McpServerFactory
 				{
 					String name = ToolExecutor.toParamName(param);
 					properties.put(name, Map.of(
-						"type", paramAnn.type(),
+						"type", schemaType(paramAnn),
 						"description", paramAnn.description()));
 					if (paramAnn.required()) required.add(name);
 				}
@@ -249,6 +249,21 @@ public class McpServerFactory
 			tools.add(new Tool(toolAnn.name(), toolAnn.name(), toolAnn.description(), schema, null, null, null));
 		}
 		return tools;
+	}
+
+	/**
+	 * The JSON-schema {@code type} published for a parameter: the declared type, or
+	 * {@code [type, "string"]} when {@link ToolParam#acceptString()} lets callers still send a string.
+	 * Package-visible and static so it can be unit-tested without an MCP runtime.
+	 */
+	static Object schemaType(ToolParam paramAnn)
+	{
+		String type = paramAnn.type();
+		if (paramAnn.acceptString() && !"string".equals(type))
+		{
+			return List.of(type, "string");
+		}
+		return type;
 	}
 
 	private CallToolResult executeCallTool(ToolExecutor executor, Tool tool, Map<String, Object> args)

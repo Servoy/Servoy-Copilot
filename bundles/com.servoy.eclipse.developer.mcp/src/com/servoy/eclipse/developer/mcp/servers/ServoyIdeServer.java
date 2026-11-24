@@ -332,10 +332,10 @@ public class ServoyIdeServer {
 	@Tool(name = "getConsoleOutput", description = "Retrieves the recent output from Eclipse console(s).", type = "object")
 	public String getConsoleOutput(
 			@ToolParam(name = "consoleName", description = "Name of the specific console to retrieve (optional, leave empty for most recent console)", required = false) String consoleName,
-			@ToolParam(name = "maxLines", description = "Maximum number of lines to retrieve (default: 100)", type = "integer", required = false) String maxLines,
-			@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", type = "boolean", required = false) String includeAllConsoles,
-			@ToolParam(name = "clear", description = "Whether to clear the console(s) after reading (default: false)", type = "boolean", required = false) String clear) {
-		int lines = Optional.ofNullable(maxLines).map(Integer::parseInt).orElse(100);
+			@ToolParam(name = "maxLines", description = "Maximum number of lines to retrieve (default: 100)", type = "integer", acceptString = true, required = false) String maxLines,
+			@ToolParam(name = "includeAllConsoles", description = "Whether to include output from all available consoles (default: false)", type = "boolean", acceptString = true, required = false) String includeAllConsoles,
+			@ToolParam(name = "clear", description = "Whether to clear the console(s) after reading (default: false)", type = "boolean", acceptString = true, required = false) String clear) {
+		int lines = parseMaxLines(maxLines);
 		boolean allConsoles = Optional.ofNullable(includeAllConsoles).map(Boolean::parseBoolean).orElse(false);
 		boolean shouldClear = Optional.ofNullable(clear).map(Boolean::parseBoolean).orElse(false);
 		return ideStateService.getConsoleOutput(consoleName, lines, allConsoles, shouldClear);
@@ -368,6 +368,25 @@ public class ServoyIdeServer {
 		}
 		catch (NumberFormatException e) {
 			return WorkspaceService.SEARCH_MAX_RESULTS_DEFAULT;
+		}
+	}
+
+	/**
+	 * Parses the optional {@code maxLines} tool argument. It arrives as a string even when the caller
+	 * sent a JSON number, so {@code 30}, {@code "30"} and the whole-number float {@code 30.0} all mean
+	 * 30. A null, blank, non-numeric, fractional or non-positive value falls back to the default of
+	 * 100 rather than throwing, so a malformed caller value never costs the console check.
+	 */
+	static int parseMaxLines(String maxLines) {
+		final int defaultLines = 100;
+		if (maxLines == null || maxLines.isBlank())
+			return defaultLines;
+		try {
+			int lines = new java.math.BigDecimal(maxLines.trim()).intValueExact();
+			return lines > 0 ? lines : defaultLines;
+		}
+		catch (NumberFormatException | ArithmeticException e) {
+			return defaultLines;
 		}
 	}
 

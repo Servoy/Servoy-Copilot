@@ -63,6 +63,15 @@ public class ServoyIdeServerSchemaTest {
 	}
 
 	@Test
+	@DisplayName("getConsoleOutput typed params still accept a string, so already-shipped skill text keeps working")
+	void getConsoleOutput_typedParamsAcceptString() {
+		for (String p : new String[] { "maxLines", "includeAllConsoles", "clear" }) {
+			assertTrue(param("getConsoleOutput", p).acceptString(),
+					p + " must publish [type, \"string\"] so a quoted value is not rejected by the schema validator");
+		}
+	}
+
+	@Test
 	@DisplayName("getSource name description names the 'name' key and warns off 'formName'")
 	void getSource_nameDescriptionNamesTheKey() {
 		String desc = paramDescription("getSource", "name");

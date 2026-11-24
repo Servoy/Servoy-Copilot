@@ -18,17 +18,16 @@ package com.servoy.eclipse.developer.mcp.plainjunit.servers;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,6 +98,11 @@ class ServoyIdeServerCallPathTest
 		return validator.validate(consoleSchema, args).valid();
 	}
 
+	private String why(Map<String, Object> args)
+	{
+		return "args=" + args + " schema=" + consoleSchema + " validation=" + validator.validate(consoleSchema, args);
+	}
+
 	private Object call(Map<String, Object> args) throws Exception
 	{
 		return new ToolExecutor(server).call("getConsoleOutput", args).get();
@@ -134,35 +138,51 @@ class ServoyIdeServerCallPathTest
 	}
 
 	@Test
-	@DisplayName("a string maxLines is rejected by the published schema")
-	void stringMaxLines_isRejectedBySchema()
+	@DisplayName("a string maxLines (old skill text) passes the schema and reaches the service as that line count")
+	void stringMaxLines_isAcceptedAndReachesService() throws Exception
 	{
-		assertFalse(accepted(Map.of("maxLines", "30")), "schema now declares integer, so the string \"30\" is rejected");
+		Map<String, Object> args = Map.of("maxLines", "30");
+		assertTrue(accepted(args), "a quoted maxLines must still pass the schema so already-shipped skills keep working: " + why(args));
+		call(args);
+		verify(ideStateService).getConsoleOutput(null, 30, false, false);
 	}
 
 	@Test
-	@DisplayName("string boolean flags are rejected by the published schema")
-	void stringBooleanFlags_areRejectedBySchema()
+	@DisplayName("string boolean flags (old skill text) pass the schema and reach the service")
+	void stringBooleanFlags_areAcceptedAndReachService() throws Exception
 	{
-		assertFalse(accepted(Map.of("clear", "false")), "schema now declares boolean, so the string \"false\" is rejected");
-		assertFalse(accepted(Map.of("includeAllConsoles", "true")), "schema now declares boolean, so the string \"true\" is rejected");
+		Map<String, Object> args = Map.of("includeAllConsoles", "true", "clear", "false");
+		assertTrue(accepted(args), "quoted boolean flags must still pass the schema so already-shipped skills keep working: " + why(args));
+		call(args);
+		verify(ideStateService).getConsoleOutput(null, 100, true, false);
 	}
 
-	/**
-	 * Characterisation test: records the CURRENT behaviour, it does not endorse it.
-	 * {@code 30.0} is a valid JSON-schema integer, but {@code ToolExecutor} turns it
-	 * into the string "30.0" and {@code Integer.parseInt} in
-	 * {@code ServoyIdeServer.getConsoleOutput} throws. The tool logs an ERROR line
-	 * for this expected failure, so a stack trace in the test output is not a real
-	 * failure. If {@code maxLines} parsing ever becomes lenient, this test must be
-	 * updated to assert that {@code 30.0} is accepted (SVY-21618 follow-up).
-	 */
 	@Test
-	@DisplayName("a float maxLines such as 30.0 passes the schema but fails when parsed by the tool")
-	void floatMaxLines_passesSchemaButFailsInTool()
+	@DisplayName("a whole-number float maxLines such as 30.0 passes the schema and reaches the service as 30")
+	void floatMaxLines_isAcceptedAndReachesService() throws Exception
 	{
 		Map<String, Object> args = Map.of("maxLines", 30.0);
 		assertTrue(accepted(args), "30.0 is a valid JSON-schema integer");
-		assertThrows(ExecutionException.class, () -> call(args), "\"30.0\" reaches Integer.parseInt and fails");
+		call(args);
+		verify(ideStateService).getConsoleOutput(null, 30, false, false);
+	}
+
+	@Test
+	@DisplayName("an unusable maxLines (fractional, zero, negative, text, blank) falls back to 100 lines instead of failing the call")
+	void unusableMaxLines_fallBackToDefault() throws Exception
+	{
+		for (String bad : new String[] { "30.5", "0", "-5", "abc", " " })
+		{
+			call(Map.of("maxLines", bad));
+		}
+		verify(ideStateService, times(5)).getConsoleOutput(null, 100, false, false);
+	}
+
+	@Test
+	@DisplayName("a value of the wrong kind (an object or a free-text flag) is still rejected by the schema")
+	void wrongKinds_areStillRejectedBySchema()
+	{
+		assertFalse(accepted(Map.of("maxLines", Map.of("n", 30))), "an object is neither an integer nor a string");
+		assertFalse(accepted(Map.of("clear", 1)), "a number is neither a boolean nor a string");
 	}
 }
