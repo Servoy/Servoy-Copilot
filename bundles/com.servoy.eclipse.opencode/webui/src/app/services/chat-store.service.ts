@@ -773,7 +773,8 @@ export class ChatStore implements OnDestroy {
       case 'session.tool.success':
         this.onToolResult(props, 'completed');
         break;
-      case 'session.tool.error':
+      case 'session.tool.failed': // real opencode event name (schema session-event.ts Tool.Failed)
+      case 'session.tool.error': // legacy alias, kept for old fixtures / proxies
         this.onToolResult(props, 'error');
         break;
 

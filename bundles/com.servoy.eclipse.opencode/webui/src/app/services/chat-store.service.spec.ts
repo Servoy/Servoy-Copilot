@@ -324,6 +324,36 @@ describe('ChatStore', () => {
     expect(tool?.state?.output).toBe('file body');
   });
 
+  it.each(['session.tool.failed', 'session.tool.error'])(
+    'moves a running tool part to status error on %s',
+    (eventType) => {
+      api.listMessages.mockReturnValue(of<MessageWithParts[]>([]));
+      store.openSession('s1');
+
+      events.fire({
+        type: 'session.tool.input.started',
+        data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_f', name: 'read' }
+      });
+      events.fire({
+        type: 'session.tool.called',
+        data: { sessionID: 's1', assistantMessageID: 'mA', id: 'toolu_f', input: { path: 'a.js' } }
+      });
+      events.fire({
+        type: eventType,
+        data: {
+          sessionID: 's1',
+          assistantMessageID: 'mA',
+          id: 'toolu_f',
+          error: { type: 'aborted', message: 'Tool execution interrupted' }
+        }
+      });
+
+      const tool = store.messages().find((m) => m.info.id === 'mA')?.parts[0];
+      expect(tool?.state?.status).toBe('error');
+      expect(tool?.state?.input).toEqual({ path: 'a.js' });
+    }
+  );
+
   it('backfills a running subagent child id on re-seed from live-captured metadata (link survives the round-trip)', () => {
     // 1. Parent is active; its subagent dispatches and a tool.progress event
     //    carries the child sessionID while it is still RUNNING.

@@ -83,10 +83,12 @@ cover every one. Source of truth in this repo:
 | event stream | `GET /event` (SSE) | – | bus events (`session.*`, `form.*`, `message.*`) |
 
 Also depended on, from the live event bus (see `chat-store.service.ts`):
-`session.tool.input.started/called/progress/success/error` (tool parts incl.
-`metadata.sessionID` for subagents), `session.text.*`, `session.reasoning.*`,
+`session.tool.input.started/called/progress/success/failed` (tool parts incl.
+`metadata.sessionID` for subagents; `failed` is the real name, there is no
+`session.tool.error`), `session.text.*`, `session.reasoning.*`,
 `session.idle/execution.*/error`, `session.created/updated/deleted`,
-`form.created/replied/cancelled`.
+`form.created/replied/cancelled`. Running state: bus event `session.status`
+and `GET /api/session/active` (there is no `GET /session/status`).
 
 ## Procedure
 

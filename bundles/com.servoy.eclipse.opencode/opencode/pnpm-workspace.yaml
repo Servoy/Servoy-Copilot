@@ -13,4 +13,4 @@ nodeLinker: hoisted
 shamefullyHoist: true
 strictDepBuilds: true
 allowBuilds:
-  '@opencode/cli@2.2.0': true
+  '@opencode/cli@2.4.1': true
