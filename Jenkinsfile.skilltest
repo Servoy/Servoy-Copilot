@@ -126,10 +126,9 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
             steps {
                 // KIRO_API_KEY is bound as an ENV VAR (not -D): the @servoy/opencode-kiro-auth
                 // plugin in the opencode child process reads it from the environment, which the
-                // surefire fork + opencode child inherit from this shell. The same key is also
-                // passed as -DGENAI_API_KEY (see the mvn line) only to satisfy the opencode setup
-                // gate; real auth is KIRO_API_KEY. cloud creds are no longer used (kept bound but
-                // unused) now that the Kiro key skips the cloud login.
+                // surefire fork + opencode child inherit from this shell. GENAI_API_KEY only has to
+                // be non-blank (opencode setup gate, MCP entitlement, CloudLogin skip), so the mvn
+                // line passes a fixed placeholder. Real auth is KIRO_API_KEY.
                 // GIT_TOKEN: the git-source baselines clone a PRIVATE repo (Servoy/servoy_test)
                 // over HTTPS via jgit. Headless, jgit must not fall back to EGit's UI credentials
                 // provider (it calls a null workbench UI service -> "A null service reference is
@@ -170,8 +169,8 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                             // plugin is a FRAGMENT of com.servoy.eclipse.opencode.skilltest, an OSGi
                             // (not Maven) dependency, so -am would not pull the host bundle into the
                             // reactor and Tycho could not resolve it at the reactor qualifier.
-                            // kiroApiKey -> -DGENAI_API_KEY (gate only); the real Kiro auth uses the
-                            // KIRO_API_KEY env var bound above. skillsZip is the skill4servoy
+                            // kiroApiKey -> -DGENAI_API_KEY (gate only, a non-secret placeholder); the
+                            // real Kiro auth uses the KIRO_API_KEY env var bound above. skillsZip is the skill4servoy
                             // .opencode-shippable bundle zipped in the previous stage.
                             // Run under bash so the stderr process-substitution filter below
                             // works. mvn's stderr is routed through a grep -v that drops ONLY the
@@ -194,6 +193,15 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 # nothing from here and allowEmptyResults:false surfaces it.
                                 rm -rf "$WORKSPACE/skilltest-reports"
                                 mkdir -p "$WORKSPACE/skilltest-reports"
+                                # Fresh kiro-auth plugin state (kiro.json, kiro.db, kiro-usage.json,
+                                # kiro-plugin.log) every build. The plugin registers KIRO_API_KEY only
+                                # when kiro.db holds no API-key account yet, so a state dir that
+                                # survives builds (the old ~/.servoy/opencode default) kept using an
+                                # old or revoked key after a rotation. The opencode child inherits
+                                # KIRO_CONFIG_DIR from this shell; KiroCreditReader reads it too.
+                                export KIRO_CONFIG_DIR="$WORKSPACE/kiro-state"
+                                rm -rf "$KIRO_CONFIG_DIR"
+                                mkdir -p "$KIRO_CONFIG_DIR"
                                 # Tee the whole run to opencode-server.log so the opencode child
                                 # process output (model-call results, auth/quota errors, the reason
                                 # an agent run produced nothing) is captured on disk and archived -
@@ -209,11 +217,21 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dservoy.skilltest.run=true \
                                 -Dservoy.skilltest.baselines="$WORKSPACE/baselines-repo/baselines" \
                                 -Dservoy.skilltest.outputDir="$WORKSPACE/skilltest-reports" \
-                                -Dservoy.skilltest.kiroApiKey="$KIRO_API_KEY" \
+                                -Dservoy.skilltest.kiroApiKey="ci-skilltest-no-genai" \
                                 -Dservoy.skilltest.skillsZip="$WORKSPACE/skilltest-skills.zip" \
                                 -Dopencode.shutdown.debug=true \
                                 2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2) \
-                                | tee "$WORKSPACE/skilltest-reports/opencode-server.log"'''
+                                | sed -u "s|${KIRO_API_KEY}|****|g" \
+                                | tee "$WORKSPACE/skilltest-reports/opencode-server.log"
+                                rc=$?
+                                # Backstop: the key no longer goes on the fork command line (GENAI_API_KEY
+                                # gets a fixed placeholder above), but Jenkins only masks its own console,
+                                # not files. Mask anything that still slips into the tee'd log (pipe above)
+                                # or the tycho-surefire XML <properties> the junit step publishes, while
+                                # KIRO_API_KEY is still bound. Key is [A-Za-z0-9_].
+                                find "$WORKSPACE" -path '*/target/surefire-reports/*' -name '*.xml' \
+                                    -exec sed -i "s|${KIRO_API_KEY}|****|g" {} +
+                                exit $rc'''
                         }
                       }
                     }
@@ -246,6 +264,10 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                         # The opencode server's stdout/stderr streams through the Maven run, which
                         # is tee'd to skilltest-reports/opencode-server.log by the run step above;
                         # that file carries the model-call result and is archived below.
+                        # Delete the per-build kiro-auth state dir: kiro.db / kiro.json hold the
+                        # Kiro key and must not stay browsable in the workspace. Nothing from it is
+                        # copied or archived.
+                        rm -rf "$WORKSPACE/kiro-state"
                         echo "collected logs:"; ls -la "$WORKSPACE/skilltest-logs" 2>/dev/null
                     '''
                     // The coverage report is written to the FIXED name coverage.html (one per

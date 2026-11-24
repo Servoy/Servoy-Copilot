@@ -88,6 +88,11 @@ public final class KiroUsageReader {
 		// ~/.servoy/opencode/ FIRST - via the single source of truth, with a
 		// user.home fallback for a no-OSGi test - so real runs stop reading
 		// "unknown". Only then fall back to the panel's cross-platform defaults.
+		// KIRO_CONFIG_DIR (the plugin's own override, set per build on CI) wins first.
+		File kiroConfigDir = KiroCreditReader.kiroConfigDirOverride();
+		if (kiroConfigDir != null) {
+			files.add(new File(kiroConfigDir, "kiro-usage.json")); //$NON-NLS-1$
+		}
 		File servoyConfig = KiroCreditReader.servoyOpencodeConfigDir();
 		if (servoyConfig != null) {
 			files.add(new File(servoyConfig, "kiro-usage.json")); //$NON-NLS-1$

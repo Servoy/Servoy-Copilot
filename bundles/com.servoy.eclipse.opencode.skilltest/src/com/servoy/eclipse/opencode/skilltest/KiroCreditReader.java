@@ -121,6 +121,12 @@ public final class KiroCreditReader {
 	 */
 	static List<File> defaultCandidateDirs() {
 		List<File> dirs = new ArrayList<>();
+		// The kiro-auth plugin's own override wins over every default (CI points it at a
+		// per-build dir so a stale account from an older build cannot shadow the key).
+		File kiroConfigDir = kiroConfigDirOverride();
+		if (kiroConfigDir != null) {
+			dirs.add(kiroConfigDir);
+		}
 		File servoyConfig = servoyOpencodeConfigDir();
 		if (servoyConfig != null) {
 			dirs.add(servoyConfig);
@@ -147,6 +153,16 @@ public final class KiroCreditReader {
 			dirs.add(new File(new File(new File(new File(userHome), "AppData"), "Roaming"), "opencode")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		}
 		return dirs;
+	}
+
+	/**
+	 * The {@code KIRO_CONFIG_DIR} environment override the kiro-auth plugin honours
+	 * before any other location for {@code kiro.db} / {@code kiro-usage.json}, or
+	 * {@code null} when it is not set.
+	 */
+	static File kiroConfigDirOverride() {
+		String dir = System.getenv("KIRO_CONFIG_DIR"); //$NON-NLS-1$
+		return dir == null || dir.isBlank() ? null : new File(dir);
 	}
 
 	/**
