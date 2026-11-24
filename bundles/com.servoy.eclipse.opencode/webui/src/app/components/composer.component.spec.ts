@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ComposerComponent } from './composer.component';
 import { ComposerDraft } from '../services/chat-store.service';
@@ -652,6 +652,88 @@ describe('ComposerComponent', () => {
     it('does not throw while dragging', () => {
       fire('dragenter');
       expect(() => fixture.detectChanges()).not.toThrow();
+    });
+  });
+
+  describe('focusEnd', () => {
+    const textarea = () => component.textarea().nativeElement;
+
+    beforeEach(() => {
+      document.body.appendChild(fixture.nativeElement);
+    });
+
+    afterEach(() => {
+      fixture.nativeElement.remove();
+    });
+
+    it('focuses the textarea with the caret after the last character of the draft', async () => {
+      setDraft('/svyImplement ');
+      await fixture.whenStable();
+      textarea().setSelectionRange(0, 0);
+      expect(document.activeElement).not.toBe(textarea());
+      expect(textarea().selectionStart).toBe(0);
+
+      component.focusEnd();
+      await fixture.whenStable();
+
+      expect(textarea().value).toBe('/svyImplement ');
+      expect(document.activeElement).toBe(textarea());
+      expect(textarea().selectionStart).toBe(textarea().value.length);
+      expect(textarea().selectionEnd).toBe(textarea().value.length);
+    });
+
+    it('puts the caret at the end when the draft is replaced in the same tick as the call', async () => {
+      setDraft('old text that is long');
+      await fixture.whenStable();
+      textarea().setSelectionRange(0, 0);
+      const spy = vi.spyOn(textarea(), 'setSelectionRange');
+
+      fixture.componentRef.setInput('draft', { text: '/svyFixTicket ', attachments: [] } satisfies ComposerDraft);
+      component.focusEnd();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(textarea().value).toBe('/svyFixTicket ');
+      expect(document.activeElement).toBe(textarea());
+      expect(textarea().selectionStart).toBe(textarea().value.length);
+      expect(textarea().selectionEnd).toBe(textarea().value.length);
+      expect(spy).toHaveBeenLastCalledWith('/svyFixTicket '.length, '/svyFixTicket '.length);
+    });
+
+    it('recomputes the textarea height for a long multi-line draft, capped at the maximum', async () => {
+      Object.defineProperty(textarea(), 'scrollHeight', { configurable: true, get: () => 500 });
+      setDraft('a\nb\nc\nd\ne\nf\ng\nh');
+
+      component.focusEnd();
+      await fixture.whenStable();
+
+      expect(textarea().style.height).toBe('200px');
+      expect(textarea().style.overflowY).toBe('auto');
+    });
+
+    it('sizes the textarea to its content below the maximum', async () => {
+      Object.defineProperty(textarea(), 'scrollHeight', { configurable: true, get: () => 90 });
+      setDraft('a\nb');
+
+      component.focusEnd();
+      await fixture.whenStable();
+
+      expect(textarea().style.height).toBe('90px');
+      expect(textarea().style.overflowY).toBe('hidden');
+    });
+
+    it('emits neither sendMessage nor draftChange', async () => {
+      const sent: SendPart[][] = [];
+      const drafts: ComposerDraft[] = [];
+      component.sendMessage.subscribe((p) => sent.push(p));
+      component.draftChange.subscribe((d) => drafts.push(d));
+      setDraft('/svyImplement ');
+
+      component.focusEnd();
+      await fixture.whenStable();
+
+      expect(sent).toHaveLength(0);
+      expect(drafts).toHaveLength(0);
     });
   });
 });

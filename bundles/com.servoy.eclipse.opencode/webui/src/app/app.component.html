@@ -108,6 +108,9 @@
         [childSignals]="store.childSignals()"
         [turnBusy]="store.streaming()"
         [restoreScroll]="restoreScroll()"
+        [showWelcome]="store.welcomeReady()"
+        [hasSessions]="store.sessions().length > 0"
+        (starter)="onStarter($event)"
         (openSession)="onSelectSession($event)"
         (loadOlder)="onLoadOlder()"
       ></svy-message-list>

@@ -1,0 +1,158 @@
+:host {
+  display: block;
+}
+
+.welcome {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  color: var(--svy-fg);
+
+  &.hero {
+    align-items: center;
+    text-align: center;
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.hero .title {
+  font-size: 1.4rem;
+}
+
+.accent {
+  color: var(--svy-acc-fg);
+}
+
+.intro {
+  margin: 0;
+  color: var(--svy-fg2);
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  font-family: var(--svy-mono);
+  font-size: 0.75rem;
+
+  &.acc {
+    color: var(--svy-acc-fg);
+  }
+
+  &.blue {
+    color: var(--svy-blue-fg);
+  }
+}
+
+.step-title {
+  font-weight: 600;
+}
+
+.step-text {
+  color: var(--svy-muted);
+  font-size: 0.9rem;
+}
+
+.try {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--svy-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--svy-line);
+  border-radius: 12px;
+  background: var(--svy-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--svy-surface-hover);
+  }
+}
+
+.cmd {
+  font-family: var(--svy-mono);
+  color: var(--svy-acc-fg);
+}
+
+.desc {
+  color: var(--svy-muted);
+  font-size: 0.9rem;
+}
+
+.pills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.pill {
+  height: 40px;
+  padding: 0 1rem;
+  border: 1px solid var(--svy-acc-line);
+  border-radius: 999px;
+  background: var(--svy-acc-soft);
+  color: var(--svy-acc-fg);
+  font-family: var(--svy-mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.card:focus-visible,
+.pill:focus-visible {
+  outline: 2px solid var(--svy-acc-fg);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--svy-focus-ring);
+}
+
+@media (max-width: 640px) {
+  .steps,
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

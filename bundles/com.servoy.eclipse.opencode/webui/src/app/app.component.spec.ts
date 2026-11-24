@@ -9,13 +9,16 @@ import { MessageListComponent } from './components/message-list.component';
 import { Part, Session } from './models/opencode.models';
 import { ChildSignals } from './services/agent-status';
 import { ChatMessage, ChatStore, ComposerDraft } from './services/chat-store.service';
+import { CommandCatalogService } from './services/command-catalog.service';
 import { StatusService } from './services/status.service';
+import { SvyCommand } from './services/svy-commands';
 
 describe('AppComponent', () => {
   let fixture: ComponentFixture<AppComponent>;
   let component: AppComponent;
   let draft: ReturnType<typeof signal<ComposerDraft>>;
   let store: Record<string, unknown>;
+  const catalogCommands = signal<SvyCommand[]>([]);
   let status: {
     health: ReturnType<typeof vi.fn>;
     mcp: ReturnType<typeof vi.fn>;
@@ -31,11 +34,17 @@ describe('AppComponent', () => {
     setQuery(query);
     document.documentElement.removeAttribute('data-theme');
     draft = signal<ComposerDraft>({ text: '', attachments: [] });
+    catalogCommands.set([
+      { name: 'svyImplement', description: 'Implement a feature' },
+      { name: 'svyFixTicket', description: 'Fix a ticket' }
+    ]);
     store = {
       bootstrap: vi.fn(),
       sessionTree: signal([]),
       activeSessionId: signal<string | null>(null),
       messages: signal([]),
+      sessions: signal<Session[]>([]),
+      welcomeReady: signal(false),
       hasMoreMessages: signal(false),
       childSignals: signal(new Map()),
       busySessionIds: signal(new Set<string>()),
@@ -75,7 +84,8 @@ describe('AppComponent', () => {
       providers: [
         provideZonelessChangeDetection(),
         { provide: ChatStore, useValue: store },
-        { provide: StatusService, useValue: status }
+        { provide: StatusService, useValue: status },
+        { provide: CommandCatalogService, useValue: { commands: catalogCommands, load: vi.fn() } }
       ]
     }).compileComponents();
     fixture = TestBed.createComponent(AppComponent);
@@ -634,6 +644,108 @@ describe('AppComponent', () => {
       set('activeIsSubagent', true);
       component.onBackToParent();
       expect(store['openSession']).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('welcome and starters', () => {
+    beforeEach(async () => setup());
+
+    const set = <T>(key: string, value: T) => (store[key] as ReturnType<typeof signal<T>>).set(value);
+    const settle = async () => {
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+    const textarea = () => q<HTMLTextAreaElement>('svy-composer textarea')!;
+
+    it('renders no welcome while welcomeReady is false', () => {
+      expect(q('svy-welcome')).toBeNull();
+    });
+
+    it('renders no welcome next to the banner when the store has an error and is not ready', async () => {
+      set('error', 'Servoy AI is starting or no solution is active. Please wait.');
+      await settle();
+      expect(q('.banner')!.textContent).toContain('Servoy AI is starting or no solution is active. Please wait.');
+      expect(q('svy-welcome')).toBeNull();
+    });
+
+    it('renders the intro when ready and there are no sessions', async () => {
+      set('welcomeReady', true);
+      await settle();
+      expect(q('svy-welcome')).not.toBeNull();
+      expect(q('svy-welcome ol.steps')).not.toBeNull();
+      expect(q('svy-welcome button.card')).not.toBeNull();
+    });
+
+    it('renders the hero when ready and there are sessions', async () => {
+      set('welcomeReady', true);
+      set('sessions', [{ id: 's1', title: 'One' }]);
+      await settle();
+      expect(q('svy-welcome h1.title')!.textContent).toBe('What should we build in Servoy today?');
+      expect(q('svy-welcome ol.steps')).toBeNull();
+      expect(q('svy-welcome button.pill')).not.toBeNull();
+    });
+
+    it('removes the welcome once the store has messages', async () => {
+      set('welcomeReady', true);
+      await settle();
+      expect(q('svy-welcome')).not.toBeNull();
+      set('messages', [
+        { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] }
+      ] as unknown as ChatMessage[]);
+      await settle();
+      expect(q('svy-welcome')).toBeNull();
+    });
+
+    it('clicking a starter fills the draft with "/name ", sends nothing, focuses the textarea with the caret at the end', async () => {
+      draft.set({ text: 'previous words that are long', attachments: [] });
+      set('welcomeReady', true);
+      await settle();
+      textarea().setSelectionRange(0, 0);
+      expect(textarea().selectionStart).toBe(0);
+
+      await click(q<HTMLButtonElement>('svy-welcome button.card')!);
+      await settle();
+
+      expect(draft().text).toBe('/svyImplement ');
+      expect(store['setActiveDraft']).toHaveBeenCalledTimes(1);
+      expect(store['send']).not.toHaveBeenCalled();
+      expect(textarea().value).toBe('/svyImplement ');
+      expect(document.activeElement).toBe(textarea());
+      expect(textarea().selectionStart).toBe(textarea().value.length);
+      expect(textarea().selectionEnd).toBe(textarea().value.length);
+    });
+
+    it('replaces existing draft text and keeps existing attachments', async () => {
+      const attachments = [{ filename: 'a.txt', mime: 'text/plain', url: 'a.txt' }];
+      draft.set({ text: 'previous words', attachments });
+      set('welcomeReady', true);
+      set('sessions', [{ id: 's1', title: 'One' }]);
+      await settle();
+
+      await click(q<HTMLButtonElement>('svy-welcome button.pill')!);
+      await settle();
+
+      expect(draft().text).toBe('/svyImplement ');
+      expect(draft().attachments).toEqual(attachments);
+      expect(store['send']).not.toHaveBeenCalled();
+    });
+
+    it('onStarter does not throw when no composer is rendered (subagent view)', async () => {
+      set('activeIsSubagent', true);
+      set('activeParent', { id: 's1', title: 'Main' });
+      await settle();
+      expect(q('svy-composer')).toBeNull();
+      expect(() => component.onStarter({ name: 'svyFixTicket', description: 'Fix a ticket' })).not.toThrow();
+      expect(draft().text).toBe('/svyFixTicket ');
+      expect(store['send']).not.toHaveBeenCalled();
+    });
+
+    it('does not throw NG0600 when welcomeReady and sessions change', async () => {
+      set('welcomeReady', true);
+      expect(() => fixture.detectChanges()).not.toThrow();
+      set('sessions', [{ id: 's1', title: 'One' }]);
+      expect(() => fixture.detectChanges()).not.toThrow();
     });
   });
 

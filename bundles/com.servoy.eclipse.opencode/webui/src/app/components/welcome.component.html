@@ -1,0 +1,47 @@
+<section class="welcome" [class.hero]="hasSessions()" aria-label="Welcome">
+  @if (!hasSessions()) {
+    <h1 class="title">Welcome to Servoy <span class="accent">AI</span></h1>
+    <p class="intro">Describe what you need in your solution. A team of agents works it out - you only answer the questions that matter.</p>
+    <ol class="steps">
+      <li class="step">
+        <span class="label acc">01 - You</span>
+        <span class="step-title">Ask in plain words</span>
+        <span class="step-text">Type, paste a screenshot, or pick a / command.</span>
+      </li>
+      <li class="step">
+        <span class="label acc">02 - Orchestrator</span>
+        <span class="step-title">Plans, delegates, asks</span>
+        <span class="step-text">The only one who talks to you. It asks when a choice is yours.</span>
+      </li>
+      <li class="step">
+        <span class="label blue">03 - Agents</span>
+        <span class="step-title">Do one task, report back</span>
+        <span class="step-text">Each agent finishes or stops and hands back. Open one to see its work.</span>
+      </li>
+    </ol>
+    @if (starters().length > 0) {
+      <h2 class="try">Try one</h2>
+      <ul class="cards">
+        @for (cmd of starters(); track cmd.name) {
+          <li>
+            <button type="button" class="card" (click)="pick.emit(cmd)">
+              <span class="cmd">/{{ cmd.name }}</span>
+              <span class="desc">{{ cmd.description }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <h1 class="title">What should we build in <span class="accent">Servoy</span> today?</h1>
+    @if (starters().length > 0) {
+      <ul class="pills">
+        @for (cmd of starters(); track cmd.name) {
+          <li>
+            <button type="button" class="pill" [attr.title]="cmd.description || null" (click)="pick.emit(cmd)">/{{ cmd.name }}</button>
+          </li>
+        }
+      </ul>
+    }
+  }
+</section>

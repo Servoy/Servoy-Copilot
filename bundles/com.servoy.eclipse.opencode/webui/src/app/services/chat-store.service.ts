@@ -94,6 +94,16 @@ export class ChatStore implements OnDestroy {
 
   /**
    * Pagination state for the active session's transcript. The server returns
+  /** True once bootstrap() has received the session list (stays false when it fails). */
+  private readonly sessionsLoadedSig = signal(false);
+  readonly sessionsLoaded = this.sessionsLoadedSig.asReadonly();
+  /** True once the active session's newest message page has arrived. */
+  private readonly messagesLoadedSig = signal(false);
+  /** Whether the welcome screen may be shown without flashing during loading or after an error. */
+  readonly welcomeReady = computed(
+    () => this.sessionsLoadedSig() && (this.activeSessionId() === null || this.messagesLoadedSig())
+  );
+
    * the newest page first; {@code olderCursor} is the handle for the page of
    * still-older messages, {@code hasMore} tells the message list whether to
    * offer a "load older" when scrolled to the top, and {@code loadingOlder}
@@ -520,6 +530,7 @@ export class ChatStore implements OnDestroy {
       },
       error: (err) => this.error.set(this.describe('bootstrap', err))
     });
+        this.sessionsLoadedSig.set(true);
   }
 
   /**
@@ -549,6 +560,7 @@ export class ChatStore implements OnDestroy {
     this.olderCursor = null;
     this.hasMoreSig.set(false);
     this.loadingOlderSig.set(false);
+    this.messagesLoadedSig.set(false);
     this.seedActiveSessions();
     this.api.listMessagePage(id).subscribe({
       next: (page) => {
@@ -564,6 +576,7 @@ export class ChatStore implements OnDestroy {
             .map((m) => this.backfillToolMetadata(this.toChatMessage(m)))
         );
       },
+        this.messagesLoadedSig.set(true);
       error: (err) => this.error.set(this.describe('listMessages', err))
     });
     // Recover a form still pending on the server (e.g. after a reload, when the
@@ -727,6 +740,7 @@ export class ChatStore implements OnDestroy {
         // session.updated event, which upserts in place.
         this.upsertSession(session);
         this.dispatch(session.id, parts);
+        this.messagesLoadedSig.set(true);
       },
       error: (err) => this.error.set(this.describe('createSession', err))
     });

@@ -1,10 +1,14 @@
-import { provideZonelessChangeDetection } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { By } from '@angular/platform-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Part } from '../models/opencode.models';
 import { ChatMessage } from '../services/chat-store.service';
+import { CommandCatalogService } from '../services/command-catalog.service';
+import { SvyCommand } from '../services/svy-commands';
 import { MessageListComponent } from './message-list.component';
+import { WelcomeComponent } from './welcome.component';
 
 const msg = (id: string, t = id): ChatMessage =>
   ({ info: { id, role: 'assistant' }, parts: [{ type: 'text', text: t } as Part] }) as unknown as ChatMessage;
@@ -129,3 +133,74 @@ describe('MessageListComponent scroll state and restore', () => {
     });
   });
 });
+
+describe('MessageListComponent welcome', () => {
+  let fixture: ComponentFixture<MessageListComponent>;
+  const commands = signal<SvyCommand[]>([{ name: 'svyImplement', description: 'Implement a feature' }]);
+  const load = vi.fn();
+
+  const el = (): HTMLElement => fixture.nativeElement;
+  const welcome = () => el().querySelector('svy-welcome');
+
+  const render = (inputs: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(inputs)) {
+      fixture.componentRef.setInput(key, value);
+    }
+    fixture.detectChanges();
+  };
+
+  beforeEach(async () => {
+    load.mockClear();
+    await TestBed.configureTestingModule({
+      imports: [MessageListComponent],
+      providers: [provideZonelessChangeDetection(), { provide: CommandCatalogService, useValue: { commands, load } }]
+    }).compileComponents();
+    fixture = TestBed.createComponent(MessageListComponent);
+    fixture.detectChanges();
+  });
+
+  it('renders no welcome and no text when showWelcome is false and there are no messages', () => {
+    render({ messages: [] });
+    expect(welcome()).toBeNull();
+    expect(el().textContent).not.toContain('What should we build in Servoy today?');
+    expect(el().textContent).not.toContain('Welcome to Servoy');
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('renders the intro welcome when showWelcome is true and hasSessions is false', () => {
+    render({ messages: [], showWelcome: true, hasSessions: false });
+    expect(welcome()).not.toBeNull();
+    expect(el().textContent).toContain('Welcome to Servoy');
+    expect(el().querySelector('ol.steps')).not.toBeNull();
+  });
+
+  it('forwards hasSessions: renders the hero line and pills when true', () => {
+    render({ messages: [], showWelcome: true, hasSessions: true });
+    expect(el().querySelector('h1.title')!.textContent).toBe('What should we build in Servoy today?');
+    expect(el().querySelector('button.pill')).not.toBeNull();
+    expect(el().querySelector('ol.steps')).toBeNull();
+  });
+
+  it('re-emits a pick from the welcome on starter', () => {
+    const picked: SvyCommand[] = [];
+    fixture.componentInstance.starter.subscribe((c) => picked.push(c));
+    render({ messages: [], showWelcome: true, hasSessions: true });
+    (el().querySelector('button.pill') as HTMLButtonElement).click();
+    expect(picked).toEqual([{ name: 'svyImplement', description: 'Implement a feature' }]);
+  });
+
+  it('renders no welcome when messages are present even with showWelcome true', () => {
+    render({ messages: [msg('m1')], showWelcome: true, hasSessions: true });
+    expect(welcome()).toBeNull();
+    expect(el().textContent).not.toContain('What should we build');
+  });
+
+  it('removes the welcome once messages arrive', () => {
+    render({ messages: [], showWelcome: true });
+    expect(welcome()).not.toBeNull();
+    render({ messages: [msg('m1')] });
+    expect(welcome()).toBeNull();
+    expect(fixture.debugElement.query(By.directive(WelcomeComponent))).toBeNull();
+  });
+});
+

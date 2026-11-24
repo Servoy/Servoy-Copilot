@@ -13,6 +13,7 @@ import { SendPart } from './models/opencode.models';
 import { ChatStore, ComposerDraft } from './services/chat-store.service';
 import { buildAgentView } from './services/agent-view';
 import { debugEnabled } from './services/debug-log';
+import { SvyCommand, insertionText } from './services/svy-commands';
 import { ThemeService } from './services/theme.service';
 import { FormAnswer } from './models/opencode.models';
 import { AgentFooterComponent } from './components/agent-footer.component';
@@ -69,6 +70,7 @@ export class AppComponent implements OnInit {
   private readonly messageList = viewChild(MessageListComponent);
   private readonly statusPanel = viewChild(StatusPanelComponent);
   private readonly statusButton = viewChild<ElementRef<HTMLButtonElement>>('statusButton');
+  private readonly composer = viewChild(ComposerComponent);
 
   /** Overall state of the (always mounted) status panel, for the header dot. */
   readonly statusDot = computed(() => this.statusPanel()?.overall() ?? 'idle');
@@ -87,6 +89,14 @@ export class AppComponent implements OnInit {
 
   toggleStatus(): void {
     const next = !this.statusOpen();
+  onStarter(command: SvyCommand): void {
+    this.store.setActiveDraft({
+      text: insertionText(command),
+      attachments: this.store.activeDraft().attachments
+    });
+    this.composer()?.focusEnd();
+  }
+
     this.statusOpen.set(next);
     if (next) {
       this.statusPanel()?.refresh();

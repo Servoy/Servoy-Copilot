@@ -11,7 +11,9 @@
         (openSession)="openSession.emit($event)"
       ></svy-message-item>
     } @empty {
-      <div class="empty">What should we build in Servoy today?</div>
+      @if (showWelcome()) {
+        <svy-welcome [hasSessions]="hasSessions()" (pick)="starter.emit($event)"></svy-welcome>
+      }
     }
   </div>
 </div>

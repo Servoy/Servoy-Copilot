@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -76,6 +78,7 @@ export class ComposerComponent implements OnInit {
   private static readonly MAX_HEIGHT_PX = 200;
 
   private readonly catalog = inject(CommandCatalogService);
+  private readonly injector = inject(Injector);
   private dragDepth = 0;
 
   readonly activeIndex = signal(0);
@@ -129,6 +132,20 @@ export class ComposerComponent implements OnInit {
 
   onHover(index: number): void {
     this.activeIndex.set(index);
+  }
+
+  focusEnd(): void {
+    afterNextRender(
+      () =>
+        queueMicrotask(() => {
+          const el = this.textarea().nativeElement;
+          el.focus();
+          const end = el.value.length;
+          el.setSelectionRange(end, end);
+          this.autoGrow();
+        }),
+      { injector: this.injector }
+    );
   }
 
   pickCommand(command: SvyCommand): void {

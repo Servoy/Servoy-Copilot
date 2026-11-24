@@ -11,7 +11,9 @@ import {
 
 import { ChildSignals } from '../services/agent-status';
 import { ChatMessage } from '../services/chat-store.service';
+import { SvyCommand } from '../services/svy-commands';
 import { MessageItemComponent } from './message-item.component';
+import { WelcomeComponent } from './welcome.component';
 
 /**
  * Scrollable list of chat messages. Auto-scrolls to the bottom as new content
@@ -23,7 +25,7 @@ import { MessageItemComponent } from './message-item.component';
   selector: 'svy-message-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MessageItemComponent],
+  imports: [MessageItemComponent, WelcomeComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss'
 })
@@ -35,6 +37,9 @@ export class MessageListComponent {
   readonly childSignals = input<ReadonlyMap<string, ChildSignals>>(new Map());
   /** Whether the active session has a turn running. */
   readonly turnBusy = input<boolean>(false);
+  readonly showWelcome = input<boolean>(false);
+  readonly hasSessions = input<boolean>(false);
+  readonly starter = output<SvyCommand>();
 
   /** Bubbled up from a subagent tool row: the child session id to open. */
   readonly openSession = output<string>();

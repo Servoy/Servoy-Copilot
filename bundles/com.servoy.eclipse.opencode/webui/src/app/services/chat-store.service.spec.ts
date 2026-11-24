@@ -870,6 +870,134 @@ describe('ChatStore', () => {
     expect(userMsg?.parts.map((p) => p.type)).toEqual(['text', 'file']);
     expect(userMsg?.parts[1].filename).toBe('a.txt');
   });
+  describe('welcome readiness', () => {
+    it('sessionsLoaded and welcomeReady are false before bootstrap', () => {
+      expect(store.sessionsLoaded()).toBe(false);
+      expect(store.welcomeReady()).toBe(false);
+    });
+
+    it('sessionsLoaded stays false and the error is set when listSessions fails', () => {
+      api.listSessions.mockReturnValue(throwError(() => ({ status: 503 })));
+
+      store.bootstrap();
+
+      expect(store.sessionsLoaded()).toBe(false);
+      expect(store.welcomeReady()).toBe(false);
+      expect(store.error()).not.toBeNull();
+    });
+
+    it('bootstrap without sessions: sessionsLoaded and welcomeReady are true', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([]));
+
+      store.bootstrap();
+
+      expect(store.sessionsLoaded()).toBe(true);
+      expect(store.activeSessionId()).toBeNull();
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('bootstrap with sessions: sessionsLoaded true, welcomeReady true once the page has arrived', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One', time: { updated: 1 } }]));
+
+      store.bootstrap();
+
+      expect(store.sessionsLoaded()).toBe(true);
+      expect(store.activeSessionId()).toBe('s1');
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('openSession keeps welcomeReady false until listMessagePage answers', () => {
+      const page = new Subject<{ messages: MessageWithParts[]; olderCursor: string | null }>();
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One' }]));
+      api.listMessagePage.mockReturnValue(page);
+
+      store.bootstrap();
+
+      expect(store.sessionsLoaded()).toBe(true);
+      expect(store.activeSessionId()).toBe('s1');
+      expect(store.welcomeReady()).toBe(false);
+
+      page.next({ messages: [], olderCursor: null });
+
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('switching to another session resets welcomeReady to false until its page arrives', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One' }]));
+      store.bootstrap();
+      expect(store.welcomeReady()).toBe(true);
+      const page = new Subject<{ messages: MessageWithParts[]; olderCursor: string | null }>();
+      api.listMessagePage.mockReturnValue(page);
+
+      store.openSession('s2');
+
+      expect(store.welcomeReady()).toBe(false);
+      page.next({ messages: [], olderCursor: null });
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('a late answer for a session the user left does not flip welcomeReady', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One' }]));
+      store.bootstrap();
+      const first = new Subject<{ messages: MessageWithParts[]; olderCursor: string | null }>();
+      const second = new Subject<{ messages: MessageWithParts[]; olderCursor: string | null }>();
+      api.listMessagePage.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+      store.openSession('a');
+      store.openSession('b');
+      first.next({ messages: [], olderCursor: null });
+
+      expect(store.activeSessionId()).toBe('b');
+      expect(store.welcomeReady()).toBe(false);
+      second.next({ messages: [], olderCursor: null });
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('a listMessagePage error leaves welcomeReady false', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One' }]));
+      api.listMessagePage.mockReturnValue(throwError(() => ({ status: 500 })));
+
+      store.bootstrap();
+
+      expect(store.sessionsLoaded()).toBe(true);
+      expect(store.error()).not.toBeNull();
+      expect(store.welcomeReady()).toBe(false);
+    });
+
+    it('newSession after bootstrap gives welcomeReady true', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([{ id: 's1', title: 'One' }]));
+      store.bootstrap();
+
+      store.newSession();
+
+      expect(store.activeSessionId()).toBeNull();
+      expect(store.welcomeReady()).toBe(true);
+    });
+
+    it('send from a fresh session keeps welcomeReady true and adds the optimistic message', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([]));
+      api.createSession.mockReturnValue(of<Session>({ id: 'created' }));
+      api.sendPrompt.mockReturnValue(of<void>(undefined));
+      store.bootstrap();
+
+      store.send([{ type: 'text', text: 'hi' }]);
+
+      expect(store.activeSessionId()).toBe('created');
+      expect(store.welcomeReady()).toBe(true);
+      expect(store.messages()).toHaveLength(1);
+      expect(store.messages()[0].info.role).toBe('user');
+      expect(store.sessions().map((s) => s.id)).toEqual(['created']);
+    });
+
+    it('refreshSessions does not set sessionsLoaded', () => {
+      api.listSessions.mockReturnValue(of<Session[]>([]));
+
+      store.refreshSessions();
+
+      expect(store.sessionsLoaded()).toBe(false);
+    });
+  });
+
 
   it('send creates a session first when there is no active session', () => {
     api.createSession.mockReturnValue(of<Session>({ id: 'created' }));
