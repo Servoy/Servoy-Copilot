@@ -184,7 +184,7 @@ public final class McpToolClient {
 	 * reflectively (that package is not exported). Returns {@code null} if
 	 * unavailable - fine, since internal logins bypass auth.
 	 */
-	private static String readSessionAuthToken() {
+	static String readSessionAuthToken() {
 		try {
 			org.osgi.framework.Bundle b = org.eclipse.core.runtime.Platform
 					.getBundle("com.servoy.eclipse.developer.mcp"); //$NON-NLS-1$

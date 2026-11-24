@@ -217,18 +217,33 @@ public class SkillTestHeadlessRunner implements IApplication {
 		} catch (Throwable t) {
 			output("[diag] developer.mcp bundle not resolvable: " + t);
 		}
-		// Probe the MCP endpoint: any HTTP response = servlets registered; a
-		// connection refusal / 404 = MCP servers did not register.
+		// Probe the MCP endpoint with the session bearer token. The auth filter answers
+		// an unauthenticated (or wrongly authenticated) request with a bare 404 so the
+		// endpoint looks unmapped; without the token every probe read as "not
+		// registered". With it, any non-404 (the transport rejects a plain GET with a
+		// 4xx) means registered, and a 404 really means no servlet. No SSE Accept
+		// header, so the GET does not open a long-lived event stream.
 		String url = "http://127.0.0.1:" + webPort + "/dev_mcp/servoy-dev";
+		String token = McpToolClient.readSessionAuthToken();
 		try {
 			HttpURLConnection c = (HttpURLConnection) URI.create(url).toURL().openConnection();
 			c.setRequestMethod("GET");
+			if (token != null && !token.isBlank()) {
+				c.setRequestProperty("Authorization", "Bearer " + token);
+			}
 			c.setConnectTimeout(2000);
 			c.setReadTimeout(2000);
 			int code = c.getResponseCode();
 			c.disconnect();
-			output("[diag] MCP endpoint " + url + " -> HTTP " + code
-					+ (code == 404 ? " (servlet NOT registered - MCP servers did not start)" : " (servlet present)"));
+			String meaning;
+			if (code != 404) {
+				meaning = " (servlet present)";
+			} else if (token == null || token.isBlank()) {
+				meaning = " (inconclusive: no session token to authenticate the probe)";
+			} else {
+				meaning = " (servlet NOT registered - MCP servers did not start)";
+			}
+			output("[diag] MCP endpoint " + url + " -> HTTP " + code + meaning);
 		} catch (IOException e) {
 			output("[diag] MCP endpoint " + url + " not reachable: " + e.getMessage());
 		}
