@@ -92,8 +92,6 @@ export class ChatStore implements OnDestroy {
   readonly messages = signal<ChatMessage[]>([]);
   readonly error = signal<string | null>(null);
 
-  /**
-   * Pagination state for the active session's transcript. The server returns
   /** True once bootstrap() has received the session list (stays false when it fails). */
   private readonly sessionsLoadedSig = signal(false);
   readonly sessionsLoaded = this.sessionsLoadedSig.asReadonly();
@@ -104,6 +102,8 @@ export class ChatStore implements OnDestroy {
     () => this.sessionsLoadedSig() && (this.activeSessionId() === null || this.messagesLoadedSig())
   );
 
+  /**
+   * Pagination state for the active session's transcript. The server returns
    * the newest page first; {@code olderCursor} is the handle for the page of
    * still-older messages, {@code hasMore} tells the message list whether to
    * offer a "load older" when scrolled to the top, and {@code loadingOlder}
@@ -521,6 +521,7 @@ export class ChatStore implements OnDestroy {
       next: (sessions) => {
         const all = sessions ?? [];
         this.allSessions.set(all);
+        this.sessionsLoadedSig.set(true);
         const mostRecent = this.mostRecentSession(all);
         if (mostRecent) {
           this.openSession(mostRecent.id);
@@ -530,7 +531,6 @@ export class ChatStore implements OnDestroy {
       },
       error: (err) => this.error.set(this.describe('bootstrap', err))
     });
-        this.sessionsLoadedSig.set(true);
   }
 
   /**
@@ -551,6 +551,7 @@ export class ChatStore implements OnDestroy {
   }
 
   openSession(id: string): void {
+    this.messagesLoadedSig.set(false);
     this.activeSessionId.set(id);
     this.messages.set([]);
     this.error.set(null);
@@ -560,13 +561,13 @@ export class ChatStore implements OnDestroy {
     this.olderCursor = null;
     this.hasMoreSig.set(false);
     this.loadingOlderSig.set(false);
-    this.messagesLoadedSig.set(false);
     this.seedActiveSessions();
     this.api.listMessagePage(id).subscribe({
       next: (page) => {
         if (this.activeSessionId() !== id) {
           return; // session changed while loading
         }
+        this.messagesLoadedSig.set(true);
         this.olderCursor = page.olderCursor;
         this.hasMoreSig.set(page.olderCursor !== null);
         this.recordSyntheticResults(page.messages ?? []);
@@ -576,7 +577,6 @@ export class ChatStore implements OnDestroy {
             .map((m) => this.backfillToolMetadata(this.toChatMessage(m)))
         );
       },
-        this.messagesLoadedSig.set(true);
       error: (err) => this.error.set(this.describe('listMessages', err))
     });
     // Recover a form still pending on the server (e.g. after a reload, when the
@@ -731,6 +731,7 @@ export class ChatStore implements OnDestroy {
     this.clearDraft(NEW_SESSION_DRAFT_KEY);
     this.api.createSession().subscribe({
       next: (session) => {
+        this.messagesLoadedSig.set(true);
         this.activeSessionId.set(session.id);
         this.messages.set([]);
         // Add the new session to the list directly. We must NOT refreshSessions()
@@ -740,7 +741,6 @@ export class ChatStore implements OnDestroy {
         // session.updated event, which upserts in place.
         this.upsertSession(session);
         this.dispatch(session.id, parts);
-        this.messagesLoadedSig.set(true);
       },
       error: (err) => this.error.set(this.describe('createSession', err))
     });

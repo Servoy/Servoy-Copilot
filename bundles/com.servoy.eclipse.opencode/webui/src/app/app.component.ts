@@ -68,9 +68,9 @@ export class AppComponent implements OnInit {
   readonly restoreScroll = signal<{ top: number; pinned: boolean } | null>(null);
 
   private readonly messageList = viewChild(MessageListComponent);
+  private readonly composer = viewChild(ComposerComponent);
   private readonly statusPanel = viewChild(StatusPanelComponent);
   private readonly statusButton = viewChild<ElementRef<HTMLButtonElement>>('statusButton');
-  private readonly composer = viewChild(ComposerComponent);
 
   /** Overall state of the (always mounted) status panel, for the header dot. */
   readonly statusDot = computed(() => this.statusPanel()?.overall() ?? 'idle');
@@ -87,8 +87,6 @@ export class AppComponent implements OnInit {
     this.store.bootstrap();
   }
 
-  toggleStatus(): void {
-    const next = !this.statusOpen();
   onStarter(command: SvyCommand): void {
     this.store.setActiveDraft({
       text: insertionText(command),
@@ -97,6 +95,8 @@ export class AppComponent implements OnInit {
     this.composer()?.focusEnd();
   }
 
+  toggleStatus(): void {
+    const next = !this.statusOpen();
     this.statusOpen.set(next);
     if (next) {
       this.statusPanel()?.refresh();
