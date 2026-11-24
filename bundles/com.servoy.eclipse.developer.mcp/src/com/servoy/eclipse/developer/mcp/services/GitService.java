@@ -512,7 +512,8 @@ public class GitService
 				sb.append("\n    ").append(commit.getFullMessage().trim().replace("\n", "\n    ")).append("\n\n");
 			}
 
-			return sb.toString();
+			String text = sb.toString();
+			return withReadHint(text, text.isEmpty(), repository, projectName, pathFilter);
 		}
 		catch (Exception e)
 		{
@@ -737,7 +738,9 @@ public class GitService
 	public String getDiff(String projectName, String repo, boolean staged, String pathFilter, boolean ignoreWhitespace)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderDiff(repository, staged, resolveReadPaths(repository, projectName, pathFilter), ignoreWhitespace);
+		String result = renderDiff(repository, staged, resolveReadPaths(repository, projectName, pathFilter),
+			ignoreWhitespace);
+		return withReadHint(result, "No changes.".equals(result), repository, projectName, pathFilter);
 	}
 
 	/**
@@ -752,8 +755,9 @@ public class GitService
 		String pathFilter, boolean ignoreWhitespace)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderRevisionDiff(repository, fromRevision, toRevision,
+		String result = renderRevisionDiff(repository, fromRevision, toRevision,
 			resolveReadPaths(repository, projectName, pathFilter), ignoreWhitespace);
+		return withReadHint(result, "No changes.".equals(result), repository, projectName, pathFilter);
 	}
 
 	/** {@link #getRevisionDiff} on an already-resolved repository, so a plain test can drive it. */
@@ -1027,7 +1031,88 @@ public class GitService
 		{
 			// Unreadable index - treat as "cannot tell", which refuses nothing.
 		}
-		return false;
+		// A file deleted from the working tree (and perhaps already from the index) is still the
+		// file the caller means when they name it, and still "exists" for the question asked here:
+		// which of two readings of an ambiguous path is the real one. Without HEAD, a repo-root
+		// 'docs/a.md' that was just deleted looked like it existed in neither reading and slipped
+		// past the out-of-project refusal (SVY-21303, round 4).
+		return existsInHead(repository, repoRelativePath);
+	}
+
+	/** Whether a repository-relative file or folder is in the tree of {@code HEAD}. */
+	private static boolean existsInHead(Repository repository, String repoRelativePath)
+	{
+		try (RevWalk walk = new RevWalk(repository))
+		{
+			ObjectId head = repository.resolve(Constants.HEAD);
+			if (head == null) return false;   // no commits yet
+			RevCommit commit = walk.parseCommit(head);
+			try (TreeWalk entry = TreeWalk.forPath(repository, repoRelativePath, commit.getTree()))
+			{
+				return entry != null;
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			return false;   // cannot tell - refuses nothing
+		}
+	}
+
+	/**
+	 * A note for a read that came back empty, naming how its path was read.
+	 * <p>
+	 * An out-of-project repository path is refused when the file exists in the working tree, the
+	 * index or HEAD. One that exists only in older history cannot be told apart from a project-relative
+	 * path to a file that is simply not there - {@code docs/a.md} reads either way - so it is read as
+	 * project-relative and the read answers empty. An empty answer that is silently believed is the
+	 * worst outcome for a read, so when the path was prefixed with the project and the prefixed
+	 * reading exists nowhere, the empty result says so and names the call that reaches history
+	 * (SVY-21303, round 4). Returns an empty string when there is nothing to say, so an ordinary empty
+	 * diff of an existing file stays quiet.
+	 *
+	 * @param prefix the project's repository-relative prefix, or {@code null}/blank for none
+	 */
+	public static String emptyReadHint(Repository repository, String prefix, String pathFilter)
+	{
+		if (repository == null || prefix == null || prefix.isBlank() || pathFilter == null || pathFilter.isBlank())
+		{
+			return "";
+		}
+		StringBuilder hint = new StringBuilder();
+		for (String raw : pathFilter.split(","))
+		{
+			String input = raw.trim().replace('\\', '/');
+			if (input.isEmpty() || ".".equals(input) || "./".equals(input)) continue;
+			String normalized;
+			try
+			{
+				normalized = Path.of(input).normalize().toString().replace('\\', '/');
+			}
+			catch (RuntimeException e)
+			{
+				continue;
+			}
+			if (normalized.isEmpty() || normalized.equals(prefix) || normalized.startsWith(prefix + "/")) continue;
+
+			String projectReading = prefix + "/" + normalized;
+			if (existsInRepository(repository, projectReading)) continue;
+			hint.append("Note: '").append(raw.trim()).append("' was read as the project-relative path '")
+				.append(projectReading).append("', and neither that nor '").append(normalized)
+				.append("' exists in the working tree, the index or HEAD, so the answer is empty. ")
+				.append("If the file existed only in older history, pass 'repo' and leave 'projectName' ")
+				.append("empty, with the repository-relative path.\n");
+		}
+		return hint.toString();
+	}
+
+	/** {@code result} with the {@link #emptyReadHint} appended when the read came back {@code empty}. */
+	private String withReadHint(String result, boolean empty, Repository repository, String projectName,
+		String pathFilter)
+	{
+		if (!empty) return result;
+		String hint = emptyReadHint(repository, projectPrefixOrNull(projectName), pathFilter);
+		if (hint.isEmpty()) return result;
+		return result.isEmpty() ? hint : result + "\n" + hint;
 	}
 
 	/**
@@ -1346,11 +1431,22 @@ public class GitService
 	public String showCommit(String projectName, String repo, String revision, String pathFilter)
 	{
 		Repository repository = resolveRepository(projectName, repo);
-		return renderCommit(repository, revision, resolveReadPaths(repository, projectName, pathFilter));
+		CommitRender render = renderCommitParts(repository, revision, resolveReadPaths(repository, projectName, pathFilter));
+		return withReadHint(render.text(), render.diffEmpty(), repository, projectName, pathFilter);
 	}
 
 	/** {@link #showCommit} on an already-resolved repository, so a plain test can drive it. */
 	public static String renderCommit(Repository repository, String revision, List<String> repositoryPaths)
+	{
+		return renderCommitParts(repository, revision, repositoryPaths).text();
+	}
+
+	/** A rendered commit, and whether its diff section came out empty. */
+	private record CommitRender(String text, boolean diffEmpty)
+	{
+	}
+
+	private static CommitRender renderCommitParts(Repository repository, String revision, List<String> repositoryPaths)
 	{
 		String requested = revision == null || revision.isBlank() ? Constants.HEAD : revision.trim();
 
@@ -1391,8 +1487,9 @@ public class GitService
 
 			List<DiffEntry> diffs = formatter.scan(oldTree, newTree);
 			formatter.format(diffs);
+			boolean diffEmpty = out.size() == 0;
 			sb.append(out.toString(StandardCharsets.UTF_8));
-			return sb.toString();
+			return new CommitRender(sb.toString(), diffEmpty);
 		}
 		catch (IllegalArgumentException e)
 		{

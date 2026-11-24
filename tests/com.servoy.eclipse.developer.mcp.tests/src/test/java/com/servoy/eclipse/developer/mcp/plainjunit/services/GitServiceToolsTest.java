@@ -1199,4 +1199,104 @@ public class GitServiceToolsTest
 				com.servoy.eclipse.developer.mcp.McpServerFactory.errorText(new IllegalStateException()));
 		}
 	}
+
+	/**
+	 * An empty read must not be silently believed (SVY-21303, round 4). A repo-root path that exists
+	 * only in older history reads as project-relative, matches nothing, and used to answer a bare
+	 * "No changes." / empty log. The hint names the reading and the call that reaches history.
+	 */
+	@Nested
+	@DisplayName("an empty read says how its path was read")
+	class EmptyReadHint
+	{
+		private static final String PREFIX = "bundles/project-a";
+
+		@BeforeEach
+		void nestedLayout() throws Exception
+		{
+			Files.createDirectories(tempDir.resolve("bundles/project-a/src"));
+			Files.createDirectories(tempDir.resolve("docs"));
+			Files.writeString(tempDir.resolve("bundles/project-a/src/Foo.java"), "class Foo {}\n");
+			Files.writeString(tempDir.resolve("docs/old.md"), "old\n");
+			git.add().addFilepattern(".").call();
+			git.commit().setMessage("initial commit").call();
+		}
+
+		@Test
+		@DisplayName("a repo-root file deleted and committed gets the hint")
+		void historyOnlyPathGetsTheHint() throws Exception
+		{
+			git.rm().addFilepattern("docs/old.md").call();
+			git.commit().setMessage("delete docs/old.md").call();
+
+			String hint = GitService.emptyReadHint(repository, PREFIX, "docs/old.md");
+
+			assertAll(
+				() -> assertTrue(hint.contains("bundles/project-a/docs/old.md"), "names the reading used: " + hint),
+				() -> assertTrue(hint.contains("'repo'"), "names the call that reaches history: " + hint),
+				() -> assertTrue(hint.contains("docs/old.md"), "and the path asked for: " + hint));
+		}
+
+		@Test
+		@DisplayName("a file that exists in the project stays quiet")
+		void existingProjectFileIsQuiet()
+		{
+			assertEquals("", GitService.emptyReadHint(repository, PREFIX, "src/Foo.java"));
+		}
+
+		@Test
+		@DisplayName("a path already inside the project, and '.', stay quiet")
+		void insideTheProjectIsQuiet()
+		{
+			assertAll(
+				() -> assertEquals("", GitService.emptyReadHint(repository, PREFIX, "bundles/project-a/src/Foo.java")),
+				() -> assertEquals("", GitService.emptyReadHint(repository, PREFIX, ".")),
+				() -> assertEquals("", GitService.emptyReadHint(repository, PREFIX, "bundles/project-a")));
+		}
+
+		@Test
+		@DisplayName("a project file deleted from the working tree still counts as existing, through HEAD")
+		void deletedProjectFileIsQuiet() throws Exception
+		{
+			Files.delete(tempDir.resolve("bundles/project-a/src/Foo.java"));
+
+			assertEquals("", GitService.emptyReadHint(repository, PREFIX, "src/Foo.java"),
+				"the file is in HEAD, so the project reading is real and there is nothing to warn about");
+		}
+
+		@Test
+		@DisplayName("a staged deletion is in HEAD only, and still counts as existing")
+		void stagedDeletionIsQuiet() throws Exception
+		{
+			// 'git rm' without a commit: gone from the working tree AND the index, present only in
+			// HEAD. This is the case the HEAD lookup exists for; the test above is satisfied by the
+			// index alone and would pass without it.
+			git.rm().addFilepattern("bundles/project-a/src/Foo.java").call();
+
+			assertEquals("", GitService.emptyReadHint(repository, PREFIX, "src/Foo.java"),
+				"the file is in HEAD, so the project reading is real and there is nothing to warn about");
+		}
+
+		@Test
+		@DisplayName("no project, no filter, or a blank prefix: nothing to say")
+		void nothingToSay()
+		{
+			assertAll(
+				() -> assertEquals("", GitService.emptyReadHint(repository, null, "docs/old.md")),
+				() -> assertEquals("", GitService.emptyReadHint(repository, "", "docs/old.md")),
+				() -> assertEquals("", GitService.emptyReadHint(repository, PREFIX, null)),
+				() -> assertEquals("", GitService.emptyReadHint(repository, PREFIX, "  ")));
+		}
+
+		@Test
+		@DisplayName("each unreadable path in a comma-separated filter is named, the readable ones are not")
+		void onlyTheUnreadableOnesAreNamed()
+		{
+			String hint = GitService.emptyReadHint(repository, PREFIX, "src/Foo.java, docs/never-existed.md");
+
+			assertAll(
+				() -> assertTrue(hint.contains("docs/never-existed.md"), hint),
+				() -> assertFalse(hint.contains("'src/Foo.java'"), hint));
+		}
+	}
 }
