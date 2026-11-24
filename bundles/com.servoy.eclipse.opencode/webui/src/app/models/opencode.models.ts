@@ -134,11 +134,13 @@ export interface MessageWithParts {
   parts: Part[];
 }
 
-/** File search result (V2 {@code GET /fs/find} returns {@code { path, type }}). */
-export interface FileMatch {
+/** A workspace text file as returned by the BFF {@code GET file?path=} route. */
+export interface WorkspaceFile {
   path: string;
-  /** V2 entry kind, e.g. {@code file} or {@code directory}. */
-  type?: string;
+  name: string;
+  size: number;
+  modified: number;
+  content: string;
 }
 
 /** A part to send with a prompt (retained for the composer/attachment API). */

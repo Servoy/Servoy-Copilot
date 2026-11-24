@@ -138,6 +138,59 @@ describe('AgentViewComponent', () => {
     expect(spy).toHaveBeenCalledWith('c2');
   });
 
+  describe('file chips', () => {
+    const write = (filePath: string, status = 'completed'): Part =>
+      ({ type: 'tool', tool: 'write', state: { status, input: { filePath } } }) as unknown as Part;
+    const chipNames = () =>
+      Array.from(el.querySelectorAll('[data-slot="agent-files"] svy-file-chip button.chip .name')).map((n) =>
+        n.textContent!.trim()
+      );
+
+    it('shows chips in the task block for files of the own messages (tools and handoff text)', () => {
+      render({
+        messages: [
+          msg('u1', 'user', [text('Task')]),
+          msg('a1', 'assistant', [write('src/a.js'), text('Wrote handoff/t/spec.md')])
+        ],
+        session: { id: 'c1' } as Session
+      });
+      expect(chipNames()).toEqual(['a.js', 'spec.md']);
+      const chips = el.querySelectorAll('[data-slot="agent-files"] button.chip.sm');
+      expect(chips).toHaveLength(2);
+    });
+
+    it('shows no chip for errored tool calls and no chips without files', () => {
+      render({
+        messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [write('bad.js', 'error')])],
+        session: { id: 'c1' } as Session
+      });
+      expect(chipNames()).toEqual([]);
+    });
+
+    it('does not repeat the chips under the individual messages (showFiles=false)', () => {
+      render({
+        messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [write('src/a.js')])],
+        session: { id: 'c1' } as Session
+      });
+      expect(el.querySelectorAll('svy-message-item .files')).toHaveLength(0);
+      expect(el.querySelectorAll('svy-file-chip')).toHaveLength(1);
+    });
+
+    it('updates the chips reactively when the messages change, without NG0600', () => {
+      render({
+        messages: [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [write('one.js')])],
+        session: { id: 'c1' } as Session
+      });
+      expect(chipNames()).toEqual(['one.js']);
+      fixture.componentRef.setInput('messages', [
+        msg('u1', 'user', [text('Task')]),
+        msg('a1', 'assistant', [write('one.js'), write('two.js')])
+      ]);
+      expect(() => fixture.detectChanges()).not.toThrow();
+      expect(chipNames()).toEqual(['one.js', 'two.js']);
+    });
+  });
+
   it('does not throw NG0600 when inputs change', () => {
     render({ messages: twoRoundMessages(), session: { id: 'c1' } as Session, child: { busy: true } });
     fixture.componentRef.setInput('child', { outcome: 'succeeded' });

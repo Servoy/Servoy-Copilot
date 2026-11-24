@@ -539,6 +539,11 @@ describe('AppComponent', () => {
       expect(q('svy-agent-task')!.textContent).toContain('Do the review');
     });
 
+    it('hosts exactly one svy-file-reader, closed by default (renders nothing)', () => {
+      expect(fixture.nativeElement.querySelectorAll('svy-file-reader')).toHaveLength(1);
+      expect(q('svy-file-reader .panel')).toBeNull();
+    });
+
     it('does not throw NG0600 when switching between regular and agent view', async () => {
       await setSubagent(true, { id: 's1', title: 'Main work' });
       expect(() => fixture.detectChanges()).not.toThrow();

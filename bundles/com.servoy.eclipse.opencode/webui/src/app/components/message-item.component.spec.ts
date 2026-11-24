@@ -1,8 +1,13 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MessageItemComponent } from './message-item.component';
 import { Part } from '../models/opencode.models';
+import { ChildSignals } from '../services/agent-status';
+import { FileReaderService } from '../services/file-reader.service';
+import { LoadedMessagesService } from '../services/loaded-messages.service';
 
 describe('MessageItemComponent', () => {
   let fixture: ComponentFixture<MessageItemComponent>;
@@ -10,7 +15,8 @@ describe('MessageItemComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [MessageItemComponent]
+      imports: [MessageItemComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(MessageItemComponent);
@@ -717,6 +723,139 @@ describe('MessageItemComponent', () => {
       fixture.detectChanges();
       expect(component.renderable()).toHaveLength(0);
       expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('background-result');
+    });
+  });
+
+  describe('file chips (SVY-21851)', () => {
+    const write = (filePath: string, status = 'completed'): Part =>
+      ({ type: 'tool', tool: 'write', id: 'w-' + filePath, state: { status, input: { filePath } } }) as unknown as Part;
+    const subagent = (childId: string): Part =>
+      ({
+        type: 'tool',
+        tool: 'subagent',
+        id: 'sa-' + childId,
+        state: { status: 'completed', input: { agent: 'Dev' }, metadata: { sessionID: childId } }
+      }) as unknown as Part;
+    const el = () => fixture.nativeElement as HTMLElement;
+    const mount = (parts: Part[], inputs: Record<string, unknown> = {}) => {
+      fixture.componentRef.setInput('parts', parts);
+      for (const [k, v] of Object.entries(inputs)) {
+        fixture.componentRef.setInput(k, v);
+      }
+      fixture.detectChanges();
+    };
+    const chipNames = () =>
+      Array.from(el().querySelectorAll('.files svy-file-chip .name')).map((n) => n.textContent!.trim());
+
+    it('renders a Files group with md chips under an assistant message', () => {
+      mount([write('src/a.js'), { type: 'text', text: 'see handoff/t/spec.md' } as Part]);
+      const group = el().querySelector('.files')!;
+      expect(group.getAttribute('role')).toBe('group');
+      expect(group.getAttribute('aria-label')).toBe('Files');
+      expect(chipNames()).toEqual(['a.js', 'spec.md']);
+      expect(group.querySelectorAll('button.chip.sm')).toHaveLength(0);
+      expect(group.querySelectorAll('button.chip')).toHaveLength(2);
+    });
+
+    it('places the chips after the parts', () => {
+      mount([{ type: 'text', text: 'hello' } as Part, write('a.js')]);
+      const message = el().querySelector('.message')!;
+      const children = Array.from(message.children);
+      const files = children.indexOf(el().querySelector('.files')!);
+      const markdown = children.indexOf(el().querySelector('svy-markdown')!);
+      expect(markdown).toBeGreaterThanOrEqual(0);
+      expect(files).toBeGreaterThan(markdown);
+    });
+
+    it('renders no group when there are no files', () => {
+      mount([{ type: 'text', text: 'hello' } as Part]);
+      expect(el().querySelector('.files')).toBeNull();
+    });
+
+    it('renders no chips for a user message even with file refs', () => {
+      mount([write('a.js'), { type: 'text', text: 'handoff/t/spec.md' } as Part], { role: 'user' });
+      expect(el().querySelector('.files')).toBeNull();
+      expect(component.hasFiles()).toBe(false);
+    });
+
+    it('renders no chips when showFiles is false', () => {
+      mount([write('a.js')], { showFiles: false });
+      expect(el().querySelector('.files')).toBeNull();
+      expect(component.hasFiles()).toBe(false);
+    });
+
+    it('does not count errored tool calls', () => {
+      mount([write('bad.js', 'error')]);
+      expect(el().querySelector('.files')).toBeNull();
+    });
+
+    describe('cap at 6 with +N more', () => {
+      const many = (n: number) => Array.from({ length: n }, (_, i) => write(`f${i}.js`));
+
+      it('shows exactly 6 and no more button for 6 files', () => {
+        mount(many(6));
+        expect(chipNames()).toHaveLength(6);
+        expect(el().querySelector('.files-more')).toBeNull();
+      });
+
+      it('shows the first 6 and a "+N more" button for 9 files', () => {
+        mount(many(9));
+        expect(chipNames()).toEqual(['f0.js', 'f1.js', 'f2.js', 'f3.js', 'f4.js', 'f5.js']);
+        const more = el().querySelector<HTMLButtonElement>('.files-more')!;
+        expect(more.getAttribute('type')).toBe('button');
+        expect(more.textContent!.trim()).toBe('+3 more');
+      });
+
+      it('reveals the rest on click and removes the button', () => {
+        mount(many(9));
+        el().querySelector<HTMLButtonElement>('.files-more')!.click();
+        fixture.detectChanges();
+        expect(chipNames()).toHaveLength(9);
+        expect(chipNames()[8]).toBe('f8.js');
+        expect(el().querySelector('.files-more')).toBeNull();
+      });
+
+      it('shows "+1 more" for 7 files', () => {
+        mount(many(7));
+        expect(el().querySelector('.files-more')!.textContent!.trim()).toBe('+1 more');
+      });
+    });
+
+    describe('child files', () => {
+      it('includes files of an already loaded child session of a subagent part', () => {
+        TestBed.inject(LoadedMessagesService).record('c1', [{ parts: [write('child/out.js')] }]);
+        mount([write('own.js'), subagent('c1')]);
+        expect(chipNames()).toEqual(['own.js', 'out.js']);
+      });
+
+      it('ignores loaded sessions not referenced by this message', () => {
+        TestBed.inject(LoadedMessagesService).record('other', [{ parts: [write('other.js')] }]);
+        mount([write('own.js'), subagent('c1')]);
+        expect(chipNames()).toEqual(['own.js']);
+      });
+
+      it('includes handoff files named in the child result body', () => {
+        const signals = new Map<string, ChildSignals>([
+          ['c1', { busy: false, result: { state: 'completed', body: 'wrote handoff/t/review.md' } } as ChildSignals]
+        ]);
+        mount([subagent('c1')], { childSignals: signals });
+        expect(chipNames()).toEqual(['review.md']);
+      });
+
+      it('picks up child files that are loaded after the first render, without NG0600', () => {
+        mount([subagent('c1')]);
+        expect(el().querySelector('.files')).toBeNull();
+        TestBed.inject(LoadedMessagesService).record('c1', [{ parts: [write('late.js')] }]);
+        expect(() => fixture.detectChanges()).not.toThrow();
+        expect(chipNames()).toEqual(['late.js']);
+      });
+    });
+
+    it('a chip click opens the reader with the file path', () => {
+      const open = vi.spyOn(TestBed.inject(FileReaderService), 'open').mockImplementation(() => undefined);
+      mount([write('src/a.js')]);
+      el().querySelector<HTMLButtonElement>('.files button.chip')!.click();
+      expect(open).toHaveBeenCalledWith('src/a.js', el().querySelector('.files button.chip'));
     });
   });
 });

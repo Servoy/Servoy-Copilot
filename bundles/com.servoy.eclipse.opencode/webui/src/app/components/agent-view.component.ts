@@ -15,6 +15,7 @@ import { Session } from '../models/opencode.models';
 import { ChildSignals } from '../services/agent-status';
 import { buildAgentView } from '../services/agent-view';
 import { ChatMessage, ChatStore } from '../services/chat-store.service';
+import { fileRefsFromMessages } from '../services/file-refs';
 import { toolDisplayName } from '../services/part-utils';
 import { AgentReportComponent } from './agent-report.component';
 import { AgentResumeDividerComponent } from './agent-resume-divider.component';
@@ -49,6 +50,7 @@ export class AgentViewComponent {
 
   readonly view = computed(() => buildAgentView(this.messages(), this.session(), this.child()));
   readonly busy = computed(() => this.view().status.status === 'running');
+  readonly files = computed(() => fileRefsFromMessages(this.messages()));
 
   private readonly store = inject(ChatStore);
   readonly childSignals = this.store.childSignals;

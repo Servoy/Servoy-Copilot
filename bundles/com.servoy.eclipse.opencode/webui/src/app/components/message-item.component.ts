@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
@@ -27,7 +28,9 @@ import {
   toolSubtitle
 } from '../services/part-utils';
 import { AgentStatus, ChildSignals, deriveAgentStatus } from '../services/agent-status';
+import { FileRefsService } from '../services/file-refs.service';
 import { AgentCardComponent } from './agent-card.component';
+import { FileChipComponent } from './file-chip.component';
 import { MarkdownRendererComponent } from './markdown-renderer.component';
 
 /**
@@ -40,7 +43,7 @@ import { MarkdownRendererComponent } from './markdown-renderer.component';
   selector: 'svy-message-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownRendererComponent, AgentCardComponent],
+  imports: [MarkdownRendererComponent, AgentCardComponent, FileChipComponent],
   templateUrl: './message-item.component.html',
   styleUrl: './message-item.component.scss'
 })
@@ -96,6 +99,31 @@ export class MessageItemComponent {
   }
 
   readonly renderable = computed(() => this.parts().filter(isRenderablePart));
+
+  /** False in the agent view, which shows its own chips in the task block. */
+  readonly showFiles = input<boolean>(true);
+
+  private readonly fileRefsService = inject(FileRefsService);
+  private readonly showAllFiles = signal(false);
+
+  private readonly fileRefs = computed(() =>
+    this.role() === 'user' || !this.showFiles()
+      ? []
+      : this.fileRefsService.refsForParts(this.parts(), this.childSignals())
+  );
+
+  readonly visibleFiles = computed(() =>
+    this.showAllFiles() ? this.fileRefs() : this.fileRefs().slice(0, MessageItemComponent.MAX_CHIPS)
+  );
+
+  readonly hiddenFileCount = computed(() => this.fileRefs().length - this.visibleFiles().length);
+  readonly hasFiles = computed(() => this.fileRefs().length > 0);
+
+  private static readonly MAX_CHIPS = 6;
+
+  revealFiles(): void {
+    this.showAllFiles.set(true);
+  }
 
   /** A human-readable message for a failed assistant turn, or null. */
   readonly errorText = computed<string | null>(() => {

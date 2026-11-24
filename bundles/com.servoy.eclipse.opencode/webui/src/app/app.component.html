@@ -142,6 +142,7 @@
   <aside id="status-panel" class="status-area" aria-label="Status" [hidden]="!statusOpen()">
     <svy-status-panel (closed)="closeStatus()"></svy-status-panel>
   </aside>
+  <svy-file-reader></svy-file-reader>
   @if (debugEnabled) {
     <svy-debug-overlay></svy-debug-overlay>
   }

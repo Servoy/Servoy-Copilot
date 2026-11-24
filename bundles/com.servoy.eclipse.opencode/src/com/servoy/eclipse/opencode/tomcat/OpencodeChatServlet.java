@@ -72,6 +72,14 @@ import jakarta.servlet.http.HttpServletResponse;
  * injection.
  * </p>
  * <p>
+ * Security: {@code GET /servoy_ai/file?path=} serves workspace text files
+ * read-only through {@link WorkspaceFileReader} (the boundary lives there). The
+ * proxy never lets a client choose the opencode directory (query param, header
+ * and body {@code location} are always overwritten with the BFF value), never
+ * forwards client {@code authorization}, and refuses every {@code fs} API path
+ * ({@link #isBlockedApiPath}).
+ * </p>
+ * <p>
  * The servlet is constructed with suppliers so it can reach bundle runtime
  * state (the opencode port, readiness, the active project directory) without
  * relying on container no-arg instantiation.
@@ -91,6 +99,12 @@ public class OpencodeChatServlet extends HttpServlet {
 
 	/** BFF-owned read-only endpoint that reports the active Servoy solution name. */
 	static final String SOLUTION_PATH = "/solution";
+
+	/** BFF-owned read-only workspace file reader ({@link WorkspaceFileReader}). */
+	static final String FILE_PATH = "/file";
+
+	private static final String JSON_UTF8 = "application/json;charset=UTF-8";
+	private static final String FORBIDDEN_JSON = "{\"error\":\"forbidden\"}";
 
 	/**
 	 * Prefix opencode 2.x expects on every HTTP API path (e.g.
@@ -151,6 +165,8 @@ public class OpencodeChatServlet extends HttpServlet {
 	private final Supplier<String> projectPathSupplier;
 	private final transient java.util.function.Function<String, URL> resourceResolver;
 	private final Supplier<String> solutionNameSupplier;
+
+	private transient WorkspaceFileReader fileReader = WorkspaceFileReader.createDefault();
 
 	private transient volatile HttpClient httpClient;
 
@@ -238,6 +254,9 @@ public class OpencodeChatServlet extends HttpServlet {
 	}
 
 	/**
+	 * Route classification only: {@code handleApi} itself detects the event stream
+	 * on the normalised upstream target (see {@link #toSafeUpstreamPath}).
+	 *
 	 * @return {@code true} if the given path-info targets the opencode SSE event
 	 *         stream ({@code /rest_api/event})
 	 */
@@ -253,6 +272,10 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * opencode path (always starting with {@code /}). For example
 	 * {@code /rest_api/session} maps to {@code /api/session} and bare
 	 * {@code /rest_api} maps to {@code /api}.
+	 * <p>
+	 * Plain prefix mapping only, without normalisation or encoding.
+	 * {@code handleApi} uses {@link #toSafeUpstreamPath} instead.
+	 * </p>
 	 */
 	public static String toUpstreamPath(String pathInfo) {
 		if (pathInfo == null)
@@ -272,15 +295,135 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * @return the path with the directory query param ensured
 	 */
 	public static String injectDirectory(String upstreamPath, String directory) {
-		if (directory == null || directory.isEmpty())
-			return upstreamPath;
 		int q = upstreamPath.indexOf('?');
-		String query = q >= 0 ? upstreamPath.substring(q + 1) : "";
-		if (hasDirectoryParam(query))
-			return upstreamPath;
-		String encoded = URLEncoder.encode(directory, StandardCharsets.UTF_8);
-		String sep = q >= 0 ? (query.isEmpty() ? "" : "&") : "?";
-		return upstreamPath + sep + "directory=" + encoded;
+		String path = q >= 0 ? upstreamPath.substring(0, q) : upstreamPath;
+		String query = stripDirectoryParam(q >= 0 ? upstreamPath.substring(q + 1) : "");
+		if (directory != null && !directory.isEmpty()) {
+			String param = "directory=" + URLEncoder.encode(directory, StandardCharsets.UTF_8);
+			query = query.isEmpty() ? param : query + "&" + param;
+		}
+		return query.isEmpty() ? path : path + "?" + query;
+	}
+
+	/**
+	 * Removes every {@code directory} and {@code workspace} query parameter (name
+	 * compared after percent-decoding, case-insensitive, any number of
+	 * occurrences) so a client can never choose the opencode directory/workspace
+	 * scope (the webui sends neither); other parameters keep their order.
+	 *
+	 * @return the remaining query (without leading {@code ?}), never {@code null}
+	 */
+	public static String stripDirectoryParam(String query) {
+		if (query == null || query.isEmpty())
+			return "";
+		StringBuilder sb = new StringBuilder();
+		for (String pair : query.split("&")) {
+			if (pair.isEmpty())
+				continue;
+			int eq = pair.indexOf('=');
+			String rawName = eq >= 0 ? pair.substring(0, eq) : pair;
+			String name;
+			try {
+				name = java.net.URLDecoder.decode(rawName, StandardCharsets.UTF_8);
+			} catch (IllegalArgumentException e) {
+				name = rawName;
+			}
+			String trimmed = name.trim();
+			if ("directory".equalsIgnoreCase(trimmed) || "workspace".equalsIgnoreCase(trimmed))
+				continue;
+			if (sb.length() > 0)
+				sb.append('&');
+			sb.append(pair);
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * @return {@code true} for the {@code rest_api/**} paths that must never be
+	 *         proxied: any {@code fs} segment (opencode file system read/list/find/
+	 *         write, which can reach outside the workspace) or a {@code .}/{@code ..}
+	 *         segment
+	 */
+	public static boolean isBlockedApiPath(String pathInfo) {
+		if (pathInfo == null || !isApiRequest(pathInfo))
+			return false;
+		for (String segment : pathInfo.substring(API_PREFIX.length()).split("/")) {
+			if (segment.isEmpty())
+				continue;
+			if (segment.equalsIgnoreCase("fs") || segment.equals("..") || segment.equals(".")
+					|| hasSuspiciousSegmentChar(segment))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * pathInfo is already percent-decoded once by the container, so a remaining
+	 * {@code %}, a backslash or a control character means a double-encoded or
+	 * otherwise smuggled segment (e.g. {@code %66s} for {@code fs}) that the
+	 * upstream could decode a second time.
+	 */
+	private static boolean hasSuspiciousSegmentChar(String segment) {
+		for (int i = 0; i < segment.length(); i++) {
+			char c = segment.charAt(i);
+			if (c == '%' || c == '\\' || c < 0x20 || c == 0x7F)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Builds the upstream path from the (container-decoded) path-info: empty
+	 * segments and a trailing slash are dropped, and every segment is
+	 * percent-encoded so the result is interpreted exactly once by the upstream
+	 * and cannot inject a query, fragment or a second decoding. The
+	 * {@link #API_PREFIX} is replaced by {@link #UPSTREAM_API_PREFIX}.
+	 */
+	public static String toSafeUpstreamPath(String pathInfo) {
+		StringBuilder sb = new StringBuilder(UPSTREAM_API_PREFIX);
+		if (pathInfo == null || pathInfo.length() <= API_PREFIX.length())
+			return sb.toString();
+		for (String segment : pathInfo.substring(API_PREFIX.length()).split("/")) {
+			if (!segment.isEmpty())
+				sb.append('/').append(encodePathSegment(segment));
+		}
+		return sb.toString();
+	}
+
+	private static String encodePathSegment(String segment) {
+		StringBuilder sb = new StringBuilder(segment.length() + 8);
+		for (byte b : segment.getBytes(StandardCharsets.UTF_8)) {
+			int c = b & 0xFF;
+			if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.'
+					|| c == '_' || c == '~' || c == ':' || c == '@') {
+				sb.append((char) c);
+			} else {
+				sb.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+						.append(Character.toUpperCase(Character.forDigit(c & 0xF, 16)));
+			}
+		}
+		return sb.toString();
+	}
+
+	/** @return {@code true} if the given path-info is exactly the BFF file reader endpoint */
+	public static boolean isFileRequest(String pathInfo) {
+		return FILE_PATH.equals(pathInfo);
+	}
+
+	/**
+	 * @return {@code false} for hop-by-hop headers, for the headers the BFF sets
+	 *         itself ({@code x-opencode-directory}, {@code authorization}) and for
+	 *         {@code x-opencode-workspace}, {@code cookie} and {@code origin}; a
+	 *         client must never be able to supply these upstream (the webui uses
+	 *         none of them)
+	 */
+	public static boolean isForwardableRequestHeader(String name) {
+		if (name == null)
+			return false;
+		String lower = name.toLowerCase(Locale.ROOT);
+		return !HOP_BY_HOP_REQUEST_HEADERS.contains(lower) && !"x-opencode-directory".equals(lower)
+				&& !"x-opencode-workspace".equals(lower) && !"authorization".equals(lower) && !"cookie".equals(lower)
+				&& !"origin".equals(lower);
 	}
 
 	/**
@@ -294,16 +437,6 @@ public class OpencodeChatServlet extends HttpServlet {
 		String credentials = SERVER_AUTH_USER + ":" + password;
 		return "Basic " + java.util.Base64.getEncoder()
 				.encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-	}
-
-	private static boolean hasDirectoryParam(String query) {
-		if (query == null || query.isEmpty())
-			return false;
-		for (String pair : query.split("&")) {
-			if (pair.equals("directory") || pair.startsWith("directory="))
-				return true;
-		}
-		return false;
 	}
 
 	/**
@@ -328,6 +461,9 @@ public class OpencodeChatServlet extends HttpServlet {
 			return false;
 		int q = upstreamPath.indexOf('?');
 		String path = q >= 0 ? upstreamPath.substring(0, q) : upstreamPath;
+		path = path.toLowerCase(Locale.ROOT);
+		while (path.length() > 1 && path.endsWith("/"))
+			path = path.substring(0, path.length() - 1);
 		return path.equals(UPSTREAM_API_PREFIX + "/session")
 				|| path.equals(UPSTREAM_API_PREFIX + "/experimental/session/import");
 	}
@@ -338,14 +474,10 @@ public class OpencodeChatServlet extends HttpServlet {
 	 * create their session under the active project rather than opencode's own
 	 * working directory.
 	 * <p>
-	 * A body that already mentions {@code "location"} is returned unchanged (the
-	 * caller's choice wins). An empty or blank body becomes a fresh object with
-	 * just the location. Otherwise the location member is spliced in after the
-	 * opening brace. This deliberately avoids a full JSON parse: the bodies here
-	 * are small, flat opencode payloads, and a minimal top-level splice keeps the
-	 * proxy dependency-free and off the Jackson hot path. The directory is emitted
-	 * as a JSON string with the mandatory escaping (notably the backslashes in a
-	 * Windows path).
+	 * A client-supplied {@code location} is always replaced (the BFF directory is
+	 * the only one that may reach opencode). An empty or blank body becomes a
+	 * fresh object with just the location. A body that is not a JSON object, or
+	 * does not parse, is returned unchanged.
 	 *
 	 * @param body      the original request body bytes (may be {@code null}/empty)
 	 * @param directory the project directory to inject (must be non-empty)
@@ -353,24 +485,21 @@ public class OpencodeChatServlet extends HttpServlet {
 	 */
 	public static byte[] ensureBodyLocation(byte[] body, String directory) {
 		String json = (body == null || body.length == 0) ? "" : new String(body, StandardCharsets.UTF_8);
-		String trimmed = json.trim();
-		String locationMember = "\"location\":{\"directory\":\"" + jsonEscape(directory) + "\"}";
-		if (trimmed.isEmpty()) {
+		if (json.trim().isEmpty()) {
+			String locationMember = "\"location\":{\"directory\":\"" + jsonEscape(directory) + "\"}";
 			return ("{" + locationMember + "}").getBytes(StandardCharsets.UTF_8);
 		}
-		// Respect an explicit location the client already set.
-		if (trimmed.contains("\"location\"")) {
+		try {
+			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+			com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(json);
+			if (node == null || !node.isObject())
+				return body;
+			com.fasterxml.jackson.databind.node.ObjectNode obj = (com.fasterxml.jackson.databind.node.ObjectNode) node;
+			obj.putObject("location").put("directory", directory);
+			return mapper.writeValueAsBytes(obj);
+		} catch (IOException | RuntimeException e) {
 			return body;
 		}
-		int brace = trimmed.indexOf('{');
-		if (brace < 0) {
-			// Not a JSON object we understand - leave it alone.
-			return body;
-		}
-		String afterBrace = trimmed.substring(brace + 1).trim();
-		String sep = afterBrace.startsWith("}") ? "" : ",";
-		String result = trimmed.substring(0, brace + 1) + locationMember + sep + trimmed.substring(brace + 1);
-		return result.getBytes(StandardCharsets.UTF_8);
 	}
 
 	/** Minimal JSON string escaping for the characters that occur in file paths. */
@@ -405,11 +534,124 @@ public class OpencodeChatServlet extends HttpServlet {
 		String pathInfo = req.getPathInfo();
 		if (isSolutionRequest(pathInfo)) {
 			handleSolution(req, resp);
+		} else if (isFileRequest(pathInfo)) {
+			handleFile(req, resp);
 		} else if (isApiRequest(pathInfo)) {
 			handleApi(req, resp, pathInfo);
 		} else {
 			serveStatic(req, resp, pathInfo);
 		}
+	}
+
+	/** Replaces the file reader (tests only). */
+	void setFileReader(WorkspaceFileReader reader) {
+		this.fileReader = reader;
+	}
+
+	private static void sendJson(HttpServletRequest req, HttpServletResponse resp, int status, String json)
+			throws IOException {
+		byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		resp.setStatus(status);
+		resp.setContentType(JSON_UTF8);
+		resp.setHeader("Cache-Control", "no-store");
+		resp.setHeader("X-Content-Type-Options", "nosniff");
+		resp.setContentLength(bytes.length);
+		if (!"HEAD".equalsIgnoreCase(req.getMethod())) {
+			try (OutputStream out = resp.getOutputStream()) {
+				out.write(bytes);
+				out.flush();
+			}
+		}
+	}
+
+	/**
+	 * @return {@code true} when Host is loopback and Sec-Fetch-Site/Origin (if
+	 *         present) are same-origin: cheap DNS-rebinding / CSRF defence
+	 */
+	static boolean isSameOriginLoopbackRequest(String host, String secFetchSite, String origin) {
+		if (host == null || host.isEmpty())
+			return false;
+		String hostName;
+		if (host.startsWith("[")) {
+			int end = host.indexOf(']');
+			if (end < 0)
+				return false;
+			hostName = host.substring(0, end + 1);
+		} else {
+			int colon = host.indexOf(':');
+			hostName = colon >= 0 ? host.substring(0, colon) : host;
+		}
+		hostName = hostName.toLowerCase(Locale.ROOT);
+		if (!hostName.equals("127.0.0.1") && !hostName.equals("localhost") && !hostName.equals("[::1]"))
+			return false;
+		if (secFetchSite != null && !"same-origin".equalsIgnoreCase(secFetchSite.trim()))
+			return false;
+		if (origin != null) {
+			int scheme = origin.indexOf("://");
+			String authority = scheme >= 0 ? origin.substring(scheme + 3) : origin;
+			if (!authority.equalsIgnoreCase(host))
+				return false;
+		}
+		return true;
+	}
+
+	private void handleFile(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		String method = req.getMethod();
+		if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+			resp.setHeader("Allow", "GET, HEAD");
+			resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+			return;
+		}
+		if (!isSameOriginLoopbackRequest(req.getHeader("Host"), req.getHeader("Sec-Fetch-Site"),
+				req.getHeader("Origin"))) {
+			sendJson(req, resp, HttpServletResponse.SC_FORBIDDEN, FORBIDDEN_JSON);
+			return;
+		}
+		String root = null;
+		try {
+			root = projectPathSupplier.get();
+		} catch (RuntimeException e) {
+			try {
+				ServoyLog.logError("OpencodeChatServlet: cannot resolve active project for file reader", e);
+			} catch (Throwable t) { // NOSONAR logging failure is intentionally ignored
+				// ignored on purpose
+			}
+		}
+		if (root == null || root.isEmpty()) {
+			sendJson(req, resp, HttpServletResponse.SC_CONFLICT, "{\"error\":\"no_active_solution\"}");
+			return;
+		}
+		String[] values = req.getParameterValues("path");
+		if (values == null || values.length != 1 || values[0] == null || values[0].replace(" ", "").isEmpty()) {
+			// only spaces count as blank: control chars (tab, NUL) are a FORBIDDEN path, decided by the reader
+			sendJson(req, resp, HttpServletResponse.SC_BAD_REQUEST, "{\"error\":\"bad_request\"}");
+			return;
+		}
+		WorkspaceFileReader.Result result = fileReader.read(root, values[0]);
+		switch (result.getStatus()) {
+			case OK -> sendJson(req, resp, HttpServletResponse.SC_OK,
+					"{\"path\":\"" + jsonEscape(result.getPath()) + "\",\"name\":\"" + jsonEscape(result.getName())
+							+ "\",\"size\":" + result.getSize() + ",\"modified\":" + result.getModified()
+							+ ",\"content\":\"" + jsonEscape(result.getContent()) + "\"}");
+			case BAD_REQUEST -> sendJson(req, resp, HttpServletResponse.SC_BAD_REQUEST, "{\"error\":\"bad_request\"}");
+			case FORBIDDEN -> sendJson(req, resp, HttpServletResponse.SC_FORBIDDEN, FORBIDDEN_JSON);
+			case NOT_FOUND -> sendJson(req, resp, HttpServletResponse.SC_NOT_FOUND, "{\"error\":\"not_found\"}");
+			case TOO_LARGE -> sendJson(req, resp, 413, "{\"error\":\"too_large\"}");
+			case BINARY -> sendJson(req, resp, 415, "{\"error\":\"binary\"}");
+			default -> sendJson(req, resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "{\"error\":\"read_failed\"}");
+		}
+		if (result.getStatus() != WorkspaceFileReader.Status.OK) {
+			safeLogInfo("OpencodeChatServlet: file request " + result.getStatus() + " for " + sanitizeForLog(values[0]));
+		}
+	}
+
+	private static String sanitizeForLog(String value) {
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < value.length() && sb.length() < 200; i++) {
+			char c = value.charAt(i);
+			sb.append(c < 0x20 || c == 0x7F ? '?' : c);
+		}
+		return sb.toString();
 	}
 
 	private void handleSolution(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -518,6 +760,10 @@ public class OpencodeChatServlet extends HttpServlet {
 	// -----------------------------------------------------------------------
 
 	private void handleApi(HttpServletRequest req, HttpServletResponse resp, String pathInfo) throws IOException {
+		if (isBlockedApiPath(pathInfo)) {
+			sendJson(req, resp, HttpServletResponse.SC_FORBIDDEN, FORBIDDEN_JSON);
+			return;
+		}
 		// Readiness gate: hold the request briefly while opencode is starting
 		// rather than 503-ing immediately (avoids client backoff storms).
 		if (!serverReadySupplier.getAsBoolean()) {
@@ -552,16 +798,16 @@ public class OpencodeChatServlet extends HttpServlet {
 			resp.getWriter().write("{\"restarting\":true}");
 			return;
 		}
-		String upstreamPath = injectDirectory(toUpstreamPath(pathInfo) + queryString(req), directory);
+		String upstreamPath = injectDirectory(toSafeUpstreamPath(pathInfo) + queryString(req), directory);
 		URI target;
 		try {
 			target = new URI("http", null, "127.0.0.1", port, null, null, null).resolve(upstreamPath);
-		} catch (URISyntaxException e) {
-			resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "bad upstream uri");
+		} catch (URISyntaxException | IllegalArgumentException e) {
+			sendJson(req, resp, HttpServletResponse.SC_BAD_REQUEST, "{\"error\":\"bad_request\"}");
 			return;
 		}
 
-		if (isEventStreamRequest(pathInfo)) {
+		if (UPSTREAM_API_PREFIX.concat("/event").equals(target.getRawPath())) {
 			forwardSse(req, resp, target, directory);
 		} else {
 			forwardRequest(req, resp, target, directory);
@@ -570,7 +816,17 @@ public class OpencodeChatServlet extends HttpServlet {
 
 	private static String queryString(HttpServletRequest req) {
 		String q = req.getQueryString();
-		return q != null && !q.isEmpty() ? "?" + q : "";
+		// a raw '#' would start a fragment and swallow the BFF directory param appended later
+		return q != null && !q.isEmpty() ? "?" + q.replace("#", "%23") : "";
+	}
+
+	/** Logging must never break a request, also when the OSGi logging service is unavailable. */
+	private static void safeLogInfo(String message) {
+		try {
+			ServoyLog.logInfo(message);
+		} catch (Throwable t) { // NOSONAR logging failure is intentionally ignored
+			// ignored on purpose
+		}
 	}
 
 	private void forwardRequest(HttpServletRequest req, HttpServletResponse resp, URI target, String directory)
@@ -596,11 +852,11 @@ public class OpencodeChatServlet extends HttpServlet {
 		copyRequestHeaders(req, builder);
 		// opencode-cli also accepts a directory header; inject it alongside the
 		// query param so directory-scoping is unconditional.
-		builder.header("x-opencode-directory", directory);
-		builder.header("accept-encoding", "identity");
+		builder.setHeader("x-opencode-directory", directory);
+		builder.setHeader("accept-encoding", "identity");
 		String auth = basicAuthHeader(serverPasswordSupplier != null ? serverPasswordSupplier.get() : null);
 		if (auth != null)
-			builder.header("authorization", auth);
+			builder.setHeader("authorization", auth);
 
 		HttpResponse<InputStream> upstream;
 		try {
@@ -653,11 +909,11 @@ public class OpencodeChatServlet extends HttpServlet {
 		CompletableFuture<HttpResponse<InputStream>> upstreamFuture;
 		try {
 			HttpRequest.Builder sseBuilder = HttpRequest.newBuilder(target).timeout(Duration.ofDays(1))
-					.header("accept", "text/event-stream").header("cache-control", "no-cache")
-					.header("x-opencode-directory", directory);
+					.setHeader("accept", "text/event-stream").setHeader("cache-control", "no-cache")
+					.setHeader("x-opencode-directory", directory);
 			String auth = basicAuthHeader(serverPasswordSupplier != null ? serverPasswordSupplier.get() : null);
 			if (auth != null)
-				sseBuilder.header("authorization", auth);
+				sseBuilder.setHeader("authorization", auth);
 			HttpRequest request = sseBuilder.GET().build();
 			upstreamFuture = client().sendAsync(request, BodyHandlers.ofInputStream());
 		} catch (RuntimeException e) {
@@ -801,7 +1057,7 @@ public class OpencodeChatServlet extends HttpServlet {
 			return;
 		while (names.hasMoreElements()) {
 			String name = names.nextElement();
-			if (HOP_BY_HOP_REQUEST_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+			if (!isForwardableRequestHeader(name))
 				continue;
 			java.util.Enumeration<String> values = req.getHeaders(name);
 			while (values.hasMoreElements()) {

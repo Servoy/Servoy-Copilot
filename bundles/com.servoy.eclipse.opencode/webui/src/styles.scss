@@ -107,11 +107,16 @@
   --svy-pre-fg: #1f2328;
   --svy-code-bg: rgba(127, 127, 127, 0.14);
   --svy-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --svy-scrim: rgba(28, 27, 25, 0.35);
+  --svy-shadow-panel: -8px 0 24px rgba(28, 27, 25, 0.18);
 }
 
 :root[data-theme='dark'] {
   // color-scheme flips native UI (scrollbars, form controls) to dark.
   color-scheme: dark;
+
+  --svy-scrim: rgba(0, 0, 0, 0.55);
+  --svy-shadow-panel: -8px 0 24px rgba(0, 0, 0, 0.5);
 
   --svy-danger: #f06a6a;
 

@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import { OpencodeApiService } from './opencode-api.service';
-import { CommandInfo, FileMatch, FormInfo, MessageWithParts, SendPart, Session } from '../models/opencode.models';
+import { CommandInfo, FormInfo, MessageWithParts, SendPart, Session } from '../models/opencode.models';
 
 /**
  * Tests for the V2 ({@code @opencode/cli} 2.x) API wrappers: the front-end keeps
@@ -294,30 +294,45 @@ describe('OpencodeApiService', () => {
     req.flush(null);
   });
 
-  it('findFiles GETs fs/find with the query param and unwraps data', () => {
-    const matches: FileMatch[] = [{ path: 'a/b.ts', type: 'file' }];
-    let result: FileMatch[] | undefined;
-    service.findFiles('foo').subscribe((r) => (result = r));
+  it('readWorkspaceFile GETs file?path= with the path encoded', () => {
+    const file = { path: 'a b/c+d.md', name: 'c+d.md', size: 1, modified: 2, content: 'x' };
+    let result: unknown;
+    service.readWorkspaceFile('a b/c+d.md').subscribe((r) => (result = r));
 
-    const req = httpMock.expectOne(
-      (r) => r.url === 'rest_api/fs/find' && r.params.get('query') === 'foo'
-    );
+    const req = httpMock.expectOne('file?path=a%20b%2Fc%2Bd.md');
     expect(req.request.method).toBe('GET');
-    req.flush({ location: { directory: '/proj' }, data: matches });
+    req.flush(file);
 
-    expect(result).toEqual(matches);
+    expect(result).toEqual(file);
   });
 
-  it('readFile GETs fs/read/<path> as text with the path in the URL', () => {
-    let content: string | undefined;
-    service.readFile('src/a.ts').subscribe((c) => (content = c));
-
-    const req = httpMock.expectOne((r) => r.url === 'rest_api/fs/read/src/a.ts');
+  it.each([
+    ['plus', 'a+b.md', 'a%2Bb.md'],
+    ['space', 'a b.md', 'a%20b.md'],
+    ['hash', 'a#b.md', 'a%23b.md'],
+    ['ampersand', 'a&b=c.md', 'a%26b%3Dc.md'],
+    ['percent', '100%.md', '100%25.md'],
+    ['backslash', 'a\\b.md', 'a%5Cb.md'],
+    ['non-ASCII', 'dossier/é☃.md', 'dossier%2F%C3%A9%E2%98%83.md']
+  ])('readWorkspaceFile encodes %s in the query with encodeURIComponent', (_label, path, encoded) => {
+    service.readWorkspaceFile(path).subscribe();
+    const req = httpMock.expectOne(`file?path=${encoded}`);
     expect(req.request.method).toBe('GET');
-    expect(req.request.responseType).toBe('text');
-    req.flush('file body');
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush({});
+  });
 
-    expect(content).toBe('file body');
+  it('readWorkspaceFile propagates the HTTP status so the reader can map it', () => {
+    let error: HttpErrorResponse | undefined;
+    service.readWorkspaceFile('a.md').subscribe({ error: (e: HttpErrorResponse) => (error = e) });
+    httpMock.expectOne('file?path=a.md').flush({ error: 'forbidden' }, { status: 403, statusText: 'Forbidden' });
+    expect(error?.status).toBe(403);
+  });
+
+  it('no longer exposes the unsafe proxy file helpers readFile/findFiles', () => {
+    const api = service as unknown as Record<string, unknown>;
+    expect(api['readFile']).toBeUndefined();
+    expect(api['findFiles']).toBeUndefined();
   });
 
   it('listPendingForms GETs the form endpoint and unwraps the { data } envelope', () => {

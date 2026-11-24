@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { FileReaderService } from '../services/file-reader.service';
 import { AgentFile, AgentTaskComponent, isLongTask } from './agent-task.component';
 
 describe('isLongTask', () => {
@@ -79,13 +80,36 @@ describe('AgentTaskComponent', () => {
     expect(slot.children).toHaveLength(0);
   });
 
-  it('renders one non-interactive chip per file', () => {
-    render('short', [{ name: 'a.js' }, { name: 'b.js', path: 'src/b.js' }, { name: 'c.js' }]);
-    const chips = Array.from(el.querySelectorAll('[data-slot="agent-files"] .chip')) as HTMLElement[];
-    expect(chips.map((c) => c.textContent!.trim())).toEqual(['a.js', 'b.js', 'c.js']);
+  it('renders one chip button per file that opens the reader', () => {
+    render('short', [
+      { path: 'a.js', name: 'a.js', caption: 'Changed file' },
+      { path: 'src/b.js', name: 'b.js', caption: 'Changed file' },
+      { path: 'c.js', name: 'c.js', caption: 'Changed file' }
+    ]);
+    const chips = Array.from(el.querySelectorAll('[data-slot="agent-files"] button.chip')) as HTMLElement[];
+    expect(chips.map((c) => c.querySelector('.name')!.textContent!.trim())).toEqual(['a.js', 'b.js', 'c.js']);
     expect(chips[1].getAttribute('title')).toBe('src/b.js');
-    expect(chips.every((c) => c.tagName === 'SPAN')).toBe(true);
-    expect(el.querySelectorAll('[data-slot="agent-files"] button, [data-slot="agent-files"] a')).toHaveLength(0);
+    expect(chips.every((c) => c.getAttribute('aria-haspopup') === 'dialog')).toBe(true);
+  });
+
+  it('clicking a chip opens the reader with that path and the clicked button as trigger', () => {
+    const reader = TestBed.inject(FileReaderService);
+    const open = vi.spyOn(reader, 'open').mockImplementation(() => undefined);
+    render('short', [
+      { path: 'a.js', name: 'a.js', caption: 'Changed file' },
+      { path: 'handoff/t/spec.md', name: 'spec.md', caption: 'Spec' }
+    ]);
+    const chips = Array.from(el.querySelectorAll('[data-slot="agent-files"] button.chip')) as HTMLElement[];
+    chips[1].click();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith('handoff/t/spec.md', chips[1]);
+  });
+
+  it('renders the chips small (sm) and with their captions', () => {
+    render('short', [{ path: 'handoff/t/review.md', name: 'review.md', caption: 'Review' }]);
+    const chip = q('[data-slot="agent-files"] button.chip')!;
+    expect(chip.classList.contains('sm')).toBe(true);
+    expect(chip.querySelector('.caption')!.textContent!.trim()).toBe('Review');
   });
 
   it('does not throw NG0600 when the task changes', () => {

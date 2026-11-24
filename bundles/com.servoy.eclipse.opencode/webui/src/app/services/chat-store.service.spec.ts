@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Subject, of, throwError } from 'rxjs';
 
 import { ChatStore } from './chat-store.service';
+import { LoadedMessagesService } from './loaded-messages.service';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { OpencodeApiService } from './opencode-api.service';
 import { FormInfo, MessageWithParts, Part, SendPart, Session } from '../models/opencode.models';
@@ -36,8 +37,7 @@ function apiMock() {
     listAllMessages: vi.fn(),
     sendPrompt: vi.fn(),
     interrupt: vi.fn(),
-    findFiles: vi.fn(),
-    readFile: vi.fn(),
+    readWorkspaceFile: vi.fn(),
     listPendingForms: vi.fn(),
     getActiveSessions: vi.fn(),
     replyToForm: vi.fn(),
@@ -1830,6 +1830,72 @@ describe('ChatStore', () => {
         fire('session.deleted', { sessionID: 'c1' });
         expect(store.busySessionIds().has('c1')).toBe(false);
       });
+    });
+  });
+
+  describe('loaded messages snapshot (SVY-21851)', () => {
+    const wmsg = (id: string, sessionID: string | undefined, filePath: string): MessageWithParts =>
+      ({
+        info: { id, role: 'assistant', ...(sessionID ? { sessionID } : {}) },
+        parts: [{ type: 'tool', tool: 'write', state: { status: 'completed', input: { filePath } } } as unknown as Part]
+      }) as MessageWithParts;
+
+    let loaded: LoadedMessagesService;
+
+    beforeEach(() => {
+      loaded = TestBed.inject(LoadedMessagesService);
+      api.listSessions.mockReturnValue(of<Session[]>([]));
+    });
+
+    it('records the active session messages so file chips can see them', () => {
+      seedPage([wmsg('m1', 's1', 'a.js')]);
+      store.openSession('s1');
+      TestBed.tick();
+      expect(loaded.bySession().get('s1')?.map((m) => (m as MessageWithParts).info.id)).toEqual(['m1']);
+    });
+
+    it('does not record an empty transcript', () => {
+      store.openSession('s1');
+      TestBed.tick();
+      expect(loaded.bySession().has('s1')).toBe(false);
+    });
+
+    it('keeps the snapshot of a child after another session becomes active', () => {
+      seedPage([wmsg('m1', 'c1', 'child.js')]);
+      store.openSession('c1');
+      TestBed.tick();
+      seedPage([wmsg('m2', 's1', 'parent.js')]);
+      store.openSession('s1');
+      TestBed.tick();
+      expect([...loaded.bySession().keys()].sort()).toEqual(['c1', 's1']);
+    });
+
+    it('does not record messages that belong to another session than the active one', () => {
+      seedPage([wmsg('m1', 'other', 'x.js')]);
+      store.openSession('s1');
+      TestBed.tick();
+      expect(loaded.bySession().has('s1')).toBe(false);
+    });
+
+    it('forgets the snapshot when a session is deleted through the API', () => {
+      loaded.record('s9', [{ parts: [] }]);
+      api.deleteSession.mockReturnValue(of(null));
+      store.deleteSession('s9');
+      expect(loaded.bySession().has('s9')).toBe(false);
+    });
+
+    it('forgets the snapshot when the session.deleted event arrives', () => {
+      loaded.record('c1', [{ parts: [] }]);
+      loaded.record('keep', [{ parts: [] }]);
+      events.fire({ type: 'session.deleted', data: { sessionID: 'c1' } });
+      expect([...loaded.bySession().keys()]).toEqual(['keep']);
+    });
+
+    it('does not forget the snapshot when the delete request fails', () => {
+      loaded.record('s9', [{ parts: [] }]);
+      api.deleteSession.mockReturnValue(throwError(() => new Error('x')));
+      store.deleteSession('s9');
+      expect(loaded.bySession().has('s9')).toBe(true);
     });
   });
 });

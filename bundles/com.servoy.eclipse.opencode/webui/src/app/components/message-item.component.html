@@ -65,6 +65,17 @@
     }
   }
 
+  @if (hasFiles()) {
+    <div class="files" role="group" aria-label="Files">
+      @for (file of visibleFiles(); track file.path) {
+        <svy-file-chip [file]="file" size="md"></svy-file-chip>
+      }
+      @if (hiddenFileCount() > 0) {
+        <button type="button" class="files-more" (click)="revealFiles()">+{{ hiddenFileCount() }} more</button>
+      }
+    </div>
+  }
+
   @if (lightboxImage(); as img) {
     <div
       class="image-lightbox"

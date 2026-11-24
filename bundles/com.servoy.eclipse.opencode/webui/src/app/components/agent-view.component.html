@@ -1,7 +1,7 @@
 <div class="scroll" #scroll (scroll)="onScroll()">
   <div class="content">
     @if (view().task; as task) {
-      <svy-agent-task [task]="task"></svy-agent-task>
+      <svy-agent-task [task]="task" [files]="files()"></svy-agent-task>
     }
     @for (round of rows(); track $index) {
       @if (round.resume !== null) {
@@ -15,6 +15,7 @@
           [completed]="message.info.time?.completed ?? null"
           [childSignals]="childSignals()"
           [turnBusy]="busy()"
+          [showFiles]="false"
           (openSession)="openSession.emit($event)"
         ></svy-message-item>
       }

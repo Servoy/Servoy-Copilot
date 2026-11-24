@@ -76,6 +76,72 @@ describe('MarkdownRendererComponent', () => {
     expect(() => setContent('')).not.toThrow();
   });
 
+  describe('inert mode', () => {
+    const rich =
+      '![alt](http://evil/p.png)\n\n[link text](http://evil/)\n\n<img src="http://evil/q.png">\n\n' +
+      '<picture><source srcset="http://evil/s.png"><img src="x"></picture>\n\n' +
+      '<iframe src="http://evil/"></iframe>\n\n<form action="http://evil/"><input></form>\n\n' +
+      '<style>body{display:none}</style>\n\n<video src="http://evil/v.mp4"></video>\n\n' +
+      '<p style="color:red">styled</p>';
+
+    function setInert(content: string, inert: boolean): void {
+      fixture.componentRef.setInput('inert', inert);
+      setContent(content);
+    }
+
+    it('defaults to not inert: images and links keep working', () => {
+      setContent('![alt](http://x/p.png)\n\n[t](http://x/)');
+      expect(hostEl().querySelector('img')?.getAttribute('src')).toBe('http://x/p.png');
+      expect(hostEl().querySelector('a')?.getAttribute('href')).toBe('http://x/');
+    });
+
+    it('removes img, picture, source, iframe, form, style and video when inert', () => {
+      setInert(rich, true);
+      for (const tag of ['img', 'picture', 'source', 'iframe', 'form', 'style', 'video']) {
+        expect(hostEl().querySelector(tag), tag).toBeNull();
+      }
+      expect(hostHtml()).not.toContain('evil');
+      expect(hostHtml()).not.toContain('display:none');
+    });
+
+    it('drops href on links but keeps the link text when inert', () => {
+      setInert('[link text](http://evil/)', true);
+      const a = hostEl().querySelector('a')!;
+      expect(a).not.toBeNull();
+      expect(a.hasAttribute('href')).toBe(false);
+      expect(a.textContent).toBe('link text');
+    });
+
+    it('drops inline style attributes when inert', () => {
+      setInert('<p style="color:red">styled</p>', true);
+      const p = hostEl().querySelector('p')!;
+      expect(p.textContent).toBe('styled');
+      expect(p.hasAttribute('style')).toBe(false);
+    });
+
+    it('still renders normal markdown and code blocks when inert', () => {
+      setInert('# Title\n\n- a\n- b\n\n```js\nconst x = 1;\n```', true);
+      expect(hostEl().querySelector('h1')?.textContent).toBe('Title');
+      expect(hostEl().querySelectorAll('li')).toHaveLength(2);
+      expect(hostEl().querySelector('pre code')?.textContent).toContain('const x = 1;');
+    });
+
+    it('is still script-safe when inert', () => {
+      setInert('<script>alert(1)</script><a href="javascript:alert(1)">x</a>', true);
+      expect(hostHtml().toLowerCase()).not.toContain('<script');
+      expect(hostHtml().toLowerCase()).not.toContain('javascript:');
+    });
+
+    it('switching inert off again restores images and links on the next render', () => {
+      setInert('[t](http://x/) ![a](http://x/p.png)', true);
+      expect(hostEl().querySelector('a')!.hasAttribute('href')).toBe(false);
+      fixture.componentRef.setInput('inert', false);
+      fixture.detectChanges();
+      expect(hostEl().querySelector('a')!.getAttribute('href')).toBe('http://x/');
+      expect(hostEl().querySelector('img')).not.toBeNull();
+    });
+  });
+
   describe('copy button', () => {
     // Keep a handle on whatever navigator.clipboard was before each test so the
     // stubbing (which replaces it, sometimes deletes it) is fully reverted.

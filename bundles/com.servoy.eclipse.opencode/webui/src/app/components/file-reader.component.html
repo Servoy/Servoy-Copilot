@@ -1,0 +1,49 @@
+@if (state().open) {
+  <div class="backdrop" (click)="close()"></div>
+  <section
+    #panel
+    class="panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="file-reader-name"
+    (keydown)="onKeydown($event)"
+  >
+    <header class="header">
+      <div class="heading">
+        <div class="name" id="file-reader-name">{{ displayName() }}</div>
+        <div class="path" [attr.title]="displayPath()">{{ displayPath() }}</div>
+      </div>
+      <span class="pill">read-only</span>
+      <button #closeButton type="button" class="close" aria-label="Close file" (click)="close()">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+      </button>
+    </header>
+    <div class="body">
+      @switch (state().status) {
+        @case ('loading') {
+          <div class="notice" role="status" aria-busy="true">Loading…</div>
+        }
+        @case ('ready') {
+          @if (isMarkdown()) {
+            <div class="markdown">
+              <svy-markdown [content]="state().file?.content ?? ''" [inert]="true"></svy-markdown>
+            </div>
+          } @else {
+            <pre class="code" tabindex="0"><code [textContent]="state().file?.content ?? ''"></code></pre>
+          }
+        }
+        @case ('error') {
+          <div class="notice" role="alert">
+            <span>{{ message() }}</span>
+            <button type="button" class="retry" (click)="retry()">Retry</button>
+          </div>
+        }
+        @default {
+          <div class="notice" role="status">{{ message() }}</div>
+        }
+      }
+    </div>
+  </section>
+}

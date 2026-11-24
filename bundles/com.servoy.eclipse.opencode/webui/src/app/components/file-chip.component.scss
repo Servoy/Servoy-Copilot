@@ -1,0 +1,58 @@
+:host {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--svy-line);
+  border-radius: 10px;
+  background: var(--svy-surface);
+  color: var(--svy-fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  &.sm {
+    height: 36px;
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  &:hover {
+    background: var(--svy-soft);
+    border-color: var(--svy-line3);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-acc-fg);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--svy-focus-ring);
+  }
+}
+
+.icon {
+  flex: none;
+  color: var(--svy-acc-fg);
+}
+
+.caption {
+  flex: none;
+  color: var(--svy-muted);
+  font-weight: 600;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--svy-mono);
+}

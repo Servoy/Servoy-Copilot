@@ -21,6 +21,7 @@ import { AgentHeaderComponent } from './components/agent-header.component';
 import { AgentViewComponent } from './components/agent-view.component';
 import { ComposerComponent } from './components/composer.component';
 import { DebugOverlayComponent } from './components/debug-overlay.component';
+import { FileReaderComponent } from './components/file-reader.component';
 import { FormCardComponent } from './components/form-card.component';
 import { MessageListComponent } from './components/message-list.component';
 import { SessionListComponent } from './components/session-list.component';
@@ -44,6 +45,7 @@ import { StatusPanelComponent } from './components/status-panel.component';
     AgentHeaderComponent,
     AgentFooterComponent,
     StatusPanelComponent,
+    FileReaderComponent,
     DebugOverlayComponent
   ],
   templateUrl: './app.component.html',

@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
+import { FileRef } from '../services/file-refs';
+import { FileChipComponent } from './file-chip.component';
 import { MarkdownRendererComponent } from './markdown-renderer.component';
 
-export interface AgentFile {
-  name: string;
-  path?: string;
-}
+export type AgentFile = FileRef;
 
 export function isLongTask(text: string): boolean {
   return text.length > 600 || text.split(/\r?\n/).length > 8;
@@ -15,7 +14,7 @@ export function isLongTask(text: string): boolean {
   selector: 'svy-agent-task',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownRendererComponent],
+  imports: [MarkdownRendererComponent, FileChipComponent],
   templateUrl: './agent-task.component.html',
   styleUrl: './agent-task.component.scss'
 })

@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 
 import { forkJoin } from 'rxjs';
 
@@ -21,6 +21,7 @@ import {
 } from './agent-status';
 import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
+import { LoadedMessagesService } from './loaded-messages.service';
 import { OpencodeApiService } from './opencode-api.service';
 import { isRenderablePart, upsertPart } from './part-utils';
 import {
@@ -81,6 +82,7 @@ export interface SessionNode {
 export class ChatStore implements OnDestroy {
   private readonly api = inject(OpencodeApiService);
   private readonly eventStream = inject(EventStreamService);
+  private readonly loadedMessages = inject(LoadedMessagesService);
 
   /** All sessions returned by the server, top-level and subagent children. */
   private readonly allSessions = signal<Session[]>([]);
@@ -279,6 +281,7 @@ export class ChatStore implements OnDestroy {
     this.setMapEntry(this.liveOutcomes, id, null);
     this.setMapEntry(this.interruptedReasons, id, null);
     this.setMapEntry(this.backgroundResults, id, null);
+    this.loadedMessages.forget(id);
   }
 
   private removeActive(id: string): void {
@@ -470,6 +473,13 @@ export class ChatStore implements OnDestroy {
   private readonly toolMetaByCallId = new Map<string, Record<string, unknown>>();
 
   constructor() {
+    effect(() => {
+      const id = this.activeSessionId();
+      const messages = this.messages();
+      if (id && messages.length > 0 && messages.every((m) => !m.info.sessionID || m.info.sessionID === id)) {
+        this.loadedMessages.record(id, messages);
+      }
+    });
     this.eventStream.events().subscribe((evt) => this.onEvent(evt));
     this.eventStream.reconnected().subscribe(() => this.seedActiveSessions());
   }
@@ -705,6 +715,7 @@ export class ChatStore implements OnDestroy {
     // meaningful; drop them so they can't leak onto a reused id.
     this.clearDraft(id);
     this.setSessionStreaming(id, false);
+    this.loadedMessages.forget(id);
     // Drop it locally first so the merging refreshSessions() can't re-add it
     // (the server list no longer returns it, and merge preserves local-only
     // entries - which is exactly what we do NOT want for a removed session).

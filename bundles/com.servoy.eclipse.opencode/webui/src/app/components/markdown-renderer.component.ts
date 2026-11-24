@@ -28,23 +28,51 @@ import { marked } from 'marked';
 })
 export class MarkdownRendererComponent {
   readonly content = input('');
+  readonly inert = input(false);
 
   readonly host = viewChild.required<ElementRef<HTMLDivElement>>('host');
 
   constructor() {
     effect(() => {
-      // Read both signals so the effect re-runs on content change and once the
+      // Read all signals so the effect re-runs on content change and once the
       // host element is available.
       const content = this.content();
+      const inert = this.inert();
       const hostRef = this.host();
-      this.render(hostRef.nativeElement, content);
+      this.render(hostRef.nativeElement, content, inert);
     });
   }
 
-  private render(el: HTMLDivElement, content: string): void {
+  private render(el: HTMLDivElement, content: string, inert: boolean): void {
     const raw = marked.parse(content ?? '', { async: false, gfm: true, breaks: true }) as string;
-    const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+    const clean = DOMPurify.sanitize(
+      raw,
+      inert
+        ? {
+            USE_PROFILES: { html: true },
+            FORBID_TAGS: [
+              'img',
+              'picture',
+              'source',
+              'iframe',
+              'form',
+              'style',
+              'video',
+              'audio',
+              'object',
+              'embed',
+              'link',
+              'base',
+              'meta'
+            ],
+            FORBID_ATTR: ['style', 'src', 'srcset', 'poster', 'formaction', 'xlink:href']
+          }
+        : { USE_PROFILES: { html: true } }
+    );
     el.innerHTML = clean;
+    if (inert) {
+      el.querySelectorAll('a').forEach((a) => a.removeAttribute('href'));
+    }
     el.querySelectorAll('pre code').forEach((block) => {
       try {
         hljs.highlightElement(block as HTMLElement);

@@ -18,6 +18,7 @@
 package com.servoy.eclipse.opencode.tests.plainjunit.tomcat;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,7 +31,10 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servoy.eclipse.opencode.tomcat.OpencodeChatServlet;
+import com.servoy.eclipse.opencode.tomcat.ServletTestAccess;
 
 /**
  * Unit tests for the pure request-routing, path-resolution, directory-injection
@@ -175,18 +179,46 @@ class OpencodeChatServletTest {
 		}
 
 		@Test
-		@DisplayName("client cannot spoof directory: existing directory param is NOT overridden")
+		@DisplayName("client cannot spoof directory: the client param is removed and replaced by the BFF value")
 		void clientCannotOverrideDirectory() {
 			String result = OpencodeChatServlet.injectDirectory("/session?directory=/evil", "/home/proj");
-			assertEquals("/session?directory=/evil", result,
-					"servlet must not append a second directory param when one is already present");
+			assertEquals("/session?directory=%2Fhome%2Fproj", result);
 		}
 
 		@Test
-		@DisplayName("existing directory param among others is detected and not duplicated")
-		void existingDirectoryAmongOthersNotDuplicated() {
+		@DisplayName("client directory among other params is removed, the others keep their order, one BFF value is appended")
+		void existingDirectoryAmongOthersReplaced() {
 			String result = OpencodeChatServlet.injectDirectory("/session?limit=5&directory=/x&foo=1", "/home/proj");
-			assertEquals("/session?limit=5&directory=/x&foo=1", result);
+			assertEquals("/session?limit=5&foo=1&directory=%2Fhome%2Fproj", result);
+		}
+
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', value = {
+				"/s?directory=C%3A%5CUsers|/p|/s?directory=%2Fp",
+				"/s?Directory=x&limit=1|/p|/s?limit=1&directory=%2Fp",
+				"/s?director%79=x|/p|/s?directory=%2Fp",
+				"/s?directory=a&directory=b&directory|/p|/s?directory=%2Fp",
+				"/s?workspace=w&a=1|/p|/s?a=1&directory=%2Fp",
+				"/s?WORKSPACE=w|/p|/s?directory=%2Fp",
+				"/s?a=1&DIRECTORY=x&b=2|/p|/s?a=1&b=2&directory=%2Fp" })
+		@DisplayName("every client directory/workspace spelling is replaced by exactly one BFF directory")
+		void clientDirectoryAlwaysReplaced(String input, String directory, String expected) {
+			assertEquals(expected, OpencodeChatServlet.injectDirectory(input, directory));
+		}
+
+		@Test
+		@DisplayName("without a BFF directory the client directory/workspace params are still stripped")
+		void clientDirectoryStrippedWithoutBffDirectory() {
+			assertAll(() -> assertEquals("/s", OpencodeChatServlet.injectDirectory("/s?directory=x", null)),
+					() -> assertEquals("/s?a=1", OpencodeChatServlet.injectDirectory("/s?workspace=w&a=1", "")));
+		}
+
+		@Test
+		@DisplayName("a client directory is never present in the result, only the BFF one")
+		void clientDirectoryNotPresentInResult() {
+			String result = OpencodeChatServlet.injectDirectory("/s?directory=C%3A%5CUsers%5Cevil", "/p");
+			assertAll(() -> assertFalse(result.contains("evil"), result),
+					() -> assertEquals(1, result.split("directory=", -1).length - 1, result));
 		}
 
 		@Test
@@ -207,6 +239,8 @@ class OpencodeChatServletTest {
 
 	@Nested
 	class BodyLocationInjection {
+		private static final ObjectMapper JSON = new ObjectMapper();
+
 		private static String utf8(byte[] bytes) {
 			return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
 		}
@@ -255,17 +289,56 @@ class OpencodeChatServletTest {
 		}
 
 		@Test
-		@DisplayName("location is spliced in before existing members")
-		void existingMembersPreserved() {
-			assertEquals("{\"location\":{\"directory\":\"/home/proj\"},\"title\":\"hi\"}",
-					utf8(OpencodeChatServlet.ensureBodyLocation(bytes("{\"title\":\"hi\"}"), "/home/proj")));
+		@DisplayName("location is added to a body, existing members are kept")
+		void existingMembersPreserved() throws Exception {
+			JsonNode node = JSON.readTree(
+					OpencodeChatServlet.ensureBodyLocation(bytes("{\"title\":\"hi\"}"), "/home/proj"));
+			assertAll(() -> assertEquals("hi", node.path("title").asText()),
+					() -> assertEquals("/home/proj", node.path("location").path("directory").asText()),
+					() -> assertEquals(2, node.size()));
 		}
 
 		@Test
-		@DisplayName("a body that already sets location is left untouched")
-		void explicitLocationRespected() {
-			String original = "{\"location\":{\"directory\":\"/other\"}}";
-			assertEquals(original, utf8(OpencodeChatServlet.ensureBodyLocation(bytes(original), "/home/proj")));
+		@DisplayName("a client-supplied location is replaced by the BFF directory, other members are kept")
+		void explicitLocationOverwritten() throws Exception {
+			String original = "{\"location\":{\"directory\":\"/other\",\"x\":1},\"title\":\"t\"}";
+			JsonNode node = JSON.readTree(OpencodeChatServlet.ensureBodyLocation(bytes(original), "/home/proj"));
+			assertAll(() -> assertEquals("/home/proj", node.path("location").path("directory").asText()),
+					() -> assertFalse(node.path("location").has("x"), "the client location must be dropped entirely"),
+					() -> assertEquals("t", node.path("title").asText()),
+					() -> assertEquals(2, node.size()));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "{\"location\":null}", "{\"location\":\"/evil\"}", "{\"location\":[1]}",
+				"{\"location\":{}}" })
+		@DisplayName("a non-object / null / empty client location is also replaced")
+		void oddLocationValuesOverwritten(String original) throws Exception {
+			JsonNode node = JSON.readTree(OpencodeChatServlet.ensureBodyLocation(bytes(original), "/home/proj"));
+			assertEquals("/home/proj", node.path("location").path("directory").asText());
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "not json", "[1,2]", "\"str\"", "42", "{\"a\":" })
+		@DisplayName("a body that is not a JSON object (or does not parse) is returned unchanged")
+		void nonObjectBodyUnchanged(String original) {
+			assertArrayEquals(bytes(original), OpencodeChatServlet.ensureBodyLocation(bytes(original), "/home/proj"));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "/api/Session", "/api/session/", "/api/session/?x=1", "/api/SESSION//",
+				"/api/experimental/session/import/", "/api/Experimental/Session/Import?directory=x" })
+		@DisplayName("endpoint detection tolerates case, trailing slashes and a query")
+		void endpointVariantsDetected(String upstreamPath) {
+			assertTrue(OpencodeChatServlet.isBodyLocationEndpoint(upstreamPath), upstreamPath);
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "/api/sessions", "/api/session/x", "/api/experimental/session", "/api",
+				"/api/session/import", "", "/session" })
+		@DisplayName("other upstream paths are not body-location endpoints")
+		void otherEndpointsNotDetected(String upstreamPath) {
+			assertFalse(OpencodeChatServlet.isBodyLocationEndpoint(upstreamPath), upstreamPath);
 		}
 
 		@Test
@@ -284,6 +357,195 @@ class OpencodeChatServletTest {
 		void jsonEscapeBasics() {
 			assertAll(() -> assertEquals("C:\\\\x", OpencodeChatServlet.jsonEscape("C:\\x")),
 					() -> assertEquals("a\\\"b", OpencodeChatServlet.jsonEscape("a\"b")));
+		}
+	}
+
+	@Nested
+	class FileRoute {
+		@Test
+		@DisplayName("only exactly '/file' is the file reader route and it is not an API request")
+		void fileRouteExact() {
+			assertAll(() -> assertTrue(OpencodeChatServlet.isFileRequest("/file")),
+					() -> assertFalse(OpencodeChatServlet.isApiRequest("/file")),
+					() -> assertFalse(OpencodeChatServlet.isFileRequest(null)));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "/file/", "/File", "/FILE", "/rest_api/file", "/files", "/file?x=1", "file", "",
+				"/", "/solution", "/file/x" })
+		@DisplayName("every other path is not the file reader route")
+		void otherPathsNotFile(String pathInfo) {
+			assertFalse(OpencodeChatServlet.isFileRequest(pathInfo), pathInfo);
+		}
+	}
+
+	@Nested
+	class BlockedApiPaths {
+		@ParameterizedTest
+		@ValueSource(strings = { "/rest_api/fs/read/x", "/rest_api/fs", "/rest_api/fs/", "/rest_api/FS/list",
+				"/rest_api/Fs/list", "/rest_api/experimental/fs/write", "/rest_api//fs/read", "/rest_api/./fs",
+				"/rest_api/session/../fs/read", "/rest_api/..", "/rest_api/.", "/rest_api/session/%2e%2e/x",
+				"/rest_api/%66s/read", "/rest_api/%2566s/read", "/rest_api/a\\b", "/rest_api/a\\fs",
+				"/rest_api/a\0b", "/rest_api/a\nb", "/rest_api/a\tb", "/rest_api/a\u007fb",
+				"/rest_api/session/ses_1/%66s" })
+		@DisplayName("fs segments, dot segments and smuggled segments (%, backslash, control char) are blocked")
+		void blocked(String pathInfo) {
+			assertTrue(OpencodeChatServlet.isBlockedApiPath(pathInfo), pathInfo);
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "/rest_api", "/rest_api/", "/rest_api/session", "/rest_api/session/fsx",
+				"/rest_api/event", "/rest_api/fsx", "/rest_api/xfs", "/rest_api/session/ses_1/message",
+				"/rest_api/session/ses_1:x@y", "/rest_api/a.b", "/rest_api/..a", "/rest_api/a..", "/solution",
+				"/file", "/index.html" })
+		@DisplayName("ordinary API paths (and non-API paths) are not blocked")
+		void notBlocked(String pathInfo) {
+			assertFalse(OpencodeChatServlet.isBlockedApiPath(pathInfo), pathInfo);
+		}
+
+		@Test
+		@DisplayName("null is not blocked")
+		void nullNotBlocked() {
+			assertFalse(OpencodeChatServlet.isBlockedApiPath(null));
+		}
+	}
+
+	@Nested
+	class SafeUpstreamPath {
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', value = {
+				"/rest_api|/api",
+				"/rest_api/|/api",
+				"/rest_api/session|/api/session",
+				"/rest_api/session/|/api/session",
+				"/rest_api//session///abc//|/api/session/abc",
+				"/rest_api/a b|/api/a%20b",
+				"/rest_api/\u00e9|/api/%C3%A9",
+				"/rest_api/a%2Fb|/api/a%252Fb",
+				"/rest_api/a?b#c|/api/a%3Fb%23c",
+				"/rest_api/a;b+c|/api/a%3Bb%2Bc",
+				"/rest_api/a\\b|/api/a%5Cb",
+				"/rest_api/session/ses_1:x@y-z.w~v|/api/session/ses_1:x@y-z.w~v" })
+		@DisplayName("empty segments are dropped and every segment is percent-encoded exactly once")
+		void safePath(String pathInfo, String expected) {
+			assertEquals(expected, OpencodeChatServlet.toSafeUpstreamPath(pathInfo));
+		}
+
+		@Test
+		@DisplayName("null path-info maps to the upstream root")
+		void nullMapsToRoot() {
+			assertEquals("/api", OpencodeChatServlet.toSafeUpstreamPath(null));
+		}
+
+		@Test
+		@DisplayName("the result never contains a query, fragment or raw space")
+		void noInjection() {
+			String result = OpencodeChatServlet.toSafeUpstreamPath("/rest_api/x?directory=/evil#frag y");
+			assertAll(() -> assertFalse(result.contains("?"), result), () -> assertFalse(result.contains("#"), result),
+					() -> assertFalse(result.contains(" "), result));
+		}
+	}
+
+	@Nested
+	class StripDirectoryParam {
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', value = {
+				"directory=x|",
+				"Directory=x|",
+				"DIRECTORY=x|",
+				"director%79=x|",
+				"%64irectory=x|",
+				"directory=a&directory=b|",
+				"directory|",
+				"directory=|",
+				"%20directory=x|",
+				"+directory=x|",
+				"workspace=w|",
+				"Workspace|",
+				"limit=1&directory=x&b=2|limit=1&b=2",
+				"a=1&&b=2|a=1&b=2",
+				"a=directory|a=directory",
+				"mydirectory=1|mydirectory=1",
+				"directory%3D=1|directory%3D=1",
+				"bad%zz=1&directory=x|bad%zz=1" })
+		@DisplayName("directory/workspace params are removed (decoded, case-insensitive), others are kept in order")
+		void strip(String query, String expected) {
+			assertEquals(expected == null ? "" : expected, OpencodeChatServlet.stripDirectoryParam(query));
+		}
+
+		@Test
+		@DisplayName("null and empty queries give an empty string")
+		void nullAndEmpty() {
+			assertAll(() -> assertEquals("", OpencodeChatServlet.stripDirectoryParam(null)),
+					() -> assertEquals("", OpencodeChatServlet.stripDirectoryParam("")));
+		}
+	}
+
+	@Nested
+	class ForwardableHeaders {
+		@ParameterizedTest
+		@ValueSource(strings = { "X-OpenCode-Directory", "x-opencode-directory", "X-OPENCODE-DIRECTORY",
+				"Authorization", "AUTHORIZATION", "Cookie", "cookie", "Origin", "origin", "X-Opencode-Workspace",
+				"x-opencode-workspace", "Connection", "Host", "host", "Keep-Alive", "Proxy-Authenticate",
+				"Proxy-Authorization", "TE", "Trailer", "Transfer-Encoding", "Upgrade", "Content-Length",
+				"Accept-Encoding" })
+		@DisplayName("hop-by-hop, BFF-owned and client-identity headers are never forwarded")
+		void notForwarded(String name) {
+			assertFalse(OpencodeChatServlet.isForwardableRequestHeader(name), name);
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = { "content-type", "Content-Type", "accept", "Accept-Language", "Last-Event-ID",
+				"Cache-Control", "User-Agent", "X-Custom" })
+		@DisplayName("ordinary headers are forwarded")
+		void forwarded(String name) {
+			assertTrue(OpencodeChatServlet.isForwardableRequestHeader(name), name);
+		}
+
+		@Test
+		@DisplayName("a null header name is not forwarded")
+		void nullNotForwarded() {
+			assertFalse(OpencodeChatServlet.isForwardableRequestHeader(null));
+		}
+	}
+
+	@Nested
+	class LoopbackRequestCheck {
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', nullValues = "NULL", value = {
+				"localhost:8183|NULL|NULL",
+				"127.0.0.1:8183|NULL|NULL",
+				"[::1]:8183|NULL|NULL",
+				"LOCALHOST|NULL|NULL",
+				"localhost|same-origin|NULL",
+				"localhost|SAME-ORIGIN|NULL",
+				"127.0.0.1:8183|NULL|http://127.0.0.1:8183",
+				"localhost:8183|same-origin|http://LOCALHOST:8183" })
+		@DisplayName("loopback Host with absent or same-origin Sec-Fetch-Site/Origin is accepted")
+		void accepted(String host, String site, String origin) {
+			assertTrue(ServletTestAccess.isSameOriginLoopbackRequest(host, site, origin));
+		}
+
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', nullValues = "NULL", value = {
+				"NULL|NULL|NULL",
+				"|NULL|NULL",
+				"evil.example|NULL|NULL",
+				"127.0.0.1.evil.com|NULL|NULL",
+				"localhost.evil.com:8183|NULL|NULL",
+				"evil.example:8183|NULL|NULL",
+				"[::1|NULL|NULL",
+				"[::2]:8183|NULL|NULL",
+				"localhost:8183|cross-site|NULL",
+				"localhost:8183|same-site|NULL",
+				"localhost:8183|none|NULL",
+				"localhost:8183|NULL|http://evil.example",
+				"localhost:8183|NULL|http://localhost:9999",
+				"localhost:8183|NULL|null",
+				"localhost:8183|same-origin|http://evil.example" })
+		@DisplayName("bad Host, cross-site Sec-Fetch-Site or foreign Origin is refused")
+		void refused(String host, String site, String origin) {
+			assertFalse(ServletTestAccess.isSameOriginLoopbackRequest(host, site, origin));
 		}
 	}
 

@@ -4,12 +4,12 @@ import { EMPTY, Observable, catchError, expand, map, of, reduce } from 'rxjs';
 
 import {
   CommandInfo,
-  FileMatch,
   FormAnswer,
   FormInfo,
   MessageWithParts,
   SendPart,
-  Session
+  Session,
+  WorkspaceFile
 } from '../models/opencode.models';
 import { mapV2Message } from './v2-mapping';
 
@@ -214,23 +214,14 @@ export class OpencodeApiService {
     return this.http.post<void>(`${this.base}/session/${encodeURIComponent(id)}/interrupt`, {});
   }
 
-  /** Search files (V2 {@code GET /fs/find?query=} -> {@code { location, data }}). */
-  findFiles(query: string): Observable<FileMatch[]> {
-    const params = new HttpParams().set('query', query);
-    return this.http
-      .get<{ data?: FileMatch[] }>(`${this.base}/fs/find`, { params })
-      .pipe(map((r) => r?.data ?? []));
-  }
-
   /**
-   * Read a file's text (V2 {@code GET /fs/read/<path>}). The path is a URL
-   * path segment, not a query param, in V2.
+   * Read a workspace text file through the BFF's own {@code GET file?path=}
+   * route (not the opencode proxy; the servlet enforces the workspace
+   * boundary). The query is built by hand because {@code HttpParams} leaves
+   * {@code +} unescaped.
    */
-  readFile(path: string): Observable<string> {
-    const encoded = path.split('/').map((seg) => encodeURIComponent(seg)).join('/');
-    return this.http.get(`${this.base}/fs/read/${encoded}`, {
-      responseType: 'text'
-    });
+  readWorkspaceFile(path: string): Observable<WorkspaceFile> {
+    return this.http.get<WorkspaceFile>(`file?path=${encodeURIComponent(path)}`);
   }
 
   /**
