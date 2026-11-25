@@ -1,6 +1,8 @@
 # Review Summary — SVY-21596: MCP createForm events= neither wires the form handler nor creates the method
 
-**Risk: ELEVATED, bug confirmed by execution** — `createForm` wires events (and saves) onto an already-existing form, because the "already exists" result string is never checked before `applyEventsToForm` runs (`ServoyDevServer.java:1670-1683`). Sent back to the author ("Code review problem").
+**Risk of the original change (`de674ac`): ELEVATED, bug confirmed by execution** — `createForm` wires events (and saves) onto an already-existing form, because the "already exists" result string is never checked before `applyEventsToForm` runs (`ServoyDevServer.java:1670-1683`). Sent back to the author ("Code review problem").
+
+**Status after the fix (`5decd453`, cPecican, 2026-11-24): resolved (Fixed). Duplicate-name fix confirmed by a live run; persistence of events in steps 3, 4 and 6 is still unverified.** See "Fix verification" below.
 
 Scope reviewed: Servoy-Copilot `master`, commits `de674ac` and `319690d`.
 
@@ -19,6 +21,39 @@ Run in Servoy Developer (lts_2026 workspace, solution `btn_fixture`) through the
 | 5 | `events=onShow:f(){};x`, form `zz_svy21596_d` | `created successfully` / `Wired events: onShow -> f(){};x`. The form script contains `function f(){};x(event) {`, which is invalid JavaScript. |
 
 An Eclipse error-log entry `RepositoryException: dataSource is required` for `zz_svy21596_b` came from a `columns="*"` call without a datasource (`createFormWithFields:316`). It is input validation before anything is created and is not part of the regression; it is only logged as a severity-4 error, which is noisy.
+
+## Fix verification (`5decd453`)
+
+Checked by reading the diff and comparing the skeletons with `@templateparam` / `@templatetype` in core `Form.java` on `lts_2026`, then partly executed in Servoy Developer (forms `zz_fix_a` to `_g`). The issue was resolved before the live run reported back.
+
+**Live re-run result: partial.** The run happened in the solution `closePopup`, not `btn_fixture`, because the intended solution was not active. The duplicate-name fix is confirmed; three steps are inconclusive.
+
+| Step | Result | Evidence |
+|---|---|---|
+| 1. create with `onShow:handlerA` | Pass | `onShow` bound to `handlerA`, declared `function handlerA(firstShow, event)` |
+| 2. duplicate name, no `columns` | **Pass** | "already exists in the active solution. Events not applied: the form already exists and was left unchanged." `onShow` still `handlerA`, no `handlerB` |
+| 3. duplicate name with `columns` | Duplicate half passes, first create inconclusive | The duplicate returned the same "Events not applied" text. The first call said "Wired events: onShow -> handlerA", but `zz_fix_b.frm` had no `onShowMethodID` and no `.js` existed |
+| 4. `onShow:ok,onHide:bad name` | Report format passes, persistence not confirmed | Result lists `onShow -> ok` as wired and `onHide:bad name` as skipped. On disk: no `onShowMethodID`, no `zz_fix_c.js` |
+| 5. `onShow:f(){};x` | Pass | Skipped as not a valid JavaScript identifier, nothing written |
+| 6. six skeletons | Not verified | All six reported as wired, but no `.js` existed, so signatures and `@return` tags could not be read |
+| 7. no events / `events=""` | Pass | Plain "created successfully" message |
+
+**Open question: persistence.** In steps 3, 4 and 6 the tool reported events as wired that were not on disk at read-back; only step 1, run alone, persisted its event. The tester ran the other six forms in one parallel batch and suspects a race (read-back before the save landed, or concurrent edits of the shared editing solution). That is a guess. Nothing here implicates `5decd453`, but nothing rules it out either. Re-run steps 3, 4 and 6 one call at a time, in `btn_fixture`, and read each form back only after its create returns. If the gap reproduces sequentially, it is a new defect (the result claims "Wired events" before the save is visible) and needs its own case.
+
+| Finding | Result of the code read |
+|---|---|
+| Duplicate name re-wires the existing form | Fixed. `ServoyDevServer.java:1681` tests `createResult.startsWith("Form '<name>' already exists")`, which matches both "already exists" returns in the service (`:91`, `:321`), so both the `columns` and non-`columns` paths skip wiring and the result says "Events not applied". |
+| Partial failure leaves an unwired form and an `Error:` | Fixed. `applyEventsToForm` catches `RepositoryException` per event (`NamevalidationException` extends it), reports "Failed to wire events", and saves the events that did wire. |
+| Method name not validated | Fixed. `isValidMethodName` allows only `[A-Za-z_$][A-Za-z0-9_$]*`; other names are reported as skipped. Core's validator still rejects keywords, which now ends as a per-event failure. |
+| Skeletons unconfirmed | Match core. `onShow(firstShow, event)`, `onBeforeRecordSelection(oldSelection, newSelection, event)` with Boolean return, `onRecordEditStart` / `onElementFocusGained` / `onElementFocusLost` `(event)` with Boolean return. `(event)` is correct for `onRecordSelection`, `onResize`, `onLoad`, `onUnload`, `onHide`. |
+
+Remaining, none blocking:
+- The duplicate guard depends on the exact wording of the "already exists" string; a reworded message would silently bring the bug back. A returned status would be sturdier.
+- The existing-form check only looks at the active solution, so a same-named form that lives in a module is still not caught (as before this commit).
+- The identifier regex is ASCII-only, which errs on the safe side.
+- No test seen for the "Failed to wire events" path, and no plain-JUnit test for the pure `isValidMethodName`.
+
+To close the gap: re-run steps 3, 4 and 6 sequentially in `btn_fixture` (see "Open question: persistence" above) and record the results here.
 
 ## Manual test plan
 
@@ -52,4 +87,4 @@ Automated: plain JUnit `com.servoy.eclipse.developer.mcp.plainjunit` (incl. `Ser
 
 Verified: `AiBridge.applyEventMethod` and the exported `com.servoy.eclipse.core.ai` package exist on `release` and `lts_2026`.
 
-Test leftovers: forms `zz_svy21596_a` to `_d` remain in `btn_fixture` and need manual deletion.
+Test leftovers: forms `zz_svy21596_a` to `_d` from the first run (the run reports never named the solution, so they are assumed to be in `btn_fixture`), and `zz_fix_a` to `_g` in `closePopup`, need manual deletion.
