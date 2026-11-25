@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.servoy.eclipse.developer.mcp.services.CodeEditingService;
 
@@ -486,6 +487,100 @@ public class CodeEditingServiceTest {
 					() -> assertTrue(note.contains("Header count 5"), "should quote the header count"),
 					() -> assertTrue(note.contains("disagreed with the actual context+removed line count 3"),
 							"should quote the actual count in the disagreement suffix"));
+		}
+	}
+
+	@Nested
+	class DeleteLines {
+
+		@ParameterizedTest(name = "delete line 2 of a newline-terminated file, eol={0}")
+		@ValueSource(strings = { "\n", "\r\n" })
+		@DisplayName("deleting a line does not add a blank line at the end")
+		void noPhantomBlankLine(String eol) {
+			String file = "a" + eol + "b" + eol + "c" + eol;
+			assertEquals("a" + eol + "c" + eol, CodeEditingService.deleteLines(file, 2, 2));
+		}
+
+		@ParameterizedTest(name = "three deletes in a row, eol={0}")
+		@ValueSource(strings = { "\n", "\r\n" })
+		@DisplayName("repeated deletes do not accumulate blank lines")
+		void repeatedDeletesStable(String eol) {
+			String file = "a" + eol + "b" + eol + "c" + eol + "d" + eol + "e" + eol;
+			String result = file;
+			for (int i = 0; i < 3; i++)
+				result = CodeEditingService.deleteLines(result, 2, 2);
+			assertEquals("a" + eol + "e" + eol, result);
+		}
+
+		@Test
+		@DisplayName("endLine = real line count + 1 on a newline-terminated file is rejected")
+		void endLinePastLastLineRejected() {
+			String file = "a\nb\nc\n";
+			assertThrows(IllegalArgumentException.class, () -> CodeEditingService.deleteLines(file, 3, 4));
+		}
+
+		@Test
+		@DisplayName("file without trailing newline keeps having none")
+		void noTrailingNewlinePreserved() {
+			assertEquals("a\nc", CodeEditingService.deleteLines("a\nb\nc", 2, 2));
+		}
+
+		@Test
+		@DisplayName("deleting the last real line of a newline-terminated file is allowed")
+		void deleteLastRealLine() {
+			assertEquals("a\nb\n", CodeEditingService.deleteLines("a\nb\nc\n", 3, 3));
+		}
+	}
+
+	@Nested
+	class LocationPreference {
+
+		@Test
+		@DisplayName("loose match near the header beats an exact copy more than 50 lines away, with a note")
+		void looseNearHintBeatsExactFarAway() {
+			StringBuilder file = new StringBuilder("x = 1;  \ny = 2;\n");
+			for (int i = 1; i <= 120; i++)
+				file.append("filler").append(i).append("\n");
+			file.append("x = 1;\ny = 2;\n");
+			String patch = "@@ -1,2 +1,2 @@\n" + " x = 1;\n" + "-y = 2;\n" + "+y = 3;\n";
+			List<String> notes = new ArrayList<>();
+			String result = applyRoundTrip(file.toString(), patch, notes);
+			assertAll(() -> assertTrue(result.startsWith("x = 1;  \ny = 3;\n"), "the copy near the header must change"),
+					() -> assertTrue(result.endsWith("x = 1;\ny = 2;\n"), "the far exact copy must be untouched"),
+					() -> assertFalse(notes.isEmpty(), "a loose match must be reported"));
+		}
+
+		@Test
+		@DisplayName("unique exact match outside the window of a real header is reported as drift")
+		void exactOutsideWindowReported() {
+			StringBuilder file = new StringBuilder();
+			for (int i = 1; i <= 200; i++)
+				file.append("line").append(i).append("\n");
+			String patch = "@@ -10,3 +10,3 @@\n" + " line149\n" + "-line150\n" + "+CHANGED\n" + " line151\n";
+			List<String> notes = new ArrayList<>();
+			String result = applyRoundTrip(file.toString(), patch, notes);
+			assertAll(() -> assertTrue(result.contains("line149\nCHANGED\nline151\n")),
+					() -> assertEquals(1, notes.size()),
+					() -> assertTrue(notes.get(0).contains("outside the +-50 line window")));
+		}
+
+		@Test
+		@DisplayName("loose tier matching twice inside the window is ambiguous instead of picking the nearest")
+		void looseTierAmbiguousInWindow() {
+			String file = "a\n  k = 0;\nb\n  k = 0;\nc\n";
+			String patch = "@@ -3,1 +3,1 @@\n" + "-k = 0;\n" + "+k = 9;\n";
+			RuntimeException ex = assertThrows(RuntimeException.class, () -> applyRoundTrip(file, patch));
+			assertTrue(ex.getMessage().contains("matches 2 locations"));
+		}
+
+		@Test
+		@DisplayName("exact match at its real header position gives no drift note")
+		void exactAtHeaderNoNote() {
+			String file = "foo\nbar\nbaz\n";
+			String patch = "@@ -1,3 +1,3 @@\n" + " foo\n" + "-bar\n" + "+BAR\n" + " baz\n";
+			List<String> notes = new ArrayList<>();
+			assertEquals("foo\nBAR\nbaz\n", applyRoundTrip(file, patch, notes));
+			assertTrue(notes.isEmpty());
 		}
 	}
 
