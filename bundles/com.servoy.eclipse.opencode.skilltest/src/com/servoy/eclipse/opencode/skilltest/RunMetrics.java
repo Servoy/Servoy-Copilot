@@ -144,12 +144,14 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 	}
 
 	/**
-	 * An apportioned Kiro usage estimate read from the local snapshot file. Always
-	 * labelled an estimate in every surface (on a shared account other users' usage
-	 * mixes in), and never an exact per-dollar figure.
+	 * The scenario's Kiro usage as metered by the kiro-auth plugin per response
+	 * ({@code kiro.db} {@code session_usage}, summed over the root session and its
+	 * subagent sessions). This is the cost figure the reports, budgets and trend
+	 * use. Labelled an estimate: the plugin books Kiro's own metering, not an
+	 * invoice.
 	 *
-	 * @param requests   the number of Kiro requests attributed to the session
-	 * @param estCredits the estimated credits attributed to the session
+	 * @param requests   the number of Kiro requests of the scenario's sessions
+	 * @param estCredits the credits metered for the scenario's sessions
 	 */
 	public record KiroUsage(int requests, double estCredits) {
 	}
@@ -244,7 +246,7 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 		}
 		sb.append("\u0394: "); //$NON-NLS-1$
 		sb.append(creditsDelta != null ? "~" + creditsDelta : "sync pending / unknown"); //$NON-NLS-1$ //$NON-NLS-2$
-		sb.append(" credits (estimate; shared account)"); //$NON-NLS-1$
+		sb.append(" credits (account-wide, information only; shared account)"); //$NON-NLS-1$
 		return sb.toString();
 	}
 
@@ -340,8 +342,8 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 
 	/**
 	 * The Kiro surface label: "unknown (estimate)" when {@link #kiro} is
-	 * {@code null}, otherwise the request/credit figures with an explicit
-	 * "(estimate)" tag.
+	 * {@code null}, otherwise the scenario's metered request/credit figures
+	 * (root session plus subagent sessions) with an explicit "(estimate)" tag.
 	 *
 	 * @return the Kiro label (never {@code null})
 	 */
@@ -349,6 +351,8 @@ public record RunMetrics(int toolCalls, TokenUsage tokens, KiroUsage kiro, Doubl
 		if (kiro == null) {
 			return "unknown (estimate)"; //$NON-NLS-1$
 		}
-		return kiro.requests() + " requests, ~" + kiro.estCredits() + " credits (estimate)"; //$NON-NLS-1$ //$NON-NLS-2$
+		return kiro.requests() + " requests, ~" //$NON-NLS-1$
+				+ String.format(java.util.Locale.ROOT, "%.2f", Double.valueOf(kiro.estCredits())) //$NON-NLS-1$
+				+ " credits (estimate)"; //$NON-NLS-1$
 	}
 }

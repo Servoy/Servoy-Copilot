@@ -212,12 +212,12 @@ class RunMetricsTest {
 		}
 
 		@Test
-		@DisplayName("creditsLabel() renders the delta with an explicit estimate / shared-account caveat")
+		@DisplayName("creditsLabel() renders the delta as account-wide, information only, on a shared account")
 		void rendersDeltaWithCaveat() {
 			RunMetrics m = new RunMetrics(7, null, null, Double.valueOf(0.42d), List.of());
 			String label = m.creditsLabel();
 			assertAll(() -> assertTrue(label.contains("0.42"), "the delta is shown: " + label),
-					() -> assertTrue(label.contains("estimate"), "labelled an estimate"),
+					() -> assertTrue(label.contains("information only"), "labelled information only"),
 					() -> assertTrue(label.toLowerCase().contains("shared account"), "shared-account caveat present"));
 		}
 
@@ -233,7 +233,7 @@ class RunMetricsTest {
 					() -> assertTrue(label.contains("/ 1000.0"), "limit shown next to before"),
 					() -> assertTrue(label.contains("after: 142.0"), "after shown"),
 					() -> assertTrue(label.contains("\u0394: ~42.0"), "the delta shown"),
-					() -> assertTrue(label.contains("estimate"), "labelled an estimate"),
+					() -> assertTrue(label.contains("information only"), "labelled information only"),
 					() -> assertTrue(label.toLowerCase().contains("shared account"), "shared-account caveat present"));
 		}
 

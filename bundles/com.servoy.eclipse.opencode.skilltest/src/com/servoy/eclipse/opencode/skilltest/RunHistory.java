@@ -262,9 +262,9 @@ public final class RunHistory {
 				kn.put("requests", k.requests()); //$NON-NLS-1$
 				kn.put("estCredits", k.estCredits()); //$NON-NLS-1$
 			}
-			if (m.creditsDelta() != null) {
-				mn.put("creditsDelta", m.creditsDelta().doubleValue()); //$NON-NLS-1$
-			}
+			// The account Δ (creditsDelta) is deliberately not recorded: it is the shared
+			// account's movement, shown for information only, not the scenario's cost
+			// (SVY-21660). The history and trend use kiro.estCredits.
 		}
 		try {
 			return MAPPER.writeValueAsString(n);
@@ -628,7 +628,7 @@ public final class RunHistory {
 		Collections.reverse(recent);
 		sb.append("<table class=\"args\"><tr>"); //$NON-NLS-1$
 		for (String h : new String[] { "Timestamp", "Source", "Status", "Trials", "Model", "Tokens", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
-				"Credits \u0394" }) { //$NON-NLS-1$
+				"Credits" }) { //$NON-NLS-1$
 			sb.append("<td class=\"k\">").append(esc(h)).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 		sb.append("</tr>"); //$NON-NLS-1$
@@ -640,7 +640,7 @@ public final class RunHistory {
 			cell(sb, e.trialsTotal() != null ? e.trialsPassed() + "/" + e.trialsTotal() : null); //$NON-NLS-1$
 			cell(sb, e.model());
 			cell(sb, e.totalTokens() != null ? e.totalTokens().toString() : null);
-			cell(sb, e.creditsDelta() != null ? String.format(java.util.Locale.ROOT, "%.2f", e.creditsDelta()) : null); //$NON-NLS-1$
+			cell(sb, e.estCredits() != null ? String.format(java.util.Locale.ROOT, "%.2f", e.estCredits()) : null); //$NON-NLS-1$
 			sb.append("</tr>"); //$NON-NLS-1$
 		}
 		sb.append("</table>"); //$NON-NLS-1$

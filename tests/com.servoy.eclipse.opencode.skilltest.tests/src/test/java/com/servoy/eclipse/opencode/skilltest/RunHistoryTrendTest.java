@@ -205,17 +205,19 @@ class RunHistoryTrendTest {
 		}
 
 		@Test
-		@DisplayName("shows trials, tokens and credits Δ; other baselines are not listed")
+		@DisplayName("shows trials, tokens and the metered credits (not the account Δ); other baselines are not listed")
 		void columns() {
+			// creditsDelta 999 (an old account Δ entry) must not be shown; estCredits is.
 			Entry mine = new Entry("r", Instant.parse("2026-01-01T00:00:00Z"), "ci", "7", "x", Status.FAIL,
 					Integer.valueOf(2), Integer.valueOf(3), null, null, null, null, Long.valueOf(12345), null,
-					Double.valueOf(1.256d), null);
+					Double.valueOf(999d), Double.valueOf(1.256d));
 			Entry other = new Entry("r", Instant.parse("2026-01-01T00:00:00Z"), "ci", null, "other", Status.PASS, null,
 					null, null, "OTHER_MODEL", null, null, null, null, null, null);
 			String html = RunHistory.historyHtml(List.of(mine, other), "x", 10);
 			assertAll(() -> assertTrue(html.contains("2/3")), () -> assertTrue(html.contains("12345")),
 					() -> assertTrue(html.contains("1.26")), () -> assertTrue(html.contains("ci #7")),
-					() -> assertTrue(html.contains("FAIL")), () -> assertFalse(html.contains("OTHER_MODEL")));
+					() -> assertTrue(html.contains("FAIL")), () -> assertFalse(html.contains("OTHER_MODEL")),
+					() -> assertFalse(html.contains("999"), "the account Δ is not shown in the history"));
 		}
 
 		@Test

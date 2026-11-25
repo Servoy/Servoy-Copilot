@@ -89,9 +89,11 @@ public final class KiroUsageReader {
 		// user.home fallback for a no-OSGi test - so real runs stop reading
 		// "unknown". Only then fall back to the panel's cross-platform defaults.
 		// KIRO_CONFIG_DIR (the plugin's own override, set per build on CI) wins first.
+		// When set it is the only candidate, so a stale file elsewhere is never read.
 		File kiroConfigDir = KiroCreditReader.kiroConfigDirOverride();
 		if (kiroConfigDir != null) {
 			files.add(new File(kiroConfigDir, "kiro-usage.json")); //$NON-NLS-1$
+			return files;
 		}
 		File servoyConfig = KiroCreditReader.servoyOpencodeConfigDir();
 		if (servoyConfig != null) {

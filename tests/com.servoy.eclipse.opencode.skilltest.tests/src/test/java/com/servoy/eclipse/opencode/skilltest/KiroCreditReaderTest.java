@@ -33,6 +33,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
@@ -267,6 +268,78 @@ class KiroCreditReaderTest {
 			KiroCreditReader reader = new KiroCreditReader(List.of(dir.toFile()));
 			assertAll(() -> assertTrue(reader.creditsForSession(null).isEmpty(), "null id -> unknown"),
 					() -> assertTrue(reader.creditsForSession("  ").isEmpty(), "blank id -> unknown"));
+		}
+	}
+
+	@Nested
+	class UsageForSessions {
+
+		@Test
+		@DisplayName("usageForSessions sums requests and est_credits over the root and its subagent sessions")
+		void sumsSessionTree(@TempDir Path dir) throws Exception {
+			createKiroDb(dir, new Object[] { "ses_root", "acc1", 1.0d }, new Object[] { "ses_sub1", "acc1", 2.5d },
+					new Object[] { "ses_sub2", "acc2", 0.5d }, new Object[] { "ses_other", "acc1", 9.0d });
+			KiroCreditReader reader = new KiroCreditReader(List.of(dir.toFile()));
+
+			Optional<RunMetrics.KiroUsage> usage = reader
+					.usageForSessions(List.of("ses_root", "ses_sub1", "ses_sub2"));
+			assertAll(() -> assertTrue(usage.isPresent(), "the tree is found"),
+					() -> assertEquals(3, usage.get().requests(), "one request row per session"),
+					() -> assertEquals(4.0d, usage.get().estCredits(), 0.0001d,
+							"1.0 + 2.5 + 0.5, not ses_other's 9.0"));
+		}
+
+		@Test
+		@DisplayName("a session id given twice is counted once; null/blank ids are ignored")
+		void duplicatesAndBlanksIgnored(@TempDir Path dir) throws Exception {
+			createKiroDb(dir, new Object[] { "ses_root", "acc1", 1.5d });
+			KiroCreditReader reader = new KiroCreditReader(List.of(dir.toFile()));
+			List<String> ids = new java.util.ArrayList<>(List.of("ses_root", "ses_root", " "));
+			ids.add(null);
+			assertEquals(1.5d, reader.usageForSessions(ids).get().estCredits(), 0.0001d);
+		}
+
+		@Test
+		@DisplayName("no row for any of the ids, or no ids at all -> empty (unknown)")
+		void noRowsIsUnknown(@TempDir Path dir) throws Exception {
+			createKiroDb(dir, new Object[] { "ses_a", "acc1", 1.0d });
+			KiroCreditReader reader = new KiroCreditReader(List.of(dir.toFile()));
+			assertAll(() -> assertTrue(reader.usageForSessions(List.of("ses_x", "ses_y")).isEmpty()),
+					() -> assertTrue(reader.usageForSessions(List.of()).isEmpty()),
+					() -> assertTrue(reader.usageForSessions(null).isEmpty()));
+		}
+
+		@Test
+		@DisplayName("rows still in the WAL (never checkpointed, as on a fresh CI kiro.db) are read")
+		void readsUncheckpointedWal(@TempDir Path dir) throws Exception {
+			// The plugin keeps kiro.db in WAL mode. On a fresh DB the table and rows live
+			// only in kiro.db-wal; the old immutable=1 URL ignored the WAL and failed with
+			// "no such table: session_usage" on Jenkins. Keep the writer open (so the WAL
+			// is not checkpointed on close) while the reader reads.
+			File db = dir.resolve("kiro.db").toFile();
+			String url = "jdbc:sqlite:" + db.getAbsolutePath().replace('\\', '/');
+			try (Connection writer = DriverManager.getConnection(url); Statement st = writer.createStatement()) {
+				st.execute("PRAGMA journal_mode=WAL");
+				st.execute("PRAGMA wal_autocheckpoint=0");
+				st.executeUpdate("CREATE TABLE session_usage (session_id TEXT, account_id TEXT, title TEXT, "
+						+ "directory TEXT, requests INTEGER, est_credits REAL, first_used TEXT, last_used TEXT)");
+				st.executeUpdate("INSERT INTO session_usage VALUES ('ses_root','acc1','t','d',7,3.25,'f','l')");
+				assertTrue(dir.resolve("kiro.db-wal").toFile().length() > 0, "the rows are in the WAL");
+
+				KiroCreditReader reader = new KiroCreditReader(List.of(dir.toFile()));
+				Optional<RunMetrics.KiroUsage> usage = reader.usageForSessions(List.of("ses_root"));
+				assertAll(() -> assertTrue(usage.isPresent(), "WAL content visible to the read-only reader"),
+						() -> assertEquals(7, usage.get().requests()),
+						() -> assertEquals(3.25d, usage.get().estCredits(), 0.0001d));
+			}
+		}
+
+		@Test
+		@DisplayName("the reader opens kiro.db with mode=ro, not immutable=1")
+		void readOnlyUrl() {
+			String url = KiroCreditReader.readOnlyUrl(new File("x", "kiro.db"));
+			assertAll(() -> assertTrue(url.endsWith("?mode=ro"), url),
+					() -> assertFalse(url.contains("immutable"), url));
 		}
 	}
 

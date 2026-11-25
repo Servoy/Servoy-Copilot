@@ -193,14 +193,14 @@ public final class SkillTestHtml {
 		sb.append("<div class=\"bubble\">"); //$NON-NLS-1$
 		if (m == null) {
 			sb.append("Tool calls: <b>unknown</b><br>Tokens: unknown<br>Kiro: unknown (estimate)" //$NON-NLS-1$
-					+ "<br>Credits used (\u0394): unknown"); //$NON-NLS-1$
+					+ "<br>Account credits (info only): unknown"); //$NON-NLS-1$
 		} else {
 			sb.append("Tool calls: <b>").append(m.toolCalls()).append("</b><br>"); //$NON-NLS-1$ //$NON-NLS-2$
 			sb.append("Tokens: ").append(esc(m.tokensLabel())).append("<br>"); //$NON-NLS-1$ //$NON-NLS-2$
 			sb.append("Kiro: ").append(esc(m.kiroLabel())).append("<br>"); //$NON-NLS-1$ //$NON-NLS-2$
-			// Accurate per-scenario credits Δ (SVY-21660 B), labelled an estimate on a
-			// shared account.
-			sb.append("Credits used (\u0394): ").append(esc(m.creditsLabel())); //$NON-NLS-1$
+			// Account used before/after/Δ (SVY-21660): information only, the scenario's
+			// cost is the Kiro line above.
+			sb.append("Account credits (info only): ").append(esc(m.creditsLabel())); //$NON-NLS-1$
 		}
 		sb.append("</div>"); //$NON-NLS-1$
 		if (budgetWarning != null && !budgetWarning.isBlank()) {
@@ -257,7 +257,7 @@ public final class SkillTestHtml {
 	private static String metricsLine(RunMetrics m) {
 		return "<div class=\"muted\">Metrics \u2014 tool calls: " + m.toolCalls() //$NON-NLS-1$
 				+ ", tokens: " + esc(m.tokensLabel()) + ", Kiro: " + esc(m.kiroLabel()) //$NON-NLS-1$ //$NON-NLS-2$
-				+ ", credits \u0394: " + esc(m.creditsLabel()) + "</div>"; //$NON-NLS-1$ //$NON-NLS-2$
+				+ ", account (info only): " + esc(m.creditsLabel()) + "</div>"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	private static String toolCallsSection(SkillTestResult r) {

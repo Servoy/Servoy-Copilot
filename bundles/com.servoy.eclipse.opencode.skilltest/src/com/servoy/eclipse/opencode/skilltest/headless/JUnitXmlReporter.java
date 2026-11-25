@@ -152,9 +152,10 @@ public final class JUnitXmlReporter {
 				.append(m != null ? Integer.toString(m.toolCalls()) : "unknown") //$NON-NLS-1$
 				.append(", tokens=").append(m != null ? m.tokensLabel() : "unknown") //$NON-NLS-1$ //$NON-NLS-2$
 				.append(", kiro=").append(m != null ? m.kiroLabel() : "unknown (estimate)"); //$NON-NLS-1$ //$NON-NLS-2$
-		// Accurate per-scenario credits Δ + compact per-request ranking (SVY-21660
-		// B/C): informational, degrades to "unknown".
-		sb.append("\nCredits used (\u0394): ").append(m != null ? m.creditsLabel() : "unknown"); //$NON-NLS-1$ //$NON-NLS-2$
+		// Account used before/after/Δ (information only; the scenario cost is the
+		// kiro= figure above) + compact per-request ranking (SVY-21660 B/C):
+		// informational, degrades to "unknown".
+		sb.append("\nAccount credits (info only): ").append(m != null ? m.creditsLabel() : "unknown"); //$NON-NLS-1$ //$NON-NLS-2$
 		sb.append("\nPer-request tokens: ").append(m != null ? m.requestRankingLabel() : "unknown"); //$NON-NLS-1$ //$NON-NLS-2$
 		if (budgetWarning != null && !budgetWarning.isBlank()) {
 			sb.append("\nBudget warning: ").append(budgetWarning); //$NON-NLS-1$

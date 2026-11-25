@@ -53,11 +53,11 @@ class TrendReportHtmlTest {
 
 	private int seq;
 
-	private Entry entry(String baseline, Status status, String model, Long tokens, Double creditsDelta) {
+	private Entry entry(String baseline, Status status, String model, Long tokens, Double estCredits) {
 		int i = seq++;
 		return new Entry("run-" + i, Instant.parse("2026-01-01T00:00:00Z").plusSeconds(i * 60L), "ci",
 				Integer.toString(100 + i), baseline, status, null, null, null, model, null, "s1", tokens, null,
-				creditsDelta, null);
+				null, estCredits);
 	}
 
 	/** A history rich enough to exercise every chart path, with hostile strings. */

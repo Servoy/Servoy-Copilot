@@ -143,13 +143,14 @@ public class JUnitXmlReporterTest {
 		SkillTestResult fail = SkillTestResult.fail("expansion-fail", 2, "diverged").withMetrics(failMetrics);
 
 		String xml = Files.readString(JUnitXmlReporter.writeReport(dir, "s", List.of(pass, fail)));
-		assertAll(() -> assertTrue(xml.contains("Credits used"), "credits-delta line present"),
+		assertAll(() -> assertTrue(xml.contains("Account credits (info only)"), "account line present"),
 				() -> assertTrue(xml.contains("0.42"), "the delta figure surfaced on PASS"),
 				() -> assertTrue(xml.contains("Per-request tokens:"), "per-request ranking line present"),
 				() -> assertTrue(xml.contains("request #1"), "the most inefficient request highlighted"),
 				() -> assertTrue(xml.contains("input 474000"), "its input surfaced"),
 				// The FAIL's absent expansion data degrades to "unknown", never 0.
-				() -> assertTrue(xml.contains("Credits used (\u0394): unknown"), "fail credits shows unknown, never 0"),
+				() -> assertTrue(xml.contains("Account credits (info only): unknown"),
+						"fail credits shows unknown, never 0"),
 				() -> assertTrue(xml.contains("Per-request tokens: unknown"), "fail ranking shows unknown, never 0"));
 	}
 

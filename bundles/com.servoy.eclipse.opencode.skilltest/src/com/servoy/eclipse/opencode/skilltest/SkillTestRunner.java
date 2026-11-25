@@ -226,12 +226,10 @@ public final class SkillTestRunner {
 		// snapshot, reused across trials, plus the kept representative trial's
 		// metrics (selected the same way the kept detail is).
 		RunMetrics keptMetrics = null;
-		KiroUsageReader kiroReader = new KiroUsageReader();
-		// Accurate per-scenario credit bracket (SVY-21660 B), built once per scenario.
-		// The credit start is read ONCE, before the first prompt, so the bracket spans
-		// the whole scenario's cost. All reads are DB-only, read-only, never throw into
-		// the run, make no network call and read no token; absent driver/file ->
-		// "unknown".
+		// Kiro usage reader (SVY-21660): the per-scenario metered usage comes from
+		// kiro.db, the account used/limit bracket (shown for information only) from
+		// kiro-usage.json. All reads are read-only, never throw into the run, make no
+		// network call and read no token; absent driver/file -> "unknown".
 		KiroCreditReader creditReader = new KiroCreditReader();
 		// Account used/limit come from kiro-usage.json (kiro.db has no account table,
 		// confirmed against live data). creditsStart is read ONCE before the first
@@ -244,13 +242,11 @@ public final class SkillTestRunner {
 		logger.log("[skilltest] " + baseline.id() + " credits before (account used, estimate/shared account): " //$NON-NLS-1$ //$NON-NLS-2$
 				+ (creditsStart.isPresent() ? Double.toString(creditsStart.getAsDouble()) : "unknown") //$NON-NLS-1$
 				+ (creditsLimit.isPresent() ? " / limit " + creditsLimit.getAsDouble() : "")); //$NON-NLS-1$ //$NON-NLS-2$
-		// The kept trial's session id and its per-request token list. The per-turn
-		// token figures come from the HTTP export (SVY-21660 C): every assistant
-		// message carries its own `tokens` object at the MESSAGE top level, so
-		// SessionTranscript.fromExport is the single source and nothing has to outlive
-		// the trial - each session is deleted in the trial's own finally, as it always
-		// was.
-		String keptSessionId = null;
+		// The kept trial's per-request token list. The per-turn token figures come
+		// from the HTTP export (SVY-21660 C): every assistant message carries its own
+		// `tokens` object at the MESSAGE top level, so SessionTranscript.fromExport is
+		// the single source and nothing has to outlive the trial - each session is
+		// deleted in the trial's own finally, as it always was.
 		List<RunMetrics.RequestTokens> keptRequestTokens = List.of();
 		java.util.OptionalDouble creditsEnd = java.util.OptionalDouble.empty();
 		for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -309,8 +305,14 @@ public final class SkillTestRunner {
 				// (calls.size() - callsBefore, incl. nested Code-Mode calls), the value
 				// that drives the Actual column's first-call cost annotation.
 				List<RunMetrics.RequestTokens> requestTokens = actual.getRequestTokens();
+				// The scenario's metered Kiro usage (SVY-21660): kiro.db session_usage summed
+				// over the root session AND its subagent sessions (each subagent has its own
+				// opencode session id). Collected now, before the session tree is deleted.
+				List<String> sessionTree = new ArrayList<>();
+				sessionTree.add(sessionId);
+				sessionTree.addAll(client.descendants(sessionId));
 				RunMetrics trialMetrics = new RunMetrics(actual.getToolCalls().size(), actual.getTokens(),
-						kiroReader.readForSession(sessionId).orElse(null), null, requestTokens);
+						creditReader.usageForSessions(sessionTree).orElse(null), null, requestTokens);
 
 				// End-of-scenario credit reading (SVY-21660 B): taken after completion
 				// and while the session still exists. Overwritten each trial so the LAST
@@ -409,7 +411,6 @@ public final class SkillTestRunner {
 						keptJsUnit = jsUnit;
 						keptDiff = "";
 						keptMetrics = trialMetrics;
-						keptSessionId = sessionId;
 						keptRequestTokens = requestTokens;
 					}
 				} else {
@@ -424,7 +425,6 @@ public final class SkillTestRunner {
 						keptJsUnit = jsUnit;
 						keptDiff = diff;
 						keptMetrics = trialMetrics;
-						keptSessionId = sessionId;
 						keptRequestTokens = requestTokens;
 						keptIsFailure = true;
 					}
@@ -473,13 +473,11 @@ public final class SkillTestRunner {
 				+ keptRequestTokens.size() + " request(s)" //$NON-NLS-1$
 				+ (keptRequestTokens.isEmpty() ? " (unknown - the export carried no per-message tokens)" : "")); //$NON-NLS-1$ //$NON-NLS-2$
 
-		// Accurate per-scenario credits (SVY-21660 B): Δused = end - start when both
-		// present and end >= start; otherwise fall back to the kept trial's
-		// per-session figure; otherwise "unknown" (null). Logged with the
-		// estimate/shared-account caveat. The headline RunMetrics carries this Δ plus
-		// the kept trial's per-request token list (C) alongside the kept trial's
-		// tool-call/token/Kiro figures.
-		Double creditsDelta = computeCreditsDelta(creditsStart, creditsEnd, creditReader, keptSessionId);
+		// Account Δused (SVY-21660): end - start of the shared account's used credits,
+		// shown for information only. It is NOT the scenario's cost (other users and
+		// the plugin's periodic sync mix in); the reports use the kept trial's metered
+		// kiro.db figure (RunMetrics.kiro). Unknown when either reading is missing.
+		Double creditsDelta = computeCreditsDelta(creditsStart, creditsEnd);
 		logger.log("[skilltest] " + baseline.id() + " credits before (account used): " //$NON-NLS-1$ //$NON-NLS-2$
 				+ (creditsStart.isPresent() ? Double.toString(creditsStart.getAsDouble()) : "unknown") //$NON-NLS-1$
 				+ "; after (account used): " //$NON-NLS-1$
@@ -506,26 +504,21 @@ public final class SkillTestRunner {
 	}
 
 	/**
-	 * Computes the accurate per-scenario credits consumed (SVY-21660 B): the
-	 * start/end account-used delta when both readings are present and
-	 * {@code end >= start}; otherwise the kept trial's per-session figure;
-	 * otherwise {@code null} ("unknown"). Never throws - a read failure yields
-	 * {@code null}.
+	 * The account Δused (SVY-21660, information only): {@code end - start} when
+	 * both readings are present and {@code end >= start}, else {@code null}
+	 * ("unknown"). Deliberately no per-session fallback: that figure is reported
+	 * separately as the scenario's metered usage, and mixing the two under one
+	 * label is what made the CI numbers unreadable.
 	 *
-	 * @param start         the account-used reading before the first prompt
-	 * @param end           the account-used reading after completion
-	 * @param reader        the credit reader (for the per-session fallback)
-	 * @param keptSessionId the kept trial's session id (fallback key, may be
-	 *                      {@code null})
+	 * @param start the account-used reading before the first prompt
+	 * @param end   the account-used reading after completion
 	 * @return the Δused, or {@code null} for "unknown"
 	 */
-	private static Double computeCreditsDelta(java.util.OptionalDouble start, java.util.OptionalDouble end,
-			KiroCreditReader reader, String keptSessionId) {
+	static Double computeCreditsDelta(java.util.OptionalDouble start, java.util.OptionalDouble end) {
 		if (start.isPresent() && end.isPresent() && end.getAsDouble() >= start.getAsDouble()) {
 			return Double.valueOf(end.getAsDouble() - start.getAsDouble());
 		}
-		java.util.OptionalDouble perSession = reader.creditsForSession(keptSessionId);
-		return perSession.isPresent() ? Double.valueOf(perSession.getAsDouble()) : null;
+		return null;
 	}
 
 	/**

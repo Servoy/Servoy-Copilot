@@ -24,9 +24,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,10 +55,16 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * runner can wait for a post-run sync before reading the end of the
  * bracket.</li>
  * <li><b>Per-session requests/est_credits → {@code kiro.db}
- * {@code session_usage}.</b> {@link #creditsForSession(String)} stays on the
- * DB, summing {@code est_credits} across the matching {@code session_id} rows -
- * that part reflects the scenario that just finished and works today.</li>
+ * {@code session_usage}.</b> {@link #usageForSessions(Collection)} sums
+ * {@code requests} / {@code est_credits} over the scenario's root session and
+ * its subagent sessions. This is the scenario's metered cost, the figure the
+ * reports use. The account used/limit bracket is shown for information
+ * only.</li>
  * </ul>
+ * <p>
+ * When {@code KIRO_CONFIG_DIR} is set it is the only dir probed, so a file from
+ * another location can never be read in its place.
+ * </p>
  * <p>
  * Separate from {@link KiroUsageReader} (which keeps reading the per-session
  * {@code estCredits} estimate from {@code kiro-usage.json} for its own
@@ -70,8 +81,8 @@ import com.servoy.eclipse.model.util.ServoyLog;
  * with fixtures.
  * </p>
  * <p>
- * The DB is opened <b>read-only</b> ({@code immutable=1}) so the plugin's WAL
- * writer is never disturbed, and every DB / file access is wrapped so an absent
+ * The DB is opened <b>read-only</b> ({@code mode=ro}, which still reads the
+ * plugin's WAL), and every DB / file access is wrapped so an absent
  * driver / absent file / locked DB / malformed row / malformed JSON degrades to
  * {@link OptionalDouble#empty()} ("unknown"). <b>No network, no token/bearer
  * read, never throws into the run.</b>
@@ -121,11 +132,14 @@ public final class KiroCreditReader {
 	 */
 	static List<File> defaultCandidateDirs() {
 		List<File> dirs = new ArrayList<>();
-		// The kiro-auth plugin's own override wins over every default (CI points it at a
-		// per-build dir so a stale account from an older build cannot shadow the key).
+		// The kiro-auth plugin's own override is the ONLY dir when set (CI points it at a
+		// per-build dir). No fallback: before the plugin has written its files there, a
+		// fallback would read an older kiro-usage.json from another dir and report a
+		// stale account figure (SVY-21660: CI "before" was a stale file, Δ ~1262).
 		File kiroConfigDir = kiroConfigDirOverride();
 		if (kiroConfigDir != null) {
 			dirs.add(kiroConfigDir);
+			return dirs;
 		}
 		File servoyConfig = servoyOpencodeConfigDir();
 		if (servoyConfig != null) {
@@ -343,40 +357,88 @@ public final class KiroCreditReader {
 	 *         unavailable / not found ("unknown"). Never throws.
 	 */
 	public OptionalDouble creditsForSession(String sessionId) {
-		if (sessionId == null || sessionId.isBlank()) {
+		Optional<RunMetrics.KiroUsage> usage = usageForSessions(
+				sessionId == null ? List.of() : List.of(sessionId));
+		return usage.isPresent() ? OptionalDouble.of(usage.get().estCredits()) : OptionalDouble.empty();
+	}
+
+	/**
+	 * The metered Kiro usage of a scenario (SVY-21660): requests and
+	 * {@code est_credits} from {@code kiro.db} {@code session_usage}, summed over
+	 * every given session id and every account row. Pass the root session plus its
+	 * subagent sessions: each subagent runs in its own opencode session and the
+	 * plugin books its requests and credits under that session's id.
+	 * <p>
+	 * The plugin books the credits Kiro metered for each response on its
+	 * (session, account) row, so this is the scenario's own cost: not affected by
+	 * other users of a shared account and not dependent on the periodic account
+	 * sync.
+	 * </p>
+	 *
+	 * @param sessionIds the session ids to sum (blank / {@code null} entries are
+	 *                   ignored)
+	 * @return the summed usage, or {@link Optional#empty()} when no id is given,
+	 *         the DB is absent / unreadable, or it has no row for any of the ids
+	 *         ("unknown"). Never throws.
+	 */
+	public Optional<RunMetrics.KiroUsage> usageForSessions(Collection<String> sessionIds) {
+		Set<String> ids = new LinkedHashSet<>();
+		if (sessionIds != null) {
+			for (String id : sessionIds) {
+				if (id != null && !id.isBlank()) {
+					ids.add(id);
+				}
+			}
+		}
+		if (ids.isEmpty()) {
 			ServoyLog.logInfo("[skilltest] KiroCreditReader: no session id given - credits unknown."); //$NON-NLS-1$
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
 		File db = resolveFile("kiro.db"); //$NON-NLS-1$
 		if (db == null) {
 			ServoyLog.logInfo("[skilltest] KiroCreditReader: kiro.db not found under any candidate dir " //$NON-NLS-1$
 					+ candidateDirs + " - credits unknown."); //$NON-NLS-1$
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
-		String sql = "SELECT SUM(est_credits) FROM session_usage WHERE session_id = ?"; //$NON-NLS-1$
-		String url = "jdbc:sqlite:file:" + db.getAbsolutePath().replace('\\', '/') + "?immutable=1"; //$NON-NLS-1$ //$NON-NLS-2$
-		try (Connection conn = DriverManager.getConnection(url); PreparedStatement ps = conn.prepareStatement(sql)) {
-			ps.setString(1, sessionId);
+		String placeholders = String.join(",", Collections.nCopies(ids.size(), "?")); //$NON-NLS-1$ //$NON-NLS-2$
+		String sql = "SELECT COUNT(*), SUM(requests), SUM(est_credits) FROM session_usage WHERE session_id IN (" //$NON-NLS-1$
+				+ placeholders + ")"; //$NON-NLS-1$
+		try (Connection conn = DriverManager.getConnection(readOnlyUrl(db));
+				PreparedStatement ps = conn.prepareStatement(sql)) {
+			int i = 1;
+			for (String id : ids) {
+				ps.setString(i++, id);
+			}
 			try (ResultSet rs = ps.executeQuery()) {
-				if (rs.next()) {
-					double sum = rs.getDouble(1);
-					if (!rs.wasNull()) {
-						ServoyLog.logInfo("[skilltest] KiroCreditReader: " + db.getAbsolutePath() //$NON-NLS-1$
-								+ " session '" + sessionId + "' -> " + sum + " est_credits."); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-						return OptionalDouble.of(sum);
-					}
+				if (rs.next() && rs.getInt(1) > 0) {
+					int requests = rs.getInt(2);
+					double credits = rs.getDouble(3);
+					ServoyLog.logInfo("[skilltest] KiroCreditReader: " + db.getAbsolutePath() + " " + ids.size() //$NON-NLS-1$ //$NON-NLS-2$
+							+ " session(s) " + ids + " -> " + rs.getInt(1) + " row(s), " + requests //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+							+ " requests, " + credits + " est_credits."); //$NON-NLS-1$ //$NON-NLS-2$
+					return Optional.of(new RunMetrics.KiroUsage(requests, credits));
 				}
 			}
 			ServoyLog.logInfo("[skilltest] KiroCreditReader: " + db.getAbsolutePath() //$NON-NLS-1$
-					+ " has no session_usage rows for session '" + sessionId + "' - credits unknown."); //$NON-NLS-1$ //$NON-NLS-2$
+					+ " has no session_usage rows for " + ids + " - credits unknown."); //$NON-NLS-1$ //$NON-NLS-2$
 		} catch (SQLException | RuntimeException | LinkageError e) {
 			// Absent driver / locked / malformed: degrade to "unknown".
 			ServoyLog.logWarning("[skilltest] KiroCreditReader: reading " + db.getAbsolutePath() //$NON-NLS-1$
 					+ " failed (" + e.getClass().getSimpleName() + ": " + e.getMessage() //$NON-NLS-1$ //$NON-NLS-2$
 					+ ") - credits unknown.", e); //$NON-NLS-1$
-			return OptionalDouble.empty();
 		}
-		return OptionalDouble.empty();
+		return Optional.empty();
+	}
+
+	/**
+	 * The JDBC URL opening {@code db} read-only. {@code mode=ro}, NOT
+	 * {@code immutable=1}: the plugin keeps {@code kiro.db} in WAL mode, and on a
+	 * fresh DB (every CI build) the tables and rows still live in
+	 * {@code kiro.db-wal}. {@code immutable=1} ignores the WAL and reported
+	 * "no such table: session_usage"; {@code mode=ro} reads it without writing.
+	 */
+	static String readOnlyUrl(File db) {
+		return "jdbc:sqlite:file:" + db.getAbsolutePath().replace('\\', '/') + "?mode=ro"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/**

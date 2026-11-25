@@ -177,18 +177,20 @@ public final class TrendReportHtml {
 		sb.append(chart(List.of(passRate), new String[] { "#137333" }, 0d, 100d, labels, markers, runs, //$NON-NLS-1$
 				"pass rate")); //$NON-NLS-1$
 
-		// Tokens and credits delta over all runs (each scaled to its own maximum).
+		// Tokens and the scenario's metered credits over all runs (each scaled to its
+		// own maximum). Credits are kiro.estCredits (root + subagent sessions), not the
+		// shared account's Δ (SVY-21660).
 		List<Double> tokens = new ArrayList<>();
 		List<Double> credits = new ArrayList<>();
 		boolean anyTokens = false;
 		boolean anyCredits = false;
 		for (RunHistory.Entry e : runs) {
 			tokens.add(e.totalTokens() != null ? Double.valueOf(e.totalTokens().doubleValue()) : null);
-			credits.add(e.creditsDelta());
+			credits.add(e.estCredits());
 			anyTokens |= e.totalTokens() != null;
-			anyCredits |= e.creditsDelta() != null;
+			anyCredits |= e.estCredits() != null;
 		}
-		sb.append("<div class=\"tr-chart-title\">Tokens / credits \u0394 (each scaled to its own maximum)</div>"); //$NON-NLS-1$
+		sb.append("<div class=\"tr-chart-title\">Tokens / credits (each scaled to its own maximum)</div>"); //$NON-NLS-1$
 		if (!anyTokens && !anyCredits) {
 			sb.append("<p class=\"muted\">No token or credit data recorded.</p>"); //$NON-NLS-1$
 		} else {
@@ -197,7 +199,7 @@ public final class TrendReportHtml {
 			sb.append(chart(List.of(tokensPct, creditsPct), new String[] { "#1a73e8", "#b06000" }, 0d, 100d, //$NON-NLS-1$ //$NON-NLS-2$
 					labels, markers, runs, "cost")); //$NON-NLS-1$
 			sb.append("<div class=\"tr-legend\">blue: tokens (max ").append(formatMax(tokens)) //$NON-NLS-1$
-					.append("), amber: credits \u0394 (max ").append(formatMax(credits)) //$NON-NLS-1$
+					.append("), amber: credits (max ").append(formatMax(credits)) //$NON-NLS-1$
 					.append("); dashed grey lines mark a model or skills version change</div>"); //$NON-NLS-1$
 		}
 		sb.append("</div>"); //$NON-NLS-1$

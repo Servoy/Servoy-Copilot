@@ -108,7 +108,8 @@ class RunHistoryTest {
 					() -> assertEquals(9, n.get("metrics").get("tokens").get("cacheWrite").asLong()),
 					() -> assertEquals(6, n.get("metrics").get("kiro").get("requests").asInt()),
 					() -> assertEquals(1.4d, n.get("metrics").get("kiro").get("estCredits").asDouble(), 1e-9),
-					() -> assertEquals(1.3d, n.get("metrics").get("creditsDelta").asDouble(), 1e-9),
+					() -> assertFalse(n.get("metrics").has("creditsDelta"),
+							"the account Δ is information only, not recorded in the history"),
 					() -> assertFalse(n.get("metrics").has("requestTokens"), "requestTokens left out"));
 		}
 
@@ -274,7 +275,7 @@ class RunHistoryTest {
 							"total = input + output + reasoning"),
 					() -> assertEquals(Integer.valueOf(14), e.toolCalls()),
 					() -> assertEquals(1.4d, e.estCredits().doubleValue(), 1e-9),
-					() -> assertEquals(1.3d, e.creditsDelta().doubleValue(), 1e-9));
+					() -> assertNull(e.creditsDelta(), "the account Δ is not recorded"));
 		}
 	}
 
