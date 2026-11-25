@@ -75,6 +75,22 @@
 					<includes>
 						<include>**/plainjunit/**/*.java</include>
 					</includes>
+					<!-- Test against the host bundle's compiled CLASSES, not its packaged jar.
+					     The parent pom signs every module's jar (maven-jarsigner-plugin), and a
+					     test class that lives in a production package (e.g. ServletTestAccess in
+					     com.servoy.eclipse.opencode.tomcat, deliberately there for package-private
+					     access) is unsigned, so the JVM refuses to mix it with the signed classes of
+					     that package: "signer information does not match signer information of other
+					     classes in the same package". Exclude the jar and put target/classes
+					     of the host bundle on the classpath instead (unsigned, same package, so the
+					     tests keep their package-private access). The host is built before this
+					     module in the reactor, so target/classes exists. -->
+					<classpathDependencyExcludes>
+						<classpathDependencyExclude>com.servoy:com.servoy.eclipse.opencode</classpathDependencyExclude>
+					</classpathDependencyExcludes>
+					<additionalClasspathElements>
+						<additionalClasspathElement>${project.basedir}/../../bundles/com.servoy.eclipse.opencode/target/classes</additionalClasspathElement>
+					</additionalClasspathElements>
 					<!-- @{jacocoArgLine} is the JaCoCo agent, set by prepare-agent above. Late
 					     (@{...}) evaluation so the resolved -javaagent reaches the fork. -->
 					<argLine>@{jacocoArgLine} -Xms128m -Xmx512m -ea --add-exports=java.base/sun.security.x509=ALL-UNNAMED</argLine>

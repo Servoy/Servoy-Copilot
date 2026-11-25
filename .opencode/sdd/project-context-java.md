@@ -56,7 +56,9 @@ You are writing **OSGi bundles**, not plain Java:
 ## Testing
 
 - Unit tests (pure logic): a `<bundle>.tests` fragment, `eclipse-plugin` packaging,
-  `eclipse-ide_runClassTests`, class suffix `*Test`.
+  `eclipse-ide_runClassTests`, class suffix `*Test`. Test in the same package as the class
+  under test, use package-private constructor injection / seams + mocks, minimal reflection,
+  never set `final` fields by reflection (see `project-context.md` "Test class rules").
 - Plugin/integration tests (needs OSGi/workspace): `eclipse-test-plugin` packaging under
   `tests/`, `eclipse-pde_runJUnitPluginTestClass`, class suffix `*IntegrationTest`.
 - See `AGENTS.md` `## Testing` for the catalogue of existing test classes.

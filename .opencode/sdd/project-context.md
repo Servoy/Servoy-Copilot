@@ -157,6 +157,22 @@ both wrappers (`SwtBrowserWrapper` / `ChromiumWrapper`) in `com.servoy.eclipse.u
   `waitForWorkspaceBuildJobs`, `waitForTitaniumuildJobs`) — never raw `Thread.sleep`. Each
   class cleans workspace projects in `@BeforeAll deleteProjectsBeforeClass()`.
 
+### Test class rules (same package, mocks, minimal reflection)
+
+- Put test classes in the **same package as the class under test** so package-private members
+  are reachable without reflection (fragment test bundles share the host classloader).
+- Make production code testable: package-private constructor/factory for constructor injection
+  of mocks, a package-private/`protected` seam for statics, or package-private visibility on the
+  member. This small behaviour-preserving production change is **allowed and preferred**; do not
+  ask first. Narrowest visibility only, never `public` just for a test.
+- Reflection is the last resort and **never to set `final` fields**. Justify any remaining
+  reflective helper in a comment.
+- Prefer Mockito unit tests over `integrationpde`; many existing integration tests can be mocks.
+- Fragment test modules must run plain surefire against the host's `target/classes`, not its
+  signed jar (`classpathDependencyExcludes` + `additionalClasspathElements`), otherwise a test
+  class in a production package fails with `signer information does not match`.
+  See `tests/com.servoy.eclipse.opencode.tests/pom.xml`.
+
 ### Test selection (no suites)
 
 There are no `@Suite`/`AllXxxTests` aggregator classes. Tests are selected by package: put a
