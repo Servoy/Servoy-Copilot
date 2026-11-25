@@ -1,12 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  OnInit,
-  computed,
-  inject,
-  input,
-  output
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, output } from '@angular/core';
 
 import { CommandCatalogService } from '../services/command-catalog.service';
 import { starterCommands } from '../services/starters';
@@ -20,7 +12,6 @@ import { SvyCommand } from '../services/svy-commands';
   styleUrl: './welcome.component.scss'
 })
 export class WelcomeComponent implements OnInit {
-  readonly hasSessions = input(false);
   readonly pick = output<SvyCommand>();
 
   private readonly catalog = inject(CommandCatalogService);

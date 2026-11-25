@@ -38,7 +38,6 @@ export class MessageListComponent {
   /** Whether the active session has a turn running. */
   readonly turnBusy = input<boolean>(false);
   readonly showWelcome = input<boolean>(false);
-  readonly hasSessions = input<boolean>(false);
   readonly starter = output<SvyCommand>();
 
   /** Bubbled up from a subagent tool row: the child session id to open. */

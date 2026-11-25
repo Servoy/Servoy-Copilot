@@ -12,7 +12,7 @@
       ></svy-message-item>
     } @empty {
       @if (showWelcome()) {
-        <svy-welcome [hasSessions]="hasSessions()" (pick)="starter.emit($event)"></svy-welcome>
+        <svy-welcome (pick)="starter.emit($event)"></svy-welcome>
       }
     }
   </div>

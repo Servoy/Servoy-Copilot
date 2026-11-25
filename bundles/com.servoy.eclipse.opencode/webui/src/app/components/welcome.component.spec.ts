@@ -23,8 +23,7 @@ describe('WelcomeComponent', () => {
   const el = (): HTMLElement => fixture.nativeElement;
   const text = (): string => el().textContent!.replace(/\s+/g, ' ').trim();
 
-  async function render(hasSessions: boolean): Promise<void> {
-    fixture.componentRef.setInput('hasSessions', hasSessions);
+  async function render(): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -42,12 +41,12 @@ describe('WelcomeComponent', () => {
   });
 
   it('loads the command catalog on init', async () => {
-    await render(false);
+    await render();
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  describe('intro (no sessions)', () => {
-    beforeEach(async () => render(false));
+  describe('welcome', () => {
+    beforeEach(async () => render());
 
     it('shows the title and intro sentence', () => {
       expect(el().querySelector('h1.title')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Welcome to Servoy AI');
@@ -95,11 +94,6 @@ describe('WelcomeComponent', () => {
       expect(text()).not.toContain('svyOptimize');
     });
 
-    it('renders no pills and not the hero line', () => {
-      expect(el().querySelector('.pill')).toBeNull();
-      expect(text()).not.toContain('What should we build');
-    });
-
     it('uses native buttons', () => {
       const cards = Array.from(el().querySelectorAll('button.card'));
       expect(cards).toHaveLength(4);
@@ -142,82 +136,10 @@ describe('WelcomeComponent', () => {
     });
   });
 
-  describe('hero (has sessions)', () => {
-    beforeEach(async () => render(true));
-
-    it('shows exactly the line "What should we build in Servoy today?"', () => {
-      expect(el().querySelector('h1.title')!.textContent).toBe('What should we build in Servoy today?');
-      expect(el().querySelector('.accent')!.textContent).toBe('Servoy');
-    });
-
-    it('shows pills with /name only and no description text', () => {
-      const pills = Array.from(el().querySelectorAll('button.pill'));
-      expect(pills.map((p) => p.textContent!.trim())).toEqual([
-        '/svyImplement',
-        '/svyFixTicket',
-        '/svyFixStacktrace',
-        '/svyCreateE2E'
-      ]);
-      expect(text()).not.toContain('Implement a feature');
-      expect(text()).not.toContain('Fix a ticket');
-    });
-
-    it('exposes the description as pill title', () => {
-      const pill = el().querySelector('button.pill') as HTMLButtonElement;
-      expect(pill.getAttribute('title')).toBe('Implement a feature');
-    });
-
-    it('has no title attribute for a starter without description', () => {
-      commands.set([{ name: 'svyImplement', description: '' }]);
-      fixture.detectChanges();
-      expect(el().querySelector('button.pill')!.hasAttribute('title')).toBe(false);
-    });
-
-    it('has no steps, no "Try one" and no cards', () => {
-      expect(el().querySelector('ol.steps')).toBeNull();
-      expect(el().querySelector('h2.try')).toBeNull();
-      expect(el().querySelector('button.card')).toBeNull();
-      expect(text()).not.toContain('Welcome to Servoy');
-    });
-
-    it('omits a missing starter', () => {
-      commands.set(catalog.filter((c) => c.name !== 'svyImplement'));
-      fixture.detectChanges();
-      const names = Array.from(el().querySelectorAll('button.pill')).map((c) => c.textContent!.trim());
-      expect(names).toEqual(['/svyFixTicket', '/svyFixStacktrace', '/svyCreateE2E']);
-    });
-
-    it('keeps the line but renders no pills for an empty catalog', () => {
-      commands.set([]);
-      fixture.detectChanges();
-      expect(el().querySelector('ul.pills')).toBeNull();
-      expect(el().querySelector('button.pill')).toBeNull();
-      expect(text()).toBe('What should we build in Servoy today?');
-    });
-
-    it('emits the exact command when a pill is clicked', () => {
-      const picked: SvyCommand[] = [];
-      component.pick.subscribe((c) => picked.push(c));
-      (el().querySelectorAll('button.pill')[3] as HTMLButtonElement).click();
-      expect(picked).toHaveLength(1);
-      expect(picked[0]).toBe(catalog[0]);
-    });
-  });
-
   describe('reactivity', () => {
-    it('switches between intro and hero when hasSessions changes', async () => {
-      await render(false);
-      expect(el().querySelector('ol.steps')).not.toBeNull();
-      expect(el().querySelector('button.pill')).toBeNull();
-      await render(true);
-      expect(el().querySelector('ol.steps')).toBeNull();
-      expect(el().querySelectorAll('button.pill')).toHaveLength(4);
-    });
-
     it('does not throw NG0600 when inputs and commands change', async () => {
-      await render(false);
+      await render();
       expect(() => {
-        fixture.componentRef.setInput('hasSessions', true);
         commands.set([]);
         fixture.detectChanges();
         commands.set(catalog);

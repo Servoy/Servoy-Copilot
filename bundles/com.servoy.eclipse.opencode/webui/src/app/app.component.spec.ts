@@ -703,21 +703,16 @@ describe('AppComponent', () => {
       expect(q('svy-welcome')).toBeNull();
     });
 
-    it('renders the intro when ready and there are no sessions', async () => {
+    it('renders the full welcome when ready, whether or not there are sessions', async () => {
       set('welcomeReady', true);
       await settle();
       expect(q('svy-welcome')).not.toBeNull();
       expect(q('svy-welcome ol.steps')).not.toBeNull();
       expect(q('svy-welcome button.card')).not.toBeNull();
-    });
-
-    it('renders the hero when ready and there are sessions', async () => {
-      set('welcomeReady', true);
       set('sessions', [{ id: 's1', title: 'One' }]);
       await settle();
-      expect(q('svy-welcome h1.title')!.textContent).toBe('What should we build in Servoy today?');
-      expect(q('svy-welcome ol.steps')).toBeNull();
-      expect(q('svy-welcome button.pill')).not.toBeNull();
+      expect(q('svy-welcome ol.steps')).not.toBeNull();
+      expect(q('svy-welcome button.card')).not.toBeNull();
     });
 
     it('removes the welcome once the store has messages', async () => {
@@ -754,10 +749,9 @@ describe('AppComponent', () => {
       const attachments = [{ filename: 'a.txt', mime: 'text/plain', url: 'a.txt' }];
       draft.set({ text: 'previous words', attachments });
       set('welcomeReady', true);
-      set('sessions', [{ id: 's1', title: 'One' }]);
       await settle();
 
-      await click(q<HTMLButtonElement>('svy-welcome button.pill')!);
+      await click(q<HTMLButtonElement>('svy-welcome button.card')!);
       await settle();
 
       expect(draft().text).toBe('/svyImplement ');

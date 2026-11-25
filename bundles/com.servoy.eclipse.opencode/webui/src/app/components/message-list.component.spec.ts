@@ -162,37 +162,29 @@ describe('MessageListComponent welcome', () => {
   it('renders no welcome and no text when showWelcome is false and there are no messages', () => {
     render({ messages: [] });
     expect(welcome()).toBeNull();
-    expect(el().textContent).not.toContain('What should we build in Servoy today?');
     expect(el().textContent).not.toContain('Welcome to Servoy');
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('renders the intro welcome when showWelcome is true and hasSessions is false', () => {
-    render({ messages: [], showWelcome: true, hasSessions: false });
+  it('renders the welcome with the steps when showWelcome is true', () => {
+    render({ messages: [], showWelcome: true });
     expect(welcome()).not.toBeNull();
-    expect(el().textContent).toContain('Welcome to Servoy');
+    expect(el().querySelector('h1.title')!.textContent).toContain('Welcome to Servoy');
     expect(el().querySelector('ol.steps')).not.toBeNull();
-  });
-
-  it('forwards hasSessions: renders the hero line and pills when true', () => {
-    render({ messages: [], showWelcome: true, hasSessions: true });
-    expect(el().querySelector('h1.title')!.textContent).toBe('What should we build in Servoy today?');
-    expect(el().querySelector('button.pill')).not.toBeNull();
-    expect(el().querySelector('ol.steps')).toBeNull();
   });
 
   it('re-emits a pick from the welcome on starter', () => {
     const picked: SvyCommand[] = [];
     fixture.componentInstance.starter.subscribe((c) => picked.push(c));
-    render({ messages: [], showWelcome: true, hasSessions: true });
-    (el().querySelector('button.pill') as HTMLButtonElement).click();
+    render({ messages: [], showWelcome: true });
+    (el().querySelector('button.card') as HTMLButtonElement).click();
     expect(picked).toEqual([{ name: 'svyImplement', description: 'Implement a feature' }]);
   });
 
   it('renders no welcome when messages are present even with showWelcome true', () => {
-    render({ messages: [msg('m1')], showWelcome: true, hasSessions: true });
+    render({ messages: [msg('m1')], showWelcome: true });
     expect(welcome()).toBeNull();
-    expect(el().textContent).not.toContain('What should we build');
+    expect(el().textContent).not.toContain('Welcome to Servoy');
   });
 
   it('removes the welcome once messages arrive', () => {
