@@ -1,7 +1,6 @@
 <div class="sessions">
   <button type="button" class="new-session" (click)="onNew()">+ New session</button>
 
-<<<<<<< Upstream, based on branch 'master' of https://github.com/Servoy/Servoy-Copilot
   @if (!isEmpty()) {
     <div class="search" role="search">
       <input
@@ -16,72 +15,6 @@
       />
       @if (searchTerm()) {
         <button type="button" class="search-clear" aria-label="Clear search" (click)="clearSearch()">×</button>
-=======
-  <div class="list">
-    @for (node of tree(); track node.session.id) {
-      @let session = node.session;
-      <div
-        class="session"
-        [class.active]="session.id === activeSessionId()"
-        [class.renaming]="session.id === renamingSessionId()"
-        (click)="onSelect(session.id)"
-        (contextmenu)="onContextMenu($event, session.id)"
-      >
-        @if (node.children.length > 0) {
-          <button
-            type="button"
-            class="twisty"
-            [attr.aria-expanded]="isExpanded(session.id)"
-            [attr.aria-label]="isExpanded(session.id) ? 'Collapse subagents' : 'Expand subagents'"
-            (click)="toggleExpand($event, session.id)"
-          >{{ isExpanded(session.id) ? '▾' : '▸' }}</button>
-        } @else {
-          <span class="twisty-spacer"></span>
-        }
-
-        @if (session.id === renamingSessionId()) {
-          <input
-            #renameInput
-            type="text"
-            spellcheck="false"
-            class="rename-input"
-            [ngModel]="renameText()"
-            (ngModelChange)="renameText.set($event)"
-            (keydown)="onRenameKeydown($event, session.id)"
-            (blur)="commitRename(session.id)"
-            (click)="$event.stopPropagation()"
-          />
-        } @else {
-          <div class="session-main">
-            <span class="session-title" [title]="title(session)">{{ title(session) }}</span>
-            <span class="session-time">{{ relativeTime(session) }}</span>
-          </div>
-          <button
-            type="button"
-            class="session-menu-btn"
-            aria-label="Session actions"
-            title="Session actions"
-            (click)="onMenuButton($event, session.id)"
-          >⋯</button>
-        }
-      </div>
-
-      @if (isExpanded(session.id)) {
-        @for (child of node.children; track child.id) {
-          <div
-            class="session child"
-            [class.active]="child.id === activeSessionId()"
-            (click)="onSelect(child.id)"
-            (contextmenu)="onContextMenu($event, child.id)"
-          >
-            <span class="twisty-spacer"></span>
-            <div class="session-main">
-              <span class="session-title" [title]="title(child)">{{ title(child) }}</span>
-              <span class="session-time">subagent · {{ relativeTime(child) }}</span>
-            </div>
-          </div>
-        }
->>>>>>> 1910cd3 SVY-21788 Block native browser UI in the Servoy AI view [ai]
       }
     </div>
   }
@@ -116,6 +49,7 @@
               <input
                 #renameInput
                 type="text"
+                spellcheck="false"
                 class="rename-input"
                 [ngModel]="renameText()"
                 (ngModelChange)="renameText.set($event)"
