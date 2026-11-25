@@ -94,26 +94,16 @@
   &:hover {
     background: var(--svy-hover-strong, rgba(127, 127, 127, 0.22));
     color: var(--svy-fg, inherit);
+
+    // the shared chevron sets its own colour, so follow the hover explicitly
+    svy-chevron {
+      color: var(--svy-fg, inherit);
+    }
   }
 
   &:focus-visible {
     outline: 2px solid var(--svy-accent-strong);
     outline-offset: 1px;
-  }
-
-  &[aria-expanded='true'] .twisty-icon {
-    transform: rotate(90deg);
-  }
-}
-
-.twisty-icon {
-  display: block;
-  transition: transform 0.12s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .twisty-icon {
-    transition: none;
   }
 }
 

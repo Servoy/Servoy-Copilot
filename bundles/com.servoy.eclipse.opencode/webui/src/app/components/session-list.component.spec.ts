@@ -346,14 +346,23 @@ describe('SessionListComponent', () => {
     ];
     const twisty = () => q<HTMLButtonElement>('.twisty')!;
 
-    it('renders an aria-hidden svg chevron instead of a text glyph', async () => {
+    it('renders the shared svy-chevron (aria-hidden svg) instead of a text glyph', async () => {
       await init(tree());
-      const svg = twisty().querySelector('svg.twisty-icon');
+      expect(twisty().querySelector('svy-chevron')).not.toBeNull();
+      const svg = twisty().querySelector('svy-chevron svg');
       expect(svg).not.toBeNull();
       expect(svg!.getAttribute('aria-hidden')).toBe('true');
       expect(svg!.querySelector('path')).not.toBeNull();
       expect(twisty().textContent!.trim()).toBe('');
       expect(twisty().textContent).not.toMatch(/[▸▾]/);
+    });
+
+    it('turns the shared chevron a quarter turn when the row is expanded', async () => {
+      await init(tree());
+      expect(twisty().querySelector('svy-chevron svg')!.classList.contains('open')).toBe(false);
+      twisty().click();
+      await settle();
+      expect(twisty().querySelector('svy-chevron svg')!.classList.contains('open')).toBe(true);
     });
 
     it('keeps aria-expanded and aria-label in step with the expansion', async () => {

@@ -16,6 +16,7 @@ import {
 import { FormsModule } from '@angular/forms';
 
 import { Session } from '../models/opencode.models';
+import { ChevronIconComponent } from './chevron-icon.component';
 import { ChildSignals } from '../services/agent-status';
 import { SessionNode } from '../services/chat-store.service';
 import { dbg, debugEnabled } from '../services/debug-log';
@@ -49,7 +50,7 @@ interface MenuPosition {
   selector: 'svy-session-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule],
+  imports: [FormsModule, ChevronIconComponent],
   templateUrl: './session-list.component.html',
   styleUrl: './session-list.component.scss'
 })
