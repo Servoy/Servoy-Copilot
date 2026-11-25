@@ -23,7 +23,7 @@ import { dbg } from './debug-log';
 import { EventStreamService, OpencodeEvent } from './event-stream.service';
 import { LoadedMessagesService } from './loaded-messages.service';
 import { OpencodeApiService } from './opencode-api.service';
-import { isRenderablePart, upsertPart } from './part-utils';
+import { hasReasoningType, isRenderablePart, upsertPart } from './part-utils';
 import {
   SessionExportData,
   downloadFile,
@@ -1819,7 +1819,13 @@ export class ChatStore implements OnDestroy {
     if (m.info.role === 'user') {
       return true;
     }
-    return (m.parts ?? []).some(isRenderablePart);
+    const parts = m.parts ?? [];
+    if (parts.some(isRenderablePart)) {
+      return true;
+    }
+    // A turn that is still running and has only reasoning so far must stay, so the
+    // "Thinking..." line shows after a reload; a finished one has nothing to show.
+    return m.info.time?.completed == null && hasReasoningType(parts);
   }
 
   /**

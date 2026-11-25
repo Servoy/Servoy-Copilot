@@ -8,6 +8,7 @@
         [completed]="message.info.time?.completed ?? null"
         [childSignals]="childSignals()"
         [turnBusy]="turnBusy()"
+        [latest]="$last"
         (openSession)="openSession.emit($event)"
       ></svy-message-item>
     } @empty {

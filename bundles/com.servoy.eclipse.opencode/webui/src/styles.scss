@@ -62,6 +62,9 @@
   --svy-sidebar-min-w: 240px;
   --svy-sidebar-max-w: 288px;
   --svy-chat-basis: 560px;
+  // Readable-line cap of the chat content (messages, composer, forms, agent view, welcome).
+  // The column fills the chat area up to this width, so it grows with the window.
+  --svy-chat-max-w: 1100px;
   --svy-status-w: 300px;
   --svy-status-min-w: 280px;
   --svy-status-max-w: 340px;

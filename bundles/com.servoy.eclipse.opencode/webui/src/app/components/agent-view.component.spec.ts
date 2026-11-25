@@ -85,6 +85,70 @@ describe('AgentViewComponent', () => {
     expect(q('svy-agent-task')).toBeNull();
   });
 
+  describe('hidden reasoning and the "Thinking..." line', () => {
+    const reasoning = (t = 'secret thoughts'): Part => ({ type: 'reasoning', text: t }) as Part;
+    const base = (parts: Part[]) => [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', parts)];
+    const session = { id: 'c1' } as Session;
+
+    it('never shows reasoning text or a Reasoning label', () => {
+      render({ messages: base([reasoning(), tool('completed'), text('Status: COMPLETED\nDone')]), session, child: undefined });
+      expect(el.textContent).not.toContain('secret thoughts');
+      expect(el.textContent).not.toContain('Reasoning');
+    });
+
+    it('shows "Thinking..." while the child is busy and has only reasoned so far', () => {
+      render({ messages: base([reasoning()]), session, child: { busy: true } });
+      expect(q('svy-thinking')?.textContent?.trim()).toBe('Thinking...');
+      expect(q('.agent-running-step')).toBeNull();
+      expect(el.textContent).not.toContain('secret thoughts');
+    });
+
+    it('shows "Thinking..." before the child has produced anything', () => {
+      render({ messages: [msg('u1', 'user', [text('Task')])], session, child: { busy: true } });
+      expect(q('svy-thinking')).not.toBeNull();
+    });
+
+    it('does not show next to a running tool (its spinner row already says it works)', () => {
+      render({ messages: base([reasoning(), tool('running')]), session, child: { busy: true } });
+      expect(q('svy-thinking')).toBeNull();
+      expect(q('.agent-running-step')).not.toBeNull();
+    });
+
+    it('does not show next to visible text from the child', () => {
+      render({ messages: base([tool('completed'), text('partial answer')]), session, child: { busy: true } });
+      expect(q('svy-thinking')).toBeNull();
+    });
+
+    it('does not show next to a running subagent card', () => {
+      childSignals.set(new Map<string, ChildSignals>([['c2', { busy: true }]]));
+      render({ messages: base([subagentPart('c2')]), session, child: { busy: true } });
+      expect(q('svy-agent-card')).not.toBeNull();
+      expect(q('svy-thinking')).toBeNull();
+    });
+
+    it('disappears when the child finishes or is not busy', () => {
+      render({ messages: base([reasoning()]), session, child: { busy: true } });
+      expect(q('svy-thinking')).not.toBeNull();
+      render({ child: { busy: false, outcome: 'succeeded' } });
+      expect(q('svy-thinking')).toBeNull();
+    });
+
+    it('shows only in the last round, not in a stopped earlier round', () => {
+      render({
+        messages: [
+          msg('u1', 'user', [text('Task')]),
+          msg('a1', 'assistant', [reasoning()]),
+          msg('u2', 'user', [text('Use option B')]),
+          msg('a2', 'assistant', [reasoning()])
+        ],
+        session,
+        child: { busy: true }
+      });
+      expect(el.querySelectorAll('svy-thinking')).toHaveLength(1);
+      expect(q('.agent-stopped-step')).not.toBeNull();
+    });
+  });
+
   describe('spinner rule', () => {
     const runningMessages = (status: string) => [msg('u1', 'user', [text('Task')]), msg('a1', 'assistant', [tool(status)])];
 

@@ -105,6 +105,15 @@ Legacy aliases (re-pointed, no edit to the consuming components): `--svy-border:
 - Status button `aria-expanded` reflects state; `aria-controls="status-panel"` matches the aside id.
 - Colour contrast: all text pairs from the triage table meet 4.5:1; the spec's new text-colour usage must not introduce pairs below that.
 
+### 3.9 Feedback round (Rene van Veen, Jira comment 235122)
+
+**Chat width.** The 860px cap was repeated in `message-list`, `composer` (`.input-row`, `.command-menu`, `.disabled-hint`), `form-card`, `welcome` and `agent-view` scss. It is now one token, `--svy-chat-max-w` (1100px, in `styles.scss`), used everywhere, so messages, composer, forms, welcome and agent view stay aligned and the column grows with the window up to that readable-line cap (the design uses 800px; 1100px was chosen because the chat area itself is only ~880px at 1440px with both side panels docked, so the cap only bites on very wide windows). `.chat` itself was always flexible. Sidebar (260px) and status panel (300 to 340px) keep their design widths.
+
+**Reasoning is not shown.** Root cause of the "empty Reasoning labels": they were not empty. The collapsed row hid its caret (`opacity: 0` until hover), so a row with text looked like a dead label. Live data checked: no blank reasoning parts reach the renderer (`isBlankReasoningText` already drops `...`/whitespace). Decision: hide reasoning altogether instead of fixing the caret:
+- `isRenderablePart` no longer includes reasoning, so the chat shows only text, tool rows, agent cards and files. The agent view (`agent-view.ts`) no longer emits reasoning steps. The part data is untouched: `session-export.ts` still exports reasoning parts and file refs still ignore them.
+- While the model works a short "Thinking..." line (`svy-thinking`, muted, gentle opacity pulse, no animation under `prefers-reduced-motion`) replaces the old three dots. It shows only on the newest assistant message, while the session turn is busy, not completed, without error, and only while the last thing the model did is thinking (or nothing yet): it disappears as soon as an answer or tool row appears, when the turn completes, is stopped or fails.
+- A finished turn that only contained reasoning no longer shows "No response was returned" (the model did respond, we just hide it); a running reasoning-only message survives a reload (`isRenderableMessage`) so the line still shows; a message with nothing visible collapses (`nothing-to-show`).
+
 ## 4. Implementation plan
 
 1. `webui/src/styles.scss`: add the design tokens (light/dark), the constants, legacy aliases, width CSS variables, `@font-face` rules, body font, global link colours, `:focus-visible` rule.
@@ -131,6 +140,8 @@ Legacy aliases (re-pointed, no edit to the consuming components): `--svy-border:
 - [ ] Orange used as text is the darker `--svy-acc-fg` token everywhere listed in 3.6 and meets 4.5:1 in both themes; text on bright-orange fills is dark (>= 4.5:1).
 - [ ] Inter and JetBrains Mono are bundled (with OFL license files) and served by the servlet; the UI falls back to system fonts if they fail to load.
 - [ ] A visible `:focus-visible` indicator exists for all buttons/links reachable by keyboard.
+- [ ] The chat content width follows the window up to `--svy-chat-max-w` (1100px); messages, composer, forms, welcome and agent view share it.
+- [ ] Reasoning is never rendered in the chat or the agent view (no "Reasoning" label or text); a "Thinking..." line is shown only while the model is working and disappears when an answer or tool row shows or the turn ends; reasoning data is still in the session export.
 - [ ] The sessions area can be collapsed/reopened with a header button; docked (pushing the chat) from 800px, a closed-by-default left overlay with scrim below 800px.
 - [ ] At 600px viewport width there is no horizontal scrollbar and no page-level scrollbar (only the message list scrolls); views never stack vertically; below 1080px the status panel is a closed-by-default overlay opened with the header button (it does not stack under the chat); at >= 1080px the three areas sit side by side with the chat scrolling internally.
 - [ ] `statusOpen` lives in the shell, and the header slots, width CSS variables and tokens exist for the follow-up cases.

@@ -3,12 +3,13 @@
     @if (view().task; as task) {
       <svy-agent-task [task]="task" [files]="files()"></svy-agent-task>
     }
-    @for (round of rows(); track $index) {
+    @for (round of rows(); track $index; let lastRound = $last) {
       @if (round.resume !== null) {
         <svy-agent-resume-divider [answer]="round.resume"></svy-agent-resume-divider>
       }
       @for (message of round.messages; track message.info.id) {
         <svy-message-item
+          [latest]="lastRound && $last"
           [role]="message.info.role"
           [parts]="message.parts"
           [error]="message.info.error ?? null"
@@ -24,6 +25,9 @@
           <span class="spinner" aria-hidden="true"></span>
           <span>{{ round.runningTool }}</span>
         </div>
+      }
+      @if (round.thinking) {
+        <svy-thinking></svy-thinking>
       }
       @if (round.stoppedAtEnd) {
         <div class="agent-stopped-step">Stopped</div>

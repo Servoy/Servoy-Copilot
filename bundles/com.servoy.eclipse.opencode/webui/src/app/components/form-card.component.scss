@@ -3,7 +3,7 @@
 }
 
 .form-card {
-  max-width: 860px;
+  max-width: var(--svy-chat-max-w);
   margin: 0.6rem auto;
   padding: 0.85rem 1rem;
   border: 1px solid var(--svy-accent, #f5a623);

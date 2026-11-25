@@ -23,18 +23,6 @@
       }
     } @else if (isText(part)) {
       <svy-markdown [content]="part.text ?? ''"></svy-markdown>
-    } @else if (isReasoning(part)) {
-      <div class="reasoning-block" [class.open]="isReasoningExpanded(part, $index)">
-        <div class="reasoning-row" (click)="toggleReasoning(part, $index)">
-          <span class="reasoning-caret" aria-hidden="true">{{ isReasoningExpanded(part, $index) ? '▾' : '›' }}</span>
-          <span class="reasoning-label">Reasoning</span>
-        </div>
-        @if (isReasoningExpanded(part, $index)) {
-          <div class="reasoning">
-            <svy-markdown [content]="part.text ?? ''"></svy-markdown>
-          </div>
-        }
-      </div>
     } @else if (isSubagent(part)) {
       <svy-agent-card [agent]="agentOf(part)" (open)="openSession.emit($event)"></svy-agent-card>
     } @else if (isTool(part)) {
@@ -106,9 +94,7 @@
   @if (errorText(); as message) {
     <div class="error-notice">{{ message }}</div>
   } @else if (isThinking()) {
-    <div class="thinking" aria-label="Thinking">
-      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-    </div>
+    <svy-thinking></svy-thinking>
   } @else if (isEmpty()) {
     <div class="error-notice muted">No response was returned for this message.</div>
   }

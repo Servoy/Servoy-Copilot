@@ -3,7 +3,7 @@
 }
 
 .welcome {
-  max-width: 860px;
+  max-width: var(--svy-chat-max-w);
   margin: 0 auto;
   padding: 3rem 1rem;
   display: flex;

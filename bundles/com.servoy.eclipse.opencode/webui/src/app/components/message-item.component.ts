@@ -15,13 +15,14 @@ import { MessageError, Part } from '../models/opencode.models';
 import {
   isFilePart,
   isImageFilePart,
-  isReasoningPart,
+  hasReasoningType,
   isRenderablePart,
   isScriptTool,
   isSubagentTool,
   isTextPart,
   isToolExpandable,
   isToolPart,
+  lastActivityPart,
   subagentSessionId,
   toolDisplayName,
   toolScript,
@@ -32,18 +33,19 @@ import { FileRefsService } from '../services/file-refs.service';
 import { AgentCardComponent } from './agent-card.component';
 import { FileChipComponent } from './file-chip.component';
 import { MarkdownRendererComponent } from './markdown-renderer.component';
+import { ThinkingIndicatorComponent } from './thinking-indicator.component';
 
 /**
- * Renders a single message's {@code Part[]}: text parts as markdown, reasoning
- * as a muted, collapsed-by-default row (a "Reasoning" header that expands to
- * reveal the full markdown on click), tool parts as a compact collapsed row.
- * Synthetic / system-reminder parts are filtered out.
+ * Renders a single message's {@code Part[]}: text parts as markdown and tool parts as a
+ * compact collapsed row. Reasoning is not shown; while the model is working a short
+ * "Thinking..." line stands in for it. Synthetic / system-reminder parts are filtered out.
  */
 @Component({
   selector: 'svy-message-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownRendererComponent, AgentCardComponent, FileChipComponent],
+  imports: [MarkdownRendererComponent, AgentCardComponent, FileChipComponent, ThinkingIndicatorComponent],
+  host: { '[class.nothing-to-show]': 'nothingToShow()' },
   templateUrl: './message-item.component.html',
   styleUrl: './message-item.component.scss'
 })
@@ -141,29 +143,53 @@ export class MessageItemComponent {
   /** Whether the assistant turn has finished (a completion timestamp exists). */
   readonly isComplete = computed(() => this.completed() != null);
 
-  /** True while an assistant turn is still running with nothing to show yet. */
-  readonly isThinking = computed(
+  /**
+   * False for an older message of the transcript: only the newest message can be the one the
+   * model is working on, so a stale unfinished one (e.g. from an aborted turn) never shows
+   * the "Thinking..." line.
+   */
+  readonly latest = input<boolean>(true);
+
+  /** True when the message has nothing to show (e.g. only hidden reasoning): the host collapses. */
+  readonly nothingToShow = computed(
     () =>
-      this.role() !== 'user' &&
-      !this.isComplete() &&
       this.renderable().length === 0 &&
-      !this.errorText()
+      !this.isThinking() &&
+      !this.isEmpty() &&
+      !this.errorText() &&
+      !this.hasFiles()
   );
 
   /**
-   * True only when the turn has finished, produced no renderable parts, and had
-   * no error - the genuine "empty response" case (not the streaming case).
+   * True while the model is working on this message and nothing newer than its reasoning is
+   * visible: no parts yet, or the last thing it did was think. It goes away as soon as an
+   * answer or a tool row appears (they already show the model is working), when the turn
+   * completes, fails or is stopped (the session is no longer busy), and never shows on a
+   * message that is not the newest.
+   */
+  readonly isThinking = computed(() => {
+    if (this.role() === 'user' || this.isComplete() || this.errorText() || !this.turnBusy() || !this.latest()) {
+      return false;
+    }
+    const last = lastActivityPart(this.parts());
+    return last === undefined || last.type === 'reasoning';
+  });
+
+  /**
+   * True only when the turn has finished, produced nothing visible (and no reasoning, which is
+   * an intermediate step rather than a missing answer), and had no error - the genuine "empty
+   * response" case (not the streaming case).
    */
   readonly isEmpty = computed(
-    () => this.isComplete() && this.renderable().length === 0 && !this.errorText()
+    () =>
+      this.isComplete() &&
+      this.renderable().length === 0 &&
+      !hasReasoningType(this.parts()) &&
+      !this.errorText()
   );
 
   isText(part: Part): boolean {
     return isTextPart(part);
-  }
-
-  isReasoning(part: Part): boolean {
-    return isReasoningPart(part);
   }
 
   isTool(part: Part): boolean {
@@ -280,28 +306,4 @@ export class MessageItemComponent {
     this.expanded.set(next);
   }
 
-  /**
-   * Whether a reasoning part is expanded. Reuses the shared {@code expanded}
-   * signal and {@code partKey}, so reasoning rows collapse/expand with the same
-   * state machinery as tool rows. Collapsed by default (the set starts empty).
-   */
-  isReasoningExpanded(part: Part, index: number): boolean {
-    return this.expanded().has(this.partKey(part, index));
-  }
-
-  /**
-   * Toggle a reasoning part's expanded state. Unlike {@link toggle}, this is
-   * not gated by {@code canExpand}: reasoning parts always have text (blanks
-   * are dropped upstream), so they are always expandable.
-   */
-  toggleReasoning(part: Part, index: number): void {
-    const key = this.partKey(part, index);
-    const next = new Set(this.expanded());
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    this.expanded.set(next);
-  }
 }

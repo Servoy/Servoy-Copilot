@@ -106,7 +106,7 @@ describe('buildAgentView', () => {
   });
 
   describe('steps', () => {
-    it('maps tool, text and reasoning parts and drops other part types', () => {
+    it('maps tool and text parts and drops reasoning and other part types', () => {
       const view = buildAgentView(
         [
           user('u1', 'T'),
@@ -122,7 +122,8 @@ describe('buildAgentView', () => {
         undefined,
         { busy: true }
       );
-      expect(view.rounds[0].steps.map((s) => s.kind)).toEqual(['tool', 'text', 'reasoning', 'tool']);
+      expect(view.rounds[0].steps.map((s) => s.kind)).toEqual(['tool', 'text', 'tool']);
+      expect(view.rounds[0].steps.some((s) => s.part.type === 'reasoning')).toBe(false);
     });
 
     it('marks a running tool part running only when the child is busy', () => {

@@ -14,7 +14,7 @@
   bottom: 100%;
   left: 0;
   right: 0;
-  max-width: 860px;
+  max-width: var(--svy-chat-max-w);
   margin: 0 auto;
   padding: 0 1rem;
   box-sizing: border-box;
@@ -38,7 +38,7 @@
 }
 
 .disabled-hint {
-  max-width: 860px;
+  max-width: var(--svy-chat-max-w);
   margin: 0 auto 0.4rem;
   font-size: 0.78rem;
   color: var(--svy-muted, #9aa0a6);
@@ -54,7 +54,7 @@
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
-  max-width: 860px;
+  max-width: var(--svy-chat-max-w);
   margin: 0 auto;
   border: 1px solid var(--svy-border, rgba(127, 127, 127, 0.35));
   border-radius: 12px;

@@ -16,24 +16,33 @@ import { ChildSignals } from '../services/agent-status';
 import { buildAgentView } from '../services/agent-view';
 import { ChatMessage, ChatStore } from '../services/chat-store.service';
 import { fileRefsFromMessages } from '../services/file-refs';
-import { toolDisplayName } from '../services/part-utils';
+import { isSubagentTool, toolDisplayName } from '../services/part-utils';
 import { AgentReportComponent } from './agent-report.component';
 import { AgentResumeDividerComponent } from './agent-resume-divider.component';
 import { AgentTaskComponent } from './agent-task.component';
 import { MessageItemComponent } from './message-item.component';
+import { ThinkingIndicatorComponent } from './thinking-indicator.component';
 
 interface RoundRow {
   readonly resume: string | null;
   readonly messages: ChatMessage[];
   readonly stoppedAtEnd: boolean;
   readonly runningTool: string | null;
+  /** The child is working but nothing visible says so: the hidden reasoning stands in as "Thinking...". */
+  readonly thinking: boolean;
 }
 
 @Component({
   selector: 'svy-agent-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AgentTaskComponent, AgentReportComponent, AgentResumeDividerComponent, MessageItemComponent],
+  imports: [
+    AgentTaskComponent,
+    AgentReportComponent,
+    AgentResumeDividerComponent,
+    MessageItemComponent,
+    ThinkingIndicatorComponent
+  ],
   templateUrl: './agent-view.component.html',
   styleUrl: './agent-view.component.scss'
 })
@@ -57,7 +66,8 @@ export class AgentViewComponent {
 
   readonly rows = computed<RoundRow[]>(() => {
     const infoById = new Map(this.messages().map((m) => [m.info.id, m.info]));
-    return this.view().rounds.map((round) => {
+    const rounds = this.view().rounds;
+    return rounds.map((round, roundIndex) => {
       const grouped: ChatMessage[] = [];
       let runningTool: string | null = null;
       for (const step of round.steps) {
@@ -74,7 +84,15 @@ export class AgentViewComponent {
           }
         }
       }
-      return { resume: round.resume, messages: grouped, stoppedAtEnd: round.stoppedAtEnd, runningTool };
+      const lastStep = round.steps[round.steps.length - 1];
+      const thinking =
+        roundIndex === rounds.length - 1 &&
+        this.busy() &&
+        !round.stoppedAtEnd &&
+        runningTool === null &&
+        lastStep?.kind !== 'text' &&
+        !(lastStep && isSubagentTool(lastStep.part));
+      return { resume: round.resume, messages: grouped, stoppedAtEnd: round.stoppedAtEnd, runningTool, thinking };
     });
   });
 

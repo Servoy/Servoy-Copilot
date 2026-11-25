@@ -325,6 +325,20 @@ describe('ChatStore', () => {
     expect(store.messages().map((m) => m.info.id)).toEqual(['u1', 'a1']);
   });
 
+  it('openSession keeps a running assistant turn that only has reasoning so far (for the "Thinking..." line) and drops a finished reasoning-only one', () => {
+    const msgs: MessageWithParts[] = [
+      { info: { id: 'u1', role: 'user' }, parts: [{ type: 'text', text: 'hi' } as Part] },
+      { info: { id: 'a1', role: 'assistant', time: { completed: 5 } }, parts: [{ type: 'reasoning', text: 'x' } as Part] },
+      { info: { id: 'a2', role: 'assistant' }, parts: [{ type: 'reasoning', text: 'y' } as Part] }
+    ];
+    seedPage(msgs);
+
+    store.openSession('s1');
+
+    expect(store.messages().map((m) => m.info.id)).toEqual(['u1', 'a2']);
+    expect(store.messages()[1].parts[0].type).toBe('reasoning');
+  });
+
   it('openSession keeps a user message even when it has no parts', () => {
     const msgs: MessageWithParts[] = [{ info: { id: 'u1', role: 'user' }, parts: [] }];
     seedPage(msgs);

@@ -48,31 +48,6 @@ export function isTextPart(part: Part): boolean {
   );
 }
 
-/**
- * Whether a reasoning part's text is empty for rendering purposes. opencode
- * frequently emits a placeholder reasoning block whose entire text is just an
- * ellipsis ("..." or the single "…" glyph, sometimes padded with whitespace) -
- * a stub for a thinking block the model never filled in. Rendered as-is it
- * shows up as a stray muted "..." row with a left guide bar, attached to
- * nothing. Treat such a part as empty so it is dropped.
- */
-export function isBlankReasoningText(text: string | undefined): boolean {
-  if (!text) {
-    return true;
-  }
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    return true;
-  }
-  // Only dots / unicode ellipsis (and whitespace) -> nothing meaningful.
-  return /^[.\u2026\s]+$/.test(trimmed);
-}
-
-/** Reasoning parts - rendered in a muted block. Placeholder "..." is dropped. */
-export function isReasoningPart(part: Part): boolean {
-  return part.type === 'reasoning' && !isBlankReasoningText(part.text);
-}
-
 /** Tool-call parts - rendered as a compact collapsed row. */
 export function isToolPart(part: Part): boolean {
   return part.type === 'tool';
@@ -104,12 +79,36 @@ export function isImageFilePart(part: Part): boolean {
   return url.startsWith('data:image/');
 }
 
-/** Whether the part should be rendered at all in iteration 1. */
+/**
+ * Whether the part is shown in the transcript. Reasoning is deliberately NOT shown (the
+ * model's thinking is replaced by a short "Thinking..." line while it works); the part
+ * data itself stays untouched so exports and other consumers still see it.
+ */
 export function isRenderablePart(part: Part): boolean {
   if (isSyntheticPart(part)) {
     return false;
   }
-  return isTextPart(part) || isReasoningPart(part) || isToolPart(part) || isFilePart(part);
+  return isTextPart(part) || isToolPart(part) || isFilePart(part);
+}
+
+/**
+ * The last part of a message that says what the model is doing right now: visible text,
+ * a tool call or reasoning (even a just-started, still empty one). Synthetic and
+ * bookkeeping parts (step markers, placeholders) are skipped.
+ */
+export function lastActivityPart(parts: readonly Part[]): Part | undefined {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === 'reasoning' || isRenderablePart(part)) {
+      return part;
+    }
+  }
+  return undefined;
+}
+
+/** Whether the message carries any reasoning part, shown or not. */
+export function hasReasoningType(parts: readonly Part[]): boolean {
+  return parts.some((p) => p.type === 'reasoning');
 }
 
 /** A short human label for a tool part (name + status). */

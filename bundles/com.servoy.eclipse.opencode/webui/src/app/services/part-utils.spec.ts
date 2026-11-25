@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  hasReasoningType,
+  lastActivityPart,
   isFilePart,
   isImageFilePart,
-  isReasoningPart,
   isRenderablePart,
   isScriptTool,
   isSubagentTool,
@@ -25,6 +26,22 @@ import { Part } from '../models/opencode.models';
 function part(overrides: Partial<Part> & { type: Part['type'] }): Part {
   return { ...overrides } as Part;
 }
+
+describe('lastActivityPart / hasReasoningType', () => {
+  it('returns the last visible text, tool or reasoning part and skips bookkeeping parts', () => {
+    const r = part({ type: 'reasoning', text: '' });
+    const t = part({ type: 'tool', tool: 'read' });
+    expect(lastActivityPart([t, r, part({ type: 'step-finish' })])).toBe(r);
+    expect(lastActivityPart([r, t])).toBe(t);
+    expect(lastActivityPart([part({ type: 'text', text: '<system-reminder>x' }), part({ type: 'step-start' })])).toBeUndefined();
+    expect(lastActivityPart([])).toBeUndefined();
+  });
+
+  it('detects a reasoning part even when it is blank', () => {
+    expect(hasReasoningType([part({ type: 'reasoning', text: '...' })])).toBe(true);
+    expect(hasReasoningType([part({ type: 'text', text: 'x' })])).toBe(false);
+  });
+});
 
 describe('isSyntheticPart', () => {
   it('is true when the synthetic flag is set', () => {
@@ -88,32 +105,6 @@ describe('isTextPart', () => {
   });
 });
 
-describe('isReasoningPart', () => {
-  it('is true for a reasoning part with content', () => {
-    expect(isReasoningPart(part({ type: 'reasoning', text: 'because' }))).toBe(true);
-  });
-
-  it('is false for empty or whitespace reasoning', () => {
-    expect(isReasoningPart(part({ type: 'reasoning', text: '  ' }))).toBe(false);
-    expect(isReasoningPart(part({ type: 'reasoning' }))).toBe(false);
-  });
-
-  it('is false for a placeholder "..." / "…" reasoning stub (opencode emits these)', () => {
-    expect(isReasoningPart(part({ type: 'reasoning', text: '...' }))).toBe(false);
-    expect(isReasoningPart(part({ type: 'reasoning', text: '  ...  ' }))).toBe(false);
-    expect(isReasoningPart(part({ type: 'reasoning', text: '…' }))).toBe(false);
-    expect(isReasoningPart(part({ type: 'reasoning', text: '....' }))).toBe(false);
-  });
-
-  it('is still true when the ellipsis is part of real prose', () => {
-    expect(isReasoningPart(part({ type: 'reasoning', text: 'Hmm... let me think' }))).toBe(true);
-  });
-
-  it('is false for a text part', () => {
-    expect(isReasoningPart(part({ type: 'text', text: 'hi' }))).toBe(false);
-  });
-});
-
 describe('isToolPart', () => {
   it('is true only for tool parts', () => {
     expect(isToolPart(part({ type: 'tool', tool: 'read' }))).toBe(true);
@@ -125,7 +116,7 @@ describe('isToolPart', () => {
 describe('isRenderablePart', () => {
   it('renders text, reasoning, and tool parts', () => {
     expect(isRenderablePart(part({ type: 'text', text: 'hi' }))).toBe(true);
-    expect(isRenderablePart(part({ type: 'reasoning', text: 'x' }))).toBe(true);
+    expect(isRenderablePart(part({ type: 'reasoning', text: 'x' }))).toBe(false);
     expect(isRenderablePart(part({ type: 'tool', tool: 'read' }))).toBe(true);
   });
 

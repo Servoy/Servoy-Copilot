@@ -7,12 +7,12 @@ import {
   reportBodyText
 } from './agent-status';
 import { ChatMessage } from './chat-store.service';
-import { isReasoningPart, isSyntheticPart, isTextPart } from './part-utils';
+import { isSyntheticPart, isTextPart } from './part-utils';
 
 export interface AgentViewStep {
   readonly messageId: string;
   readonly part: Part;
-  readonly kind: 'tool' | 'text' | 'reasoning';
+  readonly kind: 'tool' | 'text';
   readonly running: boolean;
 }
 
@@ -128,8 +128,6 @@ export function buildAgentView(
           });
         } else if (part.type === 'text' && isTextPart(part)) {
           steps.push({ messageId, part, kind: 'text', running: false });
-        } else if (part.type === 'reasoning' && isReasoningPart(part)) {
-          steps.push({ messageId, part, kind: 'reasoning', running: false });
         }
       }
     }
