@@ -430,7 +430,7 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                     // skilltest FEATURE (an OSGi/p2 requirement), which -am does not pull in.
                     sh '''mvn -B -s "$MAVEN_SETTINGS" -t "$TOOLCHAIN" \
                         clean package \
-                        -pl bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest,features/com.servoy.eclipse.opencode.skilltest.feature,repository.site_skilltest \
+                        -pl launch_target_aiplugin,bundles/com.servoy.eclipse.opencode,bundles/com.servoy.eclipse.developer.mcp,bundles/com.servoy.eclipse.opencode.skilltest,features/com.servoy.eclipse.opencode.skilltest.feature,repository.site_skilltest \
                         -Dtycho.localArtifacts=ignore \
                         -Dservoy.url=file:///data/www/latest/servoy_lts_2026/update_site/'''
                     sh '''

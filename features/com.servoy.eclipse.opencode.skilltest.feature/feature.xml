@@ -31,4 +31,13 @@
          version="2026.3.1.qualifier"
          unpack="false"/>
 
+   <!-- Provides the org.sqlite package imported by the skilltest bundle (KiroCreditReader).
+        Not part of a stock Servoy Developer install, so it must ship with this feature. -->
+   <plugin
+         id="org.xerial.sqlite-jdbc"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
 </feature>
