@@ -261,6 +261,8 @@ public class CodeEditingService
 			needle.remove(needle.size() - 1);
 			if (replacement.size() > 1 && replacement.get(replacement.size() - 1).isEmpty())
 				replacement.remove(replacement.size() - 1);
+			// Deleting whole lines ("key=value\n" -> ""): no replacement line at all, not one empty line.
+			else if (newString.isEmpty()) replacement.clear();
 		}
 
 		List<Integer> offsets = new ArrayList<>();

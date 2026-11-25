@@ -319,6 +319,27 @@ public class CodeEditingServiceReplaceStringTest
 		}
 
 		@Test
+		@DisplayName("deleting the last line with a trailing-newline oldString and an empty newString removes it, leaving no blank line")
+		void deleteLastLineWithTrailingNewline()
+		{
+			// The file's last line has no terminator in the line list, so "key=Delete\n" cannot match
+			// exactly and falls to the tolerant tier; it must still delete the line, not blank it.
+			ReplaceOutcome outcome = replace(List.of("a=1", "button.delete=Delete"), "button.delete=Delete\n", "", Occurrence.UNIQUE);
+
+			assertNotNull(outcome);
+			assertEquals(List.of("a=1"), outcome.lines());
+		}
+
+		@Test
+		@DisplayName("deleting a middle line with a trailing-newline oldString and an empty newString removes it")
+		void deleteMiddleLineWithTrailingNewline()
+		{
+			ReplaceOutcome outcome = replace(List.of("a=1", "button.delete=Delete", "b=2"), "button.delete=Delete\n", "", Occurrence.UNIQUE);
+
+			assertEquals(List.of("a=1", "b=2"), outcome.lines());
+		}
+
+		@Test
 		@DisplayName("an exact match is preferred: the tolerant tier does not run when the exact one found something")
 		void exactPreferred()
 		{
