@@ -25,6 +25,7 @@ import { DebugOverlayComponent } from './components/debug-overlay.component';
 import { FileReaderComponent } from './components/file-reader.component';
 import { FormCardComponent } from './components/form-card.component';
 import { MessageListComponent } from './components/message-list.component';
+import { SelectionCopyComponent } from './components/selection-copy.component';
 import { SessionListComponent } from './components/session-list.component';
 import { StatusPanelComponent } from './components/status-panel.component';
 
@@ -47,6 +48,7 @@ import { StatusPanelComponent } from './components/status-panel.component';
     AgentFooterComponent,
     StatusPanelComponent,
     FileReaderComponent,
+    SelectionCopyComponent,
     DebugOverlayComponent
   ],
   templateUrl: './app.component.html',

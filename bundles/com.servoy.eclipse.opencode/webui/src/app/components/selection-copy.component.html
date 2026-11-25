@@ -1,0 +1,13 @@
+@if (anchor(); as a) {
+  <button
+    type="button"
+    class="copy"
+    [class.done]="copied()"
+    [style.top.px]="a.top"
+    [style.left.px]="a.left"
+    (mousedown)="$event.preventDefault()"
+    (click)="copy()"
+  >
+    {{ copied() ? 'Copied' : 'Copy' }}
+  </button>
+}

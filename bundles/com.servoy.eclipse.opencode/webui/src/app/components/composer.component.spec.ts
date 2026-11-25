@@ -125,6 +125,11 @@ describe('ComposerComponent', () => {
     ]);
   });
 
+  it('disables spellcheck on the textarea', () => {
+    const el = component.textarea().nativeElement;
+    expect(el.getAttribute('spellcheck')).toBe('false');
+  });
+
   it('the stop button emits stop', () => {
     let stopped = false;
     component.stop.subscribe(() => (stopped = true));

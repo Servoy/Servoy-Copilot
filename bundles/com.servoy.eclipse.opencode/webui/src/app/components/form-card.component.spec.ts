@@ -58,6 +58,23 @@ describe('FormCardComponent', () => {
     expect(options).toHaveLength(2);
   });
 
+  it('disables spellcheck on free-text and custom-answer inputs', async () => {
+    await setForm({
+      id: 'frm_1',
+      sessionID: 's1',
+      title: 'Q',
+      fields: [
+        { key: 'plain', type: 'string' },
+        { key: 'opt', type: 'string', custom: true, options: [{ value: 'A', label: 'A' }] },
+        { key: 'multi', type: 'multiselect', custom: true, options: [{ value: 'A', label: 'A' }] }
+      ]
+    });
+
+    const inputs = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('input[type="text"]');
+    expect(inputs).toHaveLength(3);
+    inputs.forEach((input) => expect(input.getAttribute('spellcheck')).toBe('false'));
+  });
+
   it('disables submit until a required field is answered, then enables it', async () => {
     await setForm({
       id: 'frm_1',

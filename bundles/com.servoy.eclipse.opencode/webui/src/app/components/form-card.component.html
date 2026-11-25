@@ -38,6 +38,7 @@
           @if (field.custom) {
             <input
               type="text"
+              spellcheck="false"
               class="text-input"
               [id]="controlId(field)"
               placeholder="Or type your own…"
@@ -52,6 +53,7 @@
         @else if (field.type === 'string') {
           <input
             type="text"
+            spellcheck="false"
             class="text-input"
             [id]="controlId(field)"
             [placeholder]="field.placeholder || ''"
@@ -130,6 +132,7 @@
             <div class="custom-add">
               <input
                 type="text"
+                spellcheck="false"
                 class="text-input"
                 [id]="controlId(field)"
                 placeholder="Add your own…"
