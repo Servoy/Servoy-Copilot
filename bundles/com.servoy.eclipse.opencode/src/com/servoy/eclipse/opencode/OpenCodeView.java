@@ -343,7 +343,9 @@ public class OpenCodeView extends ViewPart {
 		int tomcatPort = ApplicationServerRegistry.get().getWebServerPort();
 		// Mirror the Eclipse IDE theme into the chat UI: the Angular app reads the
 		// darkmode query param and applies its dark palette when it is true.
-		boolean dark = UIUtils.isDarkThemeSelected(true);
+		// false = every dark theme (Eclipse Dark and Servoy Dark); true would only
+		// match the stock Eclipse Dark theme and report Servoy Dark as light.
+		boolean dark = UIUtils.isDarkThemeSelected(false);
 		return "http://127.0.0.1:" + tomcatPort + OpencodeChatServlet.BASE_PATH + "/?darkmode=" + dark; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
