@@ -37,7 +37,7 @@ just for parity with upstream.** Additive upstream changes are preferred; a chan
 that would require rewriting working code is raised with the user, and if declined
 it is recorded under "Known divergences" as a conscious decision.
 
-## Last synced upstream commit: 3218e3b04dcf7763d1b1fbbfaa64ab11800fb046 (2026-11-12)
+## Last synced upstream commit: 20b1098997cb8425b5f03b6aa8bd82598fea4ce4 (2026-11-25)
 
 > The first real sync is **complete**: all 33 commits in the range
 > `6e829a8..3218e3b` were resolved (applied, adapted, already-have,
@@ -129,6 +129,8 @@ case). Normally empty: a sync resolves everything.
 | _(none)_ | |
 
 ## Sync log (upstream → Servoy)
+
+- 2026-11-25 — **synced `3218e3b..20b1098`: 5 upstream commits, none touches a mapped file.** The whole range is the Servoy fork's PR #190 (`fix/headless-launch-no-dialogs`, merged as `20b1098`): `a0f563d`, `f5d6e39`, `ae15b4a`, `2cf9bf6` and the merge. All four commits change `UnitTestService`, `PDEService`, `JavaLaunchService` and `MavenService` (plus `UnitTestServiceLaunchPDETest`), none of which has a Servoy port, so each is **not-applicable**: a launch helper that turns off the debug platform's status-handler prompts around `configuration.launch(...)` (`PREF_ENABLE_STATUS_HANDLERS`), and `AUTOMATIC_VALIDATE=false` for headless PDE plug-in test launches. The commit-list query over the mapped files was empty, and a whole-range check confirmed there is no commit elsewhere in the range. Baseline advanced to the tip `20b1098`; no Servoy code changed. **Not part of the sync, unverified:** the one place Servoy code launches a configuration itself is `JSUnitRunnerService` (`config.launch(ILaunchManager.RUN_MODE, null)`); whether it can park on the same "Errors exist in required project(s)" prompt was not checked.
 
 - 2026-11-24 — **fourth review round (Andrei): the credential fix was incomplete, and round 3 regressed the redactor.** Risk ELEVATED; the findings were checked against the code before fixing:
   - **A thrown failure still reached the model unredacted.** `McpServerFactory.executeCallTool` reports the ROOT cause of the exception chain, and JGit's `TransportException` message is the remote URL, so redacting only the wrapper text (`"Failed to fetch: " + safeMessage(e)`) left the root cause printing the token, and the Eclipse log recorded the raw chain too. Now `McpServerFactory.errorText` redacts the root cause for every tool, and the log gets `redactedCopy(e)`, a copy of the chain with redacted messages. A test drives `errorText` with a nested root cause, and `fetchIn`/`pullIn`/`pushIn` are driven through four credentialed URL shapes whether they return or throw.
