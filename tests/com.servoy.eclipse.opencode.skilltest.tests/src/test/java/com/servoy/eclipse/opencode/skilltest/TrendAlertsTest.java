@@ -489,13 +489,17 @@ class TrendAlertsTest {
 		}
 
 		@Test
-		@DisplayName("names skillsVersion and pluginVersion changes")
-		void versionChanges() {
-			Alert a = rule(eval(regressionWith(e(Status.FAIL).skills("s2").plugin("p2"))), TrendAlerts.RULE_REGRESSION)
-					.get(0);
-			assertAll(() -> assertTrue(a.likelyCause().contains("skillsVersion changed s1 → s2"), a.likelyCause()),
-					() -> assertTrue(a.likelyCause().contains("pluginVersion changed p1 → p2"), a.likelyCause()),
-					() -> assertFalse(a.likelyCause().contains("model")));
+		@DisplayName("names a skillsVersion change")
+		void skillsVersionChange() {
+			Alert a = rule(eval(regressionWith(e(Status.FAIL).skills("s2"))), TrendAlerts.RULE_REGRESSION).get(0);
+			assertEquals("skillsVersion changed s1 → s2", a.likelyCause());
+		}
+
+		@Test
+		@DisplayName("never names a pluginVersion change (it changes on every build)")
+		void pluginVersionIgnored() {
+			assertNull(rule(eval(regressionWith(e(Status.FAIL).plugin("p2"))), TrendAlerts.RULE_REGRESSION).get(0)
+					.likelyCause());
 		}
 
 		@Test

@@ -286,8 +286,10 @@ Window override: `servoy.skilltest.alert.window`. All overrides are read via a
 - Alerts are only evaluated for baselines that have an entry **in the current run** (`runId` of
   this run), so a baseline that wasn't run tonight never alerts, and a night without a build
   (pollSCM only starts on changes) is simply not in the history — gaps never alert.
-- Each alert carries a **likely cause** when the latest entry's `model`, `skillsVersion` or
-  `pluginVersion` differs from the previous entry's (e.g. "model changed kiro/a → kiro/b").
+- Each alert carries a **likely cause** when the latest entry's `model` or `skillsVersion`
+  differs from the previous entry's (e.g. "model changed kiro/a → kiro/b").
+  The `pluginVersion` is recorded but is **never** a likely cause: its build qualifier changes on
+  every CI build, so it would be named on every alert and explain nothing.
 - `record Alert(String baselineId, String rule, String message, String likelyCause)`;
   `static List<Alert> evaluate(List<RunHistory.Entry> all, String currentRunId,
   Map<String, List<Baseline.Budget>> budgetsByBaseline, AlertConfig cfg)` is pure.
@@ -471,7 +473,7 @@ In `Jenkinsfile.skilltest`:
      credits judged on rounded `estCredits`, not `creditsDelta`; absent metric skipped; the
      default-percent override applies only where no per-baseline tolerance is set;
      `BudgetEvaluator` output unchanged (existing tests stay green); SKIPPED ignored; baselines not in the current run never alert; likely cause filled
-     on model/skillsVersion/pluginVersion change and absent otherwise; overrides applied; invalid
+     on model/skillsVersion change, never for pluginVersion, and absent otherwise; overrides applied; invalid
      override → default; `alerts.json` shape incl. `count:0` when clean; unwritable path → false, no throw.
    - `TrendReportHtmlTest`: CSP-safe output — no `<script`, no ` on[a-z]+=` attributes, no
      `javascript:`, no `<style`, no `style=` anywhere (incl. inside SVG), exactly one relative

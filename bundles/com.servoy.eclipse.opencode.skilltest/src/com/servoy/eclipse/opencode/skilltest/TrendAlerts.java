@@ -387,7 +387,9 @@ public final class TrendAlerts {
 
 	/**
 	 * @return a description of what changed between the latest and the previous
-	 *         entry (model, skillsVersion, pluginVersion), or {@code null}
+	 *         entry (model, skillsVersion), or {@code null}. The plugin version is
+	 *         deliberately not a cause: its qualifier changes on every build, so it
+	 *         would be reported on every alert and explain nothing.
 	 */
 	static String likelyCause(List<RunHistory.Entry> hist) {
 		if (hist == null || hist.size() < 2) {
@@ -398,7 +400,6 @@ public final class TrendAlerts {
 		List<String> parts = new ArrayList<>();
 		change(parts, "model", prev.model(), latest.model()); //$NON-NLS-1$
 		change(parts, "skillsVersion", prev.skillsVersion(), latest.skillsVersion()); //$NON-NLS-1$
-		change(parts, "pluginVersion", prev.pluginVersion(), latest.pluginVersion()); //$NON-NLS-1$
 		return parts.isEmpty() ? null : String.join("; ", parts); //$NON-NLS-1$
 	}
 
