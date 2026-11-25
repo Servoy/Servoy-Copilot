@@ -478,10 +478,27 @@ class ServoyArtifactCreationServiceModelTest {
 		}
 
 		@Test
+		@DisplayName("onShow -> (firstShow, event), per the Form method template")
+		void show() throws Exception {
+			String s = skeleton("onShow", "show");
+			assertTrue(s.contains("function show(firstShow, event)"), s);
+			assertTrue(s.contains("@param {Boolean} firstShow") && s.contains("@param {JSEvent} event"), s);
+			assertFalse(s.contains("@return"), "onShow has no @return; got: " + s);
+		}
+
+		@Test
+		@DisplayName("onBeforeRecordSelection -> (oldSelection, newSelection, event) with @return {Boolean}")
+		void beforeRecordSelection() throws Exception {
+			String s = skeleton("onBeforeRecordSelection", "sel");
+			assertTrue(s.contains("function sel(oldSelection, newSelection, event)"), s);
+			assertTrue(s.contains("@return {Boolean}"), s);
+		}
+
+		@Test
 		@DisplayName("an unlisted event falls back to a plain (event) skeleton")
 		void defaultEvent() throws Exception {
-			String s = skeleton("onShow", "show");
-			assertTrue(s.contains("function show(event)"), s);
+			String s = skeleton("onLoad", "load");
+			assertTrue(s.contains("function load(event)"), s);
 			assertTrue(s.contains("@param {JSEvent} event"), s);
 			assertTrue(s.contains("// TODO: implement"), s);
 		}

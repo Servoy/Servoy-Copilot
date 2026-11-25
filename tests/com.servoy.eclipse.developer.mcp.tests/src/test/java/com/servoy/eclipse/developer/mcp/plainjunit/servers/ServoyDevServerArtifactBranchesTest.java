@@ -211,6 +211,9 @@ class ServoyDevServerArtifactBranchesTest
 	@Nested
 	class CreateFormEvents
 	{
+		/** Start of the report line for skipped entries (SVY-21596 also covers invalid method names); the skipped entries follow it. */
+		private static final String SKIPPED_PREFIX = "Skipped unrecognised events (unknown event, malformed entry or method name that is not a valid JavaScript identifier): ";
+
 		/**
 		 * Makes {@code createForm} take the no-columns branch with default
 		 * width/height, so the event-parsing report is the only interesting part
@@ -267,7 +270,7 @@ class ServoyDevServerArtifactBranchesTest
 
 			// no valid events -> applyEventsToForm is never called (eventMap empty)
 			verify(svc, never()).applyEventsToForm(anyString(), any());
-			assertTrue(result.contains("Skipped unrecognised events: notAnEvent"), "got: " + result);
+			assertTrue(result.contains(SKIPPED_PREFIX + "notAnEvent"), "got: " + result);
 		}
 
 		@Test
@@ -279,7 +282,7 @@ class ServoyDevServerArtifactBranchesTest
 			String result = serverWith(svc).createForm("frm", null, null, null, null, null, "onShow:a:b", null);
 
 			verify(svc, never()).applyEventsToForm(anyString(), any());
-			assertTrue(result.contains("Skipped unrecognised events: onShow:a:b"), "got: " + result);
+			assertTrue(result.contains(SKIPPED_PREFIX + "onShow:a:b"), "got: " + result);
 		}
 
 		@Test
@@ -312,7 +315,7 @@ class ServoyDevServerArtifactBranchesTest
 			verify(svc).applyEventsToForm(eq("frm"), captor.capture());
 			assertEquals(Map.of("onShow", "onShow", "onHide", "hide"), captor.getValue(),
 				"only the two valid events are wired");
-			assertTrue(result.contains("Skipped unrecognised events: bogus, onLoad:a:b"), "got: " + result);
+			assertTrue(result.contains(SKIPPED_PREFIX + "bogus, onLoad:a:b"), "got: " + result);
 		}
 
 		@Test
@@ -341,7 +344,7 @@ class ServoyDevServerArtifactBranchesTest
 			String result = serverWith(svc).createForm("frm", null, null, null, null, null, ":doStuff", null);
 
 			verify(svc, never()).applyEventsToForm(anyString(), any());
-			assertTrue(result.contains("Skipped unrecognised events: :doStuff"), "got: " + result);
+			assertTrue(result.contains(SKIPPED_PREFIX + ":doStuff"), "got: " + result);
 		}
 	}
 
