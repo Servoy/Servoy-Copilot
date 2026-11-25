@@ -19,6 +19,7 @@ package com.servoy.eclipse.opencode.skilltest.headless;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -103,7 +104,35 @@ public class SkillTestHeadlessRunner implements IApplication {
 	 */
 	private static final long OPENCODE_SERVER_WAIT_MS = Long.getLong("servoy.skilltest.opencodeWaitMs", 420_000L); //$NON-NLS-1$
 
+	/**
+	 * Hard wall-clock limit for ONE baseline (setup + replay + verify). A baseline
+	 * that overruns is stopped and recorded as an ERROR, and the run continues.
+	 * Overridable with {@code -Dservoy.skilltest.baselineTimeoutSeconds}; defaults
+	 * to 1200s.
+	 */
+	private static final long BASELINE_TIMEOUT_MS = Long.getLong("servoy.skilltest.baselineTimeoutSeconds", 1_200L) //$NON-NLS-1$
+			* 1_000L;
+
+	/**
+	 * Time budget for the whole run, counted from JVM start. Baselines that no
+	 * longer fit are SKIPPED, so the report, history and trend are still written
+	 * before the forked-process timeout (tests pom, 3600s) kills the JVM. Must stay
+	 * below that timeout. Overridable with
+	 * {@code -Dservoy.skilltest.runBudgetSeconds}; defaults to 2900s.
+	 */
+	private static final long RUN_BUDGET_MS = Long.getLong("servoy.skilltest.runBudgetSeconds", 2_900L) * 1_000L; //$NON-NLS-1$
+
+	/** A baseline is not started when less than this is left of the run budget. */
+	private static final long MIN_BASELINE_MS = 120_000L;
+
+	/** How long a timed-out baseline gets to stop after being cancelled/interrupted. */
+	private static final long STOP_GRACE_MS = 30_000L;
+
 	private Integer exitCode = EXIT_OK;
+
+	/** Identity + id shared by every history line of this run (created on first use). */
+	private RunHistory.RunIdentity runIdentity;
+	private String runId;
 
 	@Override
 	public Object start(IApplicationContext context) throws Exception {
@@ -343,8 +372,33 @@ public class SkillTestHeadlessRunner implements IApplication {
 		SolutionSetup setup = new SolutionSetup(this::output, new McpToolClient(webPort, this::output));
 		Path outputDir = configuration.getOutputDir();
 		List<SkillTestResult> results = new ArrayList<>();
+		// Two guards so one wedged baseline cannot eat the whole forked-process timeout
+		// (build 94: a hung JSUnit verify burned 42 minutes until Maven killed the fork,
+		// so no history, trend report or p2 deploy was produced):
+		// - every baseline runs under a hard per-baseline limit (BaselineWatchdog);
+		// - the whole loop has a time budget; baselines that no longer fit are SKIPPED.
+		// The run history + trend report are written after EVERY baseline, so even a
+		// hard kill leaves everything that finished.
+		// The budget counts from JVM start (the fork timeout does too), so a slow
+		// workbench/opencode startup eats into it instead of pushing the run past the kill.
+		long budgetLeftMs = Math.max(0L, RUN_BUDGET_MS - ManagementFactory.getRuntimeMXBean().getUptime());
+		long runDeadlineNanos = System.nanoTime() + budgetLeftMs * 1_000_000L;
+		String stopReason = null;
 		for (int i = 0; i < entries.size(); i++) {
-			Baseline baseline = entries.get(i).baseline();
+			BaselineLoader.Entry entry = entries.get(i);
+			Baseline baseline = entry.baseline();
+			long remainingMs = (runDeadlineNanos - System.nanoTime()) / 1_000_000L;
+			if (stopReason == null && remainingMs < MIN_BASELINE_MS) {
+				stopReason = "not reached: the run time budget (" + (RUN_BUDGET_MS / 1000) //$NON-NLS-1$
+						+ "s) was used up before this baseline"; //$NON-NLS-1$
+			}
+			if (stopReason != null) {
+				output("[skilltest] " + baseline.id() + " skipped - " + stopReason); //$NON-NLS-1$ //$NON-NLS-2$
+				SkillTestResult skipped = SkillTestResult.skipped(baseline.id(), stopReason);
+				results.add(skipped);
+				recordHistoryAndTrends(List.of(skipped), entries, outputDir);
+				continue;
+			}
 			// Incremental report: before each baseline, rewrite TEST-skilltest.xml with the
 			// finished results, THIS baseline as an ERROR placeholder ("did not finish")
 			// and
@@ -352,18 +406,51 @@ public class SkillTestHeadlessRunner implements IApplication {
 			// timeout), CI still publishes everything that ran, and names the baseline that
 			// was running when it died. The next write replaces the placeholder.
 			writeInterimReport(outputDir, entries, results, i);
-			try {
+			long limitMs = Math.min(BASELINE_TIMEOUT_MS, remainingMs);
+			BaselineWatchdog.Outcome<SkillTestResult> outcome = BaselineWatchdog.run(baseline.id(), cancelled -> {
 				setup.prepare(baseline);
 				// Pass the baseline's ACTUAL on-disk folder (entry.folder(), from the CI
 				// -Dservoy.skilltest.baselines dir) so JSUnit verify scripts resolve there.
 				// Without it the runner recomputes the folder from the workspace baselines
 				// root, which doesn't match in CI -> "verify script not found".
-				results.add(runner.runBaseline(baseline, entries.get(i).folder()));
-			} catch (Exception setupEx) {
-				ServoyLog.logError("Setup failed for baseline " + baseline.id(), setupEx);
-				output("[skilltest] " + baseline.id() + " setup failed: " + setupEx.getMessage());
-				results.add(SkillTestResult.error(baseline.id(), 0, "setup failed: " + setupEx.getMessage()));
+				return runner.runBaseline(baseline, cancelled, entry.folder());
+			}, limitMs, STOP_GRACE_MS);
+			SkillTestResult result;
+			switch (outcome.state()) {
+			case COMPLETED -> {
+				Throwable failure = outcome.failure();
+				if (failure != null) {
+					ServoyLog.logError("Setup failed for baseline " + baseline.id(),
+							failure instanceof Exception ex ? ex : new RuntimeException(failure));
+					output("[skilltest] " + baseline.id() + " setup failed: " + failure.getMessage());
+					result = SkillTestResult.error(baseline.id(), 0, "setup failed: " + failure.getMessage());
+				} else if (outcome.value() == null) {
+					result = SkillTestResult.error(baseline.id(), 0, "the baseline produced no result"); //$NON-NLS-1$
+				} else {
+					result = outcome.value();
+				}
 			}
+			case TIMED_OUT_STOPPED -> {
+				output("[skilltest] " + baseline.id() + " TIMED OUT after " + (limitMs / 1000) //$NON-NLS-1$ //$NON-NLS-2$
+						+ "s and was stopped; continuing with the next baseline."); //$NON-NLS-1$
+				result = SkillTestResult.error(baseline.id(), 0, "timed out after " + (limitMs / 1000) //$NON-NLS-1$
+						+ "s (per-baseline limit) and was stopped"); //$NON-NLS-1$
+			}
+			default -> {
+				// The worker ignored cancel + interrupt: it may still be driving the
+				// workbench, so starting the next baseline against it would be unsafe.
+				output("[skilltest] " + baseline.id() + " TIMED OUT after " + (limitMs / 1000) //$NON-NLS-1$ //$NON-NLS-2$
+						+ "s and could NOT be stopped; the remaining baselines are skipped."); //$NON-NLS-1$
+				result = SkillTestResult.error(baseline.id(), 0, "timed out after " + (limitMs / 1000) //$NON-NLS-1$
+						+ "s (per-baseline limit) and could not be stopped"); //$NON-NLS-1$
+				stopReason = "not reached: baseline '" + baseline.id() //$NON-NLS-1$
+						+ "' hung and could not be stopped, so the workbench is not safe to reuse"; //$NON-NLS-1$
+			}
+			}
+			results.add(result);
+			// Persist this result NOW (history line + trend report), so a later hang or a
+			// hard kill of the fork still leaves everything that finished.
+			recordHistoryAndTrends(List.of(result), entries, outputDir);
 		}
 
 		// 6. Final report (all baselines done). Carry any WARN-only budget warnings
@@ -386,7 +473,9 @@ public class SkillTestHeadlessRunner implements IApplication {
 
 		// 6c. Run history + trend alerts + trend report (SVY-21661) - best-effort,
 		// never touches exitCode.
-		recordHistoryAndTrends(results, entries, outputDir);
+		// The results were already appended one by one inside the loop, so this final
+		// call appends nothing and only refreshes alerts.json / trend.html.
+		recordHistoryAndTrends(List.of(), entries, outputDir);
 
 		if (results.isEmpty()) {
 			output("No active skill-test baselines - nothing to run (vacuous pass).");
@@ -434,9 +523,13 @@ public class SkillTestHeadlessRunner implements IApplication {
 				}
 			}
 			File historyFile = SkillTestPaths.historyFile();
-			RunHistory.RunIdentity identity = RunHistory.RunIdentity.ci();
-			String runId = RunHistory.runId(identity);
-			RunHistory.append(historyFile, results, identity, runId, models::get, this::output);
+			// One identity / run id for the whole run: the history is written after every
+			// baseline, and all those lines must belong to the same run.
+			if (runIdentity == null) {
+				runIdentity = RunHistory.RunIdentity.ci();
+				runId = RunHistory.runId(runIdentity);
+			}
+			RunHistory.append(historyFile, results, runIdentity, runId, models::get, this::output);
 			copyHistoryIntoOutputDir(historyFile, outputDir);
 			if (outputDir == null) {
 				return;

@@ -203,6 +203,11 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                             // pipeline - the shell's exit status is mvn's own, so a real
                             // build/test failure still fails the stage regardless of what grep
                             // matched (set -o pipefail is kept for any future piping).
+                            // catchError: a failing/erroring scenario run marks the BUILD unstable and this
+                            // STAGE failed, but must not skip 'Deploy skilltest p2 site' (build 94: a hung
+                            // scenario skipped the deploy, so colleagues could not install). The p2 site
+                            // is built from the bundles, not from the test results.
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             sh '''#!/bin/bash
                                 set -o pipefail
                                 # Start from an EMPTY report dir. skilltest-reports lives in
@@ -271,6 +276,7 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 find "$WORKSPACE" -path '*/target/surefire-reports/*' -name '*.xml' \
                                     -exec sed -i "s|${KIRO_API_KEY}|****|g" {} +
                                 exit $rc'''
+                            }
                         }
                       }
                     }
