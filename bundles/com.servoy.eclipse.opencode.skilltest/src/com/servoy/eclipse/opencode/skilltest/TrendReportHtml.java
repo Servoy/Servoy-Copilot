@@ -179,28 +179,34 @@ public final class TrendReportHtml {
 		sb.append(chart(List.of(passRate), new String[] { "#137333" }, 0d, 100d, labels, markers, runs, //$NON-NLS-1$
 				"pass rate")); //$NON-NLS-1$
 
-		// Tokens and the scenario's metered credits over all runs (each scaled to its
-		// own maximum). Credits are kiro.estCredits (root + subagent sessions), not the
+		// Tokens, tool calls and the scenario's metered credits over all runs (each
+		// scaled to its own maximum). Credits are kiro.estCredits (root + subagent sessions), not the
 		// shared account's Δ (SVY-21660).
 		List<Double> tokens = new ArrayList<>();
+		List<Double> toolCalls = new ArrayList<>();
 		List<Double> credits = new ArrayList<>();
 		boolean anyTokens = false;
+		boolean anyToolCalls = false;
 		boolean anyCredits = false;
 		for (RunHistory.Entry e : runs) {
 			tokens.add(e.totalTokens() != null ? Double.valueOf(e.totalTokens().doubleValue()) : null);
+			toolCalls.add(e.toolCalls() != null ? Double.valueOf(e.toolCalls().doubleValue()) : null);
 			credits.add(e.estCredits());
 			anyTokens |= e.totalTokens() != null;
+			anyToolCalls |= e.toolCalls() != null;
 			anyCredits |= e.estCredits() != null;
 		}
-		sb.append("<div class=\"tr-chart-title\">Tokens / credits (each scaled to its own maximum)</div>"); //$NON-NLS-1$
-		if (!anyTokens && !anyCredits) {
-			sb.append("<p class=\"muted\">No token or credit data recorded.</p>"); //$NON-NLS-1$
+		sb.append("<div class=\"tr-chart-title\">Tokens / tool calls / credits (each scaled to its own maximum)</div>"); //$NON-NLS-1$
+		if (!anyTokens && !anyToolCalls && !anyCredits) {
+			sb.append("<p class=\"muted\">No token, tool-call or credit data recorded.</p>"); //$NON-NLS-1$
 		} else {
 			List<Double> tokensPct = normalize(tokens);
+			List<Double> toolCallsPct = normalize(toolCalls);
 			List<Double> creditsPct = normalize(credits);
-			sb.append(chart(List.of(tokensPct, creditsPct), new String[] { "#1a73e8", "#b06000" }, 0d, 100d, //$NON-NLS-1$ //$NON-NLS-2$
+			sb.append(chart(List.of(tokensPct, toolCallsPct, creditsPct), new String[] { "#1a73e8", "#8430ce", "#b06000" }, 0d, 100d, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 					labels, markers, runs, "cost")); //$NON-NLS-1$
 			sb.append("<div class=\"tr-legend\">blue: tokens (max ").append(formatMax(tokens)) //$NON-NLS-1$
+					.append("), purple: tool calls (max ").append(formatMax(toolCalls)) //$NON-NLS-1$
 					.append("), amber: credits (max ").append(formatMax(credits)) //$NON-NLS-1$
 					.append("); dashed grey lines mark a model or skills version change</div>"); //$NON-NLS-1$
 		}

@@ -159,6 +159,22 @@ class TrendReportHtmlTest {
 		}
 
 		@Test
+		@DisplayName("the cost chart plots tool calls next to tokens and credits, with its max in the legend")
+		void costChartHasToolCalls() {
+			List<Entry> h = new ArrayList<>();
+			for (int calls : new int[] { 9, 26 }) {
+				int i = seq++;
+				h.add(new Entry("run-" + i, Instant.parse("2026-01-01T00:00:00Z").plusSeconds(i * 60L), "ci",
+						Integer.toString(100 + i), "gamma", Status.PASS, null, null, null, "kiro/a", null, "s1",
+						Long.valueOf(1000), Integer.valueOf(calls), null, Double.valueOf(1.0)));
+			}
+			String html = TrendReportHtml.render(h, List.of(), 10);
+			assertAll(() -> assertTrue(html.contains("Tokens / tool calls / credits"), "chart title names tool calls"),
+					() -> assertTrue(html.contains("stroke=\"#8430ce\""), "a tool-call series is drawn"),
+					() -> assertTrue(html.contains("purple: tool calls (max 26)"), "legend shows the tool-call max"));
+		}
+
+		@Test
 		@DisplayName("a baseline with < 2 runs gets a 'not enough history' note instead of charts")
 		void notEnoughHistory() {
 			String html = TrendReportHtml.render(List.of(entry("solo", Status.PASS, null, null, null)), null, 10);
