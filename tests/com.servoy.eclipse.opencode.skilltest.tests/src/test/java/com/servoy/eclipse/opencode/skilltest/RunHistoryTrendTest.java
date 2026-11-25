@@ -75,7 +75,7 @@ class RunHistoryTrendTest {
 					Status.PASS, Status.PASS);
 			Trend t = RunHistory.trends(h, 5).get("b");
 			assertAll(() -> assertEquals(5, t.runs()), () -> assertEquals(5, t.passes()),
-					() -> assertEquals(1.0d, t.passRate(), 1e-9), () -> assertEquals("100% (5/5) ✓✓✓✓✓", t.label()));
+					() -> assertEquals(1.0d, t.passRate(), 1e-9), () -> assertEquals("100% (5/5)\n✓✓✓✓✓", t.label()));
 		}
 
 		@Test
@@ -84,7 +84,7 @@ class RunHistoryTrendTest {
 			Trend t = RunHistory.trends(history("b", Status.PASS, Status.SKIPPED, Status.FAIL, Status.SKIPPED), 10)
 					.get("b");
 			assertAll(() -> assertEquals(2, t.runs()), () -> assertEquals(1, t.passes()),
-					() -> assertEquals("✓✗", t.sparkline()), () -> assertEquals("50% (1/2) ✓✗", t.label()));
+					() -> assertEquals("✓✗", t.sparkline()), () -> assertEquals("50% (1/2)\n✓✗", t.label()));
 		}
 
 		@Test
@@ -135,17 +135,33 @@ class RunHistoryTrendTest {
 			h.add(entry("b", Status.FAIL, null));
 			h.add(entry("a", Status.PASS, null));
 			Map<String, Trend> trends = RunHistory.trends(h, 10);
-			assertAll(() -> assertEquals("100% (2/2) ✓✓", trends.get("a").label()),
-					() -> assertEquals("0% (0/1) ✗", trends.get("b").label()));
+			// per-baseline window: no '-' for runs that never included the baseline (Developer view)
+			assertAll(() -> assertEquals("100% (2/2)\n✓✓", trends.get("a").label()),
+					() -> assertEquals("0% (0/1)\n✗", trends.get("b").label()));
+		}
+
+		@Test
+		@DisplayName("run-aligned trend (CI report) shows '-' for runs where the baseline was not run")
+		void runAlignedDash() {
+			List<Entry> h = new ArrayList<>();
+			h.add(entry("a", Status.PASS, null));
+			h.add(entry("b", Status.FAIL, null));
+			h.add(entry("a", Status.PASS, null));
+			List<String> window = RunHistory.lastRunIds(h, 10);
+			assertAll(
+					() -> assertEquals("100% (2/2)\n✓-✓",
+							RunHistory.trendOverRuns(RunHistory.byBaseline(h).get("a"), window).label()),
+					() -> assertEquals("0% (0/1)\n-✗-",
+							RunHistory.trendOverRuns(RunHistory.byBaseline(h).get("b"), window).label()));
 		}
 
 		@Test
 		@DisplayName("a non-default N is honoured and N < 1 is clamped to 1")
 		void nonDefaultWindow() {
 			List<Entry> h = history("b", Status.PASS, Status.PASS, Status.FAIL);
-			assertAll(() -> assertEquals("67% (2/3) ✓✓✗", RunHistory.trends(h, 3).get("b").label()),
-					() -> assertEquals("50% (1/2) ✓✗", RunHistory.trends(h, 2).get("b").label()),
-					() -> assertEquals("0% (0/1) ✗", RunHistory.trends(h, 0).get("b").label()));
+			assertAll(() -> assertEquals("67% (2/3)\n✓✓✗", RunHistory.trends(h, 3).get("b").label()),
+					() -> assertEquals("50% (1/2)\n✓✗", RunHistory.trends(h, 2).get("b").label()),
+					() -> assertEquals("0% (0/1)\n✗", RunHistory.trends(h, 0).get("b").label()));
 		}
 	}
 

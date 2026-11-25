@@ -113,13 +113,15 @@ public final class TrendReportHtml {
 		} else {
 			sb.append("<table class=\"tr-table\"><tr><th>Baseline</th><th>Latest status</th><th>Trend (last ") //$NON-NLS-1$
 					.append(n).append(")</th><th>Runs</th><th>Last model</th></tr>"); //$NON-NLS-1$
+			List<String> trendRunIds = RunHistory.lastRunIds(entries, n);
 			for (Map.Entry<String, List<RunHistory.Entry>> g : byBaseline.entrySet()) {
 				List<RunHistory.Entry> list = g.getValue();
 				RunHistory.Entry last = list.get(list.size() - 1);
 				sb.append("<tr><td class=\"tr-id\">").append(esc(g.getKey())).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
 				sb.append("<td class=\"").append(statusClass(last.status())).append("\">") //$NON-NLS-1$ //$NON-NLS-2$
 						.append(esc(String.valueOf(last.status()))).append("</td>"); //$NON-NLS-1$
-				sb.append("<td>").append(esc(RunHistory.trend(list, n).label())).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
+				sb.append("<td>").append(esc(RunHistory.trendOverRuns(list, trendRunIds).label()).replace("\n", "<br>")) //$NON-NLS-1$ //$NON-NLS-2$
+						.append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
 				sb.append("<td>").append(list.size()).append("</td>"); //$NON-NLS-1$ //$NON-NLS-2$
 				sb.append("<td>").append(esc(last.model() != null ? last.model() : "\u2014")).append("</td></tr>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			}

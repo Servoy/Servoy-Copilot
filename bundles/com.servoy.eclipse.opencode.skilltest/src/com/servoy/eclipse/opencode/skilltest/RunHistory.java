@@ -154,12 +154,16 @@ public final class RunHistory {
 	 */
 	public record Trend(int runs, int passes, double passRate, String sparkline, Long avgTokens, Long lastTokens) {
 
-		/** @return e.g. {@code "80% (4/5) ✓✓✗✓✓"}, or {@code "—"} with no runs */
+		/**
+		 * @return e.g. {@code "80% (4/5)\n✓✓✗✓✓"} (the glyphs on their own line; a
+		 *         {@code "-"} marks a run in which the baseline was not run), or
+		 *         {@code "—"} with no runs
+		 */
 		public String label() {
 			if (runs <= 0) {
 				return NO_TREND;
 			}
-			return Math.round(passRate * 100) + "% (" + passes + "/" + runs + ") " + sparkline; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			return Math.round(passRate * 100) + "% (" + passes + "/" + runs + ")\n" + sparkline; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		}
 	}
 
@@ -519,6 +523,60 @@ public final class RunHistory {
 			out.put(e.getKey(), trend(e.getValue(), n));
 		}
 		return out;
+	}
+
+	/** @return the ids of the last {@code n} distinct runs, oldest first */
+	static List<String> lastRunIds(List<Entry> entries, int n) {
+		List<String> ids = new ArrayList<>();
+		if (entries != null) {
+			for (Entry e : entries) {
+				if (e != null && e.runId() != null && !ids.contains(e.runId())) {
+					ids.add(e.runId());
+				}
+			}
+		}
+		return new ArrayList<>(ids.subList(Math.max(0, ids.size() - Math.max(1, n)), ids.size()));
+	}
+
+	/**
+	 * Computes one baseline's trend over the given runs: one glyph per run, with
+	 * {@code "-"} where the baseline was not run (absent or SKIPPED) in that run.
+	 */
+	public static Trend trendOverRuns(List<Entry> baselineEntries, List<String> runIds) {
+		Map<String, Entry> byRun = new LinkedHashMap<>();
+		if (baselineEntries != null) {
+			for (Entry e : baselineEntries) {
+				if (e != null && e.runId() != null) {
+					byRun.put(e.runId(), e);
+				}
+			}
+		}
+		int runs = 0;
+		int passes = 0;
+		StringBuilder spark = new StringBuilder();
+		long tokenSum = 0;
+		int tokenCount = 0;
+		Long lastTokens = null;
+		for (String id : runIds) {
+			Entry e = byRun.get(id);
+			if (e == null || e.status() == SkillTestResult.Status.SKIPPED) {
+				spark.append(glyph(SkillTestResult.Status.SKIPPED));
+				continue;
+			}
+			runs++;
+			if (e.status() == SkillTestResult.Status.PASS) {
+				passes++;
+			}
+			spark.append(glyph(e.status()));
+			if (e.totalTokens() != null) {
+				tokenSum += e.totalTokens().longValue();
+				tokenCount++;
+			}
+			lastTokens = e.totalTokens();
+		}
+		double rate = runs > 0 ? (double) passes / runs : 0d;
+		Long avg = tokenCount > 0 ? Long.valueOf(Math.round((double) tokenSum / tokenCount)) : null;
+		return new Trend(runs, passes, rate, spark.toString(), avg, lastTokens);
 	}
 
 	/**

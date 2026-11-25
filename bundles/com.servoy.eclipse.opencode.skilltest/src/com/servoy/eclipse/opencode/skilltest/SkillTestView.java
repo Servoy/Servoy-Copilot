@@ -130,6 +130,7 @@ public class SkillTestView extends ViewPart {
 			RunHistory.Trend t = trends.get(e.baseline().id());
 			return t != null ? t.label() : "\u2014"; //$NON-NLS-1$
 		});
+		installTwoLineTrendPainting(table);
 		// Cost/efficiency columns (SVY-21660): the primary tool-call count and the
 		// best-effort token figure ("unknown" when absent). No separate Kiro column
 		// (decision 3) - the Kiro figure lives in the HTML detail + JUnit system-out.
@@ -165,6 +166,40 @@ public class SkillTestView extends ViewPart {
 		lastResults.putAll(SkillTestReporter.loadLastResults());
 		reloadHistory();
 		refresh();
+	}
+
+	/**
+	 * Native table cells do not render line breaks, so the Trend column is
+	 * owner-drawn: the "N% (p/r)" summary on the first line and the glyphs
+	 * (a "-" for a run where the baseline was not run) on the second.
+	 */
+	private void installTwoLineTrendPainting(Table table) {
+		table.addListener(SWT.MeasureItem, event -> {
+			if (isTrendColumn(table, event.index)) {
+				event.height = Math.max(event.height, 2 * event.gc.getFontMetrics().getHeight() + 2);
+			}
+		});
+		table.addListener(SWT.EraseItem, event -> {
+			if (isTrendColumn(table, event.index)) {
+				event.detail &= ~SWT.FOREGROUND; // we draw the text ourselves
+			}
+		});
+		table.addListener(SWT.PaintItem, event -> {
+			if (!isTrendColumn(table, event.index)) {
+				return;
+			}
+			String text = ((org.eclipse.swt.widgets.TableItem) event.item).getText(event.index);
+			int lineHeight = event.gc.getFontMetrics().getHeight();
+			int y = event.y + 1;
+			for (String line : text.split("\n")) { //$NON-NLS-1$
+				event.gc.drawString(line, event.x + 2, y, true);
+				y += lineHeight;
+			}
+		});
+	}
+
+	private boolean isTrendColumn(Table table, int index) {
+		return trendColumn != null && index >= 0 && index == table.indexOf(trendColumn.getColumn());
 	}
 
 	/** @return the Trend column header, e.g. {@code "Trend (last 10)"} */

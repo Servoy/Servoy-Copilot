@@ -155,7 +155,7 @@ class TrendReportHtmlTest {
 			assertAll(() -> assertEquals(2, count(html, "<div class=\"tr-baseline\">")),
 					() -> assertTrue(html.contains("<h3 class=\"tr-id\">alpha</h3>")),
 					() -> assertTrue(html.contains("<h3 class=\"tr-id\">beta</h3>")),
-					() -> assertTrue(html.contains("67% (2/3) ✓✗✓"), "alpha trend label in the summary"));
+					() -> assertTrue(html.contains("67% (2/3)<br>✓✗✓"), "alpha trend label in the summary"));
 		}
 
 		@Test
