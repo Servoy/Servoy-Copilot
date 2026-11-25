@@ -73,31 +73,53 @@
   }
 }
 
+:host {
+  --twisty-size: 1.5rem;
+}
+
 .twisty {
   flex: 0 0 auto;
-  width: 1.1rem;
-  height: 1.1rem;
+  width: var(--twisty-size);
+  height: var(--twisty-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
-  color: var(--svy-muted, #9aa0a6);
+  color: var(--svy-fg2, #4a4740);
   cursor: pointer;
-  font-size: 0.7rem;
-  line-height: 1;
   padding: 0;
 
   &:hover {
     background: var(--svy-hover-strong, rgba(127, 127, 127, 0.22));
-    color: inherit;
+    color: var(--svy-fg, inherit);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--svy-accent-strong);
+    outline-offset: 1px;
+  }
+
+  &[aria-expanded='true'] .twisty-icon {
+    transform: rotate(90deg);
+  }
+}
+
+.twisty-icon {
+  display: block;
+  transition: transform 0.12s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twisty-icon {
+    transition: none;
   }
 }
 
 .twisty-spacer {
   flex: 0 0 auto;
-  width: 1.1rem;
+  width: var(--twisty-size);
 }
 
 .session-main {

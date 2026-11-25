@@ -317,3 +317,17 @@ Use `vi.useFakeTimers()` + `vi.setSystemTime(new Date(2026, 10, 17, 12, 0))` (lo
 | Cold-loaded `INPUT_REQUIRED` | User | resolved: lazy fetch on first expand (3.3) |
 | Year suffix for dates of other years (`Nov 10, 2025`) is not in the ticket | PM assumption | open (low risk, trivially removable) |
 | Messages scanned for reports are limited to the newest page | PM assumption | accepted limitation |
+
+## 10. Review feedback: expand chevron (Rene van Veen, Jira comment 235120)
+
+**Problem (verified).** `.twisty` was a 1.1rem (~17 px) button with a text glyph (`▸`/`▾`) at 0.7rem (~11 px) in `--svy-muted`: tiny, low contrast, barely visible hover, no focus style.
+
+**Change.**
+- Text glyph replaced by an inline SVG chevron (16 px, `stroke: currentColor`, `aria-hidden`) that rotates 90 degrees when `aria-expanded="true"` (no second glyph); the rotation is disabled under `prefers-reduced-motion`.
+- Click target 24 x 24 px (WCAG 2.5.8) through one shared variable `--twisty-size: 1.5rem`, used by `.twisty` and `.twisty-spacer`, so titles of rows without children and of agent rows stay aligned with the parent titles.
+- Colour `--svy-fg2` (was `--svy-muted`), hover `--svy-hover-strong` background plus `--svy-fg`, visible `:focus-visible` outline (`--svy-accent-strong`). Tokens only; contrast is >= 3:1 in light (`#4a4740` on the sidebar) and dark (`#c9c5bc`).
+- Behaviour unchanged: the click only toggles (propagation stopped, no select), `aria-expanded` / `aria-label` follow the state, a search that matches only a child title still auto-expands the row. Row height is unchanged (the row is already taller than 24 px because of the title + meta lines).
+
+**Tests** (`session-list.component.spec.ts`, describe "twisty chevron"): svg chevron present and `aria-hidden`, no text glyph; `aria-expanded`/`aria-label` in step with the state; click does not emit `select`; spacer/child rows reserve the twisty width; auto-expand on a child-only search match.
+
+**Live check.** Light and dark theme on a session with a subagent: 24 px target, chevron rotates, hover/focus visible.

@@ -339,6 +339,63 @@ describe('SessionListComponent', () => {
     });
   });
 
+  describe('twisty chevron', () => {
+    const tree = () => [
+      node('p', 'Parent', at(2026, 10, 17, 9), [child('c', 'p', 'Agent')]),
+      node('q', 'Leaf', at(2026, 10, 17, 8))
+    ];
+    const twisty = () => q<HTMLButtonElement>('.twisty')!;
+
+    it('renders an aria-hidden svg chevron instead of a text glyph', async () => {
+      await init(tree());
+      const svg = twisty().querySelector('svg.twisty-icon');
+      expect(svg).not.toBeNull();
+      expect(svg!.getAttribute('aria-hidden')).toBe('true');
+      expect(svg!.querySelector('path')).not.toBeNull();
+      expect(twisty().textContent!.trim()).toBe('');
+      expect(twisty().textContent).not.toMatch(/[▸▾]/);
+    });
+
+    it('keeps aria-expanded and aria-label in step with the expansion', async () => {
+      await init(tree());
+      expect(twisty().getAttribute('aria-expanded')).toBe('false');
+      expect(twisty().getAttribute('aria-label')).toBe('Expand subagents');
+      twisty().click();
+      await settle();
+      expect(twisty().getAttribute('aria-expanded')).toBe('true');
+      expect(twisty().getAttribute('aria-label')).toBe('Collapse subagents');
+      expect(qa('.session.child')).toHaveLength(1);
+    });
+
+    it('only toggles: clicking the chevron does not select the session', async () => {
+      await init(tree());
+      const selected: string[] = [];
+      component.select.subscribe((id) => selected.push(id));
+      twisty().click();
+      await settle();
+      expect(selected).toEqual([]);
+    });
+
+    it('keeps the title column aligned: spacer rows and child rows reserve the twisty width', async () => {
+      await init(tree());
+      twisty().click();
+      await settle();
+      expect(qa('.twisty-spacer').length).toBeGreaterThanOrEqual(2);
+      const parent = rowFor('Parent');
+      const leaf = rowFor('Leaf');
+      expect(parent.querySelector(':scope > .twisty')).not.toBeNull();
+      expect(leaf.querySelector(':scope > .twisty-spacer')).not.toBeNull();
+      expect(q('.session.child > .twisty-spacer')).not.toBeNull();
+    });
+
+    it('auto-expands when only a child title matches the search', async () => {
+      await init(tree());
+      await type('agent');
+      expect(twisty().getAttribute('aria-expanded')).toBe('true');
+      expect(qa('.session.child')).toHaveLength(1);
+    });
+  });
+
   describe('unchanged behaviour', () => {
     beforeEach(async () => init());
 
