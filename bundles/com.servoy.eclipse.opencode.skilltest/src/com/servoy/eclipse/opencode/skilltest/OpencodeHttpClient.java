@@ -398,10 +398,23 @@ public final class OpencodeHttpClient {
 	 * for 53 minutes and the Jenkins pipeline timeout, not the harness, ended the
 	 * run.</li>
 	 * </ul>
+	 * <p>
+	 * Since opencode 2.4.1 the {@code subagent} tool always runs in the
+	 * background: the root session's turn ends while the child sessions are still
+	 * working, and each child's result is later delivered back to the root as a
+	 * queued synthetic message that starts a new root turn. So "the root is idle"
+	 * no longer means "the run is done". After the root reports idle this also
+	 * waits until no session in the root's tree is running ({@code GET
+	 * /session/active}) and the root has no undelivered inbox work, and confirms
+	 * that quiet state twice, one poll interval apart, to cover the hand-off
+	 * between a child finishing and its result reaching the root. On an opencode
+	 * without those routes the extra check finds nothing pending, so the old
+	 * behaviour stays.
+	 * </p>
 	 *
 	 * @param sessionId      the session id
-	 * @param pollInterval   ignored (kept for API compat; the wait call itself
-	 *                       blocks)
+	 * @param pollInterval   how often to re-check the session tree while
+	 *                       background work is still running
 	 * @param cancelled      supplies {@code true} when the run should be stopped
 	 * @param stallTimeout   maximum time to tolerate with no progress; {@code <= 0}
 	 *                       disables the guard
@@ -415,23 +428,44 @@ public final class OpencodeHttpClient {
 			Duration stallTimeout, Duration attemptTimeout) throws IOException, InterruptedException {
 		boolean guard = stallTimeout != null && !stallTimeout.isZero() && !stallTimeout.isNegative();
 		long stallNanos = guard ? stallTimeout.toNanos() : 0L;
-		long stallDeadlineNanos = System.nanoTime() + stallNanos;
+		long[] stallDeadlineNanos = { System.nanoTime() + stallNanos };
 		// Hard wall-clock cap for the whole attempt, independent of the stall guard:
 		// it is NOT reset by a 503, so a "busy but wedged" session is bounded too
 		// (SVY-21366, build #64).
 		boolean capped = attemptTimeout != null && !attemptTimeout.isZero() && !attemptTimeout.isNegative();
 		long attemptDeadlineNanos = System.nanoTime() + (capped ? attemptTimeout.toNanos() : 0L);
+		long pollMillis = pollInterval == null || pollInterval.isNegative() || pollInterval.isZero() ? 2000L
+				: pollInterval.toMillis();
+		boolean quietOnce = false;
+		while (true) {
+			waitUntilIdle(sessionId, cancelled, guard, stallNanos, stallTimeout, stallDeadlineNanos, capped,
+					attemptDeadlineNanos, attemptTimeout);
+			if (!isTreeBusy(sessionId)) {
+				if (quietOnce) {
+					return; // root idle and the whole tree quiet on two consecutive checks
+				}
+				quietOnce = true;
+			} else {
+				quietOnce = false;
+				stallDeadlineNanos[0] = System.nanoTime() + stallNanos; // background work is progress
+			}
+			checkBounds(sessionId, cancelled, guard, stallTimeout, stallDeadlineNanos[0], capped,
+					attemptDeadlineNanos, attemptTimeout);
+			Thread.sleep(pollMillis);
+		}
+	}
+
+	/**
+	 * Blocks on {@code POST /experimental/session/:id/wait} until the session's own
+	 * agent loop is idle, honouring cancellation, the stall guard and the attempt
+	 * cap. A {@code 503} is progress and resets the stall guard.
+	 */
+	private void waitUntilIdle(String sessionId, java.util.function.BooleanSupplier cancelled, boolean guard,
+			long stallNanos, Duration stallTimeout, long[] stallDeadlineNanos, boolean capped,
+			long attemptDeadlineNanos, Duration attemptTimeout) throws IOException, InterruptedException {
 		Duration callTimeout = Duration.ofSeconds(15);
 		while (true) {
-			if (cancelled != null && cancelled.getAsBoolean()) {
-				abort(sessionId);
-				throw new InterruptedException("cancelled"); //$NON-NLS-1$
-			}
-			if (capped && System.nanoTime() > attemptDeadlineNanos) {
-				abort(sessionId);
-				throw new IOException("opencode session '" + sessionId + "' exceeded the per-attempt cap of " //$NON-NLS-1$ //$NON-NLS-2$
-						+ attemptTimeout.toSeconds() + "s (still reporting busy); aborted"); //$NON-NLS-1$
-			}
+			checkBounds(sessionId, cancelled, false, stallTimeout, 0L, capped, attemptDeadlineNanos, attemptTimeout);
 			try {
 				HttpRequest request = request(API + "/experimental/session/" + enc(sessionId) + "/wait", callTimeout) //$NON-NLS-1$ //$NON-NLS-2$
 						.POST(BodyPublishers.noBody()).build();
@@ -441,7 +475,7 @@ public final class OpencodeHttpClient {
 				}
 				if (response.statusCode() == 503) {
 					// still busy: server explicitly tells us the run is in progress
-					stallDeadlineNanos = System.nanoTime() + stallNanos; // progress: reset stall guard
+					stallDeadlineNanos[0] = System.nanoTime() + stallNanos; // progress: reset stall guard
 				} else if (response.statusCode() == 404) {
 					return; // session gone → treat as idle
 				} else {
@@ -450,11 +484,151 @@ public final class OpencodeHttpClient {
 			} catch (java.net.http.HttpTimeoutException timeout) {
 				// call timed out (server still processing) — retry
 			}
-			if (guard && System.nanoTime() > stallDeadlineNanos) {
-				abort(sessionId);
-				throw new IOException("opencode session '" + sessionId + "' stalled: no progress for " //$NON-NLS-1$ //$NON-NLS-2$
-						+ stallTimeout.toSeconds() + "s"); //$NON-NLS-1$
+			checkBounds(sessionId, cancelled, guard, stallTimeout, stallDeadlineNanos[0], capped, attemptDeadlineNanos,
+					attemptTimeout);
+		}
+	}
+
+	/**
+	 * Throws, after aborting the session tree, when the run was cancelled, the
+	 * attempt cap is exceeded, or - when {@code guard} is set - the stall deadline
+	 * has passed.
+	 */
+	private void checkBounds(String sessionId, java.util.function.BooleanSupplier cancelled, boolean guard,
+			Duration stallTimeout, long stallDeadlineNanos, boolean capped, long attemptDeadlineNanos,
+			Duration attemptTimeout) throws IOException, InterruptedException {
+		if (cancelled != null && cancelled.getAsBoolean()) {
+			abortTree(sessionId);
+			throw new InterruptedException("cancelled"); //$NON-NLS-1$
+		}
+		if (capped && System.nanoTime() > attemptDeadlineNanos) {
+			abortTree(sessionId);
+			throw new IOException("opencode session '" + sessionId + "' exceeded the per-attempt cap of " //$NON-NLS-1$ //$NON-NLS-2$
+					+ attemptTimeout.toSeconds() + "s (still reporting busy); aborted"); //$NON-NLS-1$
+		}
+		if (guard && System.nanoTime() > stallDeadlineNanos) {
+			abortTree(sessionId);
+			throw new IOException("opencode session '" + sessionId + "' stalled: no progress for " //$NON-NLS-1$ //$NON-NLS-2$
+					+ stallTimeout.toSeconds() + "s"); //$NON-NLS-1$
+		}
+	}
+
+	/**
+	 * How deep {@link #descendants} follows subagent sessions (Orchestrator, agent,
+	 * nested agent, ...).
+	 */
+	private static final int MAX_TREE_DEPTH = 5;
+
+	/**
+	 * Whether any work for the session tree is still pending: the root or one of
+	 * its descendant (subagent) sessions is running, or the root has undelivered
+	 * inbox work (a background result that has not started a new root turn yet).
+	 * A route this opencode does not have counts as nothing pending.
+	 *
+	 * @param sessionId the root session id
+	 * @return {@code true} while background work for the tree remains
+	 * @throws InterruptedException if interrupted while waiting
+	 */
+	boolean isTreeBusy(String sessionId) throws InterruptedException {
+		java.util.Set<String> active = activeSessionIds();
+		if (active.contains(sessionId) || hasInboxWork(sessionId)) {
+			return true;
+		}
+		if (active.isEmpty()) {
+			return false;
+		}
+		for (String child : descendants(sessionId)) {
+			if (active.contains(child)) {
+				return true;
 			}
+		}
+		return false;
+	}
+
+	/**
+	 * Ids of the sessions whose agent loop is running, from
+	 * {@code GET /session/active} ({@code { data: { <sessionID>: { type: "running" } } }}).
+	 * Empty when the route is missing or fails.
+	 */
+	private java.util.Set<String> activeSessionIds() throws InterruptedException {
+		java.util.Set<String> ids = new java.util.HashSet<>();
+		JsonNode data = getData(API + "/session/active"); //$NON-NLS-1$
+		if (data != null && data.isObject()) {
+			data.fieldNames().forEachRemaining(ids::add);
+		}
+		return ids;
+	}
+
+	/** Whether {@code GET /session/:id/inbox} lists undelivered work. */
+	private boolean hasInboxWork(String sessionId) throws InterruptedException {
+		JsonNode data = getData(API + "/session/" + enc(sessionId) + "/inbox"); //$NON-NLS-1$ //$NON-NLS-2$
+		return data != null && data.isArray() && data.size() > 0;
+	}
+
+	/**
+	 * All descendant session ids of {@code sessionId}, following
+	 * {@code GET /session?parentID=} down to {@link #MAX_TREE_DEPTH} levels.
+	 *
+	 * @param sessionId the root session id
+	 * @return the descendant ids, nearest level first (never {@code null})
+	 * @throws InterruptedException if interrupted while waiting
+	 */
+	java.util.List<String> descendants(String sessionId) throws InterruptedException {
+		java.util.List<String> result = new java.util.ArrayList<>();
+		java.util.List<String> level = java.util.List.of(sessionId);
+		for (int depth = 0; depth < MAX_TREE_DEPTH && !level.isEmpty(); depth++) {
+			java.util.List<String> next = new java.util.ArrayList<>();
+			for (String parent : level) {
+				JsonNode data = getData(API + "/session?limit=200&parentID=" + enc(parent)); //$NON-NLS-1$
+				if (data == null || !data.isArray()) {
+					continue;
+				}
+				for (JsonNode s : data) {
+					JsonNode id = s.get("id"); //$NON-NLS-1$
+					if (id != null && id.isTextual() && !id.asText().equals(sessionId) && !result.contains(id.asText())) {
+						result.add(id.asText());
+						next.add(id.asText());
+					}
+				}
+			}
+			level = next;
+		}
+		return result;
+	}
+
+	/**
+	 * Interrupts the session and every descendant: background subagents keep
+	 * running after only the root is interrupted. Best effort.
+	 */
+	private void abortTree(String sessionId) {
+		java.util.List<String> children;
+		try {
+			children = descendants(sessionId);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			children = java.util.List.of();
+		}
+		abort(sessionId);
+		for (String child : children) {
+			abort(child);
+		}
+	}
+
+	/**
+	 * GETs {@code path} and returns the {@code data} member of the 2.x envelope,
+	 * or {@code null} on any non-2xx status, transport failure or parse error.
+	 */
+	private JsonNode getData(String path) throws InterruptedException {
+		try {
+			HttpRequest request = request(path, Duration.ofSeconds(10)).GET().build();
+			HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+			if (response.statusCode() < 200 || response.statusCode() >= 300) {
+				return null;
+			}
+			JsonNode node = MAPPER.readTree(response.body());
+			return node == null ? null : node.get("data"); //$NON-NLS-1$
+		} catch (IOException e) {
+			return null;
 		}
 	}
 
