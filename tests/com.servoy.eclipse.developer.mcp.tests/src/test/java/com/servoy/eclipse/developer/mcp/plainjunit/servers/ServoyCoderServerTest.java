@@ -461,12 +461,36 @@ class ServoyCoderServerTest
 		void replaceStringNullRange()
 		{
 			CodeEditingService editing = mock(CodeEditingService.class);
-			when(editing.replaceStringInFile(eq("proj"), eq("f.txt"), eq("a"), eq("b"), isNull(), isNull())).thenReturn("ok");
+			when(editing.replaceStringInFile(eq("proj"), eq("f.txt"), eq("a"), eq("b"), isNull(), isNull(), eq(CodeEditingService.Occurrence.UNIQUE)))
+				.thenReturn("ok");
 			lenient().when(editing.readFileContent(anyString(), anyString())).thenReturn("b");
 			ServoyCoderServer server = serverWith(editing, mock(ServoySolutionService.class), cleanValidator());
 
-			assertEquals("ok", server.replaceString("proj", "f.txt", "a", "b", null, null));
-			verify(editing).replaceStringInFile("proj", "f.txt", "a", "b", null, null);
+			assertEquals("ok", server.replaceString("proj", "f.txt", "a", "b", null, null, null));
+			verify(editing).replaceStringInFile("proj", "f.txt", "a", "b", null, null, CodeEditingService.Occurrence.UNIQUE);
+		}
+
+		@Test
+		@DisplayName("replaceString defaults occurrence to UNIQUE and parses a supplied occurrence case-insensitively")
+		void replaceStringParsesOccurrence()
+		{
+			CodeEditingService editing = mock(CodeEditingService.class);
+			when(editing.replaceStringInFile(anyString(), anyString(), anyString(), anyString(), isNull(), isNull(), any())).thenReturn("ok");
+			lenient().when(editing.readFileContent(anyString(), anyString())).thenReturn("b");
+			ServoyCoderServer server = serverWith(editing, mock(ServoySolutionService.class), cleanValidator());
+
+			server.replaceString("proj", "f.txt", "a", "b", null, null, "all");
+			verify(editing).replaceStringInFile("proj", "f.txt", "a", "b", null, null, CodeEditingService.Occurrence.ALL);
+		}
+
+		@Test
+		@DisplayName("replaceString refuses an unknown occurrence value instead of guessing")
+		void replaceStringRejectsUnknownOccurrence()
+		{
+			ServoyCoderServer server = serverWith(mock(CodeEditingService.class), mock(ServoySolutionService.class), cleanValidator());
+			RuntimeException problem = assertThrows(RuntimeException.class,
+				() -> server.replaceString("proj", "f.txt", "a", "b", null, null, "EVERYTHING"));
+			assertTrue(problem.getMessage().contains("Invalid occurrence"), problem.getMessage());
 		}
 
 		@Test
@@ -474,12 +498,13 @@ class ServoyCoderServerTest
 		void replaceStringParsesRange()
 		{
 			CodeEditingService editing = mock(CodeEditingService.class);
-			when(editing.replaceStringInFile(eq("proj"), eq("f.txt"), eq("a"), eq("b"), eq(2), eq(7))).thenReturn("ok");
+			when(editing.replaceStringInFile(eq("proj"), eq("f.txt"), eq("a"), eq("b"), eq(2), eq(7), eq(CodeEditingService.Occurrence.UNIQUE)))
+				.thenReturn("ok");
 			lenient().when(editing.readFileContent(anyString(), anyString())).thenReturn("b");
 			ServoyCoderServer server = serverWith(editing, mock(ServoySolutionService.class), cleanValidator());
 
-			assertEquals("ok", server.replaceString("proj", "f.txt", "a", "b", "2", "7"));
-			verify(editing).replaceStringInFile("proj", "f.txt", "a", "b", 2, 7);
+			assertEquals("ok", server.replaceString("proj", "f.txt", "a", "b", "2", "7", null));
+			verify(editing).replaceStringInFile("proj", "f.txt", "a", "b", 2, 7, CodeEditingService.Occurrence.UNIQUE);
 		}
 
 		@Test

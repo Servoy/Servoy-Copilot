@@ -104,19 +104,25 @@ public class ServoyCoderServer
 	}
 
 	@Tool(name = "replaceString",
-		description = "Find and replace a specific string in a file, with optional line range for targeted replacement.",
+		description = "Find and replace a specific string in a file, with optional line range for targeted replacement. " +
+			"By default oldString must identify exactly ONE location: if it occurs more than once the call is refused and the " +
+			"matching line numbers are reported (narrow with startLine/endLine, add context, or set occurrence). " +
+			"If there is no exact match, a whole-line match that ignores line-ending and trailing-whitespace differences is " +
+			"tried; indentation must always match. The result says when such a tolerant match was used.",
 		type = "object")
 	public String replaceString(
 		@ToolParam(name = "projectName", description = "The name of the project containing the file", required = true) String projectName,
 		@ToolParam(name = "filePath", description = "The path to the file relative to the project root. Do not include project name!", required = true) String filePath,
-		@ToolParam(name = "oldString", description = "The text to replace (must match exactly, including whitespace and indentation)", required = true) String oldString,
+		@ToolParam(name = "oldString", description = "The text to replace (must match, including indentation; must not be empty)", required = true) String oldString,
 		@ToolParam(name = "newString", description = "The new text to insert in place of the old text", required = true) String newString,
 		@ToolParam(name = "startLine", description = "Line number to start searching from (1-based index)", required = false) String startLine,
-		@ToolParam(name = "endLine", description = "Line number to end searching at (1-based index)", required = false) String endLine)
+		@ToolParam(name = "endLine", description = "Line number to end searching at (1-based index)", required = false) String endLine,
+		@ToolParam(name = "occurrence", description = "Which match to replace when oldString occurs more than once: UNIQUE (default, refuses an ambiguous match), FIRST, LAST or ALL (replaces every occurrence)", required = false) String occurrence)
 	{
 		Integer startLineNum = Optional.ofNullable(startLine).map(Integer::parseInt).orElse(null);
 		Integer endLineNum = Optional.ofNullable(endLine).map(Integer::parseInt).orElse(null);
-		String result = codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum);
+		String result = codeEditingService.replaceStringInFile(projectName, filePath, oldString, newString, startLineNum, endLineNum,
+			CodeEditingService.Occurrence.parse(occurrence));
 		return appendJsValidation(result, filePath, codeEditingService.readFileContent(projectName, filePath));
 	}
 

@@ -160,7 +160,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 	public void testReplaceString_success() throws Exception {
 		createTestFile("replace_test.txt", "hello world\nfoo bar\nbaz");
 
-		String result = coderServer.replaceString(PROJECT_NAME, "replace_test.txt", "foo bar", "replaced", null, null);
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_test.txt", "foo bar", "replaced", null, null, null);
 
 		assertTrue(result.contains("Success"), "Should succeed: " + result);
 		String content = readFile("replace_test.txt");
@@ -172,7 +172,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 	public void testReplaceString_withLineRange() throws Exception {
 		createTestFile("replace_range.txt", "aaa\nbbb\nccc\nddd");
 
-		String result = coderServer.replaceString(PROJECT_NAME, "replace_range.txt", "bbb", "BBB", "2", "2");
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_range.txt", "bbb", "BBB", "2", "2", null);
 
 		assertTrue(result.contains("Success"), "Should succeed: " + result);
 		String content = readFile("replace_range.txt");
@@ -181,11 +181,52 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 	}
 
 	@Test
+	public void testReplaceString_ambiguousIsRefusedAndFileUntouched() throws Exception {
+		String original = "foo();\nx = 1;\nfoo();\n";
+		createTestFile("replace_ambiguous.txt", original);
+
+		try {
+			coderServer.replaceString(PROJECT_NAME, "replace_ambiguous.txt", "foo();", "bar();", null, null, null);
+			assertTrue(false, "Should have refused an ambiguous oldString");
+		} catch (RuntimeException e) {
+			assertTrue(e.getMessage().contains("lines 1, 3"), "Should name both lines: " + e.getMessage());
+		}
+		assertEquals(original, readFile("replace_ambiguous.txt"), "A refused call must not touch the file");
+
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_ambiguous.txt", "foo();", "bar();", null, null, "ALL");
+		assertTrue(result.contains("2 occurrences replaced"), "ALL should replace both: " + result);
+		assertEquals("bar();\nx = 1;\nbar();\n", readFile("replace_ambiguous.txt"));
+	}
+
+	@Test
+	public void testReplaceString_crlfFileMatchedByLfOldString() throws Exception {
+		createTestFile("replace_crlf.txt", "one\r\ntwo\r\nthree\r\nfour\r\n");
+
+		// The file is read line by line, so an LF oldString already matches exactly: no tolerant tier involved.
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_crlf.txt", "two\nthree", "TWO\nTHREE", null, null, null);
+
+		assertTrue(result.contains("Success"), "Should succeed: " + result);
+		assertFalse(result.contains("did not match the file byte-for-byte"), "An LF oldString is an exact match: " + result);
+		assertEquals("one\r\nTWO\r\nTHREE\r\nfour\r\n", readFile("replace_crlf.txt"), "File must keep its own CRLF endings");
+	}
+
+	@Test
+	public void testReplaceString_crlfOldStringMatchedTolerantly() throws Exception {
+		createTestFile("replace_crlf_old.txt", "one\r\ntwo\r\nthree\r\nfour\r\n");
+
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_crlf_old.txt", "two\r\nthree", "TWO\r\nTHREE", null, null, null);
+
+		assertTrue(result.contains("Success"), "Should succeed: " + result);
+		assertTrue(result.contains("line-ending"), "Should say a tolerant match was used: " + result);
+		assertEquals("one\r\nTWO\r\nTHREE\r\nfour\r\n", readFile("replace_crlf_old.txt"), "File must keep its own CRLF endings");
+	}
+
+	@Test
 	public void testReplaceString_notFound() {
 		createTestFile("replace_nf.txt", "hello world");
 
 		try {
-			coderServer.replaceString(PROJECT_NAME, "replace_nf.txt", "nonexistent", "new", null, null);
+			coderServer.replaceString(PROJECT_NAME, "replace_nf.txt", "nonexistent", "new", null, null, null);
 			assertTrue(false, "Should have thrown for not-found string");
 		} catch (RuntimeException e) {
 			assertTrue(e.getMessage().contains("not found"), "Should mention not found: " + e.getMessage());
@@ -203,7 +244,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 		createTestFile("replace_oob_end.txt", "aaa\nbbb\nccc");
 
 		try {
-			coderServer.replaceString(PROJECT_NAME, "replace_oob_end.txt", "bbb", "BBB", "2", "99");
+			coderServer.replaceString(PROJECT_NAME, "replace_oob_end.txt", "bbb", "BBB", "2", "99", null);
 			assertTrue(false, "Should have refused an out-of-range endLine");
 		} catch (RuntimeException e) {
 			assertTrue(e.getMessage().contains("End line 99"), "Should name the bad line: " + e.getMessage());
@@ -219,7 +260,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 		createTestFile("replace_oob_start.txt", "aaa\nbbb\nccc");
 
 		try {
-			coderServer.replaceString(PROJECT_NAME, "replace_oob_start.txt", "aaa", "AAA", "99", null);
+			coderServer.replaceString(PROJECT_NAME, "replace_oob_start.txt", "aaa", "AAA", "99", null, null);
 			assertTrue(false, "Should have refused an out-of-range startLine");
 		} catch (RuntimeException e) {
 			assertTrue(e.getMessage().contains("Start line 99"), "Should name the bad line: " + e.getMessage());
@@ -233,7 +274,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 		createTestFile("replace_zero.txt", "aaa\nbbb");
 
 		try {
-			coderServer.replaceString(PROJECT_NAME, "replace_zero.txt", "aaa", "AAA", "0", null);
+			coderServer.replaceString(PROJECT_NAME, "replace_zero.txt", "aaa", "AAA", "0", null, null);
 			assertTrue(false, "Should have refused line 0");
 		} catch (RuntimeException e) {
 			assertTrue(e.getMessage().contains("1-based"), "Should say lines are 1-based: " + e.getMessage());
@@ -246,7 +287,7 @@ public class ServoyCoderServerIntegrationTest extends DialogGuardBaseCopy {
 	public void testReplaceString_lastLineIsInRange() throws Exception {
 		createTestFile("replace_last.txt", "aaa\nbbb\nccc");
 
-		String result = coderServer.replaceString(PROJECT_NAME, "replace_last.txt", "ccc", "CCC", "3", "3");
+		String result = coderServer.replaceString(PROJECT_NAME, "replace_last.txt", "ccc", "CCC", "3", "3", null);
 
 		assertTrue(result.contains("Success"), "The last line must be replaceable: " + result);
 		assertTrue(readFile("replace_last.txt").contains("CCC"), "Should contain the replacement");

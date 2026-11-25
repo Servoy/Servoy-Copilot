@@ -134,12 +134,13 @@ public class CodeEditingService
 	}
 
 	public String replaceStringInFile(String projectName, String filePath, String oldString, String newString,
-		Integer startLine, Integer endLine)
+		Integer startLine, Integer endLine, Occurrence occurrence)
 	{
 		Objects.requireNonNull(projectName, "projectName is required");
 		Objects.requireNonNull(filePath, "filePath is required");
 		Objects.requireNonNull(oldString, "oldString is required");
 		if (newString == null) newString = "";
+		if (occurrence == null) occurrence = Occurrence.UNIQUE;
 
 		try
 		{
@@ -155,15 +156,8 @@ public class CodeEditingService
 			int effectiveStart = (startLine != null) ? startLine - 1 : 0;
 			int effectiveEnd = (endLine != null) ? endLine - 1 : totalLines - 1;
 
-			StringBuilder rangeContent = new StringBuilder();
-			for (int i = effectiveStart; i <= effectiveEnd; i++)
-			{
-				rangeContent.append(lines.get(i));
-				if (i < effectiveEnd) rangeContent.append("\n");
-			}
-
-			String rangeText = rangeContent.toString();
-			if (!rangeText.contains(oldString))
+			ReplaceOutcome outcome = replaceInLines(lines, effectiveStart, effectiveEnd, oldString, newString, occurrence);
+			if (outcome == null)
 			{
 				String rangeInfo = (startLine != null || endLine != null)
 					? " within range (lines " + (startLine != null ? startLine : 1) + " to " + (endLine != null ? endLine : totalLines) + ")"
@@ -171,27 +165,254 @@ public class CodeEditingService
 				throw new RuntimeException("Error: The specified string was not found in the file" + rangeInfo + ".");
 			}
 
-			String replacedRange = rangeText.replace(oldString, newString);
-
-			List<String> resultLines = new ArrayList<>();
-			for (int i = 0; i < effectiveStart; i++)
-				resultLines.add(lines.get(i));
-			for (String rangeLine : replacedRange.split("\r?\n", -1))
-				resultLines.add(rangeLine);
-			for (int i = effectiveEnd + 1; i < totalLines; i++)
-				resultLines.add(lines.get(i));
-
-			String modifiedContent = joinLines(resultLines, eol, trailingNewline);
+			String modifiedContent = joinLines(outcome.lines(), eol, trailingNewline);
 			String diff = generateSimpleDiff(originalContent, modifiedContent, filePath);
 			writeFile(file, modifiedContent);
 
-			return "Success: String replaced in file '" + filePath + "' in project '" + projectName + "'.\n"
-				+ "Changes:\n```diff\n" + diff + "\n```";
+			StringBuilder message = new StringBuilder("Success: ");
+			message.append(outcome.replacements() == 1 ? "String replaced" : outcome.replacements() + " occurrences replaced");
+			message.append(" in file '").append(filePath).append("' in project '").append(projectName).append("'.\n");
+			if (outcome.matchedBy() != null)
+				message.append("Note: oldString did not match the file byte-for-byte; it was matched ignoring ")
+					.append(outcome.matchedBy()).append(" differences. Check the diff below.\n");
+			message.append("Changes:\n```diff\n").append(diff).append("\n```");
+			return message.toString();
 		}
 		catch (CoreException | IOException e)
 		{
 			throw new RuntimeException(e);
 		}
+	}
+
+	/**
+	 * Which match {@code replaceString} acts on when {@code oldString} occurs more than once.
+	 * {@link #UNIQUE} is the default: an ambiguous string is refused instead of silently rewriting
+	 * every occurrence (SVY-21786). Mirrors upstream AssistAI's {@code Occurrence} (minus INDEX).
+	 */
+	public enum Occurrence
+	{
+		UNIQUE, FIRST, LAST, ALL;
+
+		public static Occurrence parse(String value)
+		{
+			if (value == null || value.isBlank()) return UNIQUE;
+			try
+			{
+				return valueOf(value.strip().toUpperCase(java.util.Locale.ROOT));
+			}
+			catch (IllegalArgumentException e)
+			{
+				throw new RuntimeException("Error: Invalid occurrence '" + value + "'. Use UNIQUE, FIRST, LAST or ALL.");
+			}
+		}
+	}
+
+	/**
+	 * Result of {@link #replaceInLines}: the new file lines, how many occurrences were replaced and,
+	 * when the match was not byte-for-byte, what differences were ignored ({@code null} for an exact match).
+	 */
+	public record ReplaceOutcome(List<String> lines, int replacements, String matchedBy)
+	{
+	}
+
+	private static final int AMBIGUITY_CAP = 10;
+
+	/**
+	 * Replaces {@code oldString} inside lines {@code [rangeStart, rangeEnd]} (0-based, inclusive) of
+	 * {@code lines}, which must be terminator-free (as read by {@link #readFileLines}).
+	 * <p>
+	 * Matching is tiered, strictest first, and the first tier with any match wins:
+	 * </p>
+	 * <ol>
+	 * <li>an exact substring match (so exact calls behave as they always did);</li>
+	 * <li>a whole-line block match with line endings normalised (an LF {@code oldString} against a CRLF file);</li>
+	 * <li>the same, also ignoring trailing whitespace per line.</li>
+	 * </ol>
+	 * Leading indentation is never relaxed: that needs re-indentation of {@code newString}, which a bare
+	 * string (unlike an applyPatch hunk) has no context for. {@code occurrence} then decides what to do when
+	 * the winning tier matches more than once; {@link Occurrence#UNIQUE} refuses.
+	 *
+	 * @return the outcome, or {@code null} when nothing matched at any tier
+	 * @throws RuntimeException for an empty {@code oldString}, or an ambiguous match under UNIQUE
+	 */
+	public static ReplaceOutcome replaceInLines(List<String> lines, int rangeStart, int rangeEnd, String oldString, String newString,
+		Occurrence occurrence)
+	{
+		if (oldString.isEmpty()) throw new RuntimeException("Error: oldString must not be empty.");
+		if (occurrence == null) occurrence = Occurrence.UNIQUE;
+
+		// Tier 1: exact substring over the range.
+		StringBuilder rangeBuilder = new StringBuilder();
+		for (int i = rangeStart; i <= rangeEnd; i++)
+		{
+			rangeBuilder.append(lines.get(i));
+			if (i < rangeEnd) rangeBuilder.append('\n');
+		}
+		String rangeText = rangeBuilder.toString();
+
+		// The whole-line view of oldString, used by the tolerant tiers below and to detect locations the
+		// exact tier cannot see.
+		List<String> needle = new ArrayList<>(java.util.Arrays.asList(oldString.split("\r\n|\r|\n", -1)));
+		List<String> replacement = new ArrayList<>(java.util.Arrays.asList(newString.split("\r\n|\r|\n", -1)));
+		// A needle that ends with a line break selects whole lines; drop the empty trailing segment and,
+		// to avoid adding a blank line, the one the replacement carries for the same break.
+		if (needle.size() > 1 && needle.get(needle.size() - 1).isEmpty())
+		{
+			needle.remove(needle.size() - 1);
+			if (replacement.size() > 1 && replacement.get(replacement.size() - 1).isEmpty())
+				replacement.remove(replacement.size() - 1);
+		}
+
+		List<Integer> offsets = new ArrayList<>();
+		for (int from = rangeText.indexOf(oldString); from >= 0; from = rangeText.indexOf(oldString, from + 1))
+			offsets.add(from);
+		if (!offsets.isEmpty())
+		{
+			List<Integer> lineNumbers = new ArrayList<>();
+			for (int offset : offsets)
+			{
+				int newlines = 0;
+				for (int i = 0; i < offset; i++)
+					if (rangeText.charAt(i) == '\n') newlines++;
+				lineNumbers.add(rangeStart + newlines + 1);
+			}
+
+			// An exact hit must not hide a second location that only matches ignoring trailing whitespace
+			// (e.g. "foo\nbar" is an exact substring of "foo\nbar  " but not of "foo  \nbar"). Acting on the
+			// exact one alone would silently pick one of several candidates, which is the very ambiguity
+			// UNIQUE exists to refuse. FIRST/LAST would also be wrong: the tolerant location may come first
+			// or last. So every mode but ALL refuses; ALL proceeds through the tolerant tier, which covers
+			// the exact locations as well.
+			java.util.TreeSet<Integer> allLines = new java.util.TreeSet<>(lineNumbers);
+			boolean extraLocations = false;
+			for (int pos = rangeStart; pos + needle.size() - 1 <= rangeEnd; pos++)
+			{
+				if (matchesAtTier(lines, needle, pos, MatchTier.TRAILING_WS) && allLines.add(pos + 1))
+					extraLocations = true;
+			}
+			boolean tolerantCoversExact = true;
+			for (int lineNumber : lineNumbers)
+				if (!matchesAtTier(lines, needle, lineNumber - 1, MatchTier.TRAILING_WS)) tolerantCoversExact = false;
+
+			if (extraLocations && !(occurrence == Occurrence.ALL && tolerantCoversExact))
+				throw new RuntimeException("Error: The specified string matches " + allLines.size() + " locations (lines " +
+					formatLineNumbers(new ArrayList<>(allLines)) + "), some only when trailing whitespace is ignored. " +
+					"Narrow it with startLine/endLine or add surrounding context to oldString" +
+					(occurrence == Occurrence.ALL ? "." : ", or set occurrence to ALL."));
+			if (!extraLocations)
+				return replaceExactMatches(lines, rangeStart, rangeEnd, rangeText, oldString, newString, occurrence, offsets, lineNumbers);
+			// ALL with locations only the tolerant tier sees: skip straight to the trailing-whitespace tier.
+			return replaceTolerantMatches(lines, rangeStart, rangeEnd, needle, replacement, occurrence, 1);
+		}
+		return replaceTolerantMatches(lines, rangeStart, rangeEnd, needle, replacement, occurrence, 0);
+	}
+
+	private static ReplaceOutcome replaceExactMatches(List<String> lines, int rangeStart, int rangeEnd, String rangeText, String oldString,
+		String newString, Occurrence occurrence, List<Integer> offsets, List<Integer> lineNumbers)
+	{
+		List<Integer> chosen = selectMatches(offsets, lineNumbers, oldString.length(), occurrence);
+
+		StringBuilder result = new StringBuilder();
+		int cursor = 0;
+		for (int offset : chosen)
+		{
+			result.append(rangeText, cursor, offset).append(newString);
+			cursor = offset + oldString.length();
+		}
+		result.append(rangeText, cursor, rangeText.length());
+
+		List<String> resultLines = new ArrayList<>(lines.subList(0, rangeStart));
+		resultLines.addAll(java.util.Arrays.asList(result.toString().split("\r?\n", -1)));
+		resultLines.addAll(lines.subList(rangeEnd + 1, lines.size()));
+		return new ReplaceOutcome(resultLines, chosen.size(), null);
+	}
+
+	/**
+	 * Tiers 2 and 3: a whole-line block match with line endings normalised ({@code firstTier} 0), then
+	 * also ignoring trailing whitespace ({@code firstTier} 1). The first tier from {@code firstTier} on
+	 * that matches anywhere wins.
+	 */
+	private static ReplaceOutcome replaceTolerantMatches(List<String> lines, int rangeStart, int rangeEnd, List<String> needle,
+		List<String> replacement, Occurrence occurrence, int firstTier)
+	{
+		MatchTier[] tiers = { MatchTier.EXACT, MatchTier.TRAILING_WS };
+		String[] labels = { "line-ending", "line-ending and trailing-whitespace" };
+		for (int t = firstTier; t < tiers.length; t++)
+		{
+			List<Integer> positions = new ArrayList<>();
+			List<Integer> lineNumbers = new ArrayList<>();
+			for (int pos = rangeStart; pos + needle.size() - 1 <= rangeEnd; pos++)
+			{
+				if (matchesAtTier(lines, needle, pos, tiers[t]))
+				{
+					positions.add(pos);
+					lineNumbers.add(pos + 1);
+				}
+			}
+			if (positions.isEmpty()) continue;
+
+			List<Integer> chosen = selectMatches(positions, lineNumbers, needle.size(), occurrence);
+			List<String> resultLines = new ArrayList<>();
+			int cursor = 0;
+			for (int pos : chosen)
+			{
+				resultLines.addAll(lines.subList(cursor, pos));
+				resultLines.addAll(replacement);
+				cursor = pos + needle.size();
+			}
+			resultLines.addAll(lines.subList(cursor, lines.size()));
+			return new ReplaceOutcome(resultLines, chosen.size(), labels[t]);
+		}
+		return null;
+	}
+
+	/**
+	 * Applies the {@link Occurrence} rule to the candidate positions. {@code lineNumbers} are the
+	 * 1-based lines used in the ambiguity message; {@code span} is the match length in the same unit
+	 * as {@code positions}, so ALL can skip overlapping candidates.
+	 */
+	private static List<Integer> selectMatches(List<Integer> positions, List<Integer> lineNumbers, int span, Occurrence occurrence)
+	{
+		switch (occurrence)
+		{
+			case FIRST :
+				return List.of(positions.get(0));
+			case LAST :
+				return List.of(positions.get(positions.size() - 1));
+			case ALL :
+			{
+				List<Integer> chosen = new ArrayList<>();
+				int nextFree = Integer.MIN_VALUE;
+				for (int position : positions)
+				{
+					if (position < nextFree) continue;
+					chosen.add(position);
+					nextFree = position + span;
+				}
+				return chosen;
+			}
+			case UNIQUE :
+			default :
+			{
+				if (positions.size() == 1) return positions;
+				throw new RuntimeException("Error: The specified string matches " + positions.size() + " locations (lines " +
+					formatLineNumbers(lineNumbers) +
+					"). Narrow it with startLine/endLine, add surrounding context to oldString, or set occurrence to FIRST, LAST or ALL.");
+			}
+		}
+	}
+
+	/** Comma-separated 1-based line numbers for an ambiguity message, truncated after {@link #AMBIGUITY_CAP}. */
+	private static String formatLineNumbers(List<Integer> lineNumbers)
+	{
+		StringBuilder candidates = new StringBuilder();
+		for (int i = 0; i < Math.min(AMBIGUITY_CAP, lineNumbers.size()); i++)
+		{
+			if (i > 0) candidates.append(", ");
+			candidates.append(lineNumbers.get(i));
+		}
+		if (lineNumbers.size() > AMBIGUITY_CAP) candidates.append(", ...");
+		return candidates.toString();
 	}
 
 	public String undoEdit(String projectName, String filePath)
