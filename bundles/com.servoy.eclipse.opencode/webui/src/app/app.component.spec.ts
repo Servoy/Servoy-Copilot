@@ -25,6 +25,7 @@ describe('AppComponent', () => {
     mcp: ReturnType<typeof vi.fn>;
     providers: ReturnType<typeof vi.fn>;
     solution: ReturnType<typeof vi.fn>;
+    defaultAgentModel: ReturnType<typeof vi.fn>;
     models: ReturnType<typeof vi.fn>;
     usage: ReturnType<typeof vi.fn>;
   };
@@ -82,6 +83,7 @@ describe('AppComponent', () => {
       mcp: vi.fn(() => of({})),
       providers: vi.fn(() => of({ connected: ['kiro'], default: {} })),
       solution: vi.fn(() => of('crm_app')),
+      defaultAgentModel: vi.fn(() => of({ agent: 'Orchestrator', model: 'claude-sonnet-5-5' })),
       models: vi.fn(() => of([{ providerID: 'kiro', id: 'm1', context: 100000 }])),
       usage: vi.fn(() => of({ available: false }))
     };

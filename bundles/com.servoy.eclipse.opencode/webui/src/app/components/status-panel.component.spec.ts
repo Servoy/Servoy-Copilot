@@ -2,7 +2,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideHttpClient } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatStore } from '../services/chat-store.service';
 import { StatusPanelComponent } from './status-panel.component';
@@ -17,7 +17,16 @@ interface FlushOpts {
   solution?: unknown;
   usage?: unknown;
   models?: unknown;
+  agents?: unknown[];
 }
+
+const ORCHESTRATOR = {
+  id: 'Orchestrator',
+  name: 'Orchestrator',
+  mode: 'primary',
+  hidden: false,
+  model: { id: 'claude-sonnet-5-5', providerID: 'kiro', variant: 'medium' }
+};
 
 describe('StatusPanelComponent', () => {
   let fixture: ComponentFixture<StatusPanelComponent>;
@@ -25,16 +34,21 @@ describe('StatusPanelComponent', () => {
   let httpMock: HttpTestingController;
   let messages: ReturnType<typeof signal<unknown[]>>;
   let streaming: ReturnType<typeof signal<boolean>>;
+  let isSubagent: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     messages = signal<unknown[]>([]);
     streaming = signal(false);
+    isSubagent = signal(false);
     TestBed.configureTestingModule({
       imports: [StatusPanelComponent],
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: ChatStore, useValue: { messages, streaming, activeSessionId: signal<string | null>('s1') } }
+        {
+          provide: ChatStore,
+          useValue: { messages, streaming, activeIsSubagent: isSubagent, activeSessionId: signal<string | null>('s1') }
+        }
       ]
     });
     fixture = TestBed.createComponent(StatusPanelComponent);
@@ -51,6 +65,7 @@ describe('StatusPanelComponent', () => {
     httpMock.expectOne('rest_api/mcp').flush({ data: opts.mcpData ?? [] });
     httpMock.expectOne('rest_api/provider').flush({ data: opts.providerData ?? [] });
     httpMock.expectOne('solution').flush(opts.solution ?? { name: null });
+    httpMock.expectOne('rest_api/agent').flush({ data: opts.agents ?? [] });
     flushUsage(opts);
   }
 
@@ -186,6 +201,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [] });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush({ name: null });
+      httpMock.expectOne('rest_api/agent').flush({ data: [] });
       flushUsage();
       fixture.detectChanges();
       expect(component.loadError()).toBe(true);
@@ -242,6 +258,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [{ name: 'a', status: { status: 'connected' } }] });
       const providerReq = httpMock.expectOne('rest_api/provider');
       httpMock.expectOne('solution').flush({ name: null });
+      httpMock.expectOne('rest_api/agent').flush({ data: [] });
       flushUsage();
       expect(component.initialized()).toBe(true);
       expect(component.overall()).toBe('ok');
@@ -263,6 +280,21 @@ describe('StatusPanelComponent', () => {
         const status = failed.includes(name) ? 'failed' : disabled.includes(name) ? 'disabled' : 'connected';
         return { name, status: { status, error: status === 'failed' ? 'secret failure detail' : undefined } };
       });
+
+    it('uses the shared 16px stroked chevron in a 24px target, rotating when unfolded', () => {
+      initReady();
+      const host = q<HTMLElement>('button.mcp-toggle svy-chevron')!;
+      const svg = host.querySelector('svg')!;
+      expect(svg.getAttribute('width')).toBe('16');
+      expect(svg.getAttribute('height')).toBe('16');
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+      expect(svg.querySelector('path')!.getAttribute('stroke-width')).toBe('2');
+      expect(svg.classList.contains('open')).toBe(false);
+      openMcp();
+      expect(q('button.mcp-toggle svy-chevron svg')!.classList.contains('open')).toBe(true);
+      openMcp();
+      expect(q('button.mcp-toggle svy-chevron svg')!.classList.contains('open')).toBe(false);
+    });
 
     it('is folded by default: aria-expanded false, no server names in the DOM', () => {
       initReady({ mcpData: thirteen() });
@@ -439,6 +471,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [] });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush('x', { status: 500, statusText: 'err' });
+      httpMock.expectOne('rest_api/agent').flush({ data: [] });
       flushUsage();
       fixture.detectChanges();
       expect(factValues()[0]).toBe('-');
@@ -458,6 +491,88 @@ describe('StatusPanelComponent', () => {
       initReady();
       expect(factValues()[1]).toBe('-');
       expect(component.currentModel()).toBeNull();
+    });
+
+    describe('default agent model before the first message', () => {
+      const modelDot = (): HTMLElement => el().querySelectorAll('.fact')[1].querySelector('.dot') as HTMLElement;
+
+      it('shows the model of the default agent with a green dot on an empty session', () => {
+        initReady({ agents: [ORCHESTRATOR] });
+        expect(factValues()[1]).toBe('claude-sonnet-5-5');
+        expect(modelDot().classList.contains('ok')).toBe(true);
+      });
+
+      it('lets the model of a real message win over the default agent model', () => {
+        initReady({ agents: [ORCHESTRATOR] });
+        messages.set([msg('assistant', { id: 'claude-haiku-5-5', providerID: 'kiro' })]);
+        fixture.detectChanges();
+        expect(factValues()[1]).toBe('claude-haiku-5-5');
+        messages.set([]);
+        fixture.detectChanges();
+        expect(factValues()[1]).toBe('claude-sonnet-5-5');
+      });
+
+      it('keeps "-" with a grey dot when the agent list is empty', () => {
+        initReady({ agents: [] });
+        expect(factValues()[1]).toBe('-');
+        expect(modelDot().classList.contains('ok')).toBe(false);
+      });
+
+      it('keeps "-" when the first agent has no complete model (inherits the global default)', () => {
+        initReady({ agents: [{ id: 'build', name: 'build', mode: 'primary', hidden: false, model: { id: '', providerID: '' } }] });
+        expect(factValues()[1]).toBe('-');
+      });
+
+      it('keeps "-" when the first agent is a hidden or subagent entry rather than a selectable default', () => {
+        initReady({ agents: [{ ...ORCHESTRATOR, hidden: true }] });
+        expect(factValues()[1]).toBe('-');
+      });
+
+      it('does not show the default agent model for a subagent session without messages', () => {
+        isSubagent.set(true);
+        initReady({ agents: [ORCHESTRATOR] });
+        expect(factValues()[1]).toBe('-');
+        messages.set([msg('assistant', { id: 'claude-haiku-5-5', providerID: 'kiro' })]);
+        fixture.detectChanges();
+        expect(factValues()[1]).toBe('claude-haiku-5-5');
+      });
+
+      it('shows "-" and keeps the panel working when GET /agent fails', () => {
+        fixture.detectChanges();
+        httpMock.expectOne('rest_api/info').flush({ version: '2' });
+        httpMock.expectOne('rest_api/mcp').flush({ data: [] });
+        httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
+        httpMock.expectOne('solution').flush({ name: 'crm_app' });
+        httpMock.expectOne('rest_api/agent').flush('x', { status: 500, statusText: 'err' });
+        flushUsage();
+        fixture.detectChanges();
+        expect(factValues()[1]).toBe('-');
+        expect(component.overall()).toBe('ok');
+      });
+
+      it('re-reads the default agent on refresh() and follows a changed model', () => {
+        initReady({ agents: [ORCHESTRATOR] });
+        component.refresh();
+        flushAll({ providerData: KIRO, agents: [{ ...ORCHESTRATOR, model: { id: 'claude-opus-5', providerID: 'kiro' } }] });
+        fixture.detectChanges();
+        expect(factValues()[1]).toBe('claude-opus-5');
+      });
+
+      it('the background poll skips GET /agent once the default model is known, but asks again while unknown', () => {
+        vi.useFakeTimers();
+        try {
+          initReady({ agents: [ORCHESTRATOR] });
+          vi.advanceTimersByTime(15_000);
+          httpMock.expectOne('rest_api/info').flush({ version: '2' });
+          httpMock.expectOne('rest_api/mcp').flush({ data: [] });
+          httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
+          httpMock.expectOne('solution').flush({ name: null });
+          httpMock.expectNone('rest_api/agent');
+          flushUsage();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
 
     it('shows the newest message model id, skipping user and idle messages', () => {
@@ -597,6 +712,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush('x', { status: 500, statusText: 'err' });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush({ name: null });
+      httpMock.expectOne('rest_api/agent').flush({ data: [] });
       flushUsage();
       expect(component.mcpRows()).toEqual([]);
     });
@@ -685,6 +801,7 @@ describe('StatusPanelComponent', () => {
       httpMock.expectOne('rest_api/mcp').flush({ data: [] });
       httpMock.expectOne('rest_api/provider').flush({ data: KIRO });
       httpMock.expectOne('solution').flush({ name: null });
+      httpMock.expectOne('rest_api/agent').flush({ data: [] });
       httpMock.expectOne('rest_api/model').flush({ data: [] });
       httpMock.expectOne('usage').flush('x', { status: 500, statusText: 'err' });
       fixture.detectChanges();

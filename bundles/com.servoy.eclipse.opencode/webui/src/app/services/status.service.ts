@@ -12,6 +12,12 @@ import {
   UsageSnapshot
 } from '../models/opencode.models';
 
+/** The model the next turn will use: that of the default agent. */
+export interface DefaultAgentModel {
+  agent: string;
+  model: string;
+}
+
 /**
  * Typed wrappers over the BFF servlet's status/health endpoints (proxied from
  * opencode V2 under {@code ./rest_api/**}).
@@ -95,6 +101,42 @@ export class StatusService {
           return out;
         }),
         catchError(() => of([] as ModelLimit[]))
+      );
+  }
+
+  /**
+   * The model a new turn will use. A prompt sent without an explicit agent runs
+   * the default agent, and that agent's own model wins over the global
+   * {@code model} in the config. V2 {@code GET /agent} lists the selected
+   * default agent first (core {@code Agent.list}), so the first entry is it,
+   * provided it is a selectable primary agent with a complete model. Anything
+   * else yields {@code null} (shown as "-" rather than a guess). An HTTP error
+   * propagates so the caller can retry.
+   */
+  defaultAgentModel(): Observable<DefaultAgentModel | null> {
+    return this.http
+      .get<{
+        data?: Array<{
+          id?: string;
+          name?: string;
+          mode?: string;
+          hidden?: boolean;
+          model?: { id?: unknown; providerID?: unknown };
+        }>;
+      }>(`${this.base}/agent`)
+      .pipe(
+        map((r) => {
+          const agent = r?.data?.[0];
+          if (!agent || agent.mode === 'subagent' || agent.hidden) {
+            return null;
+          }
+          const id = agent.model?.id;
+          const providerID = agent.model?.providerID;
+          if (typeof id !== 'string' || id.length === 0 || typeof providerID !== 'string' || providerID.length === 0) {
+            return null;
+          }
+          return { agent: agent.name || agent.id || '', model: id };
+        })
       );
   }
 

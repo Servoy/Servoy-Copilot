@@ -98,6 +98,60 @@ describe('StatusService', () => {
     expect(result).toBeNull();
   });
 
+  describe('defaultAgentModel()', () => {
+    const ORCH = {
+      id: 'Orchestrator',
+      name: 'Orchestrator',
+      mode: 'primary',
+      hidden: false,
+      model: { id: 'claude-sonnet-5-5', providerID: 'kiro', variant: 'medium' }
+    };
+
+    const load = (body: object): { result: unknown; failed: boolean } => {
+      const out = { result: 'unset' as unknown, failed: false };
+      service.defaultAgentModel().subscribe({ next: (r) => (out.result = r), error: () => (out.failed = true) });
+      const req = httpMock.expectOne('rest_api/agent');
+      expect(req.request.method).toBe('GET');
+      req.flush(body);
+      return out;
+    };
+
+    it('takes the model of the first agent, which V2 lists as the selected default', () => {
+      const subagent = { id: 'Researcher', name: 'Researcher', mode: 'subagent', hidden: true, model: { id: 'claude-haiku-5-5', providerID: 'kiro' } };
+      expect(load({ data: [ORCH, subagent] }).result).toEqual({ agent: 'Orchestrator', model: 'claude-sonnet-5-5' });
+    });
+
+    it('returns only the model id, not the provider or variant', () => {
+      const r = load({ data: [ORCH] }).result as { model: string };
+      expect(r.model).toBe('claude-sonnet-5-5');
+      expect(Object.keys(r).sort()).toEqual(['agent', 'model']);
+    });
+
+    it('returns null for an empty list or a missing data field', () => {
+      expect(load({ data: [] }).result).toBeNull();
+      expect(load({}).result).toBeNull();
+    });
+
+    it('returns null when the first agent is a subagent or hidden (not a selectable default)', () => {
+      expect(load({ data: [{ ...ORCH, mode: 'subagent' }] }).result).toBeNull();
+      expect(load({ data: [{ ...ORCH, hidden: true }] }).result).toBeNull();
+    });
+
+    it('returns null when the agent carries no complete model (it then inherits the global default)', () => {
+      expect(load({ data: [{ ...ORCH, model: undefined }] }).result).toBeNull();
+      expect(load({ data: [{ ...ORCH, model: { id: 'x' } }] }).result).toBeNull();
+      expect(load({ data: [{ ...ORCH, model: { id: '', providerID: 'kiro' } }] }).result).toBeNull();
+      expect(load({ data: [{ ...ORCH, model: { id: 5, providerID: 'kiro' } }] }).result).toBeNull();
+    });
+
+    it('propagates an HTTP error so the caller can retry', () => {
+      const out = { failed: false };
+      service.defaultAgentModel().subscribe({ error: () => (out.failed = true) });
+      httpMock.expectOne('rest_api/agent').flush('x', { status: 500, statusText: 'err' });
+      expect(out.failed).toBe(true);
+    });
+  });
+
   it('derives connected providers from the V2 /provider activation field', () => {
     let result: unknown;
     service.providers().subscribe((r) => (result = r));

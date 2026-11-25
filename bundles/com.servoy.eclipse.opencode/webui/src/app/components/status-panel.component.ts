@@ -12,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { interval } from 'rxjs';
 
 import { McpStatusMap, ProviderStatus } from '../models/opencode.models';
+import { ChevronIconComponent } from './chevron-icon.component';
 import { ChatStore } from '../services/chat-store.service';
 import { StatusService } from '../services/status.service';
 import { UsageStore } from '../services/usage-store.service';
@@ -49,6 +50,7 @@ const MCP_ORDER: Record<McpState, number> = { offline: 0, online: 1, disabled: 2
 @Component({
   selector: 'svy-status-panel',
   standalone: true,
+  imports: [ChevronIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './status-panel.component.html',
   styleUrl: './status-panel.component.scss'
@@ -101,8 +103,11 @@ export class StatusPanelComponent implements OnInit {
   readonly connectedProviders = computed(() => this.providers()?.connected ?? []);
   readonly hasProviders = computed(() => this.connectedProviders().length > 0);
 
+  /** Model of the default agent: what a new turn will use before any message exists. */
+  readonly defaultModel = signal<string | null>(null);
+
   /** Model id of the newest message of the viewed session that carries one. */
-  readonly currentModel = computed<string | null>(() => {
+  private readonly messageModel = computed<string | null>(() => {
     const messages = this.store.messages();
     for (let i = messages.length - 1; i >= 0; i--) {
       const model = messages[i].info['model'] as { id?: unknown } | null | undefined;
@@ -112,6 +117,21 @@ export class StatusPanelComponent implements OnInit {
       }
     }
     return null;
+  });
+
+  /**
+   * The model shown for the viewed session: the model of its newest message
+   * (what really ran) wins; before the first turn it is the default agent's
+   * model (what the next turn will use). A subagent session without a message
+   * yet has its own agent's model, which is not known here, so it stays null
+   * rather than showing the default agent's.
+   */
+  readonly currentModel = computed<string | null>(() => {
+    const fromMessages = this.messageModel();
+    if (fromMessages !== null) {
+      return fromMessages;
+    }
+    return this.store.activeIsSubagent() ? null : this.defaultModel();
   });
 
   /** True while the viewed session has a turn running. */
@@ -192,7 +212,7 @@ export class StatusPanelComponent implements OnInit {
     this.refresh();
     interval(StatusPanelComponent.POLL_INTERVAL_MS)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh());
+      .subscribe(() => this.refresh(this.defaultModel() === null));
   }
 
   toggleMcp(): void {
@@ -207,8 +227,13 @@ export class StatusPanelComponent implements OnInit {
    * finished. Now health (the primary signal) lands first and paints the dot,
    * and the heavy provider call updates it when it arrives - a slow or failing
    * axis can no longer block the others.
+   *
+   * The default agent's model comes from {@code GET /agent}, a large payload
+   * (every agent's system prompt) whose answer rarely changes, so the
+   * background poll only asks for it while it is still unknown; opening the
+   * panel or pressing Refresh always re-reads it.
    */
-  refresh(): void {
+  refresh(includeDefaultModel = true): void {
     this.loading.set(true);
 
     this.status.health().subscribe({
@@ -236,6 +261,13 @@ export class StatusPanelComponent implements OnInit {
     });
 
     this.status.solution().subscribe((name) => this.solutionName.set(name));
+
+    if (includeDefaultModel) {
+      this.status.defaultAgentModel().subscribe({
+        next: (info) => this.defaultModel.set(info?.model ?? null),
+        error: () => undefined
+      });
+    }
 
     this.usage.refresh();
   }

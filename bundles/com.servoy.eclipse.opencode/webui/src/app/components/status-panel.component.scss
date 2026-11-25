@@ -242,23 +242,23 @@
 }
 
 .mcp-toggle:hover {
-  background: var(--svy-line2);
+  background: var(--svy-hover-strong, var(--svy-line2));
+}
+
+.mcp-toggle:hover .caret {
+  color: var(--svy-fg, inherit);
 }
 
 .mcp-toggle:focus-visible {
-  outline: 2px solid var(--svy-acc-fg);
+  outline: 2px solid var(--svy-accent-strong);
   outline-offset: 2px;
 }
 
 .caret {
-  flex: 0 0 auto;
-  margin-right: 8px;
-  color: var(--svy-muted, #6b7075);
-  transition: transform 0.15s ease;
-}
-
-.caret.open {
-  transform: rotate(90deg);
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  border-radius: 6px;
 }
 
 .mcp-title {

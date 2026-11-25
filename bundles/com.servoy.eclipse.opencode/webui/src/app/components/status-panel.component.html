@@ -113,9 +113,7 @@
       aria-controls="status-mcp-list"
       (click)="toggleMcp()"
     >
-      <svg class="caret" [class.open]="mcpOpen()" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 6l6 6-6 6" />
-      </svg>
+      <svy-chevron class="caret" [open]="mcpOpen()" />
       <span class="mcp-title">MCP servers</span>
       <span class="mcp-count"> · {{ mcpOnline() }} of {{ mcpEnabled() }} online</span>
       @if (mcpOffline() > 0) {
