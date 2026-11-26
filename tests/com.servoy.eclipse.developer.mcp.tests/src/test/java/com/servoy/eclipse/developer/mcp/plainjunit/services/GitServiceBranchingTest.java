@@ -761,4 +761,102 @@ public class GitServiceBranchingTest
 			assertEquals(before, headSha(), "Nothing must have been reverted");
 		}
 	}
+
+	/**
+	 * The empty-commit guard added for SVY-21524 must refuse a plain commit with nothing staged, yet
+	 * NOT get in the way of the two cases that legitimately produce a tree-unchanged commit: an
+	 * {@code amend} that only rewords, and concluding a merge/cherry-pick/revert whose conflicts were
+	 * all resolved back to HEAD's content (SVY-21524 review, regression checks 1 and 2).
+	 */
+	@Nested
+	@DisplayName("empty-commit guard")
+	class EmptyCommitGuard
+	{
+		@Test
+		@DisplayName("a plain commit with nothing staged is refused and does not move HEAD")
+		void plainEmptyCommitIsRefused() throws Exception
+		{
+			commitFile("a.txt", "one\n", "base commit");
+			String before = headSha();
+
+			String result = GitService.commitIn(repository, "nothing to do here", false, false);
+
+			assertAll(
+				() -> assertTrue(result.contains("Nothing to commit"),
+					"A clean-tree commit must be refused: " + result),
+				() -> assertFalse(result.contains("Committed"), "Nothing may be reported committed: " + result),
+				() -> assertEquals(before, headSha(), "HEAD must not move on a refused empty commit"),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"The repository must stay clean"));
+		}
+
+		@Test
+		@DisplayName("amend with only a new message rewords the last commit even with nothing staged")
+		void amendRewordsWithNothingStaged() throws Exception
+		{
+			// two commits, so the one being amended has a parent - that lets us assert the amend
+			// rewrites in place (keeps the single parent) rather than adding a commit.
+			commitFile("a.txt", "one\n", "base commit");
+			commitFile("b.txt", "two\n", "original message");
+			String before = headSha();
+
+			String result = GitService.commitIn(repository, "reworded message", true, false);
+
+			RevCommit head = repository.parseCommit(repository.resolve(Constants.HEAD));
+			assertAll(
+				() -> assertTrue(result.contains("Amended"), "Should report an amend: " + result),
+				() -> assertEquals("reworded message", head.getShortMessage(),
+					"The last commit's message must be the new one"),
+				() -> assertNotEquals(before, headSha(), "Amending rewrites the commit, so HEAD moves"),
+				() -> assertEquals(1, head.getParentCount(), "Amend must not add a parent"));
+		}
+
+		@Test
+		@DisplayName("a merge resolved back to HEAD's content can still be concluded with a commit")
+		void mergeResolvedToOursCanBeConcluded() throws Exception
+		{
+			createDivergingBranches("feature");
+
+			String merge = GitService.mergeIn(repository, "feature", null, false, null);
+			assertTrue(merge.contains("CONFLICTED"), "Precondition: the merge must conflict: " + merge);
+
+			// resolve every conflict back to HEAD's (master's) exact content, so the index equals HEAD -
+			// the index-equals-HEAD case the guard used to refuse, leaving the merge stuck.
+			Files.writeString(tempDir.resolve("shared.txt"), "from master\n");
+			git.add().addFilepattern("shared.txt").call();
+
+			String result = GitService.commitIn(repository, "concluded the merge", false, false);
+
+			RevCommit head = repository.parseCommit(repository.resolve(Constants.HEAD));
+			assertAll(
+				() -> assertTrue(result.contains("Committed"),
+					"Concluding the merge must write the commit: " + result),
+				() -> assertEquals(2, head.getParentCount(), "A concluded merge commit has two parents"),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"The merge must be concluded, not left in progress"));
+		}
+
+		@Test
+		@DisplayName("a cherry-pick resolved back to HEAD's content can still be concluded")
+		void cherryPickResolvedToOursCanBeConcluded() throws Exception
+		{
+			createDivergingBranches("feature");
+			ObjectId featureTip = repository.resolve("feature");
+
+			String pick = GitService.applyCommitsIn(repository, true, featureTip.getName());
+			assertTrue(pick.contains("CONFLICTED"), "Precondition: the cherry-pick must conflict: " + pick);
+
+			// resolve to HEAD's content, so the index equals HEAD.
+			Files.writeString(tempDir.resolve("shared.txt"), "from master\n");
+			git.add().addFilepattern("shared.txt").call();
+
+			String result = GitService.commitIn(repository, "concluded the cherry-pick", false, false);
+
+			assertAll(
+				() -> assertTrue(result.contains("Committed"),
+					"Concluding the cherry-pick must write the commit: " + result),
+				() -> assertEquals(RepositoryState.SAFE, repository.getRepositoryState(),
+					"The cherry-pick must be concluded, not left in progress"));
+		}
+	}
 }

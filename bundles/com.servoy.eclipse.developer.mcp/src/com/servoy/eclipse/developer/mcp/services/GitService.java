@@ -186,10 +186,32 @@ public class GitService
 	 * matches nothing at all - or matches more than one repository by name - is refused, with a message
 	 * that lists the available repositories so the caller can pick the real one (SVY-21524).
 	 */
+	/**
+	 * The distinct Git repositories backing the workspace's open projects - i.e. "known to the
+	 * workspace" as {@link #listRepositories()} and the {@code repo} parameter advertise, rather than
+	 * every repository EGit's process-wide {@code RepositoryCache} happens to hold a live handle to
+	 * (which can include ones disconnected from any current project, or touched only transiently)
+	 * (SVY-21524 review, question 5).
+	 */
+	private static java.util.List<Repository> workspaceRepositories()
+	{
+		java.util.LinkedHashMap<java.io.File, Repository> byGitDir = new java.util.LinkedHashMap<>();
+		for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects())
+		{
+			if (!project.isOpen()) continue;
+			RepositoryMapping mapping = RepositoryMapping.getMapping(project);
+			if (mapping == null) continue;
+			Repository repository = mapping.getRepository();
+			if (repository == null) continue;
+			byGitDir.putIfAbsent(repository.getDirectory(), repository);
+		}
+		return new java.util.ArrayList<>(byGitDir.values());
+	}
+
 	private Repository getRepositoryByNameOrPath(String target)
 	{
-		Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
-		if (all.length == 0)
+		java.util.List<Repository> all = workspaceRepositories();
+		if (all.isEmpty())
 		{
 			throw new RuntimeException("No Git repositories are open in the workspace.");
 		}
@@ -260,13 +282,13 @@ public class GitService
 	 */
 	public String listRepositories()
 	{
-		Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
-		if (all.length == 0)
+		java.util.List<Repository> all = workspaceRepositories();
+		if (all.isEmpty())
 		{
 			return "No Git repositories are open in the workspace.";
 		}
 		StringBuilder sb = new StringBuilder();
-		sb.append("Git repositories (").append(all.length).append("):\n");
+		sb.append("Git repositories (").append(all.size()).append("):\n");
 		for (Repository r : all)
 		{
 			String name = org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(r);
@@ -295,16 +317,16 @@ public class GitService
 	{
 		try
 		{
-			Repository[] all = org.eclipse.egit.core.RepositoryCache.INSTANCE.getAllRepositories();
-			if (all.length == 0)
+			java.util.List<Repository> all = workspaceRepositories();
+			if (all.isEmpty())
 			{
 				return " No Git repositories are open in the workspace.";
 			}
 			StringBuilder sb = new StringBuilder(" Available repositories (pass one as 'repo'): ");
-			for (int i = 0; i < all.length; i++)
+			for (int i = 0; i < all.size(); i++)
 			{
 				if (i > 0) sb.append(", ");
-				sb.append(org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(all[i]));
+				sb.append(org.eclipse.egit.core.RepositoryUtil.INSTANCE.getRepositoryName(all.get(i)));
 			}
 			return sb.toString();
 		}
@@ -671,12 +693,32 @@ public class GitService
 	public String commit(String projectName, String repo, String message, boolean amend, boolean all)
 	{
 		Repository repository = resolveRepository(projectName, repo);
+		String result = commitIn(repository, message, amend, all);
+		refreshAfterChange(projectName, repository);
+		return result;
+	}
+
+	/**
+	 * {@link #commit} on an already-resolved repository, so a plain test can drive it.
+	 * <p>
+	 * Refuses a truly empty commit on a plain commit (SVY-21524), but allows one when it is genuinely
+	 * needed: {@code amend} with only a reworded message legitimately produces the same tree as its
+	 * parent, and concluding a merge/cherry-pick/revert/rebase whose conflicts were all resolved back
+	 * to HEAD's content is how that operation is finished - refusing it would leave the repository
+	 * stuck mid-operation (SVY-21524 review). Upstream's `commit` has no empty-commit guard at all;
+	 * this scoping keeps the ported amend/all and conflict-conclusion behaviour intact while adding
+	 * the Servoy-only refusal for the plain, clean-repository, nothing-staged case.
+	 * </p>
+	 */
+	public static String commitIn(Repository repository, String message, boolean amend, boolean all)
+	{
 		ReentrantLock lock = getRepositoryLock(repository);
 		lock.lock();
 		RevCommit commit;
 		try (Git git = new Git(repository))
 		{
-			var command = git.commit().setMessage(message).setAllowEmpty(false);
+			boolean allowEmpty = amend || repository.getRepositoryState() != org.eclipse.jgit.lib.RepositoryState.SAFE;
+			var command = git.commit().setMessage(message).setAllowEmpty(allowEmpty);
 			if (amend)
 			{
 				command.setAmend(true);
@@ -699,7 +741,6 @@ public class GitService
 		{
 			lock.unlock();
 		}
-		refreshAfterChange(projectName, repository);
 		return (amend ? "Amended: " : "Committed: ") + commit.getName() + " " + commit.getShortMessage();
 	}
 
