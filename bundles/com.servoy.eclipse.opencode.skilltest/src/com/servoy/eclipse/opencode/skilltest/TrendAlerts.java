@@ -23,10 +23,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -88,8 +90,16 @@ public final class TrendAlerts {
 	 * @param rule        the rule id
 	 * @param message     human-readable detail
 	 * @param likelyCause e.g. {@code "model changed a → b"}, or {@code null}
+	 * @param email       {@code false} for a quiet alert: it is reported
+	 *                    ({@code alerts.json}, {@code trend.html}) but CI neither
+	 *                    marks the build UNSTABLE for it nor emails it
 	 */
-	public record Alert(String baselineId, String rule, String message, String likelyCause) {
+	public record Alert(String baselineId, String rule, String message, String likelyCause, boolean email) {
+
+		/** A notifying alert. */
+		public Alert(String baselineId, String rule, String message, String likelyCause) {
+			this(baselineId, rule, message, likelyCause, true);
+		}
 	}
 
 	/**
@@ -100,9 +110,31 @@ public final class TrendAlerts {
 	 * @param passRateDropPoints     percentage-point drop that fires
 	 * @param flakyFlips             flips within the window that fire
 	 * @param costRiseDefaultPercent default cost tolerance percentage
+	 * @param quietCostRiseMetrics   COST_RISE metrics ({@code tokens},
+	 *                               {@code toolCalls}, {@code credits}) whose
+	 *                               alerts are quiet: reported, but no UNSTABLE
+	 *                               and no email on CI
 	 */
 	public record AlertConfig(int window, int regressionRuns, int passRateDropPoints, int flakyFlips,
-			int costRiseDefaultPercent) {
+			int costRiseDefaultPercent, Set<String> quietCostRiseMetrics) {
+
+		/** Canonical constructor; normalises the quiet set (never {@code null}). */
+		public AlertConfig {
+			quietCostRiseMetrics = quietCostRiseMetrics == null ? Set.of() : Set.copyOf(quietCostRiseMetrics);
+		}
+
+		/** Thresholds with no quiet metrics. */
+		public AlertConfig(int window, int regressionRuns, int passRateDropPoints, int flakyFlips,
+				int costRiseDefaultPercent) {
+			this(window, regressionRuns, passRateDropPoints, flakyFlips, costRiseDefaultPercent, Set.of());
+		}
+
+		/**
+		 * Comma-separated COST_RISE metrics whose alerts are quiet (reported, but on CI
+		 * they neither mark the build UNSTABLE nor send an email), e.g.
+		 * {@code tokens}. Empty by default; set only on CI.
+		 */
+		public static final String PROP_QUIET_COST_RISE_METRICS = "servoy.skilltest.alert.quietCostRiseMetrics"; //$NON-NLS-1$
 
 		public static final int DEFAULT_REGRESSION_RUNS = 3;
 		public static final int DEFAULT_PASS_RATE_DROP_POINTS = 20;
@@ -118,7 +150,7 @@ public final class TrendAlerts {
 		/** @return the default thresholds */
 		public static AlertConfig defaults() {
 			return new AlertConfig(RunHistory.DEFAULT_TREND_RUNS, DEFAULT_REGRESSION_RUNS,
-					DEFAULT_PASS_RATE_DROP_POINTS, DEFAULT_FLAKY_FLIPS, DEFAULT_COST_RISE_PERCENT);
+					DEFAULT_PASS_RATE_DROP_POINTS, DEFAULT_FLAKY_FLIPS, DEFAULT_COST_RISE_PERCENT, Set.of());
 		}
 
 		/** @return thresholds overridden by {@code -Dservoy.skilltest.alert.*} */
@@ -141,7 +173,34 @@ public final class TrendAlerts {
 					positive(lookup, PROP_REGRESSION_RUNS, DEFAULT_REGRESSION_RUNS),
 					nonNegative(lookup, PROP_PASS_RATE_DROP_POINTS, DEFAULT_PASS_RATE_DROP_POINTS),
 					positive(lookup, PROP_FLAKY_FLIPS, DEFAULT_FLAKY_FLIPS),
-					nonNegative(lookup, PROP_COST_RISE_DEFAULT_PERCENT, DEFAULT_COST_RISE_PERCENT));
+					nonNegative(lookup, PROP_COST_RISE_DEFAULT_PERCENT, DEFAULT_COST_RISE_PERCENT),
+					metricSet(lookup, PROP_QUIET_COST_RISE_METRICS));
+		}
+
+		/** Parses a comma-separated metric list; unknown names are ignored. */
+		private static Set<String> metricSet(Function<String, String> lookup, String key) {
+			if (lookup == null) {
+				return Set.of();
+			}
+			String raw;
+			try {
+				raw = lookup.apply(key);
+			} catch (RuntimeException e) {
+				return Set.of();
+			}
+			if (raw == null || raw.isBlank()) {
+				return Set.of();
+			}
+			Set<String> out = new LinkedHashSet<>();
+			for (String part : raw.split(",")) { //$NON-NLS-1$
+				String name = part.trim();
+				for (Metric m : Metric.values()) {
+					if (m.label.equalsIgnoreCase(name)) {
+						out.add(m.label);
+					}
+				}
+			}
+			return out;
 		}
 
 		private static int positive(Function<String, String> lookup, String key, int def) {
@@ -213,8 +272,9 @@ public final class TrendAlerts {
 			passRateDrop(hist, c).ifPresent(m -> alerts.add(new Alert(id, RULE_PASS_RATE_DROP, m, cause)));
 			flaky(hist, c).ifPresent(m -> alerts.add(new Alert(id, RULE_FLAKY, m, cause)));
 			List<Baseline.Budget> budgets = budgetsByBaseline != null ? budgetsByBaseline.get(id) : null;
-			for (String m : costRise(hist, budgets, c)) {
-				alerts.add(new Alert(id, RULE_COST_RISE, m, cause));
+			for (CostRise r : costRise(hist, budgets, c)) {
+				alerts.add(new Alert(id, RULE_COST_RISE, r.message(), cause,
+						!c.quietCostRiseMetrics().contains(r.metric())));
 			}
 		}
 		return alerts;
@@ -313,8 +373,12 @@ public final class TrendAlerts {
 		}
 	}
 
-	static List<String> costRise(List<RunHistory.Entry> hist, List<Baseline.Budget> budgets, AlertConfig c) {
-		List<String> out = new ArrayList<>();
+	/** One COST_RISE finding: the metric label and its message. */
+	record CostRise(String metric, String message) {
+	}
+
+	static List<CostRise> costRise(List<RunHistory.Entry> hist, List<Baseline.Budget> budgets, AlertConfig c) {
+		List<CostRise> out = new ArrayList<>();
 		if (hist.isEmpty()) {
 			return out;
 		}
@@ -338,7 +402,7 @@ public final class TrendAlerts {
 					Optional<String> m = BudgetEvaluator.evaluateValue(b, value.longValue(), metric.label,
 							c.costRiseDefaultPercent());
 					if (m.isPresent()) {
-						out.add(m.get());
+						out.add(new CostRise(metric.label, m.get()));
 						break;
 					}
 				}
@@ -362,9 +426,9 @@ public final class TrendAlerts {
 			double threshold = median * (1d + c.costRiseDefaultPercent() / 100d);
 			if (value.longValue() + 1e-9 >= threshold) {
 				long rise = Math.round((value.longValue() - median) * 100d / median);
-				out.add(metric.label + " " + value + " is " + rise + "% above the median of the last " + prior.size() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-																														// //$NON-NLS-4$
-						+ " runs (" + formatNumber(median) + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+				out.add(new CostRise(metric.label, metric.label + " " + value + " is " + rise //$NON-NLS-1$ //$NON-NLS-2$
+						+ "% above the median of the last " + prior.size() //$NON-NLS-1$
+						+ " runs (" + formatNumber(median) + ")")); //$NON-NLS-1$ //$NON-NLS-2$
 			}
 		}
 		return out;
@@ -420,8 +484,9 @@ public final class TrendAlerts {
 	}
 
 	/**
-	 * Writes {@code {"runId":…, "count":n, "alerts":[…]}} - always, also with
-	 * {@code count:0}. Best-effort, never throws.
+	 * Writes {@code {"runId":…, "count":n, "notifyCount":k, "alerts":[…]}} -
+	 * always, also with {@code count:0}. {@code notifyCount} leaves out the quiet
+	 * alerts ({@code notify:false}). Best-effort, never throws.
 	 *
 	 * @param outFile the target file
 	 * @param runId   the evaluated run (omitted when {@code null})
@@ -440,12 +505,15 @@ public final class TrendAlerts {
 			}
 			List<Alert> list = alerts != null ? alerts : List.of();
 			root.put("count", list.size()); //$NON-NLS-1$
+			// notifyCount: the alerts that go into the CI email (quiet ones excluded).
+			root.put("notifyCount", list.stream().filter(Alert::email).count()); //$NON-NLS-1$
 			ArrayNode arr = root.putArray("alerts"); //$NON-NLS-1$
 			for (Alert a : list) {
 				ObjectNode n = arr.addObject();
 				n.put("baselineId", a.baselineId()); //$NON-NLS-1$
 				n.put("rule", a.rule()); //$NON-NLS-1$
 				n.put("message", a.message()); //$NON-NLS-1$
+				n.put("notify", a.email()); //$NON-NLS-1$
 				if (a.likelyCause() != null) {
 					n.put("likelyCause", a.likelyCause()); //$NON-NLS-1$
 				}

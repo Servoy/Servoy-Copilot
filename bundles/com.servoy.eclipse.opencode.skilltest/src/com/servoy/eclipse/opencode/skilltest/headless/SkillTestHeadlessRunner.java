@@ -545,7 +545,8 @@ public class SkillTestHeadlessRunner implements IApplication {
 				output("[skilltest] no trend alerts."); //$NON-NLS-1$
 			}
 			for (TrendAlerts.Alert a : alerts) {
-				output("[skilltest] TREND ALERT " + a.rule() + " " + a.baselineId() + ": " + a.message() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				output("[skilltest] TREND ALERT " + (a.email() ? "" : "(quiet) ") + a.rule() + " " + a.baselineId() //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+						+ ": " + a.message() //$NON-NLS-1$
 						+ (a.likelyCause() != null ? " (likely cause: " + a.likelyCause() + ")" : "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			}
 		} catch (RuntimeException | LinkageError e) {

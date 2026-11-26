@@ -119,6 +119,10 @@
 				     so the report/history/trend step still runs before the fork is killed. -->
 				<servoy.skilltest.baselineTimeoutSeconds>1200</servoy.skilltest.baselineTimeoutSeconds>
 				<servoy.skilltest.runBudgetSeconds>2900</servoy.skilltest.runBudgetSeconds>
+				<!-- COST_RISE metrics whose trend alerts are quiet: still reported, but they do not
+				     mark the build UNSTABLE and send no email. Empty = all alerts notify; the Jenkins
+				     job passes "tokens". -->
+				<servoy.skilltest.alert.quietCostRiseMetrics></servoy.skilltest.alert.quietCostRiseMetrics>
 			</properties>
 			<build>
 				<plugins>
@@ -238,7 +242,7 @@
 							     `let` throws AssertionError, the solution fails to load and
 							     JSUnit runs 0 tests (build #68). Re-enable -ea once SVY-21727
 							     is fixed in DLTK. -->
-							<argLine>-Xms256m -Xmx3072m -da --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs} -Dopencode.shutdown.debug=${opencode.shutdown.debug} -Dservoy.skilltest.historyFile=${servoy.skilltest.historyFile} -Dservoy.skilltest.skillsVersion=${servoy.skilltest.skillsVersion} -Dservoy.skilltest.baselineTimeoutSeconds=${servoy.skilltest.baselineTimeoutSeconds} -Dservoy.skilltest.runBudgetSeconds=${servoy.skilltest.runBudgetSeconds}</argLine>
+							<argLine>-Xms256m -Xmx3072m -da --add-exports=java.base/sun.security.x509=ALL-UNNAMED -Dorg.osgi.framework.system.packages.extra=sun.security.x509 -Dservoy.cloud.skipCheckout=true -Dservoy.application_server.dir=${servoy_install}/application_server -Dproperty-file=${project.basedir}/testresources/servoy.properties -Dchromium.integration.eclipse.disable=true -Dorg.eclipse.ui.testing=true -Dservoy.skilltest.run=${servoy.skilltest.run} -Dservoy.skilltest.as=${servoy_install}/application_server -Dservoy.skilltest.baselines=${servoy.skilltest.baselines} -Dservoy.skilltest.outputDir=${servoy.skilltest.outputDir} -Dservoy.skilltest.cloudUser=${servoy.skilltest.cloudUser} -Dservoy.skilltest.cloudPass=${servoy.skilltest.cloudPass} -DGENAI_API_KEY=${servoy.skilltest.kiroApiKey} -DSERVOY_SKILLS_ZIP=${servoy.skilltest.skillsZip} -DSERVOY_SKILL_OVERWRITE=true -Dservoy.skilltest.opencodeWaitMs=${servoy.skilltest.opencodeWaitMs} -Dopencode.shutdown.debug=${opencode.shutdown.debug} -Dservoy.skilltest.historyFile=${servoy.skilltest.historyFile} -Dservoy.skilltest.skillsVersion=${servoy.skilltest.skillsVersion} -Dservoy.skilltest.baselineTimeoutSeconds=${servoy.skilltest.baselineTimeoutSeconds} -Dservoy.skilltest.runBudgetSeconds=${servoy.skilltest.runBudgetSeconds} -Dservoy.skilltest.alert.quietCostRiseMetrics=${servoy.skilltest.alert.quietCostRiseMetrics}</argLine>
 							<deleteOsgiDataDirectory>false</deleteOsgiDataDirectory>
 							<bundleStartLevel>
 								<bundle><id>slf4j.api</id><level>1</level><autoStart>true</autoStart></bundle>

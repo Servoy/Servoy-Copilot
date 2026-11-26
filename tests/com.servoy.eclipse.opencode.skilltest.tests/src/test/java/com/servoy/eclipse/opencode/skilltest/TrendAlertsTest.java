@@ -396,6 +396,33 @@ class TrendAlertsTest {
 					() -> assertTrue(a.stream().anyMatch(x -> x.message().startsWith("toolCalls "))),
 					() -> assertTrue(a.stream().anyMatch(x -> x.message().startsWith("credits "))));
 		}
+
+		@Test
+		@DisplayName("a quiet metric still raises its alert, but with notify=false; the others keep notifying")
+		void quietMetric() {
+			AlertConfig cfg = AlertConfig
+					.from(Map.of(AlertConfig.PROP_QUIET_COST_RISE_METRICS, " Tokens , bogus")::get);
+			Map<String, List<Baseline.Budget>> b = Map.of(B, List.of(new Baseline.Budget("tokens", 100, null, null),
+					new Baseline.Budget("toolCalls", 10, null, null)));
+			List<Alert> a = rule(eval(withLatest(e(Status.PASS).tokens(101).toolCalls(11).build()), b, cfg),
+					TrendAlerts.RULE_COST_RISE);
+			Alert tokens = a.stream().filter(x -> x.message().startsWith("tokens ")).findFirst().orElseThrow();
+			Alert calls = a.stream().filter(x -> x.message().startsWith("toolCalls ")).findFirst().orElseThrow();
+			assertAll(() -> assertEquals(2, a.size(), "the quiet alert is still raised"),
+					() -> assertEquals(java.util.Set.of("tokens"), cfg.quietCostRiseMetrics(),
+							"case-insensitive, unknown names ignored"),
+					() -> assertFalse(tokens.email(), "tokens is quiet"),
+					() -> assertTrue(calls.email(), "toolCalls still notifies"));
+		}
+
+		@Test
+		@DisplayName("by default no metric is quiet")
+		void noQuietByDefault() {
+			List<Alert> a = rule(eval(withLatest(e(Status.PASS).tokens(101).build()), budget("tokens", 100, null, null),
+					null), TrendAlerts.RULE_COST_RISE);
+			assertAll(() -> assertEquals(1, a.size()), () -> assertTrue(a.get(0).email()),
+					() -> assertTrue(AlertConfig.from(k -> null).quietCostRiseMetrics().isEmpty()));
+		}
 	}
 
 	@Nested
@@ -573,6 +600,21 @@ class TrendAlertsTest {
 					() -> assertEquals("FLAKY", a0.get("rule").asText()),
 					() -> assertEquals("3 flips", a0.get("message").asText()), () -> assertFalse(a0.has("likelyCause")),
 					() -> assertEquals("model changed a → b", a1.get("likelyCause").asText()));
+		}
+
+		@Test
+		@DisplayName("notifyCount leaves out the quiet alerts; count includes them; each alert carries notify")
+		void notifyCount(@TempDir Path dir) throws Exception {
+			File f = dir.resolve("alerts.json").toFile();
+			List<Alert> alerts = List.of(new Alert("b1", "COST_RISE", "tokens 5 exceeds", null, false),
+					new Alert("b2", "COST_RISE", "toolCalls 9 exceeds", null, true));
+			assertTrue(TrendAlerts.writeAlertsJson(f, "r", alerts, null));
+			JsonNode n = mapper.readTree(Files.readString(f.toPath(), StandardCharsets.UTF_8));
+			assertAll(() -> assertEquals(2, n.get("count").asInt(), "both are reported"),
+					() -> assertEquals(1, n.get("notifyCount").asInt(),
+							"only one counts for UNSTABLE and the email"),
+					() -> assertFalse(n.get("alerts").get(0).get("notify").asBoolean()),
+					() -> assertTrue(n.get("alerts").get(1).get("notify").asBoolean()));
 		}
 
 		@Test

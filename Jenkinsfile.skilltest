@@ -264,6 +264,7 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                                 -Dopencode.shutdown.debug=true \
                                 -Dservoy.skilltest.historyFile="$SKILLTEST_HISTORY_DIR/run-history.jsonl" \
                                 -Dservoy.skilltest.skillsVersion="$SKILLS_VERSION" \
+                                -Dservoy.skilltest.alert.quietCostRiseMetrics=tokens \
                                 2> >(grep -v -E 'Gtk-CRITICAL|Gtk-WARNING|gtk_box_gadget_distribute|assertion .size >= 0.|at-spi|AT-SPI|atk-bridge|Couldn.t (register|connect) with accessibility bus' >&2) \
                                 | sed -u "s|${KIRO_API_KEY}|****|g" \
                                 | tee "$WORKSPACE/skilltest-reports/opencode-server.log"
@@ -344,38 +345,50 @@ bundles/com.servoy.eclipse.opencode.skilltest/.*''',
                         def alertsFile = 'skilltest-reports/alerts.json'
                         if (fileExists(alertsFile)) {
                             int count = 0
+                            // Alerts that count: quiet ones (notify:false, e.g. the token COST_RISE,
+                            // see -Dservoy.skilltest.alert.quietCostRiseMetrics) are only reported in
+                            // alerts.json / trend.html; they neither mark the build UNSTABLE nor email.
+                            int notifyCount = 0
                             def alertList = []
                             try {
                                 def json = readJSON file: alertsFile
                                 count = (json.count ?: 0) as int
-                                alertList = json.alerts ?: []
+                                alertList = (json.alerts ?: []).findAll { it.notify != false }
+                                notifyCount = json.notifyCount != null ? (json.notifyCount as int) : alertList.size()
                             } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
                                 throw e
                             } catch (Exception | NoSuchMethodError readJsonUnavailable) {
-                                // Pipeline Utility Steps not installed: fall back to the count only.
+                                // Pipeline Utility Steps not installed: fall back to the counts only.
                                 def raw = sh(returnStdout: true,
                                         script: "grep -o '\"count\" *: *[0-9]*' '${alertsFile}' | grep -o '[0-9]*\$' || echo 0").trim()
                                 count = raw.isInteger() ? raw.toInteger() : 0
+                                def rawNotify = sh(returnStdout: true,
+                                        script: "grep -o '\"notifyCount\" *: *[0-9]*' '${alertsFile}' | grep -o '[0-9]*\$' || echo ${count}").trim()
+                                notifyCount = rawNotify.isInteger() ? rawNotify.toInteger() : count
                             }
-                            if (count > 0) {
+                            if (count > 0 && notifyCount == 0) {
+                                // Only quiet alerts: reported in alerts.json / trend.html, no UNSTABLE, no email.
+                                echo "Trend alerts: ${count}, all quiet (build result and email unaffected)."
+                            }
+                            if (notifyCount > 0) {
                                 env.SKILLTEST_TREND_ALERTS = 'true'
-                                unstable("Skill-test trend alerts: ${count}")
+                                unstable("Skill-test trend alerts: ${notifyCount}")
                                 if ((env.SKILLTEST_JUNIT_FAILURES ?: '0') == '0') {
                                     // Marker read by the global post { fixed } Teams guard on the next build;
                                     // must not be overwritten later in this build.
-                                    currentBuild.description = "trend-alerts-only (${count})"
+                                    currentBuild.description = "trend-alerts-only (${notifyCount})"
                                 }
                                 String recipients = (params.SKILLTEST_ALERT_EMAIL ?: '').trim()
                                 if (recipients) {
                                     // Jenkins-internal (login required), never the public /latest/ site.
                                     String reportUrl = "${env.JOB_URL}lastSuccessfulBuild/artifact/skilltest-reports/trend.html"
                                     String artifactUrl = "${env.BUILD_URL}artifact/skilltest-reports/trend.html"
-                                    String subject = "[skilltest] ${count} trend alert(s) - build #${env.BUILD_NUMBER}"
+                                    String subject = "[skilltest] ${notifyCount} trend alert(s) - build #${env.BUILD_NUMBER}"
                                     StringBuilder html = new StringBuilder()
-                                    html.append('<p>').append(count).append(' skill-test trend alert(s) in build #')
+                                    html.append('<p>').append(notifyCount).append(' skill-test trend alert(s) in build #')
                                         .append(htmlEsc(env.BUILD_NUMBER)).append('.</p>')
                                     StringBuilder text = new StringBuilder()
-                                    text.append(count).append(' skill-test trend alert(s) in build #').append(env.BUILD_NUMBER).append('\n\n')
+                                    text.append(notifyCount).append(' skill-test trend alert(s) in build #').append(env.BUILD_NUMBER).append('\n\n')
                                     if (alertList) {
                                         html.append('<table border="1" cellpadding="4" cellspacing="0"><tr><th>Baseline</th><th>Rule</th><th>Message</th><th>Likely cause</th></tr>')
                                         for (def a : alertList) {
