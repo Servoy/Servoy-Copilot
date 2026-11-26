@@ -68,7 +68,7 @@ class ScenarioMatrixTest {
 
 	/** Lock-step counts: the matrix must carry exactly these many prompts. */
 	private static final int EXPECTED_SCENARIO_COUNT = 20;
-	private static final int EXPECTED_SETUP_COUNT = 2;
+	private static final int EXPECTED_SETUP_COUNT = 3;
 
 	private static final String BUNDLE_SCENARIOS_REL = "bundles/com.servoy.eclipse.opencode.skilltest/scenarios";
 
@@ -82,7 +82,7 @@ class ScenarioMatrixTest {
 			"modernize-method-syntax", "optimize-query-in-loop");
 
 	/** The setup ids, in matrix order. */
-	private static final List<String> SETUP_IDS = List.of("setup-crm-basic", "setup-auth-login");
+	private static final List<String> SETUP_IDS = List.of("setup-crm-basic", "setup-auth-login", "setup-review-defects");
 
 	@Test
 	@DisplayName("every scenario section has a non-empty fenced prompt block")

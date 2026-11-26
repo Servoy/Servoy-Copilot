@@ -40,10 +40,11 @@ pre-built shape is authored and reviewed once.
 
 | id | purpose | shape summary | scenarios that use it |
 |---|---|---|---|
-| `setup-crm-basic` | A small CRM to enhance / fix / form-test against. | Solution `aiCrmBasic`, bound to `db:/example_data`. A CSS-position form `customers` bound to `db:/example_data/customers` (fields for company name, contact name, phone) and a CSS-position form `orders` bound to `db:/udm/orders` (fields for order id, status, order date, a total field). A global scope `reports` with `getOrderTotalsByCustomer(customerIds)` (deliberately written as a query-in-a-loop so the fix/optimize scenarios have real N+1 code) and a scope `pricing` with `calculateLineTotal(quantity, unitPrice, discountPercent)`. A custom-values valuelist `orderStatus` (open, archived, cancelled). One i18n key `crm.orders.title`. | `svyfixstacktrace-order-totals`, `svycreateformtest-orders`, `enhance-order-total-field` |
+| `setup-crm-basic` | A small CRM to enhance / fix / form-test against. | Solution `aiCrmBasic`, bound to `db:/udm`. A CSS-position form `companies` bound to `db:/udm/companies` (fields for company name, email, website) and a CSS-position form `orders` bound to `db:/udm/orders` (fields for order id, order date, order total and the paid flag, plus a form function `formatAmount(amount)`). A global scope `reports` with `getOrderTotalsByCompany(companyIds)` (deliberately written as an unguarded query-in-a-loop so the fix/optimize scenarios have real N+1 code and a real crash) and a scope `pricing` with `calculateLineTotal(quantity, unitPrice, discountPercent)`. A custom-values valuelist `orderPaidStatus` (Open = 0, Paid = 1) on the paid field. One i18n key `crm.orders.title`. | `svyfixstacktrace-order-totals`, `svycreateformtest-orders`, `enhance-order-total-field` |
 | `setup-auth-login` | A small solution with authentication wired but **broken on purpose**, for the described-problem fix scenario. | Solution `aiAuthLogin`, bound to `db:/example_data`. Configured as AUTHENTICATOR (type 3) with an authenticator **module** `aiAuthLogin_auth` whose `globals.js` holds a correct `onSolutionOpen(arg, queryParams)` that validates credentials and calls `security.login()`. The planted defect: the module's `solution_settings.obj` **does NOT set `onSolutionOpenMethodID`** to that function's UUID, so the runtime never calls it and login silently fails. A main-solution form `home` bound to `db:/example_data/customers` so there is something to land on after login. | `fix-authenticator-not-called` |
+| `setup-review-defects` | A form with two deliberate runtime defects, for the review-only scenario. | Solution `aiReviewDefects`, referencing `servoy_resources`. One CSS-position form `customerCard` bound to `db:/example_data/customers`: a label plus a `bootstrapcomponents-textbox` for company name (`companyname`), contact name (`contactname`) and phone, and a `Save` button. The two planted defects: the phone field binds to `phone_number`, which does not exist (the column is `phone`), and the button's `onActionMethodID` is a UUID that no method has (the form has no `.js`). Everything else is valid, so the review has exactly these two things to find. Committed in the baselines repo under `solutions/aiReviewDefects`. | `reviewer-defect-find` |
 
-> **Why these two.** `setup-crm-basic` is the workhorse: a couple of data-bound
+> **Why these setups.** `setup-crm-basic` is the workhorse: a couple of data-bound
 > forms, two scope methods (one intentionally N+1), a valuelist and an i18n key
 > give the enhance/fix/form-test scenarios genuine existing structure to read and
 > change. `setup-auth-login` isolates one realistic, described (not stacktrace)
@@ -51,6 +52,8 @@ pre-built shape is authored and reviewed once.
 > module's `onSolutionOpen` handler, which per the authentication guide is exactly
 > the "function exists but is never called by the runtime" trap — so the fix
 > scenario tests diagnosis, not just editing.
+> `setup-review-defects` is the odd one out: it is committed, not built by a prompt, so the
+> review scenario always sees the same two planted defects.
 
 Each setup also has a committed **setup spec** markdown file describing its shape
 in prose (for the human tester):
@@ -72,8 +75,11 @@ start from a committed, otherwise empty solution instead:
   (`https://github.com/Servoy/servoy-ai-skilltest-baselines`, `ref: master`). The runner
   clones it and imports the solution plus `servoy_resources`.
 
-Scenarios that start from it: `create-relation`, `datalayer-open-order-totals`,
-`datalayer-bulk-archive-save`.
+Scenarios that start from it: `create-form-css-position`, `create-valuelist-db`,
+`create-relation`, `datalayer-open-order-totals`, `datalayer-bulk-archive-save`,
+`security-tenant-query-clean`, `security-rawsql-injection`,
+`orchestrator-form-plus-unittest` and `optimize-query-in-loop` - every scenario whose prompt uses
+a database. Database-free scenarios still start from `empty`.
 
 ### setup-crm-basic
 
@@ -81,19 +87,21 @@ Starting solution: `aiCrmBasic`. Spec:
 [`inputs/setups/setup-crm-basic.md`](inputs/setups/setup-crm-basic.md).
 
 ```
-Build a small CRM starting solution in the active (empty) solution, using the example_data
-and udm databases. Create two CSS-position forms: a form named "customers" bound to
-db:/example_data/customers with text fields for the company name, the contact name and the
-phone number (inspect the customers table for the real column names and bind to those); and
-a form named "orders" bound to db:/udm/orders with fields for the order id, the
-status, the order date and the order total (again inspect the udm.orders table for the real
-column names). Create a custom-values value list named "orderStatus" with the values open,
-archived and cancelled. Add one i18n key crm.orders.title with the English value "Orders".
-Then create two global scopes. In a scope named "reports", add a method
-getOrderTotalsByCustomer(customerIds): given an array of customer id values it returns a
-plain object mapping each customer id to the summed total of that customer's orders — write
-it the naive way, looping over the ids and running one query per id inside the loop (this
-is intentional; later tasks will optimize it). In a scope named "pricing", add a method
+Build a small CRM starting solution in the active (empty) solution, against the udm database
+only (do not use example_data). Create two CSS-position forms: a form named "companies" bound
+to db:/udm/companies with text fields bound to company_name, company_email and company_url;
+and a form named "orders" bound to db:/udm/orders with fields bound to order_id, order_date,
+order_total and is_paid. On the orders form add a form function formatAmount(amount) that
+returns the amount as a string with exactly two decimals, and returns "0.00" for a missing or
+non-numeric amount. Create a custom-values value list named "orderPaidStatus" with the display
+values Open and Paid for the real values 0 and 1, and attach it to the is_paid field. Add one
+i18n key crm.orders.title with the English value "Orders". Then create two global scopes. In
+a scope named "reports", add a method getOrderTotalsByCompany(companyIds): given an array of
+company_id values it returns a plain object mapping each company_id to the summed
+order_total of that company's orders (db:/udm/orders, matched on its company_id column).
+Write it the naive way on purpose: loop over companyIds.length, run one query per id inside
+the loop, and do NOT guard a missing or empty companyIds array (this is intentional; later
+tasks fix and optimize it). In a scope named "pricing", add a method
 calculateLineTotal(quantity, unitPrice, discountPercent) that returns quantity * unitPrice
 with the discount applied, rounded to two decimals, and returns 0 for any missing or
 negative input. If any detail is unspecified, choose sensible real values and continue
@@ -124,6 +132,22 @@ not write any tests. Try to do this in a single run without stopping to ask ques
 
 ---
 
+### setup-review-defects
+
+Starting solution: `aiReviewDefects`. Unlike the other two setups this one is not built by a
+prompt: it is committed as-is in the baselines repo under `solutions/aiReviewDefects`, so the
+planted defects are byte-identical on every run. A baseline selects it with
+`precondition.solution = "aiReviewDefects"` and a `git` source pointing at the baselines repo
+(`https://github.com/Servoy/servoy-ai-skilltest-baselines`, `ref: master`).
+
+```
+The solution aiReviewDefects holds one CSS-position form, customerCard, bound to
+db:/example_data/customers. It has a labelled bootstrapcomponents-textbox for company name
+(companyname), contact name (contactname) and phone, plus a Save button. Two defects are planted
+on purpose: the phone field binds to the dataprovider phone_number, which does not exist in the
+customers table (the real column is phone), and the Save button's onActionMethodID is a UUID that
+no method in the solution has. The form has no .js file. Everything else is valid.
+```
 ## 2. The scenario matrix
 
 Twenty scenarios, deliberately spanning **build, enhance, fix, review,
@@ -150,26 +174,26 @@ run → JSUnit.
 
 | id | scenario | skill(s) exercised | starting state | recommended tier | rationale |
 |---|---|---|---|---|---|
-| `create-form-css-position` | Create a CSS-position form bound to a datasource with two bound text fields | servoy-developer (form build, data binding) | empty | `expect.persists` | Deterministic: form `dataSource` + `useCssPosition` + two components bound to named dataproviders look identical every valid run. |
+| `create-form-css-position` | Create a CSS-position form bound to a datasource with two bound text fields | servoy-developer (form build, data binding) | `aiSkilltest_empty` | `expect.persists` | Deterministic: form `dataSource` + `useCssPosition` + two components bound to named dataproviders look identical every valid run. |
 | `create-form-responsive` | Create a fully responsive (flex/grid) form with a header row and a two-column body | servoy-developer (responsive layout) | empty | `acceptanceCriteria` (judge) | Responsive div/row/column nesting + styleClasses legitimately vary run-to-run; structural equality is brittle, so a judge grades layout intent. Keep only a minimal form-exists `persists`. |
 | `create-form-order-tabs-from-mockup` | Build an order-tabs tab-panel form matching a committed HTML mockup | servoy-developer (responsive layout, UI fidelity) | empty | `acceptanceCriteria` (judge) | UI-fidelity build from an input mockup (`inputs/specs/03_order_tabs.html`): the judge grades the built form matches the mockup's tab/panel structure. Keep a minimal form-exists `persists`. |
 | `create-valuelist-custom` | Create a custom/fixed-values valuelist (`CUSTOM_VALUES`) | servoy-developer (valuelist) | empty | `expect.persists` | Deterministic: the fixed custom values are known up front; a persist assertion nails them exactly. |
-| `create-valuelist-db` | Create a database/table-based valuelist (`TABLE_VALUES`) bound to a table's display + real columns | servoy-developer (valuelist) | empty | `expect.persists` | Deterministic: the valuelist's datasource plus its display and real dataprovider binding are fixed once the real columns are found, so a persist assertion nails them. |
+| `create-valuelist-db` | Create a database/table-based valuelist (`TABLE_VALUES`) bound to a table's display + real columns | servoy-developer (valuelist) | `aiSkilltest_empty` | `expect.persists` | Deterministic: the valuelist's datasource plus its display and real dataprovider binding are fixed once the real columns are found, so a persist assertion nails them. |
 | `create-valuelist-global` | Create a global-method-based valuelist (`GLOBAL_METHOD`) bound to a scope method that returns the contents | servoy-developer (valuelist) | empty | `expect.persists` (+ optional `verify.jsunit`) | Deterministic: the valuelist type and its bound method, plus the method's existence, are fixed (persists). A jsunit tier is optional since the real list content is produced by the method at runtime. |
 | `create-relation` | Create a relation between two udm tables (companies, orders) — the task requires inspecting the schema for the real FK columns (delegates to Database-Researcher) | servoy-developer (relation), servoy-database (Database-Researcher) | `aiSkilltest_empty` | `expect.persists` | Deterministic: relation name, primary/foreign datasource and the key pair are fixed. The prompt withholds the column names so the real FK must be found from the live schema, exercising the bounded read-only schema delegation. |
 | `datalayer-open-order-totals` | Build a scope method that sums open-order totals for many customers in ONE query (tempts N+1) | servoy-developer (data-layer rails D4/D5), servoy-database | `aiSkilltest_empty` | `expect.persists` + `verify.jsunit` | The scope method is a deterministic artifact (persists); only running it proves it returns correct totals, guards the empty-input case, and uses a single query (jsunit). The prompt tempts a query-in-a-loop the rails must prevent. |
 | `datalayer-bulk-archive-save` | Build a scope method that bulk-updates records and must honour the `saveData()` result (tempts discarded save) | servoy-developer (data-layer rail D1) | `aiSkilltest_empty` | `verify.jsunit` | Behaviour-only: the defect (silently discarded `databaseManager.saveData()` Boolean → silent data loss) is invisible structurally; only a JSUnit run that asserts the records actually persisted catches it. Folds in the D4 unbounded-read concern — the load is scoped by the cutoff date, not an unbounded table scan. |
-| `security-tenant-query-clean` | Build a QBSelect-based search over a tenant table from user input, then run a security review — a correct run yields NO finding | servoy-developer (build), servoy-security-reviewer (false-positive filter) | empty | `acceptanceCriteria` (judge) | The judge grades that the feature was built AND that the security review returned a clean PASS with no spurious hardening: QBSelect is parameterized by construction, NGClient auto-sanitizes display, the tenant filter is auto-injected — a correct run neither concatenates raw SQL nor adds a manual tenant `WHERE`. This is the false-positive polarity. |
-| `security-rawsql-injection` | Build a `ws_*` endpoint that concatenates user input into a rawSQL string, then run a security review — the review MUST flag it CRITICAL | servoy-developer (build), servoy-security-reviewer (true-positive detection) | empty | `acceptanceCriteria` (judge) | The true-positive polarity: the prompt deliberately builds an injectable source→sink path (request param → `+` string concat → `plugins.rawSQL.executeSQL`) with no auth gate. The judge grades that the review names the SQL-injection (and the missing `ws_*` authz) as CRITICAL. No fix is applied; the verdict is the artifact. |
-| `reviewer-defect-find` | Build a form/method with a deliberate reviewer-catchable defect (a dangling `dataProviderID`, an `onActionMethodID` wired to a non-existent handler), then ask for a review that must FIND it | servoy-reviewer | empty | `acceptanceCriteria` (judge) | Review-only (no fix): the prompt plants a defect the `.frm` grep passes (U5/U7) are built to catch, then asks for a review. The judge grades that the review NAMES the planted defect; structure can't express "the reviewer noticed". |
-| `orchestrator-form-plus-unittest` | Build a scope method and write a passing unit test for it (exercises the build → unit-test hand-off) | servoy-orchestrator, servoy-developer, servoy-unittester | empty | `expect.persists` + `verify.jsunit` | Deterministic method (persists) plus a behaviour check; verifies the orchestrator correctly hands off to the unit tester and the produced method is testable. Prefer the injected name-tolerant script as the authoritative behaviour gate. |
-| `svycreateformtest-orders` | Generate a JSUnit form test for the EXISTING `orders` form in the setup solution | servoy-unittester (svyCreateFormTest), servoy-developer | `setup-crm-basic` | `verify.jsunit` | Form-test against existing structure: the `orders` form already exists in the setup, so the scenario tests that the skill builds the `orders_test` extending form in the `*_test` module and a passing `test_*` function that calls the form's own function — not that it creates a form. Behaviour runs, so JSUnit is authoritative. |
-| `enhance-order-total-field` | Enhance the EXISTING `orders` form — add a computed order-total field and a refresh button that recomputes it | servoy-developer (form enhancement, data-layer) | `setup-crm-basic` | `expect.persists` + `verify.jsunit` | The flagship ENHANCE scenario: it modifies an existing form (adds a field + a button wired to a handler + the computing method) rather than creating from scratch. The added structure persists; jsunit runs the compute function to prove the total is correct. Tests reading and extending existing structure. |
-| `svyfixstacktrace-order-totals` | Fix the bug behind a pasted Servoy stacktrace in the EXISTING `reports.getOrderTotalsByCustomer` method | svyFixStacktrace (servoy-developer, servoy-database) | `setup-crm-basic` | `verify.jsunit` + `acceptanceCriteria` (judge) | The setup's `getOrderTotalsByCustomer` throws on an empty/missing `customerIds` array (the naive loop dereferences it). The prompt pastes a representative Servoy stacktrace for that failure. jsunit asserts the error no longer reproduces (empty input returns an empty object, normal input returns correct totals); the judge grades that the root cause was named. |
+| `security-tenant-query-clean` **(skipped)** | Build a QBSelect-based search over a tenant table from user input, then run a security review — a correct run yields NO finding | servoy-developer (build), servoy-security-reviewer (false-positive filter) | `aiSkilltest_empty` | `acceptanceCriteria` (judge) | The judge grades that the feature was built AND that the security review returned a clean PASS with no spurious hardening: QBSelect is parameterized by construction, NGClient auto-sanitizes display, the tenant filter is auto-injected — a correct run neither concatenates raw SQL nor adds a manual tenant `WHERE`. This is the false-positive polarity. |
+| `security-rawsql-injection` | Build a `ws_*` endpoint that concatenates user input into a rawSQL string, then run a security review — the review MUST flag it CRITICAL | servoy-developer (build), servoy-security-reviewer (true-positive detection) | `aiSkilltest_empty` | `acceptanceCriteria` (judge) | The true-positive polarity: the prompt deliberately builds an injectable source→sink path (request param → `+` string concat → `plugins.rawSQL.executeSQL`) with no auth gate. The judge grades that the review names the SQL-injection (and the missing `ws_*` authz) as CRITICAL. No fix is applied; the verdict is the artifact. |
+| `reviewer-defect-find` | Review a committed form that carries two planted runtime defects (a dangling `dataProviderID`, an `onActionMethodID` wired to a non-existent handler); the review must FIND both | servoy-reviewer | `setup-review-defects` | `acceptanceCriteria` (judge) | Review-only (no fix): the defects are pre-built in the committed `aiReviewDefects` setup, identical on every run, and are the kind the `.frm` grep passes (U5/U7) are built to catch. The prompt describes the intended form but does not name the defects. The judge grades that the review NAMES the planted defect; structure can't express "the reviewer noticed". |
+| `orchestrator-form-plus-unittest` | Build a scope method and write a passing unit test for it (exercises the build → unit-test hand-off) | servoy-orchestrator, servoy-developer, servoy-unittester | `aiSkilltest_empty` | `expect.persists` + `verify.jsunit` | Deterministic method (persists) plus a behaviour check; verifies the orchestrator correctly hands off to the unit tester and the produced method is testable. Prefer the injected name-tolerant script as the authoritative behaviour gate. |
+| `svycreateformtest-orders` | Generate a JSUnit form test for the EXISTING `orders` form in the setup solution | servoy-unittester (svyCreateFormTest), servoy-developer | `setup-crm-basic` | `verify.jsunit` | Form-test against existing structure: the `orders` form already exists in the setup, so the scenario tests that the skill builds the `orders_test` extending form in the `*_test` module and a passing `test_*` function that calls the form's own `formatAmount` function — not that it creates a form. Behaviour runs, so JSUnit is authoritative. |
+| `enhance-order-total-field` | Enhance the EXISTING `orders` form — add a computed order-total field and a refresh button that recomputes it | servoy-developer (form enhancement, data-layer) | `setup-crm-basic` | `expect.persists` + `verify.jsunit` | The flagship ENHANCE scenario: it modifies an existing form (adds a field + a button wired to a handler + the computing method) rather than creating from scratch. The added structure persists; jsunit runs the compute function to prove the total (sum of `udm.order_items.extended_price` for the order) is correct. Tests reading and extending existing structure. |
+| `svyfixstacktrace-order-totals` | Fix the bug behind a pasted Servoy stacktrace in the EXISTING `reports.getOrderTotalsByCompany` method | svyFixStacktrace (servoy-developer, servoy-database) | `setup-crm-basic` | `verify.jsunit` + `acceptanceCriteria` (judge) | The setup's `getOrderTotalsByCompany` throws on an empty/missing `companyIds` array (the naive loop dereferences it). The prompt pastes a representative Servoy stacktrace for that failure. jsunit asserts the error no longer reproduces (empty input returns an empty object, normal input returns correct totals); the judge grades that the root cause was named. |
 | `fix-authenticator-not-called` | Fix a DESCRIBED problem — "the authenticator is not being called on login" — in the setup solution | svyFixStacktrace family / servoy-developer (diagnosis), servoy-platform (auth) | `setup-auth-login` | `acceptanceCriteria` (judge) | Described-problem diagnosis+fix (not a stacktrace, not a ticket): the setup wired an authenticator whose `onSolutionOpen` exists but is never set as the module's `onSolutionOpenMethodID`, so login silently fails. The judge grades that the diagnosis named the unwired handler as the root cause AND the fix sets `onSolutionOpenMethodID` to the function's UUID. The fix is a structural-file change the judge is best placed to confirm against the described symptom. |
 | `e2e-form-cypress-test` | Build a small form, then ask for a Cypress E2E spec that drives it | servoy-developer (build), servoy-e2etester | empty | `acceptanceCriteria` (judge) | Build-then-test: the prompt builds a simple interactive form, then asks the E2E-Tester for a `.cy.ts` spec exercising the feature end to end. The judge grades that an E2E spec was produced for the built form, using the project's selector helpers (no raw selectors, no `cy.wait(ms)`); the spec file is the artifact, not a persisted solution object. |
 | `modernize-method-syntax` | Build a scope method using `var`, a function expression and a magic HTTP status number, then modernize it — behaviour unchanged | servoy-developer (svyModernize rails) | empty | `expect.persists` + `acceptanceCriteria` (judge) | Refactor, same behaviour: the prompt first writes an intentionally dated method, then modernizes it to `const`/arrow and `plugins.http.HTTP_STATUS.*`. The method persists; the judge grades that behaviour is unchanged AND the modern syntax replaced every dated construct (no `var`, no magic status number). |
-| `optimize-query-in-loop` | Build a scope method with a query inside a loop over records, then optimize it to a single guarded `isin()` query — behaviour unchanged | servoy-developer (svyOptimize rails D4/D5) | empty | `expect.persists` + `verify.jsunit` + `acceptanceCriteria` (judge) | Performance, same results: the prompt first writes the N+1 version, then optimizes it. The method persists; jsunit asserts identical results (ideally with a query-count assertion proving a single query); the judge grades that no query-in-loop remains and the `isin()` has an empty-array guard. |
+| `optimize-query-in-loop` | Build a scope method with a query inside a loop over records, then optimize it to a single guarded `isin()` query — behaviour unchanged | servoy-developer (svyOptimize rails D4/D5) | `aiSkilltest_empty` | `expect.persists` + `verify.jsunit` + `acceptanceCriteria` (judge) | Performance, same results: the prompt first writes the N+1 version, then optimizes it. The method persists; jsunit asserts identical results (ideally with a query-count assertion proving a single query); the judge grades that no query-in-loop remains and the `isin()` has an empty-array guard. |
 
 ---
 
@@ -181,7 +205,7 @@ setup solution as their starting point.
 
 ### create-form-css-position
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 Create a new CSS-position form named "productDetail" in the active solution, bound to the
@@ -236,7 +260,7 @@ stopping to ask questions.
 
 ### create-valuelist-db
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 In the active solution, against the example_data database, create a database (table-based)
@@ -315,13 +339,20 @@ Try to do this in a single run without stopping to ask questions.
 
 ### security-tenant-query-clean
 
-Starting state: `empty`.
+> **Skipped (no golden baseline).** Two clean recordings in a row ended with the security review
+> raising the same two MINOR hardening notes (user-typed `%`/`_` acting as LIKE wildcards, and no
+> row cap on the result). Neither is a security exposure, so both runs fail this scenario's
+> "clean PASS, no spurious hardening" criterion. The Orchestrator's dispatch brief appears to name
+> these concerns up front. Record the golden once the skills stop producing these false positives.
+
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 In the active solution, against the example_data database, create a global scope named
 "search" with a method findCustomersByName(nameFragment) that returns the customers whose
 companyname contains the given text, using a query builder (QBSelect). The nameFragment comes
-from end-user input. Build it the normal, idiomatic Servoy way. Also create a CSS-position
+from end-user input. An empty or missing nameFragment returns an empty result without
+querying. Build it the normal, idiomatic Servoy way. Also create a CSS-position
 form named "customerSearch" bound to db:/example_data/customers with a text field for the
 search term, a search button whose onAction runs the query, and a label that displays the
 matched company name. Inspect the customers table for the real companyname column and use it.
@@ -333,14 +364,14 @@ this in a single run without stopping to ask questions.
 
 ### security-rawsql-injection
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 In the active solution, against the example_data database, create a global scope named "api"
 with a REST endpoint method ws_read(customerName) that looks up customers by company name and
 returns them as JSON. Build the lookup by assembling a SQL string from the incoming
-customerName value and running it with plugins.rawSQL.executeSQL against the example_data
-server (the endpoint should have no permission or authentication check — build it as a plain
+customerName value and running that raw SQL string with databaseManager.getDataSetByQuery against
+the example_data server (the endpoint should have no permission or authentication check — build it as a plain
 public ws_* method). Inspect the customers table for the real companyname and id columns and
 use them in the SQL. Once it is built, perform a security review of the code you just wrote
 and report your findings — classify each with a severity, and do not change the code in
@@ -351,24 +382,20 @@ questions.
 
 ### reviewer-defect-find
 
-Starting state: `empty`.
+Starting state: `setup-review-defects` (solution `aiReviewDefects`).
 
 ```
-In the active solution, bound to db:/example_data/customers, build a CSS-position form named
-"customerCard" that shows the customer's company name, contact name and phone, each in a
-labelled text field, plus a "Save" button. Then, once the form exists, perform a code review
-of the form you just built against that description and report your findings — list anything
-that would not work at runtime (a field bound to a non-existent dataprovider, a button whose
-onAction points at a handler that does not exist, a missing label), with a severity for each.
-Do NOT fix anything — the review report is the deliverable. Inspect the customers table for the
-real column names. If any detail is unspecified, choose sensible real values and continue
-without asking. Do not write any tests. Try to do this in a single run without stopping to ask
-questions.
+In the active solution, the CSS-position form "customerCard" is meant to show a customer's
+company name, contact name and phone, each in a labelled text field, plus a "Save" button that
+saves the record. Review this form and report your findings, with a severity for each. Do NOT
+fix anything — the review report is the deliverable. If any detail is unspecified, choose
+sensible real values and continue without asking. Do not write any tests. Try to do this in a
+single run without stopping to ask questions.
 ```
 
 ### orchestrator-form-plus-unittest
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 In the active solution, against the example_data database, create a global scope named
@@ -386,14 +413,14 @@ Starting state: `setup-crm-basic` (solution `aiCrmBasic`).
 
 ```
 This solution is the saved "aiCrmBasic" starting solution: it already contains a CSS-position
-form named "orders" bound to db:/udm/orders with its own form functions. Write a
+form named "orders" bound to db:/udm/orders with a form function formatAmount(amount). Write a
 JSUnit form test for the EXISTING "orders" form: create the orders_test extending form in the
 solution's *_test module (extending the production "orders" form, headless-safe), and a
-test_* function that exercises one of the orders form's own functions and asserts the result.
-Do not re-create the orders form and do not re-implement its functions inside the test — call
-the real form function. Make sure the test passes. If any detail is unspecified, choose a
-sensible default and continue without asking. Do this in a single run without stopping to ask
-questions.
+test_* function that calls the orders form's formatAmount function and asserts its result for
+a normal amount and for a missing amount. Do not re-create the orders form and do not
+re-implement formatAmount inside the test - call the real form function. Make sure the test
+passes. If any detail is unspecified, choose a sensible default and continue without asking.
+Do this in a single run without stopping to ask questions.
 ```
 
 ### enhance-order-total-field
@@ -402,15 +429,16 @@ Starting state: `setup-crm-basic` (solution `aiCrmBasic`).
 
 ```
 This solution is the saved "aiCrmBasic" starting solution: it already contains a CSS-position
-form named "orders" bound to db:/udm/orders. Enhance the EXISTING "orders" form —
-do not create a new form. Add a read-only "order total" field that shows the computed total
-for the currently selected order, and add a "Refresh total" button whose onAction recomputes
-and updates that field. Put the computation in a form function the button calls (and that a
-test could call), reading the order's real line/amount columns — inspect the udm.orders table (and
-any related order-lines table) for the real column names. Keep the rest of the form intact. If
-any detail is unspecified, choose sensible real values and continue without asking. Do not
-write any tests. Try to do this in a single run, iterating as needed, without stopping to ask
-questions.
+form named "orders" bound to db:/udm/orders. Enhance the EXISTING "orders" form - do not
+create a new form. Add a read-only "order total" field that shows the computed total for the
+currently selected order, and add a "Refresh total" button whose onAction recomputes and
+updates that field. Put the computation in a form function the button calls (and that a test
+could call). The total is the sum of extended_price over the db:/udm/order_items rows whose
+order_id equals the selected order's order_id; use exactly these columns. You may add a
+relation from udm.orders to udm.order_items on order_id if you need one. Keep the rest of the
+form intact. If any other detail is unspecified, choose sensible real values and continue
+without asking. Do not write any tests. Try to do this in a single run, iterating as needed,
+without stopping to ask questions.
 ```
 
 ### svyfixstacktrace-order-totals
@@ -419,20 +447,19 @@ Starting state: `setup-crm-basic` (solution `aiCrmBasic`).
 
 ```
 This solution is the saved "aiCrmBasic" starting solution. Running
-scopes.reports.getOrderTotalsByCustomer with an empty or missing customerIds array throws at
+scopes.reports.getOrderTotalsByCompany with an empty or missing companyIds array throws at
 runtime. Here is a representative stacktrace:
 
 TypeError: Cannot read property "length" from undefined
-	at reports.getOrderTotalsByCustomer (reports.js:14)
+	at reports.getOrderTotalsByCompany (reports.js:14)
 	at <anonymous> (command line:1)
 
 Find the bug behind this error and fix it: the method must guard an empty or missing
-customerIds array by returning an empty object without querying, and it must still return the
-correct per-customer totals for a normal input. Name the root cause in your summary. Inspect
-the udm.orders table for the real customer-id and total columns if you need them. If any detail is
-unspecified, choose sensible real values and continue without asking. Do not write any tests
-yourself. Try to do this in a single run, iterating as needed, without stopping to ask
-questions.
+companyIds array by returning an empty object without querying, and it must still return the
+correct per-company totals for a normal input (the summed order_total of db:/udm/orders,
+matched on company_id). Name the root cause in your summary. If any detail is unspecified,
+choose sensible real values and continue without asking. Do not write any tests yourself. Try
+to do this in a single run, iterating as needed, without stopping to ask questions.
 ```
 
 ### fix-authenticator-not-called
@@ -485,7 +512,7 @@ to ask questions.
 
 ### optimize-query-in-loop
 
-Starting state: `empty`.
+Starting state: `aiSkilltest_empty` (committed solution, see §1b).
 
 ```
 In the active solution, against the udm database, create a global scope named "reports"
