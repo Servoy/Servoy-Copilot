@@ -383,9 +383,14 @@ public final class SkillTestRunner {
 				// structural check cannot tolerate.
 				if (baseline.hasAcceptanceVerify()) {
 					Baseline.AcceptanceVerify av = baseline.acceptanceVerify();
+					// The judge reads the solution's files, but what a run REPORTED (a
+					// security review's findings, a named root cause) lives only in its
+					// final answer - hand it over so such criteria can be graded (SVY-21659).
+					// The session still exists here; it is deleted in this trial's finally.
+					String finalAnswer = judge != null ? readFinalAnswer(client, sessionId) : null;
 					com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict verdict = judge != null
 							? judge.judge(judgeSubjectName, judgeSourceHint, judgeMockupPath, av.criteria(),
-									av.judgeModel(), effectiveModel, cancel)
+									av.judgeModel(), effectiveModel, finalAnswer, cancel)
 							: com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge.Verdict
 									.error("acceptance judge unavailable (opencode server not ready)", null); //$NON-NLS-1$
 					if (av.required() && !verdict.pass()) {
@@ -731,6 +736,33 @@ public final class SkillTestRunner {
 			return from.startsWith("inputs/") ? from.substring("inputs/".length()) : from; //$NON-NLS-1$ //$NON-NLS-2$
 		}
 		return null;
+	}
+
+	/**
+	 * Reads the graded run's final answer to the user (its last assistant text)
+	 * from the session export, for the acceptance judge. Best effort: any failure
+	 * returns {@code null}, and the judge then grades from the solution's files
+	 * alone, exactly as before this was added (SVY-21659).
+	 *
+	 * @param client    the opencode client
+	 * @param sessionId the graded run's session (may be {@code null})
+	 * @return the final answer, or {@code null} when there is none or it cannot be
+	 *         read
+	 */
+	private String readFinalAnswer(OpencodeHttpClient client, String sessionId) {
+		if (sessionId == null) {
+			return null;
+		}
+		try {
+			return com.servoy.eclipse.opencode.skilltest.outcome.AcceptanceJudge
+					.lastAssistantText(client.getExport(sessionId));
+		} catch (InterruptedException ie) {
+			Thread.currentThread().interrupt();
+			return null;
+		} catch (IOException | RuntimeException ex) {
+			logger.log("[skilltest] could not read the run's final answer for the judge: " + ex.getMessage()); //$NON-NLS-1$
+			return null;
+		}
 	}
 
 	/** Renders a judge verdict as a short block for the run diff/report. */

@@ -159,6 +159,42 @@ class AcceptanceJudgeTest {
 		assertTrue(p.contains("\"reason\""), "names the reason key the parser reads");
 	}
 
+	// --- the graded run's final answer (SVY-21659) ---
+
+	@Test
+	@DisplayName("a final answer is quoted in the prompt, marked as evidence only for what the run reported")
+	void finalAnswerIsQuotedAsReportEvidence() {
+		String answer = "Security review: S1 CRITICAL - SQL injection in ws_read; S2 CRITICAL - no auth check.";
+		String p = JUDGE.buildPrompt("api", "`api.js`", null, CRITERIA, answer);
+		assertTrue(p.contains("<final_answer>\n" + answer + "\n</final_answer>"), "quotes the answer verbatim");
+		assertTrue(p.contains("what the run REPORTED"), "scopes the answer to criteria about what was reported");
+		assertTrue(p.contains("never from this text"), "keeps built artifacts graded from the source files");
+		assertTrue(p.indexOf("</final_answer>") < p.indexOf("Acceptance criteria:"),
+				"the answer comes before the criteria it is evidence for");
+		assertTrue(p.contains("The History tab is disabled"), "still lists every criterion");
+	}
+
+	@Test
+	@DisplayName("no final answer (null or blank) leaves the prompt exactly as before")
+	void noFinalAnswerKeepsPromptUnchanged() {
+		String base = JUDGE.buildPrompt("api", "`api.js`", null, CRITERIA);
+		assertEquals(base, JUDGE.buildPrompt("api", "`api.js`", null, CRITERIA, null), "null adds nothing");
+		assertEquals(base, JUDGE.buildPrompt("api", "`api.js`", null, CRITERIA, "   \n "), "blank adds nothing");
+		assertFalse(base.contains("<final_answer>"), "the 4-arg prompt has no answer section");
+	}
+
+	@Test
+	@DisplayName("an over-long final answer keeps only its tail, where a run states its findings")
+	void longFinalAnswerKeepsTail() {
+		String tail = "FINAL: S1 CRITICAL, S2 CRITICAL";
+		String answer = "x".repeat(AcceptanceJudge.MAX_FINAL_ANSWER_CHARS + 500) + tail;
+		String p = JUDGE.buildPrompt(null, null, null, CRITERIA, answer);
+		assertTrue(p.contains(tail), "keeps the closing summary");
+		assertTrue(p.contains("(last " + AcceptanceJudge.MAX_FINAL_ANSWER_CHARS + " characters)"), "says it was cut");
+		String quoted = p.substring(p.indexOf("<final_answer>\n") + "<final_answer>\n".length(), p.indexOf("\n</final_answer>"));
+		assertEquals(AcceptanceJudge.MAX_FINAL_ANSWER_CHARS, quoted.length(), "quotes exactly the cap");
+	}
+
 	// --- verdict parsing ---
 
 	@Test

@@ -85,6 +85,14 @@ public final class AcceptanceJudge {
 	/** Max time to wait for the opencode server to come ready (ms). */
 	private static final long SERVER_WAIT_MS = 120_000L;
 
+	/**
+	 * Max characters of the graded run's final answer carried into the judge
+	 * prompt. The answer is evidence for criteria about what the run REPORTED (a
+	 * review verdict, a named root cause), not a transcript, so a bounded tail is
+	 * enough and keeps the judge request small.
+	 */
+	static final int MAX_FINAL_ANSWER_CHARS = 8_000;
+
 	/** Matches a fenced ```json ... ``` block (or a bare ``` ... ``` block). */
 	private static final Pattern FENCED_JSON = Pattern.compile(
 			"```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL); //$NON-NLS-1$
@@ -219,6 +227,23 @@ public final class AcceptanceJudge {
 	 */
 	public Verdict judge(String subjectName, String sourceHint, String mockupPath, List<String> criteria,
 			String judgeModel, String builderModel, BooleanSupplier cancel) {
+		return judge(subjectName, sourceHint, mockupPath, criteria, judgeModel, builderModel, null, cancel);
+	}
+
+	/**
+	 * As {@link #judge(String, String, String, List, String, String, BooleanSupplier)},
+	 * but also hands the judge the graded run's final answer to the user. The
+	 * judge otherwise sees only the solution's files, so a criterion about what the
+	 * run REPORTED - a security review's findings and their severity, a diagnosed
+	 * root cause - could never be graded: that output lives in chat, not in a file
+	 * (SVY-21659).
+	 *
+	 * @param finalAnswer the last assistant text of the graded run, or
+	 *                    {@code null}/blank when none was captured (the prompt
+	 *                    then carries no answer section)
+	 */
+	public Verdict judge(String subjectName, String sourceHint, String mockupPath, List<String> criteria,
+			String judgeModel, String builderModel, String finalAnswer, BooleanSupplier cancel) {
 		if (criteria == null || criteria.isEmpty()) {
 			return Verdict.error("no criteria to judge", null); //$NON-NLS-1$
 		}
@@ -229,7 +254,7 @@ public final class AcceptanceJudge {
 			if (!client.health()) {
 				return Verdict.error("opencode server not ready", null); //$NON-NLS-1$
 			}
-			String prompt = buildPrompt(subjectName, sourceHint, mockupPath, criteria);
+			String prompt = buildPrompt(subjectName, sourceHint, mockupPath, criteria, finalAnswer);
 			sessionId = client.createSession("Skill-test acceptance judge"); //$NON-NLS-1$
 			logger.log("[skilltest] acceptance judge: grading " + criteria.size() + " criterion(s) for '" //$NON-NLS-1$ //$NON-NLS-2$
 					+ subjectName + "' as the " + JUDGE_AGENT + " agent, model " + model + " (session " + sessionId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -313,6 +338,22 @@ public final class AcceptanceJudge {
 	 *                    forms/<name>.frm", not "search by name" (SVY-21366)
 	 */
 	String buildPrompt(String subjectName, String sourceHint, String mockupPath, List<String> criteria) {
+		return buildPrompt(subjectName, sourceHint, mockupPath, criteria, null);
+	}
+
+	/**
+	 * As {@link #buildPrompt(String, String, String, List)}, plus the graded run's
+	 * final answer as quoted evidence. The answer is the run's own claim about what
+	 * it did, so the judge is told to use it only for criteria about what the run
+	 * reported, and to keep grading built artifacts from their source files. Over
+	 * {@link #MAX_FINAL_ANSWER_CHARS} only the tail is kept - the closing summary
+	 * is where a run states its findings.
+	 *
+	 * @param finalAnswer the run's last assistant text, or {@code null}/blank to
+	 *                    omit the section
+	 */
+	String buildPrompt(String subjectName, String sourceHint, String mockupPath, List<String> criteria,
+			String finalAnswer) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("A previous agent carried out a Servoy skill-test task in the active solution."); //$NON-NLS-1$
 		if (subjectName != null && !subjectName.isBlank()) {
@@ -330,6 +371,20 @@ public final class AcceptanceJudge {
 					.append("(or `servoy-workspace_findFiles`) on it to list what it now contains - its `forms/*.frm`, ") //$NON-NLS-1$
 					.append("`valuelists/*.val`, `relations/*.rel`, `menus/*.men` and scope `*.js` files - find the ") //$NON-NLS-1$
 					.append("one the task produced, and read it with `servoy-workspace_readProjectResource`.\n"); //$NON-NLS-1$
+		}
+		if (finalAnswer != null && !finalAnswer.isBlank()) {
+			String answer = finalAnswer.strip();
+			boolean truncated = answer.length() > MAX_FINAL_ANSWER_CHARS;
+			if (truncated) {
+				answer = answer.substring(answer.length() - MAX_FINAL_ANSWER_CHARS);
+			}
+			sb.append("\nThe agent's final answer to the user") //$NON-NLS-1$
+					.append(truncated ? " (last " + MAX_FINAL_ANSWER_CHARS + " characters)" : "") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					.append(" is quoted below. Use it as the evidence for any criterion about what the run REPORTED ") //$NON-NLS-1$
+					.append("(review findings and their severity, a diagnosed root cause, a stated conclusion). It is the ") //$NON-NLS-1$
+					.append("agent's own claim, so grade every criterion about built code or artifacts from the source ") //$NON-NLS-1$
+					.append("files, never from this text.\n\n<final_answer>\n").append(answer) //$NON-NLS-1$
+					.append("\n</final_answer>\n"); //$NON-NLS-1$
 		}
 		sb.append("Decide, criterion by criterion, whether the result meets the acceptance criteria below.\n\n"); //$NON-NLS-1$
 		if (mockupPath != null && !mockupPath.isBlank()) {
@@ -517,7 +572,7 @@ public final class AcceptanceJudge {
 	 * {@code { messages: [...] }} envelope {@link OpencodeHttpClient#getMessages}
 	 * returns, or {@code null} when there is no assistant text.
 	 */
-	static String lastAssistantText(JsonNode messagesEnvelope) {
+	public static String lastAssistantText(JsonNode messagesEnvelope) {
 		if (messagesEnvelope == null) {
 			return null;
 		}
