@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.eclipse.core.resources.IMarker;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.ILaunchConfiguration;
@@ -59,6 +62,11 @@ public class JSUnitRunnerService
 	private static final java.util.Set<String> loggedMissingCounterGetters = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	public String runTests(String scopeOrAll, int timeoutSeconds)
+	{
+		return appendNote(runTestsInternal(scopeOrAll, timeoutSeconds), errorMarkerNote());
+	}
+
+	private String runTestsInternal(String scopeOrAll, int timeoutSeconds)
 	{
 		ServoyProject activeProject = ServoyModelManager.getServoyModelManager().getServoyModel().getActiveProject();
 		if (activeProject == null)
@@ -169,6 +177,13 @@ public class JSUnitRunnerService
 	}
 
 	public String runTestMethod(String testMethodName, String scopeOrAll, int timeoutSeconds)
+	{
+		if (testMethodName == null || testMethodName.isBlank())
+			return "Error: testMethodName must not be empty.";
+		return appendNote(runTestMethodInternal(testMethodName, scopeOrAll, timeoutSeconds), errorMarkerNote());
+	}
+
+	private String runTestMethodInternal(String testMethodName, String scopeOrAll, int timeoutSeconds)
 	{
 		if (testMethodName == null || testMethodName.isBlank())
 			return "Error: testMethodName must not be empty.";
@@ -285,25 +300,131 @@ public class JSUnitRunnerService
 	{
 		ILaunchConfiguration config = new RunJSUnitHandler().findSmartClientTestLaunchConfiguration(target);
 
-		ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
+		// No user is at the dialog for an agent-requested run: without this the launch can open
+		// "Errors in project - Are you sure you want to launch?" (or a save-dirty-editors prompt)
+		// and the tool call waits until someone clicks it (SVY-21659). The error markers are
+		// reported in the tool result instead (errorMarkerNote).
+		LaunchPromptSuppressor prompts = getLaunchPromptSuppressor();
+		prompts.acquire();
 		try
 		{
-			return waitForSessionByLaunch(launch, timeoutSeconds * 1000L);
-		}
-		finally
-		{
-			if (!launch.isTerminated())
+			ILaunch launch = config.launch(ILaunchManager.RUN_MODE, null);
+			try
 			{
-				try
+				return waitForSessionByLaunch(launch, timeoutSeconds * 1000L);
+			}
+			finally
+			{
+				if (!launch.isTerminated())
 				{
-					launch.terminate();
-				}
-				catch (Exception ignored)
-				{
-					ServoyLog.logWarning("Could not terminate JSUnit launch after tests", null);
+					try
+					{
+						launch.terminate();
+					}
+					catch (Exception ignored)
+					{
+						ServoyLog.logWarning("Could not terminate JSUnit launch after tests", null);
+					}
 				}
 			}
 		}
+		finally
+		{
+			prompts.release();
+		}
+	}
+
+	/** Seam: the prompt suppressor used around each launch, shared by all runs. */
+	protected LaunchPromptSuppressor getLaunchPromptSuppressor()
+	{
+		return SharedLaunchPrompts.INSTANCE;
+	}
+
+	/** Lazy holder, so the preference nodes are only touched when a launch actually happens. */
+	private static final class SharedLaunchPrompts
+	{
+		static final LaunchPromptSuppressor INSTANCE = LaunchPromptSuppressor.forInstanceScope();
+	}
+
+	/** Seam: the active solution and its modules, whose error markers the launch would have prompted about. */
+	protected ServoyProject[] getProjectsToCheckForErrors()
+	{
+		return ServoyModelManager.getServoyModelManager().getServoyModel().getModulesOfActiveProject();
+	}
+
+	/** At most this many error markers are listed in the note. */
+	static final int MAX_LISTED_ERROR_MARKERS = 10;
+
+	/**
+	 * @return a note listing the error markers of the active solution and its modules, or
+	 *         {@code null} when there are none (or they cannot be read)
+	 */
+	protected String errorMarkerNote()
+	{
+		try
+		{
+			ServoyProject[] projects = getProjectsToCheckForErrors();
+			if (projects == null) return null;
+			List<String> lines = new ArrayList<>();
+			int total = 0;
+			for (ServoyProject sp : projects)
+			{
+				IProject project = sp != null ? sp.getProject() : null;
+				if (project == null || !project.isAccessible()) continue;
+				for (IMarker marker : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE))
+				{
+					if (marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO) != IMarker.SEVERITY_ERROR) continue;
+					total++;
+					if (lines.size() < MAX_LISTED_ERROR_MARKERS)
+					{
+						IResource res = marker.getResource();
+						int line = marker.getAttribute(IMarker.LINE_NUMBER, -1);
+						lines.add((res != null ? res.getFullPath().toString() : project.getName()) + (line > 0 ? ":" + line : "") +
+							" " + marker.getAttribute(IMarker.MESSAGE, ""));
+					}
+				}
+			}
+			return formatErrorMarkerNote(lines, total);
+		}
+		catch (CoreException | RuntimeException e)
+		{
+			ServoyLog.logWarning("JSUnit runner: could not read the solution's error markers", e);
+			return null;
+		}
+	}
+
+	/**
+	 * Formats the error-marker note appended to a run result. Worded so the skill-test result parser
+	 * does not read it as a test failure: no line starts with FAIL/ERROR and there is no
+	 * "&lt;n&gt; error(s)" phrase.
+	 *
+	 * @param lines the listed markers ({@code path[:line] message}), at most {@link #MAX_LISTED_ERROR_MARKERS}
+	 * @param total the total number of error markers
+	 * @return the note, or {@code null} when {@code total} is 0
+	 */
+	public static String formatErrorMarkerNote(List<String> lines, int total)
+	{
+		if (total <= 0) return null;
+		StringBuilder sb = new StringBuilder();
+		sb.append("**Note:** the active solution or its modules have problem markers of severity error (count: ").append(total)
+			.append("). The launch confirmation for them was skipped; they may affect the results:\n");
+		for (String line : lines)
+		{
+			sb.append("- ").append(line.replace('\n', ' ').replace('\r', ' ')).append("\n");
+		}
+		if (total > lines.size()) sb.append("- ... and ").append(total - lines.size()).append(" more\n");
+		return sb.toString();
+	}
+
+	/**
+	 * @return {@code result} followed by {@code note} (a blank line between), or {@code result} when
+	 *         there is no note
+	 */
+	public static String appendNote(String result, String note)
+	{
+		if (note == null || note.isBlank()) return result;
+		if (result == null || result.isBlank()) return note;
+		return result + (result.endsWith("\n") ? "\n" : "\n\n") + note;
 	}
 
 	private TestTarget buildTestTarget(String scopeOrAll, ServoyProject activeProject)
