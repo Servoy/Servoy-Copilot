@@ -201,13 +201,18 @@ public class FormSpecBehaviourIntegrationTest extends AbstractTitaniumIntegratio
 	}
 
 	@Test
-	public void testGenerateFormSpec_hiddenElementIsSkippedAndNeverSelected() throws Exception {
+	public void testGenerateFormSpec_hiddenElementIsAssertedNotToExistAndItsHandlerIsSkipped() throws Exception {
 		String content = generateAndRead(BEHAVIOUR_FORM);
 		List<String> lines = content.lines().toList();
 
 		assertTrue(lines.contains("  it.skip('secret: onActionMethodID (element is hidden by design)', () => {});"),
 				"A hidden element's handler must be a skipped case: " + lines);
-		assertFalse(content.contains(BEHAVIOUR_FORM + ".secret\"]"), "A hidden element must not be selected at all: " + content);
+		// SVY-21514: a hidden element is no longer dropped - it is asserted to be absent from the DOM (initial state)
+		assertTrue(lines.contains("    cy.get('[data-cy=\"" + BEHAVIOUR_FORM + ".secret\"]').should('not.exist');"),
+				"A hidden element must be asserted as not in the DOM: " + lines);
+		assertFalse(content.contains(BEHAVIOUR_FORM + ".secret\"]').should('be.visible')"),
+				"A hidden element must never be asserted visible: " + content);
+		assertFalse(content.contains(BEHAVIOUR_FORM + ".secret\"]').click()"), "A hidden element must never be clicked: " + content);
 	}
 
 	@Test
