@@ -369,38 +369,16 @@ final class JsUnitVerifier {
 
 	/**
 	 * Joins the auto- then manual-build job families with a combined wall-clock
-	 * cap. Because {@code IJobManager.join(Object, IProgressMonitor)} blocks
-	 * uninterruptibly, it is run on a daemon helper thread; if the cap elapses the
-	 * monitor is cancelled (which makes {@code join} return) and {@code false} is
-	 * returned.
+	 * cap, via {@link com.servoy.eclipse.opencode.skilltest.headless.BuildSettle}
+	 * (the shared bounded join; on a timeout it logs the still-pending jobs).
 	 *
 	 * @param timeoutMs the total time to allow for both joins
 	 * @return {@code true} if both families settled in time, {@code false} on
 	 *         timeout or interruption
 	 */
 	static boolean joinBuildFamilies(long timeoutMs) {
-		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
-		org.eclipse.core.runtime.IProgressMonitor monitor = new org.eclipse.core.runtime.NullProgressMonitor();
-		Thread joiner = new Thread(() -> {
-			try {
-				jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, monitor);
-				jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, monitor);
-			} catch (org.eclipse.core.runtime.OperationCanceledException | InterruptedException ignore) {
-				// cancelled by the timeout below, or interrupted - either way, stop waiting
-			}
-		}, "skilltest-build-settle"); //$NON-NLS-1$
-		joiner.setDaemon(true);
-		joiner.start();
-		try {
-			joiner.join(timeoutMs);
-		} catch (InterruptedException ie) {
-			Thread.currentThread().interrupt();
-		}
-		if (joiner.isAlive()) {
-			monitor.setCanceled(true); // makes the uninterruptible join() return
-			return false;
-		}
-		return true;
+		return com.servoy.eclipse.opencode.skilltest.headless.BuildSettle.joinBuildFamilies(timeoutMs, null,
+				System.err::println) == com.servoy.eclipse.opencode.skilltest.headless.BuildSettle.Result.SETTLED;
 	}
 
 	private static ServoyProject resolveActiveServoyProject() {

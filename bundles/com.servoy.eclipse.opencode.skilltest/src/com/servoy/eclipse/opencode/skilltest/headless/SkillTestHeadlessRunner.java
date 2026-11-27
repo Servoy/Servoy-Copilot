@@ -408,7 +408,7 @@ public class SkillTestHeadlessRunner implements IApplication {
 			writeInterimReport(outputDir, entries, results, i);
 			long limitMs = Math.min(BASELINE_TIMEOUT_MS, remainingMs);
 			BaselineWatchdog.Outcome<SkillTestResult> outcome = BaselineWatchdog.run(baseline.id(), cancelled -> {
-				setup.prepare(baseline);
+				setup.prepare(baseline, cancelled);
 				// Pass the baseline's ACTUAL on-disk folder (entry.folder(), from the CI
 				// -Dservoy.skilltest.baselines dir) so JSUnit verify scripts resolve there.
 				// Without it the runner recomputes the folder from the workspace baselines

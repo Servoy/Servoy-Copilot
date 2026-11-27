@@ -630,7 +630,7 @@ public class SkillTestView extends ViewPart {
 						break;
 					}
 					try {
-						setup.prepare(baseline);
+						setup.prepare(baseline, monitor::isCanceled);
 						results.add(runner.runBaseline(baseline, monitor::isCanceled));
 					} catch (Exception setupEx) {
 						// Log the FULL stack trace (not just getMessage) so the real failing

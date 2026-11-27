@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
@@ -117,6 +118,23 @@ public final class SolutionSetup {
 	 *                   be activated
 	 */
 	public void prepare(Baseline baseline) throws Exception {
+		prepare(baseline, null);
+	}
+
+	/**
+	 * Like {@link #prepare(Baseline)}, but stops when {@code cancelled} reports
+	 * {@code true}: the build-settle waits return at once and setup throws
+	 * {@link OperationCanceledException} instead of activating and replaying.
+	 *
+	 * @param baseline  the baseline whose {@code precondition.source} + solution
+	 *                  drive the setup
+	 * @param cancelled the run's cancel signal (may be {@code null})
+	 * @throws Exception if the source cannot be materialized or the solution cannot
+	 *                   be activated, or {@link OperationCanceledException} when
+	 *                   cancelled
+	 */
+	public void prepare(Baseline baseline, BooleanSupplier cancelled) throws Exception {
+		BooleanSupplier isCancelled = cancelled != null ? cancelled : () -> false;
 		Baseline.Source source = baseline.source();
 		String solution = baseline.solution();
 
@@ -135,9 +153,9 @@ public final class SolutionSetup {
 				List<String> imported = importSolutionProjects(checkout, solution);
 				String toActivate = resolveActivate(solution, imported);
 				ensureNgPackages(toActivate);
-				settleBeforeActivate(toActivate);
+				settleBeforeActivate(toActivate, isCancelled);
 				activate(toActivate);
-				settleAfterActivate();
+				settleAfterActivate(isCancelled);
 			}
 			case FOLDER -> {
 				File folder = new File(source.location());
@@ -150,9 +168,9 @@ public final class SolutionSetup {
 				List<String> imported = importSolutionProjects(folder, solution);
 				String toActivate = resolveActivate(solution, imported);
 				ensureNgPackages(toActivate);
-				settleBeforeActivate(toActivate);
+				settleBeforeActivate(toActivate, isCancelled);
 				activate(toActivate);
-				settleAfterActivate();
+				settleAfterActivate(isCancelled);
 			}
 			case EMPTY -> {
 				cleanBeforeMaterialize(solution, baseline);
@@ -287,26 +305,21 @@ public final class SolutionSetup {
 		}
 	}
 
-	private void settleBeforeActivate(String solutionName) {
+	private void settleBeforeActivate(String solutionName, BooleanSupplier cancelled) {
 		if (solutionName == null || solutionName.isBlank()) {
 			return;
 		}
-		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
 		try {
 			logger.log("[skilltest] building imported projects before activation..."); //$NON-NLS-1$
-			ResourcesPlugin.getWorkspace().build(
-					org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, new NullProgressMonitor());
+			ResourcesPlugin.getWorkspace().build(org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD,
+					BuildSettle.cancelMonitor(cancelled));
 		} catch (CoreException | OperationCanceledException e) {
 			logger.log("[skilltest] WARN: full build before activation failed: " + e.getMessage()); //$NON-NLS-1$
 		}
-		try {
-			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
-			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new NullProgressMonitor());
-		} catch (OperationCanceledException | InterruptedException e) {
-			Thread.currentThread().interrupt();
-			logger.log("[skilltest] WARN: interrupted while waiting for build before activation: " //$NON-NLS-1$
-					+ e.getMessage());
-		}
+		throwIfCancelled(cancelled);
+		// Bounded + cancel-aware (SVY-21659): a plain join also waits on a build job
+		// that is scheduled but never runs, which hung a replay here indefinitely.
+		throwIfCancelled(BuildSettle.joinBuildFamilies(BuildSettle.configuredTimeoutMs(), cancelled, logger::log));
 
 		// Tell the Servoy model to (re)scan the workspace so the just-imported project
 		// is registered and its Solution root object is loaded. This is the step that
@@ -327,6 +340,7 @@ public final class SolutionSetup {
 		long deadline = System.currentTimeMillis() + ACTIVATE_SETTLE_TIMEOUT_MS;
 		ServoyProject project = null;
 		while (System.currentTimeMillis() < deadline) {
+			throwIfCancelled(cancelled);
 			project = ServoyModelFinder.getServoyModel().getServoyProject(solutionName);
 			if (project != null && project.getSolution() != null) {
 				logger.log("[skilltest] solution model for '" + solutionName + "' is ready to activate."); //$NON-NLS-1$ //$NON-NLS-2$
@@ -351,17 +365,26 @@ public final class SolutionSetup {
 	 * activation, so the replay reads a settled persist tree and the i18n job does
 	 * not race the run. Mirrors the integration tests' {@code waitForWorkspaceBuildJobs}
 	 * (which {@code join}s {@code FAMILY_AUTO_BUILD}/{@code FAMILY_MANUAL_BUILD}).
-	 * Best-effort: a join interruption/timeout is logged, not fatal.
+	 * Best-effort: a timeout is logged (with the still-pending jobs) and the setup
+	 * continues; a cancel stops the setup. The wait is bounded by
+	 * {@link BuildSettle#configuredTimeoutMs()} because a plain join also waits on a
+	 * build job that is scheduled but never runs (SVY-21659: a replay hung here for
+	 * 36 minutes and Stop could not end it).
 	 */
-	private void settleAfterActivate() {
-		org.eclipse.core.runtime.jobs.IJobManager jm = org.eclipse.core.runtime.jobs.Job.getJobManager();
-		try {
-			logger.log("[skilltest] waiting for build/i18n jobs to settle after activation..."); //$NON-NLS-1$
-			jm.join(ResourcesPlugin.FAMILY_AUTO_BUILD, new NullProgressMonitor());
-			jm.join(ResourcesPlugin.FAMILY_MANUAL_BUILD, new NullProgressMonitor());
-		} catch (OperationCanceledException | InterruptedException e) {
-			Thread.currentThread().interrupt();
-			logger.log("[skilltest] WARN: interrupted while settling jobs: " + e.getMessage()); //$NON-NLS-1$
+	private void settleAfterActivate(BooleanSupplier cancelled) {
+		logger.log("[skilltest] waiting for build/i18n jobs to settle after activation..."); //$NON-NLS-1$
+		throwIfCancelled(BuildSettle.joinBuildFamilies(BuildSettle.configuredTimeoutMs(), cancelled, logger::log));
+	}
+
+	private static void throwIfCancelled(BuildSettle.Result result) {
+		if (result == BuildSettle.Result.CANCELLED) {
+			throw new OperationCanceledException("skill-test setup cancelled while waiting for the build"); //$NON-NLS-1$
+		}
+	}
+
+	private static void throwIfCancelled(BooleanSupplier cancelled) {
+		if (cancelled.getAsBoolean()) {
+			throw new OperationCanceledException("skill-test setup cancelled"); //$NON-NLS-1$
 		}
 	}
 
