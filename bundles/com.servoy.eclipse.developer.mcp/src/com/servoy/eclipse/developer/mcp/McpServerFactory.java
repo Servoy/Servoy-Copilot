@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.runtime.Platform;
@@ -176,7 +177,7 @@ public class McpServerFactory
 				.tool(tool)
 				.callHandler((exchange, request) -> {
 					Map<String, Object> args = request.arguments();
-					String validationError = validateRequiredParams(tool, args);
+					String validationError = validateCall(tool, args);
 					if (validationError != null)
 					{
 						var content = new McpSchema.TextContent("Error: " + validationError);
@@ -216,6 +217,50 @@ public class McpServerFactory
 		var received = (args != null) ? args.keySet().stream().sorted().collect(Collectors.toList()) : List.of();
 		return "Missing required parameter(s) for tool '" + tool.name() + "': " + missing + ". " + "Received parameters: " + received + ". " +
 			"Please re-call the tool with all required parameters.";
+	}
+
+	/**
+	 * Validates a tool call: missing required parameters and unknown (undeclared) parameters.
+	 *
+	 * @param tool the tool being called
+	 * @param args the arguments supplied by the caller (may be null)
+	 * @return the missing-required and unknown-parameter messages joined by a single space, whichever applies, or {@code null} when the call is valid
+	 */
+	public static String validateCall(Tool tool, Map<String, Object> args)
+	{
+		String required = validateRequiredParams(tool, args);
+		String unknown = validateUnknownParams(tool, args);
+		if (required != null && unknown != null) return required + " " + unknown;
+		return required != null ? required : unknown;
+	}
+
+	/**
+	 * Returns an error message when the call supplies argument names the tool does not declare, or {@code null} when all supplied names are declared.
+	 *
+	 * @param tool the tool being called
+	 * @param args the arguments supplied by the caller (may be null)
+	 * @return the error message, or {@code null} when every supplied argument name is declared by the tool
+	 */
+	public static String validateUnknownParams(Tool tool, Map<String, Object> args)
+	{
+		var schema = tool.inputSchema();
+		if (schema == null || args == null || args.isEmpty()) return null;
+
+		var declared = new TreeSet<String>();
+		if (schema.get("properties") instanceof Map< ? , ? > properties)
+		{
+			for (Object key : properties.keySet())
+			{
+				declared.add(String.valueOf(key));
+			}
+		}
+
+		var unknown = args.keySet().stream().filter(key -> !declared.contains(key)).sorted().collect(Collectors.toList());
+		if (unknown.isEmpty()) return null;
+
+		String accepted = declared.isEmpty() ? "[] (this tool takes no parameters)." : new ArrayList<>(declared) + ".";
+		return "Unknown parameter(s) for tool '" + tool.name() + "': " + unknown + ". Accepted parameters: " + accepted +
+			" Please re-call the tool using only the accepted parameter names.";
 	}
 
 	private List<Tool> extractAnnotatedTools(Method... methods)

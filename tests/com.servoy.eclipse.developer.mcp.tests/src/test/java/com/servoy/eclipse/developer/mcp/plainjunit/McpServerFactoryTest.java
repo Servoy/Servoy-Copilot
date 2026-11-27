@@ -16,16 +16,24 @@
 */
 package com.servoy.eclipse.developer.mcp.plainjunit;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.mockito.Mockito;
 
 import com.servoy.eclipse.developer.mcp.McpServerFactory;
 import com.servoy.eclipse.developer.mcp.annotations.McpServer;
@@ -484,5 +492,193 @@ public class McpServerFactoryTest {
 		} finally {
 			syncServer.closeGracefully();
 		}
+	}
+
+	// --- SVY-21839: unknown argument rejection ---
+
+	private static McpSchema.Tool findFilesTool() {
+		Map<String, Object> properties = new LinkedHashMap<>();
+		properties.put("maxResults", Map.of("type", "integer"));
+		properties.put("fileNamePatterns", Map.of("type", "string"));
+		Map<String, Object> schema = new HashMap<>();
+		schema.put("type", "object");
+		schema.put("properties", properties);
+		schema.put("required", List.of());
+		return new McpSchema.Tool("findFiles", "findFiles", "Finds files", schema, null, null, null);
+	}
+
+	private static McpSchema.Tool readFileTool() {
+		Map<String, Object> properties = new LinkedHashMap<>();
+		properties.put("projectName", Map.of("type", "string"));
+		properties.put("filePath", Map.of("type", "string"));
+		properties.put("startLine", Map.of("type", "integer"));
+		Map<String, Object> schema = new HashMap<>();
+		schema.put("type", "object");
+		schema.put("properties", properties);
+		schema.put("required", List.of("projectName", "filePath"));
+		return new McpSchema.Tool("readFile", "readFile", "Reads a file", schema, null, null, null);
+	}
+
+	@Test
+	@DisplayName("a single unknown argument is named and all accepted parameters are listed sorted")
+	void validateUnknownParams_singleUnknown_namesItAndListsAcceptedSorted() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("pattern", "*ticket*");
+
+		String result = McpServerFactory.validateUnknownParams(findFilesTool(), args);
+
+		assertEquals(
+				"Unknown parameter(s) for tool 'findFiles': [pattern]. Accepted parameters: [fileNamePatterns, maxResults]."
+						+ " Please re-call the tool using only the accepted parameter names.",
+				result);
+	}
+
+	@Test
+	@DisplayName("multiple unknown arguments are all reported in sorted order")
+	void validateUnknownParams_multipleUnknown_reportedSorted() {
+		Map<String, Object> args = new LinkedHashMap<>();
+		args.put("zeta", "1");
+		args.put("fileNamePatterns", "*.java");
+		args.put("alpha", "2");
+		args.put("middle", "3");
+
+		String result = McpServerFactory.validateUnknownParams(findFilesTool(), args);
+
+		assertEquals(
+				"Unknown parameter(s) for tool 'findFiles': [alpha, middle, zeta]. Accepted parameters: [fileNamePatterns, maxResults]."
+						+ " Please re-call the tool using only the accepted parameter names.",
+				result);
+	}
+
+	@Test
+	@DisplayName("a call using only declared required and optional arguments is accepted")
+	void validateUnknownParams_allDeclared_returnsNull() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("projectName", "p");
+		args.put("filePath", "a.txt");
+		args.put("startLine", Integer.valueOf(3));
+
+		assertNull(McpServerFactory.validateUnknownParams(readFileTool(), args));
+	}
+
+	@ParameterizedTest
+	@NullAndEmptySource
+	@DisplayName("null or empty arguments have nothing unknown")
+	void validateUnknownParams_nullOrEmptyArgs_returnsNull(Map<String, Object> args) {
+		assertNull(McpServerFactory.validateUnknownParams(findFilesTool(), args));
+	}
+
+	@Test
+	@DisplayName("an unknown argument with a null value is still reported by name")
+	void validateUnknownParams_nullValuedUnknown_isReported() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("fileNamePatterns", "*.java");
+		args.put("pattern", null);
+
+		String result = McpServerFactory.validateUnknownParams(findFilesTool(), args);
+
+		assertNotNull(result, "a null-valued undeclared key must be rejected");
+		assertTrue(result.contains("'findFiles': [pattern]."), result);
+	}
+
+	@Test
+	@DisplayName("a tool without properties rejects any argument and says it takes no parameters")
+	void validateUnknownParams_noProperties_rejectsWithNoParametersHint() {
+		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", null, null, false, null, null);
+		McpSchema.Tool tool = new McpSchema.Tool("listProjects", "listProjects", "Lists projects", schemaAsMap(schema),
+				null, null, null);
+		Map<String, Object> args = new HashMap<>();
+		args.put("filter", "x");
+
+		String result = McpServerFactory.validateUnknownParams(tool, args);
+
+		assertEquals(
+				"Unknown parameter(s) for tool 'listProjects': [filter]. Accepted parameters: [] (this tool takes no parameters)."
+						+ " Please re-call the tool using only the accepted parameter names.",
+				result);
+	}
+
+	@Test
+	@DisplayName("a tool with empty properties rejects any argument as taking no parameters")
+	void validateUnknownParams_emptyProperties_rejectsWithNoParametersHint() {
+		McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", Map.of(), List.of(), false, null, null);
+		McpSchema.Tool tool = new McpSchema.Tool("listProjects", "listProjects", "Lists projects", schemaAsMap(schema),
+				null, null, null);
+		Map<String, Object> args = new HashMap<>();
+		args.put("filter", "x");
+
+		String result = McpServerFactory.validateUnknownParams(tool, args);
+
+		assertNotNull(result);
+		assertTrue(result.contains("[filter]") && result.contains("(this tool takes no parameters)"), result);
+	}
+
+	@Test
+	@DisplayName("a tool with a null input schema accepts any argument")
+	void validateUnknownParams_nullSchema_returnsNull() {
+		// McpSchema.Tool's constructor rejects a null inputSchema, so the defensive
+		// guard is only reachable with a mock
+		McpSchema.Tool tool = Mockito.mock(McpSchema.Tool.class);
+		Mockito.when(tool.inputSchema()).thenReturn(null);
+		Mockito.when(tool.name()).thenReturn("noSchema");
+		Map<String, Object> args = new HashMap<>();
+		args.put("anything", "x");
+
+		assertNull(McpServerFactory.validateUnknownParams(tool, args));
+	}
+
+	@Test
+	@DisplayName("validateCall accepts a valid call")
+	void validateCall_valid_returnsNull() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("projectName", "p");
+		args.put("filePath", "a.txt");
+
+		assertNull(McpServerFactory.validateCall(readFileTool(), args));
+	}
+
+	@Test
+	@DisplayName("validateCall reports only the missing-required message when nothing is unknown")
+	void validateCall_onlyMissingRequired_returnsRequiredMessageOnly() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("projectName", "p");
+
+		String result = McpServerFactory.validateCall(readFileTool(), args);
+
+		assertAll(() -> assertEquals(McpServerFactory.validateRequiredParams(readFileTool(), args), result),
+				() -> assertTrue(result.startsWith("Missing required parameter(s) for tool 'readFile'"), result),
+				() -> assertFalse(result.contains("Unknown parameter"), result));
+	}
+
+	@Test
+	@DisplayName("validateCall reports only the unknown-parameter message when all required are present")
+	void validateCall_onlyUnknown_returnsUnknownMessageOnly() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("projectName", "p");
+		args.put("filePath", "a.txt");
+		args.put("path", "b.txt");
+
+		String result = McpServerFactory.validateCall(readFileTool(), args);
+
+		assertAll(() -> assertEquals(McpServerFactory.validateUnknownParams(readFileTool(), args), result),
+				() -> assertTrue(result.startsWith("Unknown parameter(s) for tool 'readFile': [path]."), result),
+				() -> assertFalse(result.contains("Missing required"), result));
+	}
+
+	@Test
+	@DisplayName("validateCall joins missing-required and unknown messages, required first, with one space")
+	void validateCall_missingAndUnknown_returnsCombinedRequiredFirst() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("projectName", "p");
+		args.put("path", "a.txt");
+
+		String required = McpServerFactory.validateRequiredParams(readFileTool(), args);
+		String unknown = McpServerFactory.validateUnknownParams(readFileTool(), args);
+		String result = McpServerFactory.validateCall(readFileTool(), args);
+
+		assertAll(() -> assertNotNull(required), () -> assertNotNull(unknown),
+				() -> assertEquals(required + " " + unknown, result),
+				() -> assertTrue(result.contains("[filePath]"), "the missing required parameter is named"),
+				() -> assertTrue(result.contains("[path]"), "the unknown parameter is named"));
 	}
 }
